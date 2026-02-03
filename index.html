@@ -149,6 +149,7 @@
         box-shadow:
             0 0 0 1px rgba(255, 59, 76, 0.9),
             0 18px 36px rgba(0, 0, 0, 1);
+        transform: scale(0.98); /* лёгкое вжатие */
     }
 
     /* Если будешь делить текст/эмодзи */
@@ -449,8 +450,17 @@
                 btn.className = 'answer-btn';
                 btn.innerHTML = `<span class="emoji">${answer.text.slice(0,2)}</span><span class="text">${answer.text.slice(2).trim()}</span>`;
                 btn.onclick = () => {
+                    // Убираем подсветку у всех кнопок
+                    document.querySelectorAll('.answer-btn').forEach(b => b.classList.remove('selected'));
+        
+                    // Подсвечиваем выбранную
+                    btn.classList.add('selected');
                     btn.blur(); // снимаем фокус
-                    selectAnswer(answer.scores);
+                    
+                    // Небольшая задержка перед переходом к следующему вопросу
+                    setTimeout(() => {
+                        selectAnswer(answer.scores);
+                    }, 250); // 250 мс — достаточно для визуального фидбека
                 };
                 answersContainer.appendChild(btn);
             });
