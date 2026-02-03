@@ -199,7 +199,6 @@
         font-weight: 600;
     }
 
-
     .tags {
         display: flex;
         flex-wrap: wrap;
@@ -240,14 +239,13 @@
         font-weight: 600;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         box-shadow: 0 12px 28px rgba(255, 59, 76, 0.55);
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin: 0 auto;
+        display: block;
+        margin: 0 auto 12px auto;
+        width: fit-content;
     }
 
-    .restart-btn + .restart-btn {
-        margin-top: 12px;
+    .restart-btn:last-child {
+        margin-bottom: 0;
     }
 
     .restart-btn:hover {
@@ -277,7 +275,7 @@
 <body>
     <div class="container">
         <div class="quiz-content">
-            <h1>🎮 Какая твоя позиция в Dota 2?</h1>
+            <h1>🎮 Какая позиция в Доте 2 тебе подходит?</h1>
             <p class="subtitle">Пройди тест и узнай, на какой роли ты раскроешься лучше всего</p>
             
             <div class="progress-bar">
@@ -412,11 +410,11 @@
         ];
 
         const positionNames = {
-            pos1: "Position 1 — Carry (Керри)",
-            pos2: "Position 2 — Mid (Мидер)",
-            pos3: "Position 3 — Offlane (Хардлейнер)",
-            pos4: "Position 4 — Soft Support (Роумер)",
-            pos5: "Position 5 — Hard Support (Фулл-саппорт)"
+            pos1: "Pos 1 — Керри",
+            pos2: "Pos 2 — Мидер",
+            pos3: "Pos 3 — Хардлейнер",
+            pos4: "Pos 4 — Роумер",
+            pos5: "Pos 5 — Фулл-саппорт"
         };
 
         const positionTags = {
@@ -427,7 +425,7 @@
             "pos2_pos1": ["Линия", "Лейт", "Скалирование"],
             "pos2_pos3": ["Инициация", "Фронт", "Контроль"],
             "pos2_pos4": ["Роум", "Мидгейм", "Активность"],
-            "pos2_pos5": ["Темп", "Командность", "Вижен"],
+            "pos2_pos5": ["Темп", "Командность", "Контроль карты"],
             "pos3_pos1": ["Фронт", "Лейт", "Давление"],
             "pos3_pos2": ["Линия", "Агрессия", "Прессинг"],
             "pos3_pos4": ["Роум", "Пространство", "Инициация"],
@@ -481,15 +479,10 @@
             currentQuestion = 0;
             scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
             
-            // Явно показываем квиз и скрываем результат
-            const quizContent = document.querySelector('.quiz-content');
-            quizContent.style.display = 'block';
-            quizContent.classList.remove('hidden');
-            
+            document.querySelector('.quiz-content').style.display = 'block';
             document.getElementById('result').style.display = 'none';
             showQuestion();
         }
-
 
         function showQuestion() {
             const question = quizData[currentQuestion];
@@ -530,9 +523,7 @@
         }
 
         function showResult() {
-            // Явно скрываем квиз
-            const quizContent = document.querySelector('.quiz-content');
-            quizContent.style.display = 'none';
+            document.querySelector('.quiz-content').style.display = 'none';
             
             const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
             const firstPos = sortedPositions[0][0];
@@ -557,12 +548,10 @@
                 positionDescriptions[combinationKey];
 
             document.getElementById('positionDescription').classList.add('hidden');
-            const btn = document.getElementById('detailsBtn');
-            btn.textContent = 'Показать детали';
+            document.getElementById('detailsBtn').textContent = 'Показать детали';
 
             document.getElementById('result').style.display = 'block';
         }
-
 
         function toggleDetails() {
             const desc = document.getElementById('positionDescription');
@@ -586,4 +575,5 @@
     </script>
 </body>
 </html>
+
 
