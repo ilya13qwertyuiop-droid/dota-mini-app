@@ -124,16 +124,22 @@
         box-shadow:
             0 0 0 1px rgba(0, 0, 0, 0.6),
             0 10px 24px rgba(0, 0, 0, 0.8);
+        
+        /* РЕШЕНИЕ 2: убираем дефолтное подсвечивание тапа */
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
     }
 
-    /* Лёгкое свечение и более явная рамка при hover */
-    .answer-btn:hover {
-        background: radial-gradient(circle at 0 0, rgba(255, 59, 76, 0.22), rgba(15, 15, 22, 0.98));
-        border-color: rgba(255, 59, 76, 0.45);
-        box-shadow:
-            0 0 0 1px rgba(255, 59, 76, 0.55),
-            0 14px 28px rgba(0, 0, 0, 0.95);
-        transform: translateY(-1px);
+    /* РЕШЕНИЕ 3: ховер только для устройств с мышкой */
+    @media (hover: hover) and (pointer: fine) {
+        .answer-btn:hover {
+            background: radial-gradient(circle at 0 0, rgba(255, 59, 76, 0.22), rgba(15, 15, 22, 0.98));
+            border-color: rgba(255, 59, 76, 0.45);
+            box-shadow:
+                0 0 0 1px rgba(255, 59, 76, 0.55),
+                0 14px 28px rgba(0, 0, 0, 0.95);
+            transform: translateY(-1px);
+        }
     }
 
     /* Явное свечение и рамка для выбранного */
@@ -154,7 +160,6 @@
     .answer-btn span.text {
         flex: 1;
     }
-
 
     .result {
         display: none;
@@ -237,6 +242,7 @@
         }
     }
 </style>
+
 
 </head>
 <body>
@@ -443,6 +449,7 @@
                 btn.className = 'answer-btn';
                 btn.innerHTML = `<span class="emoji">${answer.text.slice(0,2)}</span><span class="text">${answer.text.slice(2).trim()}</span>`;
                 btn.onclick = () => {
+                    btn.blur(); // снимаем фокус
                     selectAnswer(answer.scores);
                 };
                 answersContainer.appendChild(btn);
