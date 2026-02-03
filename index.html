@@ -83,10 +83,10 @@
 
     .progress-fill {
         height: 100%;
-        background: linear-gradient(90deg, #ff3b4c, #ff7360);
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
         width: 0%;
         transition: width 0.3s ease;
-        box-shadow: 0 0 12px rgba(255, 59, 76, 0.7);
+        box-shadow: 0 0 12px rgba(0, 210, 255, 0.6);
     }
 
     .question {
@@ -106,7 +106,7 @@
     }
 
     .answer-btn {
-        background: radial-gradient(circle at 0 0, rgba(255, 59, 76, 0.16), rgba(10, 10, 16, 0.96));
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.12), rgba(10, 10, 16, 0.96));
         border: 1px solid rgba(255, 255, 255, 0.06);
         padding: 12px 13px;
         border-radius: 18px;
@@ -129,20 +129,20 @@
 
     @media (hover: hover) and (pointer: fine) {
         .answer-btn:hover {
-            background: radial-gradient(circle at 0 0, rgba(255, 59, 76, 0.22), rgba(15, 15, 22, 0.98));
-            border-color: rgba(255, 59, 76, 0.45);
+            background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.18), rgba(15, 15, 22, 0.98));
+            border-color: rgba(58, 123, 213, 0.45);
             box-shadow:
-                0 0 0 1px rgba(255, 59, 76, 0.55),
+                0 0 0 1px rgba(58, 123, 213, 0.55),
                 0 14px 28px rgba(0, 0, 0, 0.95);
             transform: translateY(-1px);
         }
     }
 
     .answer-btn.selected {
-        background: radial-gradient(circle at 0 0, rgba(255, 59, 76, 0.32), rgba(8, 8, 14, 0.98));
-        border-color: var(--accent);
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.28), rgba(8, 8, 14, 0.98));
+        border-color: #3a7bd5;
         box-shadow:
-            0 0 0 1px rgba(255, 59, 76, 0.9),
+            0 0 0 1px rgba(58, 123, 213, 0.9),
             0 18px 36px rgba(0, 0, 0, 1);
         transform: scale(0.98);
     }
@@ -173,6 +173,21 @@
         }
     }
 
+    /* Заголовок с эмодзи */
+    .result-header {
+        font-size: 32px;
+        margin-bottom: 6px;
+    }
+
+    .result-title {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
     /* Основная роль */
     .position-primary {
         font-size: 18px;
@@ -186,12 +201,17 @@
         display: inline-block;
         padding: 8px 18px;
         border-radius: 999px;
-        background: linear-gradient(130deg, #ff3b4c, #ff7360);
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(255, 255, 255, 0.25);
         color: #fff;
         font-size: 14px;
         font-weight: 600;
         margin-bottom: 20px;
-        box-shadow: 0 8px 20px rgba(255, 59, 76, 0.45);
+        box-shadow: 
+            0 0 0 1px rgba(255, 255, 255, 0.1),
+            0 8px 24px rgba(0, 0, 0, 0.6),
+            inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     }
 
     /* Вспомогательная роль */
@@ -206,12 +226,13 @@
         display: inline-block;
         padding: 6px 16px;
         border-radius: 999px;
-        background: rgba(255, 107, 120, 0.15);
-        border: 1px solid rgba(255, 107, 120, 0.4);
-        color: #ff9aa5;
+        background: linear-gradient(135deg, rgba(58, 123, 213, 0.2), rgba(0, 210, 255, 0.2));
+        border: 1.5px solid rgba(58, 123, 213, 0.5);
+        color: #a0c4ff;
         font-size: 13px;
         font-weight: 600;
         margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(58, 123, 213, 0.25);
     }
 
     /* Прогресс-бары для характеристик */
@@ -253,10 +274,11 @@
 
     .stat-bar-fill {
         height: 100%;
-        background: linear-gradient(90deg, #ff3b4c, #ff7360);
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
         border-radius: 999px;
-        transition: width 0.6s ease;
-        box-shadow: 0 0 10px rgba(255, 59, 76, 0.6);
+        width: 0;
+        transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 0 10px rgba(0, 210, 255, 0.6);
     }
 
     /* Текстовое описание */
@@ -267,10 +289,11 @@
         margin-bottom: 20px;
         white-space: pre-line;
         text-align: left;
-        background: rgba(255, 59, 76, 0.06);
-        border: 1px solid rgba(255, 59, 76, 0.2);
+        background: rgba(58, 123, 213, 0.08);
+        border: 1px solid rgba(58, 123, 213, 0.25);
         border-radius: 16px;
         padding: 16px;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
     }
 
     .hidden {
@@ -281,7 +304,7 @@
     .btn-outline {
         background: transparent;
         color: var(--text-main);
-        border: 1px solid rgba(255, 59, 76, 0.5);
+        border: 1px solid rgba(58, 123, 213, 0.5);
         padding: 11px 26px;
         border-radius: 999px;
         font-size: 15px;
@@ -294,29 +317,29 @@
     }
 
     .btn-outline:hover {
-        background: rgba(255, 59, 76, 0.1);
-        border-color: var(--accent);
+        background: rgba(58, 123, 213, 0.1);
+        border-color: #3a7bd5;
     }
 
-    .btn-primary {
-        background: linear-gradient(130deg, #ff3b4c, #ff7360);
-        color: #fff;
-        border: none;
+    .btn-secondary {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid rgba(255, 255, 255, 0.15);
         padding: 11px 26px;
         border-radius: 999px;
         font-size: 15px;
         cursor: pointer;
-        font-weight: 600;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-        box-shadow: 0 12px 28px rgba(255, 59, 76, 0.55);
+        font-weight: 500;
+        transition: all 0.15s ease;
         display: block;
         margin: 0 auto;
         width: fit-content;
     }
 
-    .btn-primary:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 16px 32px rgba(255, 59, 76, 0.7);
+    .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.25);
+        color: var(--text-main);
     }
 
     .quiz-content {
@@ -353,17 +376,20 @@
         </div>
 
         <div class="result" id="result">
+            <div class="result-header">🎯</div>
+            <div class="result-title">Твоя позиция</div>
+
             <div class="position-primary" id="positionPrimary"></div>
             <div class="position-badge" id="positionBadge"></div>
 
-            <div class="position-secondary-label">Вспомогательная роль</div>
+            <div class="position-secondary-label">Дополнительные задатки</div>
             <div class="position-secondary-badge" id="positionSecondaryBadge"></div>
 
             <div class="stats" id="stats"></div>
 
             <button class="btn-outline" id="detailsBtn" onclick="toggleDetails()">Показать детали</button>
             <div class="description hidden" id="positionDescription"></div>
-            <button class="btn-primary" onclick="restartQuiz()">🔄 Пройти ещё раз</button>
+            <button class="btn-secondary" onclick="restartQuiz()">🔄 Пройти ещё раз</button>
         </div>
     </div>
 
@@ -692,7 +718,7 @@
             document.getElementById('positionBadge').textContent = positionShortNames[firstPos];
             document.getElementById('positionSecondaryBadge').textContent = positionShortNames[secondPos];
 
-            // Прогресс-бары
+            // Прогресс-бары с анимацией
             const statsContainer = document.getElementById('stats');
             statsContainer.innerHTML = '';
             (positionStats[combinationKey] || []).forEach(stat => {
@@ -704,7 +730,7 @@
                         <span class="stat-value">${stat.value}%</span>
                     </div>
                     <div class="stat-bar">
-                        <div class="stat-bar-fill" style="width: ${stat.value}%"></div>
+                        <div class="stat-bar-fill" data-value="${stat.value}"></div>
                     </div>
                 `;
                 statsContainer.appendChild(statItem);
@@ -717,6 +743,14 @@
             document.getElementById('detailsBtn').textContent = 'Показать детали';
 
             document.getElementById('result').style.display = 'block';
+
+            // Анимация прогресс-баров
+            setTimeout(() => {
+                document.querySelectorAll('.stat-bar-fill').forEach(bar => {
+                    const value = bar.getAttribute('data-value');
+                    bar.style.width = value + '%';
+                });
+            }, 100);
         }
 
         function toggleDetails() {
@@ -741,6 +775,3 @@
     </script>
 </body>
 </html>
-
-
-
