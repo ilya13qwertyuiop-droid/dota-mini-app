@@ -184,24 +184,45 @@
     .position-primary {
         font-size: 19px;
         color: var(--accent);
-        margin-bottom: 8px;
+        margin-bottom: 4px;
         font-weight: 600;
         line-height: 1.3;
     }
 
     .position-secondary {
-        font-size: 14px;
-        color: var(--text-muted);
-        margin-bottom: 16px;
+        font-size: 15px;
+        color: #ff9aa5;
+        margin-bottom: 14px;
         font-weight: 500;
+    }
+
+    .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 16px;
+    }
+
+    .tag {
+        font-size: 11px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: rgba(255, 59, 76, 0.12);
+        border: 1px solid rgba(255, 59, 76, 0.35);
+        color: var(--text-main);
     }
 
     .description {
         font-size: 14px;
         color: var(--text-muted);
         line-height: 1.6;
-        margin-bottom: 22px;
+        margin-top: 10px;
+        margin-bottom: 18px;
         white-space: pre-line;
+    }
+
+    .hidden {
+        display: none;
     }
 
     .restart-btn {
@@ -228,10 +249,6 @@
 
     .quiz-content {
         display: block;
-    }
-
-    .hidden {
-        display: none;
     }
 
     @media (max-width: 380px) {
@@ -267,7 +284,9 @@
             <h2>Твои позиции:</h2>
             <div class="position-primary" id="positionPrimary"></div>
             <div class="position-secondary" id="positionSecondary"></div>
-            <div class="description" id="positionDescription"></div>
+            <div class="tags" id="positionTags"></div>
+            <button class="restart-btn" id="detailsBtn" onclick="toggleDetails()">Показать детали</button>
+            <div class="description hidden" id="positionDescription"></div>
             <button class="restart-btn" onclick="restartQuiz()">🔄 Пройти ещё раз</button>
         </div>
     </div>
@@ -392,6 +411,29 @@
             pos5: "Position 5 — Hard Support (Фулл-саппорт)"
         };
 
+        const positionTags = {
+            "pos1_pos2": ["Фарм", "Мидгейм", "Темп"],
+            "pos1_pos3": ["Фарм", "Фронт", "Живучесть"],
+            "pos1_pos4": ["Фарм", "Роум", "Агрессия"],
+            "pos1_pos5": ["Фарм", "Командность", "Утилита"],
+            "pos2_pos1": ["Линия", "Лейт", "Скалирование"],
+            "pos2_pos3": ["Инициация", "Фронт", "Контроль"],
+            "pos2_pos4": ["Роум", "Мидгейм", "Активность"],
+            "pos2_pos5": ["Темп", "Командность", "Вижен"],
+            "pos3_pos1": ["Фронт", "Лейт", "Давление"],
+            "pos3_pos2": ["Линия", "Агрессия", "Прессинг"],
+            "pos3_pos4": ["Роум", "Пространство", "Инициация"],
+            "pos3_pos5": ["Фронт", "Командность", "Контроль"],
+            "pos4_pos1": ["Роум", "Фарм", "Скалирование"],
+            "pos4_pos2": ["Роум", "Агрессия", "Ганки"],
+            "pos4_pos3": ["Фронт", "Контроль", "Танк"],
+            "pos4_pos5": ["Вижен", "Сейв", "Командность"],
+            "pos5_pos1": ["Вижен", "Фарм", "Лейт"],
+            "pos5_pos2": ["Вижен", "Роум", "Темп"],
+            "pos5_pos3": ["Фронт", "Танк", "Сейв"],
+            "pos5_pos4": ["Вижен", "Роум", "Контроль"]
+        };
+
         const positionDescriptions = {
             "pos1_pos2": "Ты — керри, который не просто фармит до поздней игры, а начинает оказывать давление уже после первых ключевых предметов. В отличие от классических кэрри, ты умеешь читать карту и контролировать темп, выбирая момент, когда нужно включиться в драку, а когда продолжить развитие.\n\nТы не ждёшь 40-й минуты — ты влияешь на игру в мидгейме, сочетая эффективный фарм со способностью наказывать врагов за ошибки. Твоя сила в балансе между терпением и агрессией.",
             "pos1_pos3": "Ты — керри, который не боится первым входить в драку. Тебе нравится стоять на передовой и выдерживать фокус врагов, оставаясь при этом главным источником урона. Ты предпочитаешь прочных героев и готов собрать 1-2 защитных предмета, чтобы диктовать условия боя.\n\nВ отличие от «стеклянных» героев, ты сам создаёшь пространство для команды и контролируешь зону драки. Твоя игра — это сочетание живучести и разрушительной силы.",
@@ -479,14 +521,44 @@
             const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
             const firstPos = sortedPositions[0][0];
             const secondPos = sortedPositions[1][0];
-            
-            document.getElementById('positionPrimary').textContent = positionNames[firstPos];
-            document.getElementById('positionSecondary').textContent = `Есть задатки для ${positionNames[secondPos]}`;
-            
             const combinationKey = `${firstPos}_${secondPos}`;
-            document.getElementById('positionDescription').textContent = positionDescriptions[combinationKey];
-            
+
+            document.getElementById('positionPrimary').textContent = 
+                `Основная роль: ${positionNames[firstPos]}`;
+            document.getElementById('positionSecondary').textContent = 
+                `Дополнительные задатки: ${positionNames[secondPos]}`;
+
+            const tagsContainer = document.getElementById('positionTags');
+            tagsContainer.innerHTML = '';
+            (positionTags[combinationKey] || []).forEach(tagText => {
+                const tagEl = document.createElement('span');
+                tagEl.className = 'tag';
+                tagEl.textContent = tagText;
+                tagsContainer.appendChild(tagEl);
+            });
+
+            document.getElementById('positionDescription').textContent = 
+                positionDescriptions[combinationKey];
+
+            document.getElementById('positionDescription').classList.add('hidden');
+            const btn = document.getElementById('detailsBtn');
+            btn.textContent = 'Показать детали';
+
             document.getElementById('result').style.display = 'block';
+        }
+
+        function toggleDetails() {
+            const desc = document.getElementById('positionDescription');
+            const btn = document.getElementById('detailsBtn');
+            const isHidden = desc.classList.contains('hidden');
+
+            if (isHidden) {
+                desc.classList.remove('hidden');
+                btn.textContent = 'Скрыть детали';
+            } else {
+                desc.classList.add('hidden');
+                btn.textContent = 'Показать детали';
+            }
         }
 
         function restartQuiz() {
@@ -497,3 +569,4 @@
     </script>
 </body>
 </html>
+
