@@ -191,10 +191,14 @@
 
     .position-secondary {
         font-size: 15px;
-        color: #ff9aa5;
+        background: linear-gradient(90deg, #ff6b78, #ff9aa5);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
         margin-bottom: 14px;
-        font-weight: 500;
+        font-weight: 600;
     }
+
 
     .tags {
         display: flex;
@@ -240,6 +244,10 @@
         align-items: center;
         gap: 6px;
         margin: 0 auto;
+    }
+
+    .restart-btn + .restart-btn {
+        margin-top: 12px;
     }
 
     .restart-btn:hover {
@@ -472,10 +480,16 @@
         function initQuiz() {
             currentQuestion = 0;
             scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
-            document.querySelector('.quiz-content').classList.remove('hidden');
+            
+            // Явно показываем квиз и скрываем результат
+            const quizContent = document.querySelector('.quiz-content');
+            quizContent.style.display = 'block';
+            quizContent.classList.remove('hidden');
+            
             document.getElementById('result').style.display = 'none';
             showQuestion();
         }
+
 
         function showQuestion() {
             const question = quizData[currentQuestion];
@@ -516,7 +530,9 @@
         }
 
         function showResult() {
-            document.querySelector('.quiz-content').classList.add('hidden');
+            // Явно скрываем квиз
+            const quizContent = document.querySelector('.quiz-content');
+            quizContent.style.display = 'none';
             
             const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
             const firstPos = sortedPositions[0][0];
@@ -546,6 +562,7 @@
 
             document.getElementById('result').style.display = 'block';
         }
+
 
         function toggleDetails() {
             const desc = document.getElementById('positionDescription');
