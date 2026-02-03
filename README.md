@@ -1,1 +1,1 @@
- # dota-mini-app
+<!-- v2 --> # dota-mini-app
