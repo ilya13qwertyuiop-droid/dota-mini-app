@@ -159,7 +159,7 @@
     .result {
         display: none;
         animation: fadeIn 0.45s ease;
-        text-align: left;
+        text-align: center;
     }
 
     @keyframes fadeIn {
@@ -173,62 +173,132 @@
         }
     }
 
-    .result h2 {
-        font-size: 20px;
-        color: var(--text-main);
-        margin-bottom: 18px;
-        font-weight: 700;
-        text-align: center;
-    }
-
+    /* Основная роль */
     .position-primary {
-        font-size: 19px;
-        color: var(--accent);
-        margin-bottom: 4px;
+        font-size: 18px;
+        color: var(--text-main);
+        margin-bottom: 10px;
         font-weight: 600;
         line-height: 1.3;
     }
 
-    .position-secondary {
-        font-size: 15px;
-        background: linear-gradient(90deg, #ff6b78, #ff9aa5);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 14px;
-        font-weight: 600;
-    }
-
-    .tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 16px;
-    }
-
-    .tag {
-        font-size: 11px;
-        padding: 4px 9px;
+    .position-badge {
+        display: inline-block;
+        padding: 8px 18px;
         border-radius: 999px;
-        background: rgba(255, 59, 76, 0.12);
-        border: 1px solid rgba(255, 59, 76, 0.35);
-        color: var(--text-main);
+        background: linear-gradient(130deg, #ff3b4c, #ff7360);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 20px rgba(255, 59, 76, 0.45);
     }
 
+    /* Вспомогательная роль */
+    .position-secondary-label {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+
+    .position-secondary-badge {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 999px;
+        background: rgba(255, 107, 120, 0.15);
+        border: 1px solid rgba(255, 107, 120, 0.4);
+        color: #ff9aa5;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 24px;
+    }
+
+    /* Прогресс-бары для характеристик */
+    .stats {
+        margin-bottom: 24px;
+    }
+
+    .stat-item {
+        margin-bottom: 14px;
+        text-align: left;
+    }
+
+    .stat-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .stat-label {
+        font-size: 13px;
+        color: var(--text-main);
+        margin-bottom: 6px;
+        font-weight: 500;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .stat-value {
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .stat-bar {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 999px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .stat-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #ff3b4c, #ff7360);
+        border-radius: 999px;
+        transition: width 0.6s ease;
+        box-shadow: 0 0 10px rgba(255, 59, 76, 0.6);
+    }
+
+    /* Текстовое описание */
     .description {
         font-size: 14px;
         color: var(--text-muted);
         line-height: 1.6;
-        margin-top: 10px;
-        margin-bottom: 18px;
+        margin-bottom: 20px;
         white-space: pre-line;
+        text-align: left;
+        background: rgba(255, 59, 76, 0.06);
+        border: 1px solid rgba(255, 59, 76, 0.2);
+        border-radius: 16px;
+        padding: 16px;
     }
 
     .hidden {
         display: none;
     }
 
-    .restart-btn {
+    /* Кнопки */
+    .btn-outline {
+        background: transparent;
+        color: var(--text-main);
+        border: 1px solid rgba(255, 59, 76, 0.5);
+        padding: 11px 26px;
+        border-radius: 999px;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.15s ease;
+        display: block;
+        margin: 0 auto 12px auto;
+        width: fit-content;
+    }
+
+    .btn-outline:hover {
+        background: rgba(255, 59, 76, 0.1);
+        border-color: var(--accent);
+    }
+
+    .btn-primary {
         background: linear-gradient(130deg, #ff3b4c, #ff7360);
         color: #fff;
         border: none;
@@ -240,15 +310,11 @@
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         box-shadow: 0 12px 28px rgba(255, 59, 76, 0.55);
         display: block;
-        margin: 0 auto 12px auto;
+        margin: 0 auto;
         width: fit-content;
     }
 
-    .restart-btn:last-child {
-        margin-bottom: 0;
-    }
-
-    .restart-btn:hover {
+    .btn-primary:hover {
         transform: translateY(-1px);
         box-shadow: 0 16px 32px rgba(255, 59, 76, 0.7);
     }
@@ -275,7 +341,7 @@
 <body>
     <div class="container">
         <div class="quiz-content">
-            <h1>🎮 Какая позиция в Доте 2 тебе подходит?</h1>
+            <h1>🎮 Какая твоя позиция в Dota 2?</h1>
             <p class="subtitle">Пройди тест и узнай, на какой роли ты раскроешься лучше всего</p>
             
             <div class="progress-bar">
@@ -287,13 +353,17 @@
         </div>
 
         <div class="result" id="result">
-            <h2>Твои позиции:</h2>
             <div class="position-primary" id="positionPrimary"></div>
-            <div class="position-secondary" id="positionSecondary"></div>
-            <div class="tags" id="positionTags"></div>
-            <button class="restart-btn" id="detailsBtn" onclick="toggleDetails()">Показать детали</button>
+            <div class="position-badge" id="positionBadge"></div>
+
+            <div class="position-secondary-label">Вспомогательная роль</div>
+            <div class="position-secondary-badge" id="positionSecondaryBadge"></div>
+
+            <div class="stats" id="stats"></div>
+
+            <button class="btn-outline" id="detailsBtn" onclick="toggleDetails()">Показать детали</button>
             <div class="description hidden" id="positionDescription"></div>
-            <button class="restart-btn" onclick="restartQuiz()">🔄 Пройти ещё раз</button>
+            <button class="btn-primary" onclick="restartQuiz()">🔄 Пройти ещё раз</button>
         </div>
     </div>
 
@@ -417,27 +487,115 @@
             pos5: "Pos 5 — Фулл-саппорт"
         };
 
-        const positionTags = {
-            "pos1_pos2": ["Фарм", "Мидгейм", "Темп"],
-            "pos1_pos3": ["Фарм", "Фронт", "Живучесть"],
-            "pos1_pos4": ["Фарм", "Роум", "Агрессия"],
-            "pos1_pos5": ["Фарм", "Командность", "Утилита"],
-            "pos2_pos1": ["Линия", "Лейт", "Скалирование"],
-            "pos2_pos3": ["Инициация", "Фронт", "Контроль"],
-            "pos2_pos4": ["Роум", "Мидгейм", "Активность"],
-            "pos2_pos5": ["Темп", "Командность", "Контроль карты"],
-            "pos3_pos1": ["Фронт", "Лейт", "Давление"],
-            "pos3_pos2": ["Линия", "Агрессия", "Прессинг"],
-            "pos3_pos4": ["Роум", "Пространство", "Инициация"],
-            "pos3_pos5": ["Фронт", "Командность", "Контроль"],
-            "pos4_pos1": ["Роум", "Фарм", "Скалирование"],
-            "pos4_pos2": ["Роум", "Агрессия", "Ганки"],
-            "pos4_pos3": ["Фронт", "Контроль", "Танк"],
-            "pos4_pos5": ["Вижен", "Сейв", "Командность"],
-            "pos5_pos1": ["Вижен", "Фарм", "Лейт"],
-            "pos5_pos2": ["Вижен", "Роум", "Темп"],
-            "pos5_pos3": ["Фронт", "Танк", "Сейв"],
-            "pos5_pos4": ["Вижен", "Роум", "Контроль"]
+        const positionShortNames = {
+            pos1: "Pos 1",
+            pos2: "Pos 2",
+            pos3: "Pos 3",
+            pos4: "Pos 4",
+            pos5: "Pos 5"
+        };
+
+        const positionStats = {
+            "pos1_pos2": [
+                { label: "Фарм", value: 95 },
+                { label: "Мидгейм", value: 85 },
+                { label: "Темп", value: 75 }
+            ],
+            "pos1_pos3": [
+                { label: "Фарм", value: 90 },
+                { label: "Фронт", value: 80 },
+                { label: "Живучесть", value: 85 }
+            ],
+            "pos1_pos4": [
+                { label: "Фарм", value: 85 },
+                { label: "Роум", value: 70 },
+                { label: "Агрессия", value: 75 }
+            ],
+            "pos1_pos5": [
+                { label: "Фарм", value: 90 },
+                { label: "Командность", value: 80 },
+                { label: "Утилита", value: 70 }
+            ],
+            "pos2_pos1": [
+                { label: "Линия", value: 85 },
+                { label: "Лейт", value: 80 },
+                { label: "Скалирование", value: 90 }
+            ],
+            "pos2_pos3": [
+                { label: "Инициация", value: 85 },
+                { label: "Фронт", value: 80 },
+                { label: "Контроль", value: 90 }
+            ],
+            "pos2_pos4": [
+                { label: "Роум", value: 90 },
+                { label: "Мидгейм", value: 95 },
+                { label: "Активность", value: 85 }
+            ],
+            "pos2_pos5": [
+                { label: "Темп", value: 85 },
+                { label: "Командность", value: 90 },
+                { label: "Контроль карты", value: 75 }
+            ],
+            "pos3_pos1": [
+                { label: "Фронт", value: 85 },
+                { label: "Лейт", value: 80 },
+                { label: "Давление", value: 75 }
+            ],
+            "pos3_pos2": [
+                { label: "Линия", value: 90 },
+                { label: "Агрессия", value: 95 },
+                { label: "Прессинг", value: 85 }
+            ],
+            "pos3_pos4": [
+                { label: "Роум", value: 80 },
+                { label: "Пространство", value: 85 },
+                { label: "Инициация", value: 90 }
+            ],
+            "pos3_pos5": [
+                { label: "Фронт", value: 90 },
+                { label: "Командность", value: 85 },
+                { label: "Контроль", value: 80 }
+            ],
+            "pos4_pos1": [
+                { label: "Роум", value: 85 },
+                { label: "Фарм", value: 70 },
+                { label: "Скалирование", value: 75 }
+            ],
+            "pos4_pos2": [
+                { label: "Роум", value: 95 },
+                { label: "Агрессия", value: 90 },
+                { label: "Ганки", value: 85 }
+            ],
+            "pos4_pos3": [
+                { label: "Фронт", value: 85 },
+                { label: "Контроль", value: 90 },
+                { label: "Танк", value: 80 }
+            ],
+            "pos4_pos5": [
+                { label: "Вижен", value: 95 },
+                { label: "Сейв", value: 90 },
+                { label: "Командность", value: 95 }
+            ],
+            "pos5_pos1": [
+                { label: "Вижен", value: 90 },
+                { label: "Фарм", value: 65 },
+                { label: "Лейт", value: 70 }
+            ],
+            "pos5_pos2": [
+                { label: "Вижен", value: 95 },
+                { label: "Роум", value: 85 },
+                { label: "Темп", value: 80 }
+            ],
+            "pos5_pos3": [
+                { label: "Фронт", value: 85 },
+                { label: "Танк", value: 90 },
+                { label: "Сейв", value: 85 }
+            ],
+            "pos5_pos4": [
+                { label: "Вижен", value: 95 },
+                { label: "Роум", value: 90 },
+                { label: "Контроль", value: 85 }
+            ]
         };
 
         const positionDescriptions = {
@@ -530,18 +688,26 @@
             const secondPos = sortedPositions[1][0];
             const combinationKey = `${firstPos}_${secondPos}`;
 
-            document.getElementById('positionPrimary').textContent = 
-                `Основная роль: ${positionNames[firstPos]}`;
-            document.getElementById('positionSecondary').textContent = 
-                `Дополнительные задатки: ${positionNames[secondPos]}`;
+            document.getElementById('positionPrimary').textContent = positionNames[firstPos];
+            document.getElementById('positionBadge').textContent = positionShortNames[firstPos];
+            document.getElementById('positionSecondaryBadge').textContent = positionShortNames[secondPos];
 
-            const tagsContainer = document.getElementById('positionTags');
-            tagsContainer.innerHTML = '';
-            (positionTags[combinationKey] || []).forEach(tagText => {
-                const tagEl = document.createElement('span');
-                tagEl.className = 'tag';
-                tagEl.textContent = tagText;
-                tagsContainer.appendChild(tagEl);
+            // Прогресс-бары
+            const statsContainer = document.getElementById('stats');
+            statsContainer.innerHTML = '';
+            (positionStats[combinationKey] || []).forEach(stat => {
+                const statItem = document.createElement('div');
+                statItem.className = 'stat-item';
+                statItem.innerHTML = `
+                    <div class="stat-label">
+                        <span>${stat.label}</span>
+                        <span class="stat-value">${stat.value}%</span>
+                    </div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" style="width: ${stat.value}%"></div>
+                    </div>
+                `;
+                statsContainer.appendChild(statItem);
             });
 
             document.getElementById('positionDescription').textContent = 
@@ -575,5 +741,6 @@
     </script>
 </body>
 </html>
+
 
 
