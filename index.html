@@ -1270,8 +1270,6 @@
             const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
             const firstPos = sortedPositions[0][0];
             const secondPos = sortedPositions[1][0];
-            console.log('firstPos, secondPos, statsKey', firstPos, secondPos, statsKey);
-
 
             lastResult = {
                 position: positionNames[firstPos],
@@ -1290,6 +1288,7 @@
 
             const statsKey = `${firstPos}_${secondPos}`;
             const statsData = positionStats[statsKey];
+            console.log('firstPos, secondPos, statsKey', firstPos, secondPos, statsKey);
             const statsContainer = document.getElementById('stats');
             statsContainer.innerHTML = '';
             
