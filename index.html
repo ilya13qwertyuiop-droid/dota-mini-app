@@ -602,56 +602,6 @@
                 <p>Добро пожаловать в Dota 2 Helper</p>
             </div>
 
-            <!-- Результат последнего теста -->
-            <div class="card" id="lastResultCard" style="display: none;">
-                <div class="card-header">
-                    <span class="card-icon">🎯</span>
-                    <span class="card-title">Твоя позиция</span>
-                </div>
-                <div class="position-result">
-                    <div>
-                        <div class="position-result-text" id="dashboardPosition">Pos 4 — Роумер</div>
-                        <div class="position-result-date" id="dashboardDate">Пройден: сегодня</div>
-                    </div>
-                    <button class="btn-small" onclick="goToQuiz()">Пройти снова</button>
-                </div>
-            </div>
-
-            <!-- Топ герои для позиции -->
-            <div class="card" id="topHeroesCard" style="display: none;">
-                <div class="card-header">
-                    <span class="card-icon">🔥</span>
-                    <span class="card-title">Топ герои для твоей позиции(заглушка)</span>
-                </div>
-                <div class="hero-list">
-                    <div class="hero-item">
-                        <span class="hero-name">1. Hoodwink</span>
-                        <span class="hero-wr">51.2% WR</span>
-                    </div>
-                    <div class="hero-item">
-                        <span class="hero-name">2. Earthshaker</span>
-                        <span class="hero-wr">52.3% WR</span>
-                    </div>
-                    <div class="hero-item">
-                        <span class="hero-name">3. Clockwerk</span>
-                        <span class="hero-wr">54.2% WR</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Совет дня -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-icon">💡</span>
-                    <span class="card-title">Совет дня</span>
-                </div>
-                <div class="tip-card">
-                    <div class="card-content" id="dailyTip">
-                        Роумеры должны контролировать руны каждые 2 минуты! Это даёт преимущество команде в опыте и ресурсах.
-                    </div>
-                </div>
-            </div>
-
             <!-- Быстрые действия -->
             <div class="card">
                 <div class="card-header">
@@ -673,6 +623,19 @@
                         <span>Драфт помощник</span>
                         <span class="badge-soon">Скоро</span>
                     </button>
+                </div>
+            </div>
+
+            <!-- Совет дня -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">💡</span>
+                    <span class="card-title">Совет дня</span>
+                </div>
+                <div class="tip-card">
+                    <div class="card-content" id="dailyTip">
+                        Роумеры должны контролировать руны каждые 2 минуты! Это даёт преимущество команде в опыте и ресурсах.
+                    </div>
                 </div>
             </div>
         </div>
@@ -1063,6 +1026,23 @@
         let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
         let lastResult = null;
 
+        // Загружаем сохранённый результат при старте
+        function loadSavedResult() {
+            const saved = localStorage.getItem('dota2helper_lastResult');
+            if (saved) {
+                lastResult = JSON.parse(saved);
+                updateQuizPageResult();
+            }
+        }
+
+        // Сохраняем результат в localStorage
+        function saveResult(result) {
+            localStorage.setItem('dota2helper_lastResult', JSON.stringify(result));
+        }
+
+        // Вызываем загрузку при старте
+        loadSavedResult();
+
         // Навигация между страницами
         function switchPage(pageName) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1188,8 +1168,10 @@
                 date: new Date().toLocaleDateString('ru-RU')
             };
 
-            // Обновляем dashboard и страницу квизов
-            updateDashboard();
+            // Сохраняем в localStorage
+            saveResult(lastResult);
+
+            // Обновляем страницу квизов
             updateQuizPageResult();
 
             document.getElementById('positionPrimary').textContent = positionNames[firstPos];
