@@ -1,2354 +1,1450 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <title>Dota 2 Helper</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta
-    name="description"
-    content="Dota 2 Helper — квизы и помощь по позициям и выбору героев."
-  />
-  <style>
-    :root {
-      --bg-main: #050509;
-      --glass-bg: rgba(15, 15, 20, 0.82);
-      --glass-bg-soft: rgba(18, 18, 26, 0.9);
-      --accent: #ff4b8b;
-      --accent-alt: #7b5cff;
-      --accent-soft: rgba(255, 75, 139, 0.12);
-      --accent-border: rgba(255, 75, 139, 0.5);
-      --text-main: #f5f5f7;
-      --text-muted: #9b9ba1;
-      --text-soft: #6f6f78;
-      --danger: #ff5c5c;
-      --success: #3adb8b;
-      --warning: #ffc857;
-      --nav-height: 70px;
-      --radius-lg: 24px;
-      --radius-md: 18px;
-      --radius-sm: 12px;
-      --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.65);
-      --shadow-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-      --transition-fast: 0.18s ease-out;
-      --transition-slow: 0.35s cubic-bezier(0.19, 1, 0.22, 1);
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dota 2 Helper</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
     }
 
-    * {
-      box-sizing: border-box;
+    :root {
+        --bg-main: #050509;
+        --glass-bg: rgba(15, 15, 20, 0.82);
+        --glass-border: rgba(255, 255, 255, 0.06);
+        --accent: #3a7bd5;
+        --accent-soft: rgba(58, 123, 213, 0.18);
+        --text-main: #f5f5f7;
+        --text-muted: #9b9ba1;
+        --nav-height: 70px;
     }
 
     body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter",
-        "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top, #1b0b33 0, #050509 55%, #000 100%);
-      color: var(--text-main);
-      -webkit-font-smoothing: antialiased;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background:
+            radial-gradient(circle at 0% 0%, rgba(255, 0, 92, 0.24), transparent 55%),
+            radial-gradient(circle at 100% 100%, rgba(255, 0, 0, 0.18), transparent 55%),
+            radial-gradient(circle at 0% 100%, rgba(120, 0, 40, 0.18), transparent 55%),
+            linear-gradient(145deg, #020107 0%, #050509 45%, #050307 100%);
+        min-height: 100vh;
+        color: var(--text-main);
+        padding-bottom: var(--nav-height);
     }
 
-    .app {
-      min-height: 100vh;
-      max-width: 520px;
-      margin: 0 auto;
-      padding: 16px 16px calc(var(--nav-height) + 20px);
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      position: relative;
-    }
-
-    @media (min-width: 768px) {
-      .app {
-        padding-top: 32px;
-        padding-bottom: 32px;
-      }
-    }
-
-    .app::before {
-      content: "";
-      position: fixed;
-      inset: -40%;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(255, 75, 139, 0.14), transparent 55%),
-        radial-gradient(circle at 100% 30%, rgba(123, 92, 255, 0.18), transparent 55%),
-        radial-gradient(circle at 50% 100%, rgba(255, 90, 60, 0.14), transparent 55%);
-      opacity: 0.9;
-      pointer-events: none;
-      z-index: -2;
-    }
-
-    .app::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(circle at top, rgba(15, 15, 20, 0.65), transparent);
-      pointer-events: none;
-      z-index: -1;
-    }
-
-    .glass-card {
-      background: var(--glass-bg-soft);
-      backdrop-filter: blur(20px) saturate(130%);
-      -webkit-backdrop-filter: blur(20px) saturate(130%);
-      border-radius: var(--radius-lg);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      box-shadow: var(--shadow-soft);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .glass-card::before {
-      content: "";
-      position: absolute;
-      inset: -1px;
-      border-radius: inherit;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.12), transparent 60%);
-      mix-blend-mode: soft-light;
-      opacity: 0.3;
-      pointer-events: none;
-    }
-
-    .glass-card-inner {
-      position: relative;
-      padding: 18px 18px 18px;
-      z-index: 1;
-    }
-
-    @media (min-width: 768px) {
-      .glass-card-inner {
-        padding: 20px 22px 20px;
-      }
-    }
-
-    .app-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 4px;
-    }
-
-    .branding {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .logo-pill {
-      width: 40px;
-      height: 40px;
-      border-radius: 14px;
-      background: radial-gradient(circle at 0 0, #ff4b8b, #7b5cff);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow:
-        0 0 0 1px rgba(255, 255, 255, 0.18),
-        0 10px 25px rgba(0, 0, 0, 0.65);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .logo-pill::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 30% 0, rgba(255, 255, 255, 0.35), transparent 55%);
-      mix-blend-mode: soft-light;
-      opacity: 0.8;
-    }
-
-    .logo-pill span {
-      position: relative;
-      font-weight: 800;
-      font-size: 18px;
-      letter-spacing: 0.04em;
-      text-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
-    }
-
-    .branding-text {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .branding-title {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-    }
-
-    .branding-subtitle {
-      font-size: 12px;
-      color: var(--text-soft);
-    }
-
-    .tg-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(32, 40, 52, 0.8);
-      border: 1px solid rgba(120, 140, 200, 0.35);
-      box-shadow:
-        0 0 0 1px rgba(0, 0, 0, 0.7),
-        0 10px 30px rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
-
-    .tg-status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #34d399;
-      box-shadow: 0 0 0 5px rgba(52, 211, 153, 0.18);
-    }
-
-    .tg-status-label {
-      color: #cbd5f5;
-    }
-
-    .section-title {
-      font-size: 20px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .section-subtitle {
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-bottom: 14px;
-    }
-
-    .chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .chip {
-      padding: 5px 10px;
-      border-radius: 999px;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.12), transparent 70%);
-      color: #f5f5ff;
-    }
-
-    .chip-soft {
-      border-radius: 999px;
-      padding: 5px 9px;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--text-soft);
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px dashed rgba(255, 255, 255, 0.06);
+    .app-container {
+        max-width: 620px;
+        margin: 0 auto;
+        min-height: 100vh;
+        position: relative;
     }
 
     .page {
-      display: none;
-      animation: fade-in 0.25s ease-out;
+        display: none;
+        padding: 20px;
+        animation: fadeIn 0.3s ease;
     }
 
     .page.active {
-      display: block;
+        display: block;
     }
 
-    @keyframes fade-in {
-      from {
-        opacity: 0;
-        transform: translateY(4px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
-    .quick-actions {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 16px;
+    .dashboard-header {
+        text-align: center;
+        margin-bottom: 24px;
     }
 
-    @media (max-width: 380px) {
-      .quick-actions {
-        grid-template-columns: 1fr;
-      }
+    .dashboard-header h1 {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 6px;
     }
 
-    .quick-action {
-      position: relative;
-      padding: 12px 12px 12px;
-      border-radius: var(--radius-md);
-      background: linear-gradient(
-          135deg,
-          rgba(255, 75, 139, 0.16),
-          rgba(125, 83, 255, 0.08)
-        ),
-        rgba(19, 19, 26, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow:
-        0 14px 30px rgba(0, 0, 0, 0.75),
-        0 0 0 1px rgba(255, 255, 255, 0.03);
-      cursor: pointer;
-      overflow: hidden;
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-        border-color var(--transition-fast), background var(--transition-fast);
+    .dashboard-header p {
+        font-size: 14px;
+        color: var(--text-muted);
     }
 
-    .quick-action::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.16), transparent 65%);
-      mix-blend-mode: soft-light;
-      opacity: 0.55;
-      pointer-events: none;
+    .card {
+        background: var(--glass-bg);
+        border-radius: 20px;
+        padding: 20px;
+        margin-bottom: 16px;
+        border: 1px solid var(--glass-border);
+        backdrop-filter: blur(22px) saturate(140%);
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
     }
 
-    .quick-action.locked {
-      cursor: default;
-      background: linear-gradient(
-          135deg,
-          rgba(130, 130, 140, 0.14),
-          rgba(36, 36, 52, 0.1)
-        ),
-        rgba(12, 12, 18, 0.96);
-      border-style: dashed;
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
     }
 
-    .quick-action:hover:not(.locked) {
-      transform: translateY(-2px);
-      box-shadow:
-        0 18px 40px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.06);
-      border-color: rgba(255, 255, 255, 0.14);
+    .card-icon {
+        font-size: 24px;
     }
 
-    .quick-action-main {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      position: relative;
-      z-index: 1;
+    .card-title {
+        font-size: 16px;
+        font-weight: 600;
     }
 
-    .quick-action-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: rgba(255, 255, 255, 0.62);
+    .card-content {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.6;
     }
 
-    .quick-action-title {
-      font-size: 15px;
-      font-weight: 600;
-      margin-bottom: 2px;
+    .position-result {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px;
+        background: rgba(58, 123, 213, 0.12);
+        border-radius: 14px;
+        margin-top: 12px;
+        border: 1px solid rgba(58, 123, 213, 0.3);
     }
 
-    .quick-action-desc {
-      font-size: 12px;
-      color: var(--text-muted);
+    .position-result-text {
+        font-size: 18px;
+        font-weight: 600;
     }
 
-    .quick-action-meta-row {
-      margin-top: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
+    .position-result-date {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
     }
 
-    .qa-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      padding: 5px 9px;
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.22);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.86);
+    .btn-small {
+        padding: 8px 16px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
     }
 
-    .qa-badge-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--success);
-      box-shadow: 0 0 0 4px rgba(58, 219, 139, 0.18);
-    }
-
-    .quick-action .qa-meta-text {
-      font-size: 11px;
-      color: var(--text-soft);
-    }
-
-    .quick-action.locked .qa-badge-dot {
-      background: var(--warning);
-      box-shadow: 0 0 0 4px rgba(255, 200, 87, 0.2);
-    }
-
-    .quick-action.locked .qa-meta-text {
-      color: rgba(210, 210, 220, 0.7);
-    }
-
-    .quick-action-lock-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.8);
-    }
-
-    .quick-action-lock-pill svg {
-      width: 11px;
-      height: 11px;
-      opacity: 0.85;
-    }
-
-    .tip-card {
-      border-radius: var(--radius-lg);
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.16), transparent 60%),
-        radial-gradient(circle at 100% 100%, rgba(123, 92, 255, 0.16), transparent 62%),
-        rgba(13, 13, 20, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      box-shadow:
-        0 16px 40px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.03);
-      padding: 14px 14px 12px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .tip-card::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.16), transparent 65%);
-      opacity: 0.7;
-      mix-blend-mode: soft-light;
-      pointer-events: none;
-    }
-
-    .tip-tag-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      margin-bottom: 6px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .tip-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      padding: 4px 9px;
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.9);
-    }
-
-    .tip-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 5px rgba(255, 75, 139, 0.18);
-    }
-
-    .tip-rotation-badge {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: rgba(237, 237, 245, 0.75);
-      opacity: 0.9;
-    }
-
-    .tip-text {
-      position: relative;
-      z-index: 1;
-      font-size: 13px;
-      line-height: 1.55;
-      color: rgba(242, 242, 250, 0.92);
-      margin-bottom: 8px;
-    }
-
-    .tip-meta-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .tip-meta-left {
-      font-size: 11px;
-      color: rgba(210, 210, 225, 0.85);
-    }
-
-    .tip-meta-right {
-      font-size: 11px;
-      color: rgba(180, 180, 210, 0.85);
-    }
-
-    .quiz-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 4px;
-    }
-
-    .quiz-card {
-      position: relative;
-      padding: 12px 12px 12px;
-      border-radius: var(--radius-md);
-      background: linear-gradient(
-          135deg,
-          rgba(255, 75, 139, 0.12),
-          rgba(123, 92, 255, 0.08)
-        ),
-        rgba(19, 19, 26, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow:
-        0 12px 30px rgba(0, 0, 0, 0.8),
-        0 0 0 1px rgba(255, 255, 255, 0.03);
-      cursor: pointer;
-      overflow: hidden;
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-        border-color var(--transition-fast), background var(--transition-fast);
-    }
-
-    .quiz-card::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.18), transparent 70%);
-      opacity: 0.75;
-      mix-blend-mode: soft-light;
-      pointer-events: none;
-    }
-
-    .quiz-card.locked {
-      cursor: default;
-      opacity: 0.92;
-      background: linear-gradient(
-          135deg,
-          rgba(130, 130, 140, 0.14),
-          rgba(36, 36, 52, 0.1)
-        ),
-        rgba(12, 12, 18, 0.96);
-      border-style: dashed;
-    }
-
-    .quiz-card:hover:not(.locked) {
-      transform: translateY(-2px);
-      box-shadow:
-        0 16px 38px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.05);
-      border-color: rgba(255, 255, 255, 0.16);
-    }
-
-    .quiz-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .quiz-card-title {
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .quiz-card-desc {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-    }
-
-    .quiz-meta-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 11px;
-      color: var(--text-soft);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      background: rgba(0, 0, 0, 0.35);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .badge-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      background: var(--success);
-      box-shadow: 0 0 0 4px rgba(58, 219, 139, 0.2);
-    }
-
-    .badge-locked {
-      background: rgba(0, 0, 0, 0.55);
-      border-style: dashed;
-      color: rgba(220, 220, 230, 0.86);
-    }
-
-    .badge-locked-dot {
-      background: var(--warning);
-      box-shadow: 0 0 0 4px rgba(255, 200, 87, 0.28);
-    }
-
-    .last-result-card {
-      margin-top: 12px;
-      padding: 10px 12px;
-      border-radius: var(--radius-md);
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px dashed rgba(255, 255, 255, 0.12);
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .last-result-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      margin-bottom: 2px;
-    }
-
-    .last-result-title {
-      font-size: 12px;
-      color: rgba(230, 230, 245, 0.9);
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .last-result-pill {
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: rgba(230, 230, 245, 0.9);
-    }
-
-    .last-result-main {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .last-result-pos {
-      font-weight: 600;
-      font-size: 13px;
-    }
-
-    .last-result-date {
-      font-size: 11px;
-      color: var(--text-soft);
-    }
-
-    .quiz-screen {
-      display: none;
-      margin-top: 8px;
-    }
-
-    .quiz-screen.active {
-      display: block;
-    }
-
-    .quiz-question-header {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-
-    .quiz-question-counter {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--text-soft);
-    }
-
-    .quiz-question-text {
-      font-size: 15px;
-      font-weight: 500;
-    }
-
-    .progress-track {
-      width: 100%;
-      height: 7px;
-      border-radius: 999px;
-      background: rgba(34, 34, 48, 0.9);
-      overflow: hidden;
-      margin-bottom: 12px;
-      box-shadow: var(--shadow-inner);
-    }
-
-    .progress-fill {
-      width: 0%;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent), var(--accent-alt));
-      transition: width var(--transition-slow);
-    }
-
-    .answer-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .answer-btn {
-      width: 100%;
-      border: none;
-      border-radius: 14px;
-      padding: 10px 11px;
-      text-align: left;
-      background: rgba(13, 13, 20, 0.96);
-      color: var(--text-main);
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      box-shadow:
-        0 10px 24px rgba(0, 0, 0, 0.8),
-        0 0 0 1px rgba(255, 255, 255, 0.04);
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-        background var(--transition-fast), border-color var(--transition-fast);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .answer-btn::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.12), transparent 65%);
-      opacity: 0;
-      mix-blend-mode: soft-light;
-      transition: opacity var(--transition-fast);
-      pointer-events: none;
-    }
-
-    .answer-btn:hover {
-      transform: translateY(-1px);
-      box-shadow:
-        0 14px 30px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.12);
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.16), transparent 70%),
-        rgba(15, 15, 24, 0.96);
-    }
-
-    .answer-btn:hover::before {
-      opacity: 0.9;
-    }
-
-    .answer-label {
-      flex: 1;
-    }
-
-    .answer-meta {
-      font-size: 11px;
-      color: var(--text-soft);
-    }
-
-    .quiz-footer-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 11px;
-      color: var(--text-soft);
-    }
-
-    .quiz-footer-hint {
-      opacity: 0.8;
-    }
-
-    .quiz-footer-progress {
-      font-feature-settings: "tnum" 1, "lnum" 1;
-      opacity: 0.9;
-    }
-
-    .result-card {
-      margin-top: 6px;
-      padding: 12px 12px 10px;
-      border-radius: var(--radius-md);
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.16), transparent 60%),
-        rgba(13, 13, 20, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow:
-        0 14px 34px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.04);
-    }
-
-    .result-header-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .result-main-pos {
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .result-sub-pos {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .result-stat-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 6px;
-      margin-bottom: 6px;
-    }
-
-    .stat-item {
-      padding: 6px 7px;
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .stat-label {
-      font-size: 11px;
-      color: var(--text-soft);
-      margin-bottom: 4px;
-    }
-
-    .stat-bar-track {
-      width: 100%;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(34, 34, 48, 0.9);
-      overflow: hidden;
-    }
-
-    .stat-bar-fill {
-      height: 100%;
-      width: 0%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent), var(--accent-alt));
-    }
-
-    .result-toggle-details {
-      margin-top: 8px;
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .toggle-btn {
-      border: none;
-      background: rgba(0, 0, 0, 0.4);
-      color: rgba(240, 240, 255, 0.9);
-      border-radius: 999px;
-      padding: 5px 10px;
-      font-size: 11px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      box-shadow:
-        0 8px 20px rgba(0, 0, 0, 0.8),
-        0 0 0 1px rgba(255, 255, 255, 0.05);
-      transition: background var(--transition-fast), transform var(--transition-fast),
-        box-shadow var(--transition-fast), border-color var(--transition-fast);
-    }
-
-    .toggle-btn:hover {
-      transform: translateY(-1px);
-      background: rgba(0, 0, 0, 0.6);
-      border-color: rgba(255, 255, 255, 0.3);
-      box-shadow:
-        0 12px 26px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.08);
-    }
-
-    .toggle-icon {
-      font-size: 12px;
-      opacity: 0.9;
-    }
-
-    .result-details {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-muted);
-      line-height: 1.55;
-      display: none;
-    }
-
-    .result-details.visible {
-      display: block;
-    }
-
-    .hero-quiz-screen {
-      display: none;
-      margin-top: 8px;
-    }
-
-    .hero-quiz-screen.active {
-      display: block;
-    }
-
-    .hero-start-options {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .hero-option-btn {
-      border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(13, 13, 20, 0.96);
-      padding: 10px 11px;
-      color: var(--text-main);
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      align-items: flex-start;
-      box-shadow:
-        0 10px 24px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.03);
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-        border-color var(--transition-fast), background var(--transition-fast);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-option-btn::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.14), transparent 60%);
-      opacity: 0;
-      mix-blend-mode: soft-light;
-      pointer-events: none;
-      transition: opacity var(--transition-fast);
-    }
-
-    .hero-option-btn:hover {
-      transform: translateY(-1px);
-      box-shadow:
-        0 14px 30px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.16);
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.16), transparent 60%),
-        rgba(15, 15, 24, 0.96);
-    }
-
-    .hero-option-btn:hover::before {
-      opacity: 1;
-    }
-
-    .hero-option-label {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--text-soft);
-    }
-
-    .hero-option-title {
-      font-size: 14px;
-      font-weight: 500;
-    }
-
-    .hero-option-desc {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .hero-position-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .hero-pos-btn {
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(13, 13, 20, 0.96);
-      padding: 7px 11px;
-      color: var(--text-main);
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      box-shadow:
-        0 8px 18px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.03);
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-        border-color var(--transition-fast), background var(--transition-fast);
-    }
-
-    .hero-pos-btn:hover {
-      transform: translateY(-1px);
-      box-shadow:
-        0 12px 24px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.18);
-      background: radial-gradient(circle at 0 0, rgba(123, 92, 255, 0.16), transparent 60%),
-        rgba(15, 15, 24, 0.96);
-    }
-
-    .hero-pos-main {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .hero-pos-icon {
-      width: 20px;
-      height: 20px;
-      border-radius: 7px;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.2), transparent 70%),
-        linear-gradient(135deg, #ff4b8b, #7b5cff);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 700;
-      box-shadow:
-        0 8px 18px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.12);
-    }
-
-    .hero-pos-title {
-      font-size: 13px;
-      font-weight: 500;
-    }
-
-    .hero-pos-sub {
-      font-size: 11px;
-      color: var(--text-soft);
-    }
-
-    .hero-path-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: rgba(230, 230, 245, 0.9);
-    }
-
-    .hero-result-card {
-      margin-top: 10px;
-      padding: 11px 12px 10px;
-      border-radius: var(--radius-md);
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.16), transparent 60%),
-        rgba(12, 12, 18, 0.98);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow:
-        0 16px 40px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.04);
-    }
-
-    .hero-result-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .hero-result-title {
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .hero-result-sub {
-      font-size: 12px;
-      color: var(--text-muted);
+    .btn-small:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(58, 123, 213, 0.4);
     }
 
     .hero-list {
-      margin-top: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
     }
 
     .hero-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 13px;
-      padding: 6px 8px;
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .hero-rank {
+        font-size: 16px;
+        font-weight: 700;
+        color: #00d2ff;
+        min-width: 30px;
     }
 
     .hero-name {
-      display: flex;
-      align-items: center;
-      gap: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        flex: 1;
     }
 
-    .hero-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 5px rgba(255, 75, 139, 0.2);
+    .hero-tags {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 2px;
     }
 
-    .hero-score {
-      font-size: 12px;
-      color: rgba(235, 235, 250, 0.9);
+    .tip-card {
+        padding: 16px;
+        background: linear-gradient(135deg, rgba(58, 123, 213, 0.15), rgba(0, 210, 255, 0.1));
+        border-radius: 14px;
+        border: 1px solid rgba(58, 123, 213, 0.3);
     }
 
-    .hero-desc {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-muted);
-      line-height: 1.5;
+    .quick-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-top: 12px;
     }
 
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: var(--nav-height);
-      display: flex;
-      justify-content: center;
-      pointer-events: none;
-      z-index: 10;
+    .action-btn {
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        color: var(--text-main);
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
 
-    @media (min-width: 768px) {
-      .bottom-nav {
-        position: sticky;
-        bottom: 0;
-        margin-top: auto;
-      }
+    .action-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(58, 123, 213, 0.5);
+        transform: translateY(-1px);
     }
 
-    .bottom-nav-inner {
-      pointer-events: auto;
-      width: 100%;
-      max-width: 520px;
-      padding: 8px 16px 14px;
+    .action-btn.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
-    .bottom-nav-bg {
-      border-radius: 999px;
-      background: radial-gradient(circle at 0 0, rgba(255, 75, 139, 0.2), transparent 65%),
-        radial-gradient(circle at 100% 100%, rgba(123, 92, 255, 0.18), transparent 65%),
-        rgba(18, 18, 26, 0.98);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow:
-        0 -10px 45px rgba(0, 0, 0, 0.9),
-        0 10px 35px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.08);
-      padding: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 4px;
-      backdrop-filter: blur(20px) saturate(140%);
-      -webkit-backdrop-filter: blur(20px) saturate(140%);
+    .action-btn.disabled:hover {
+        transform: none;
     }
 
-    .nav-item {
-      flex: 1;
-      border-radius: 999px;
-      padding: 6px 8px;
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 11px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      position: relative;
-      transition: color var(--transition-fast), background var(--transition-fast),
-        transform var(--transition-fast), box-shadow var(--transition-fast);
+    .badge-soon {
+        margin-left: auto;
+        padding: 4px 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        font-size: 11px;
+        color: var(--text-muted);
     }
 
-    .nav-item-icon {
-      font-size: 14px;
+    .quiz-container {
+        background: var(--glass-bg);
+        border-radius: 26px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9);
+        padding: 28px 20px 26px;
+        backdrop-filter: blur(22px) saturate(140%);
+        border: 1px solid var(--glass-border);
     }
 
-    .nav-item-label {
-      display: none;
+    h1 {
+        font-size: 22px;
+        color: var(--text-main);
+        margin-bottom: 6px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-align: center;
     }
 
-    @media (min-width: 400px) {
-      .nav-item-label {
-        display: inline;
-      }
+    .subtitle {
+        font-size: 14px;
+        color: var(--text-muted);
+        margin-bottom: 22px;
+        text-align: center;
     }
 
-    .nav-item::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background: radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.16), transparent 60%);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity var(--transition-fast);
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 999px;
+        margin-bottom: 22px;
+        overflow: hidden;
     }
 
-    .nav-item.active {
-      color: #ffffff;
-      background: rgba(0, 0, 0, 0.5);
-      box-shadow:
-        0 10px 24px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.14);
-      transform: translateY(-1px);
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
+        width: 0%;
+        transition: width 0.3s ease;
+        box-shadow: 0 0 12px rgba(0, 210, 255, 0.6);
     }
 
-    .nav-item.active::before {
-      opacity: 1;
+    .question {
+        font-size: 17px;
+        color: var(--text-main);
+        margin-bottom: 18px;
+        font-weight: 600;
+        line-height: 1.5;
+        text-align: left;
     }
 
-    .nav-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 0 4px rgba(255, 75, 139, 0.18);
+    .answers {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 12px;
     }
 
-    .page-placeholder {
-      font-size: 13px;
-      color: var(--text-muted);
-      line-height: 1.7;
+    .answer-btn {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.12), rgba(10, 10, 16, 0.96));
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 12px 13px;
+        border-radius: 18px;
+        font-size: 15px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        text-align: left;
+        color: var(--text-main);
+        font-weight: 500;
+        line-height: 1.4;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 10px 24px rgba(0, 0, 0, 0.8);
     }
 
-    .placeholder-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: rgba(240, 240, 255, 0.9);
-      margin-bottom: 8px;
+    @media (hover: hover) and (pointer: fine) {
+        .answer-btn:hover {
+            background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.18), rgba(15, 15, 22, 0.98));
+            border-color: rgba(58, 123, 213, 0.45);
+            transform: translateY(-1px);
+        }
     }
 
-    .placeholder-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      background: var(--accent);
+    .answer-btn.selected {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.28), rgba(8, 8, 14, 0.98));
+        border-color: #3a7bd5;
+        transform: scale(0.98);
+    }
+
+    .answer-btn span.emoji {
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+
+    .answer-btn span.text {
+        flex: 1;
+    }
+
+    .result {
+        display: none;
+        text-align: center;
+    }
+
+    .result.active {
+        display: block;
+        animation: fadeIn 0.45s ease;
+    }
+
+    .result-header {
+        font-size: 32px;
+        margin-bottom: 6px;
+    }
+
+    .result-title {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .position-primary {
+        font-size: 18px;
+        color: var(--text-main);
+        margin-bottom: 10px;
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    .position-badge {
+        display: inline-block;
+        padding: 8px 18px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    .description {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin-bottom: 20px;
+        white-space: pre-line;
+        text-align: left;
+        background: rgba(58, 123, 213, 0.08);
+        border: 1px solid rgba(58, 123, 213, 0.25);
+        border-radius: 16px;
+        padding: 16px;
+    }
+
+    .hidden {
+        display: none;
     }
 
     .btn-outline {
-      border-radius: 999px;
-      padding: 7px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: rgba(0, 0, 0, 0.4);
-      color: rgba(240, 240, 255, 0.9);
-      font-size: 12px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      box-shadow:
-        0 8px 22px rgba(0, 0, 0, 0.85),
-        0 0 0 1px rgba(255, 255, 255, 0.04);
-      transition: background var(--transition-fast), transform var(--transition-fast),
-        border-color var(--transition-fast), box-shadow var(--transition-fast);
+        background: transparent;
+        color: var(--text-main);
+        border: 1px solid rgba(58, 123, 213, 0.5);
+        padding: 11px 26px;
+        border-radius: 999px;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.15s ease;
+        display: block;
+        margin: 0 auto 12px auto;
+        width: fit-content;
     }
 
     .btn-outline:hover {
-      background: rgba(255, 255, 255, 0.05);
-      transform: translateY(-1px);
-      border-color: rgba(255, 255, 255, 0.28);
-      box-shadow:
-        0 12px 30px rgba(0, 0, 0, 0.9),
-        0 0 0 1px rgba(255, 255, 255, 0.08);
+        background: rgba(58, 123, 213, 0.1);
+        border-color: #3a7bd5;
     }
 
-    .btn-outline-icon {
-      font-size: 13px;
+    .btn-secondary {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 11px 26px;
+        border-radius: 999px;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        display: block;
+        margin: 0 auto;
+        width: fit-content;
     }
 
-    .pill-soft {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      padding: 4px 9px;
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: rgba(232, 232, 248, 0.9);
+    .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.25);
+        color: var(--text-main);
     }
 
-    .pill-soft-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 0 5px rgba(255, 75, 139, 0.2);
+    .position-select-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 16px;
     }
-  </style>
+
+    .position-option {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.12), rgba(10, 10, 16, 0.96));
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 14px 16px;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        text-align: left;
+        color: var(--text-main);
+        font-weight: 500;
+        font-size: 15px;
+    }
+
+    .position-option:hover {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.18), rgba(15, 15, 22, 0.98));
+        border-color: rgba(58, 123, 213, 0.45);
+        transform: translateY(-1px);
+    }
+
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: var(--nav-height);
+        background: rgba(10, 10, 15, 0.95);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0 20px;
+        z-index: 1000;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
+    }
+
+    .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-radius: 12px;
+        color: var(--text-muted);
+    }
+
+    .nav-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .nav-item.active {
+        color: #00d2ff;
+    }
+
+    .nav-icon {
+        font-size: 24px;
+        transition: transform 0.2s ease;
+    }
+
+    .nav-item.active .nav-icon {
+        transform: scale(1.1);
+    }
+
+    .nav-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+    }
+
+    .placeholder {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .placeholder-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .placeholder-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .placeholder-text {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+
+    @media (max-width: 380px) {
+        h1 {
+            font-size: 20px;
+        }
+        .question {
+            font-size: 16px;
+        }
+        .answer-btn {
+            font-size: 14px;
+            padding: 10px 11px;
+        }
+    }
+</style>
 </head>
 <body>
-  <div class="app">
-    <div class="glass-card">
-      <div class="glass-card-inner">
-        <header class="app-header">
-          <div class="branding">
-            <div class="logo-pill">
-              <span>D2</span>
+    <div class="app-container">
+        <!-- Главная страница (Dashboard) -->
+        <div id="page-home" class="page active">
+            <div class="dashboard-header">
+                <h1>👋 Привет!</h1>
+                <p>Добро пожаловать в Dota 2 Helper</p>
             </div>
-            <div class="branding-text">
-              <div class="branding-title">Dota 2 Helper</div>
-              <div class="branding-subtitle">Твой мини-коуч внутри Telegram</div>
-            </div>
-          </div>
-          <div class="tg-status">
-            <div class="tg-status-dot"></div>
-            <div class="tg-status-label">Mini App активен</div>
-          </div>
-        </header>
 
-        <main>
-          <section id="page-dashboard" class="page active">
-            <div class="chip-row">
-              <span class="chip">Главная</span>
-              <span class="chip-soft">Версия MVP • квиз по позициям</span>
-            </div>
-            <h1 class="section-title">Добро пожаловать в Dota 2 Helper</h1>
-            <p class="section-subtitle">
-              Узнай свой стиль игры и получи подсказки по героям и ролям.
-            </p>
-
-            <section class="quick-actions">
-              <button
-                type="button"
-                class="quick-action"
-                id="btn-open-position-quiz-from-dashboard"
-              >
-                <div class="quick-action-main">
-                  <div class="quick-action-label">Рекомендуем начать с этого</div>
-                  <div class="quick-action-title">Пройти тест по позициям</div>
-                  <div class="quick-action-desc">
-                    Определим, на какой роли ты раскроешься сильнее всего.
-                  </div>
-                  <div class="quick-action-meta-row">
-                    <span class="qa-badge">
-                      <span class="qa-badge-dot"></span>
-                      <span>Квиз готов</span>
-                    </span>
-                    <span class="qa-meta-text">5 вопросов • ~3 минуты</span>
-                  </div>
+            <!-- Быстрые действия -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">⚡</span>
+                    <span class="card-title">Быстрые действия</span>
                 </div>
-              </button>
-
-              <button type="button" class="quick-action locked">
-                <div class="quick-action-main">
-                  <div class="quick-action-label">В разработке</div>
-                  <div class="quick-action-title">Подбор идеального героя</div>
-                  <div class="quick-action-desc">
-                    Ветвящийся квиз, который поможет найти героев под твой стиль.
-                  </div>
-                  <div class="quick-action-meta-row">
-                    <span class="quick-action-lock-pill">
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          fill="currentColor"
-                          d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Zm-7-2a2 2 0 0 1 4 0v2h-4V7Zm7 11H7v-7h10v7Z"
-                        />
-                      </svg>
-                      Скоро
-                    </span>
-                    <span class="qa-meta-text">Связано с тестом по позициям</span>
-                  </div>
-                </div>
-              </button>
-            </section>
-
-            <section class="tip-card" id="tip-card">
-              <div class="tip-tag-row">
-                <div class="tip-tag">
-                  <span class="tip-dot"></span>
-                  <span>Совет дня</span>
-                </div>
-                <div class="tip-rotation-badge">Ротация каждые 24 часа</div>
-              </div>
-              <div class="tip-text" id="tip-text">
-                Начни с одной роли и доведи её до уверенного уровня. Постоянная смена
-                позиций замедляет прогресс и мешает почувствовать игру.
-              </div>
-              <div class="tip-meta-row">
-                <span class="tip-meta-left">Фокусируйся на 1–2 позициях</span>
-                <span class="tip-meta-right" id="tip-meta-label">Монти, 6к MMR</span>
-              </div>
-            </section>
-          </section>
-
-          <section id="page-quizzes" class="page">
-            <div class="chip-row">
-              <span class="chip">Квизы</span>
-              <span class="chip-soft">Позиции • герои • драфт</span>
-            </div>
-            <h2 class="section-title">Квизы по стилю игры</h2>
-            <p class="section-subtitle">
-              Небольшие тесты помогут лучше понять, как ты играешь, и подобрать
-              героев под твой стиль.
-            </p>
-
-            <section class="quiz-list">
-              <article
-                class="quiz-card"
-                id="quiz-card-position"
-              >
-                <div class="quiz-card-header">
-                  <div>
-                    <div class="quiz-card-title">Какая твоя позиция?</div>
-                    <div class="quiz-card-desc">
-                      5 вопросов, чтобы понять, где ты раскрываешься лучше всего:
-                      керри, мид, оффлейн, роум или фулл-саппорт.
-                    </div>
-                  </div>
-                  <div class="badge">
-                    <span class="badge-dot"></span>
-                    <span>Работает</span>
-                  </div>
-                </div>
-                <div class="quiz-meta-row">
-                  <span>• 5 вопросов • результат сразу</span>
-                  <span id="quiz-position-last-label">Последний результат сохранён</span>
-                </div>
-              </article>
-
-              <article class="quiz-card locked" id="quiz-card-hero">
-                <div class="quiz-card-header">
-                  <div>
-                    <div class="quiz-card-title">Подбор идеального героя</div>
-                    <div class="quiz-card-desc">
-                      Ветвящийся квиз: выбираем позицию (из теста или вручную) и
-                      сужаем круг до 3–5 подходящих героев.
-                    </div>
-                  </div>
-                  <div class="badge badge-locked">
-                    <span class="badge-locked-dot"></span>
-                    <span>Скоро</span>
-                  </div>
-                </div>
-                <div class="quiz-meta-row">
-                  <span>• Ветвящийся сценарий • 3–4 шага</span>
-                  <span>Интеграция с тестом по позициям</span>
-                </div>
-
-                <div
-                  class="hero-quiz-screen"
-                  id="hero-quiz-screen-preview"
-                >
-                  <p class="page-placeholder">
-                    Здесь будет квиз по подбору героев. Сначала он спросит, хочешь ли ты
-                    использовать позицию из прошедшего теста, или выбрать позицию
-                    вручную:
-                  </p>
-                  <div class="hero-start-options">
-                    <button
-                      type="button"
-                      class="hero-option-btn"
-                      disabled
-                    >
-                      <div class="hero-option-label">Вариант 1</div>
-                      <div class="hero-option-title">
-                        Использовать позицию из теста
-                      </div>
-                      <div class="hero-option-desc">
-                        Если ты проходил тест по позициям, мы возьмём сохранённую роль
-                        и зададим только уточняющие вопросы.
-                      </div>
+                <div class="quick-actions">
+                    <button class="action-btn" onclick="goToQuiz()">
+                        <span>🎯</span>
+                        <span>Пройти тест по позициям</span>
                     </button>
-                    <button
-                      type="button"
-                      class="hero-option-btn"
-                      disabled
-                    >
-                      <div class="hero-option-label">Вариант 2</div>
-                      <div class="hero-option-title">
-                        Выбрать позицию вручную
-                      </div>
-                      <div class="hero-option-desc">
-                        Просто выбери, для какой роли ищем героя: керри, мид, оффлейн,
-                        роум или фулл-саппорт.
-                      </div>
+                    <button class="action-btn" onclick="goToHeroQuiz()">
+                        <span>🦸</span>
+                        <span>Подобрать героя</span>
                     </button>
-                  </div>
+                    <button class="action-btn disabled">
+                        <span>⚔️</span>
+                        <span>Драфт помощник</span>
+                        <span class="badge-soon">Скоро</span>
+                    </button>
                 </div>
-              </article>
-            </section>
-
-            <section
-              class="last-result-card"
-              id="quiz-last-result-container"
-              style="display: none;"
-            >
-              <div class="last-result-header">
-                <div class="last-result-title">Последний результат по позициям</div>
-                <div
-                  class="last-result-pill"
-                  id="last-result-pill"
-                >
-                  Сохранён
-                </div>
-              </div>
-              <div class="last-result-main">
-                <div>
-                  <div
-                    class="last-result-pos"
-                    id="last-result-position"
-                  >
-                    —
-                  </div>
-                  <div
-                    class="last-result-date"
-                    id="last-result-date"
-                  >
-                    —
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="btn-outline"
-                  id="btn-repeat-position-quiz"
-                >
-                  <span class="btn-outline-icon">↻</span>
-                  <span>Пройти ещё раз</span>
-                </button>
-              </div>
-            </section>
-
-            <section
-              class="quiz-screen"
-              id="position-quiz-screen"
-            >
-              <div class="quiz-question-header">
-                <div
-                  class="quiz-question-counter"
-                  id="position-quiz-counter"
-                >
-                  Вопрос 1 из 5
-                </div>
-                <div
-                  class="quiz-question-text"
-                  id="position-quiz-question"
-                >
-                </div>
-              </div>
-              <div class="progress-track">
-                <div
-                  class="progress-fill"
-                  id="position-quiz-progress"
-                ></div>
-              </div>
-              <div
-                class="answer-list"
-                id="position-quiz-answers"
-              ></div>
-              <div class="quiz-footer-row">
-                <span class="quiz-footer-hint">
-                  Отвечай честно — так результат будет точнее.
-                </span>
-                <span
-                  class="quiz-footer-progress"
-                  id="position-quiz-footer-progress"
-                >
-                  0 / 5
-                </span>
-              </div>
-            </section>
-
-            <section
-              class="result-card"
-              id="position-quiz-result"
-              style="display: none;"
-            >
-              <div class="result-header-row">
-                <div>
-                  <div
-                    class="result-main-pos"
-                    id="result-main-position"
-                  >
-                  </div>
-                  <div
-                    class="result-sub-pos"
-                    id="result-secondary-position"
-                  >
-                  </div>
-                </div>
-                <div class="pill-soft">
-                  <span class="pill-soft-dot"></span>
-                  <span>Сохранено</span>
-                </div>
-              </div>
-
-              <div class="result-stat-grid">
-                <div class="stat-item">
-                  <div class="stat-label">Фарм / Макро</div>
-                  <div class="stat-bar-track">
-                    <div
-                      class="stat-bar-fill"
-                      id="stat-farm"
-                    ></div>
-                  </div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-label">Драки / Инициация</div>
-                  <div class="stat-bar-track">
-                    <div
-                      class="stat-bar-fill"
-                      id="stat-fight"
-                    ></div>
-                  </div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-label">Поддержка команды</div>
-                  <div class="stat-bar-track">
-                    <div
-                      class="stat-bar-fill"
-                      id="stat-support"
-                    ></div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="result-toggle-details">
-                <button
-                  type="button"
-                  class="toggle-btn"
-                  id="btn-toggle-details"
-                >
-                  <span class="toggle-icon">▼</span>
-                  <span>Показать детали</span>
-                </button>
-              </div>
-
-              <div
-                class="result-details"
-                id="result-details-text"
-              >
-              </div>
-            </section>
-          </section>
-
-          <section id="page-knowledge" class="page">
-            <div class="chip-row">
-              <span class="chip">База знаний</span>
-              <span class="chip-soft">В разработке</span>
             </div>
-            <h2 class="section-title">Мета, герои и драфт</h2>
-            <p class="section-subtitle">
-              Здесь появятся подборки героев, синергии, контрпики и мета-отчеты по
-              патчам. Всё в одном месте.
-            </p>
 
-            <p class="page-placeholder">
-              <span class="placeholder-badge">
-                <span class="placeholder-dot"></span>
-                <span>Планируется</span>
-              </span>
-              В планах:
-              <br />
-              • топ героев патча по позициям;<br />
-              • синергии героев и сильные связки;<br />
-              • быстрый поиск контрпиков;<br />
-              • интеграция с OpenDota / Stratz для актуальной статистики.
-            </p>
-          </section>
-
-          <section id="page-profile" class="page">
-            <div class="chip-row">
-              <span class="chip">Профиль</span>
-              <span class="chip-soft">История и прогресс</span>
+            <!-- Совет дня -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">💡</span>
+                    <span class="card-title">Совет дня</span>
+                </div>
+                <div class="tip-card">
+                    <div class="card-content" id="dailyTip">
+                        Роумеры должны контролировать руны каждые 2 минуты! Это даёт преимущество команде в опыте и ресурсах.
+                    </div>
+                </div>
             </div>
-            <h2 class="section-title">Твой профиль игрока</h2>
-            <p class="section-subtitle">
-              В будущем здесь появится история прохождения квизов, графики прогресса и
-              связка со Steam ID.
-            </p>
+        </div>
 
-            <p class="page-placeholder">
-              <span class="placeholder-badge">
-                <span class="placeholder-dot"></span>
-                <span>Скоро</span>
-              </span>
-              В планах:
-              <br />
-              • история результатов квизов;<br />
-              • избранные роли и герои;<br />
-              • визуализация прогресса;<br />
-              • привязка к Steam и автоматический анализ матчей.
-            </p>
-          </section>
-        </main>
-      </div>
+        <!-- Страница квизов -->
+        <div id="page-quiz" class="page">
+            <!-- Список доступных квизов -->
+            <div id="quiz-list">
+                <div class="dashboard-header">
+                    <h1>🎯 Квизы</h1>
+                    <p>Узнай больше о своём игровом стиле</p>
+                </div>
+
+                <!-- Квиз по позициям -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon">🎮</span>
+                        <span class="card-title">Какая твоя позиция?</span>
+                    </div>
+                    <div class="card-content" style="margin-bottom: 16px;">
+                        Пройди тест за 2 минуты и узнай, на какой роли ты раскроешься лучше всего
+                    </div>
+                    <button class="btn-small" onclick="startPositionQuiz()" style="width: 100%; padding: 12px;">
+                        Начать тест →
+                    </button>
+                </div>
+
+                <!-- Квиз по героям -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon">🦸</span>
+                        <span class="card-title">Подбор идеального героя</span>
+                    </div>
+                    <div class="card-content" style="margin-bottom: 16px;">
+                        Ответь на вопросы и получи список героев, которые идеально подходят под твой стиль игры
+                    </div>
+                    <button class="btn-small" onclick="startHeroQuiz()" style="width: 100%; padding: 12px;">
+                        Подобрать героя →
+                    </button>
+                </div>
+
+                <!-- Последний результат (если есть) -->
+                <div class="card" id="quizPageLastResult" style="display: none;">
+                    <div class="card-header">
+                        <span class="card-icon">📊</span>
+                        <span class="card-title">Твой последний результат</span>
+                    </div>
+                    <div class="position-result">
+                        <div>
+                            <div class="position-result-text" id="quizPagePosition">Pos 4 — Роумер</div>
+                            <div class="position-result-date" id="quizPageDate">Пройден: сегодня</div>
+                        </div>
+                        <button class="btn-small" onclick="startPositionQuiz()">Пересдать</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Квиз по позициям -->
+            <div id="quiz-content-container" style="display: none;">
+                <div class="quiz-container">
+                    <div class="quiz-content">
+                        <h1>🎮 Какая твоя позиция в Dota 2?</h1>
+                        <p class="subtitle">Пройди тест и узнай, на какой роли ты раскроешься лучше всего</p>
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressBar"></div>
+                        </div>
+
+                        <div class="question" id="question"></div>
+                        <div class="answers" id="answers"></div>
+                    </div>
+
+                    <div class="result" id="result">
+                        <div class="result-header">🎯</div>
+                        <div class="result-title">Твоя позиция</div>
+
+                        <div class="position-primary" id="positionPrimary"></div>
+                        <div class="position-badge" id="positionBadge"></div>
+
+                        <button class="btn-outline" onclick="togglePositionDetails()">Показать детали</button>
+                        <div class="description hidden" id="positionDescription"></div>
+                        <button class="btn-secondary" onclick="backToQuizList()">← Назад к квизам</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Квиз по героям -->
+            <div id="hero-quiz-container" style="display: none;">
+                <div class="quiz-container">
+                    <!-- Стартовый экран -->
+                    <div id="hero-start">
+                        <h1>🦸 Подбор идеального героя</h1>
+                        <p class="subtitle">Узнай, какие герои подходят под твой стиль игры</p>
+
+                        <div class="answers">
+                            <button class="answer-btn" id="useSavedPositionBtn" onclick="heroQuiz.useSavedPosition()">
+                                <span class="emoji">📊</span>
+                                <span class="text" id="savedPositionText">Сначала пройди тест по позициям</span>
+                            </button>
+                            <button class="answer-btn" onclick="heroQuiz.showPositionSelect()">
+                                <span class="emoji">🎯</span>
+                                <span class="text">Выбрать позицию вручную</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Ручной выбор позиции -->
+                    <div id="hero-position-select" style="display: none;">
+                        <h1>🎯 Выбери позицию</h1>
+                        <p class="subtitle">На какой позиции ты хочешь играть?</p>
+
+                        <div class="position-select-grid">
+                            <button class="position-option" onclick="heroQuiz.selectPosition(0)">
+                                <strong>Позиция 1 — Керри</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(1)">
+                                <strong>Позиция 2 — Мидер</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(2)">
+                                <strong>Позиция 3 — Хардлейнер</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(3)">
+                                <strong>Позиция 4 — Роумер</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(4)">
+                                <strong>Позиция 5 — Фулл-саппорт</strong>
+                            </button>
+                        </div>
+
+                        <button class="btn-secondary" onclick="heroQuiz.backToStart()" style="margin-top: 20px;">← Назад</button>
+                    </div>
+
+                    <!-- Вопросы -->
+                    <div id="hero-questions" style="display: none;">
+                        <h1>🦸 Подбор героя</h1>
+                        <p class="subtitle" id="heroQuizSubtitle">Ответь на несколько вопросов</p>
+
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="heroProgressBar"></div>
+                        </div>
+
+                        <div class="question" id="heroQuestion"></div>
+                        <div class="answers" id="heroAnswers"></div>
+                    </div>
+
+                    <!-- Результат -->
+                    <div id="hero-result" style="display: none;">
+                        <div class="result-header">🦸</div>
+                        <div class="result-title" id="heroResultPosition">Рекомендуем для Керри</div>
+
+                        <div class="position-primary">Топ-5 героев под твой стиль</div>
+
+                        <div class="hero-list" id="heroResultList"></div>
+
+                        <div class="description" id="heroResultDescription" style="margin-top: 16px;"></div>
+
+                        <button class="btn-outline" onclick="heroQuiz.restart()">Пройти заново</button>
+                        <button class="btn-secondary" onclick="backToQuizList()">← Назад к квизам</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Страница базы знаний (заглушка) -->
+        <div id="page-database" class="page">
+            <div class="placeholder">
+                <div class="placeholder-icon">📊</div>
+                <div class="placeholder-title">База знаний</div>
+                <div class="placeholder-text">Статистика героев, мета-отчёты и синергия команд. Скоро...</div>
+            </div>
+        </div>
+
+        <!-- Страница профиля (заглушка) -->
+        <div id="page-profile" class="page">
+            <div class="placeholder">
+                <div class="placeholder-icon">⚙️</div>
+                <div class="placeholder-title">Профиль</div>
+                <div class="placeholder-text">История тестов и персональные настройки. Скоро...</div>
+            </div>
+        </div>
+
+        <!-- Нижняя навигация -->
+        <div class="bottom-nav">
+            <div class="nav-item active" onclick="switchPage('home')">
+                <div class="nav-icon">🏠</div>
+                <div class="nav-label">Главная</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('quiz')">
+                <div class="nav-icon">🎯</div>
+                <div class="nav-label">Квизы</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('database')">
+                <div class="nav-icon">📊</div>
+                <div class="nav-label">База</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('profile')">
+                <div class="nav-icon">⚙️</div>
+                <div class="nav-label">Профиль</div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <nav class="bottom-nav">
-    <div class="bottom-nav-inner">
-      <div class="bottom-nav-bg">
-        <button
-          type="button"
-          class="nav-item active"
-          data-page="dashboard"
-        >
-          <span class="nav-item-icon">🏠</span>
-          <span class="nav-item-label">Главная</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item"
-          data-page="quizzes"
-        >
-          <span class="nav-item-icon">🎯</span>
-          <span class="nav-item-label">Квизы</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item"
-          data-page="knowledge"
-        >
-          <span class="nav-item-icon">📊</span>
-          <span class="nav-item-label">База знаний</span>
-        </button>
-        <button
-          type="button"
-          class="nav-item"
-          data-page="profile"
-        >
-          <span class="nav-item-icon">⚙️</span>
-          <span class="nav-item-label">Профиль</span>
-        </button>
-      </div>
-    </div>
-  </nav>
-
-  <script>
-    (function () {
-      const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-
-      if (tg) {
-        try {
-          tg.ready();
-          tg.expand();
-          if (tg.setHeaderColor) {
-            tg.setHeaderColor("#050509");
-          }
-          if (tg.setBackgroundColor) {
-            tg.setBackgroundColor("#050509");
-          }
-        } catch (e) {
-          console.warn("Telegram WebApp init error:", e);
+    <script>
+        const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+        if (tg) {
+            tg.ready();
+            tg.expand();
         }
-      }
 
-      const pages = {
-        dashboard: document.getElementById("page-dashboard"),
-        quizzes: document.getElementById("page-quizzes"),
-        knowledge: document.getElementById("page-knowledge"),
-        profile: document.getElementById("page-profile"),
-      };
-
-      const navButtons = Array.from(document.querySelectorAll(".nav-item"));
-
-      function switchPage(pageName) {
-        Object.keys(pages).forEach((key) => {
-          if (key === pageName) {
-            pages[key].classList.add("active");
-          } else {
-            pages[key].classList.remove("active");
-          }
-        });
-
-        navButtons.forEach((btn) => {
-          if (btn.dataset.page === pageName) {
-            btn.classList.add("active");
-          } else {
-            btn.classList.remove("active");
-          }
-        });
-      }
-
-      navButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const pageName = btn.dataset.page;
-          switchPage(pageName);
-        });
-      });
-
-      const btnOpenPositionQuizFromDashboard = document.getElementById(
-        "btn-open-position-quiz-from-dashboard"
-      );
-      if (btnOpenPositionQuizFromDashboard) {
-        btnOpenPositionQuizFromDashboard.addEventListener("click", () => {
-          switchPage("quizzes");
-          openPositionQuiz();
-        });
-      }
-
-      const quizCardPosition = document.getElementById("quiz-card-position");
-      const quizPositionLastLabel = document.getElementById(
-        "quiz-position-last-label"
-      );
-
-      const positionQuizScreen = document.getElementById("position-quiz-screen");
-      const positionQuizQuestionEl = document.getElementById(
-        "position-quiz-question"
-      );
-      const positionQuizAnswersEl = document.getElementById(
-        "position-quiz-answers"
-      );
-      const positionQuizCounterEl = document.getElementById("position-quiz-counter");
-      const positionQuizProgressEl = document.getElementById(
-        "position-quiz-progress"
-      );
-      const positionQuizFooterProgressEl = document.getElementById(
-        "position-quiz-footer-progress"
-      );
-      const positionResultCard = document.getElementById("position-quiz-result");
-      const resultMainPositionEl = document.getElementById("result-main-position");
-      const resultSecondaryPositionEl = document.getElementById(
-        "result-secondary-position"
-      );
-      const statFarmEl = document.getElementById("stat-farm");
-      const statFightEl = document.getElementById("stat-fight");
-      const statSupportEl = document.getElementById("stat-support");
-      const btnToggleDetails = document.getElementById("btn-toggle-details");
-      const resultDetailsTextEl = document.getElementById("result-details-text");
-
-      const quizLastResultContainer = document.getElementById(
-        "quiz-last-result-container"
-      );
-      const lastResultPositionEl = document.getElementById("last-result-position");
-      const lastResultDateEl = document.getElementById("last-result-date");
-      const btnRepeatPositionQuiz = document.getElementById(
-        "btn-repeat-position-quiz"
-      );
-
-      const tipTextEl = document.getElementById("tip-text");
-      const tipMetaLabelEl = document.getElementById("tip-meta-label");
-
-      const QUIZ_RESULT_STORAGE_KEY = "dota2helper_lastResult";
-
-      const quizData = [
-        {
-          text: "Как ты чаще всего играешь?",
-          answers: [
+        // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
+        const quizData = [
             {
-              text: "Люблю фармить и выходить в лейт, добирая свои слоты",
-              scores: [2, 1, 1, 0, 0],
+                question: "От каких моментов в игре ты получаешь максимальное удовольствие?",
+                answers: [
+                    {
+                        text: "💰 Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
+                        scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "🔪 Когда я один в правильный момент поймал и стёр врага за пару секунд",
+                        scores: { pos1: 2, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "⚔️ Когда я первый прыгаю в драку и закрываю вражеских героев",
+                        scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
+                    },
+                    {
+                        text: "🤝 Когда моя помощь спасает союзников в критический момент",
+                        scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
+                    }
+                ]
             },
             {
-              text: "Хочу как можно чаще драться и влиять на карту",
-              scores: [1, 2, 2, 2, 1],
+                question: "Первые 10 минут игры. Что ты чаще всего делаешь?",
+                answers: [
+                    {
+                        text: "🌾 Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
+                        scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 0, pos5: 0 }
+                    },
+                    {
+                        text: "⚖️ Хочу переиграть оппонента на линии и начать двигаться по карте",
+                        scores: { pos1: 1, pos2: 3, pos3: 2, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "⚔️ Ищу возможности для агрессии на линии и стараюсь доминировать",
+                        scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 2 }
+                    },
+                    {
+                        text: "🗺️ Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
+                        scores: { pos1: 0, pos2: 1, pos3: 0, pos4: 2, pos5: 3 }
+                    }
+                ]
             },
             {
-              text: "Предпочитаю помогать команде и спасать тиммейтов",
-              scores: [0, 1, 1, 2, 3],
+                question: "Видишь, что враги начали драку на карте. Как ты реагируешь?",
+                answers: [
+                    {
+                        text: "📊 Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
+                        scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 0, pos5: 0 }
+                    },
+                    {
+                        text: "⚔️ Сразу даю ТП, чтобы помочь команде",
+                        scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
+                    },
+                    {
+                        text: "🎯 Пытаюсь 'выключить' опасного вражеского героя",
+                        scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
+                    },
+                    {
+                        text: "💚 Держу позицию, чтобы грамотно раскинуть кнопки",
+                        scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 1, pos5: 3 }
+                    }
+                ]
             },
             {
-              text: "Хочу стоять стабильную линию и обеспечивать помощь керри",
-              scores: [1, 1, 3, 1, 2],
-            },
-          ],
-        },
-        {
-          text: "Что тебе важнее всего во время игры?",
-          answers: [
-            {
-              text: "Чувствовать, что я — главный источник урона",
-              scores: [3, 2, 1, 0, 0],
-            },
-            {
-              text: "Контролировать темп игры и принимать решения",
-              scores: [1, 3, 2, 1, 0],
-            },
-            {
-              text: "Открывать драки, впитывать урон и создавать пространство",
-              scores: [1, 1, 3, 2, 1],
-            },
-            {
-              text: "Обеспечивать вижен, сейвы и комфорт тиммейтам",
-              scores: [0, 1, 1, 2, 3],
-            },
-          ],
-        },
-        {
-          text: "Как ты относишься к риску?",
-          answers: [
-            {
-              text: "Готов рисковать, если это может выиграть драку или игру",
-              scores: [2, 3, 2, 2, 1],
+                question: "Каких героев ты предпочитаешь?",
+                answers: [
+                    {
+                        text: "💎 Героев, которые становятся сильными с дорогими предметами",
+                        scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "🎯 Героев с бёрст уроном — убил и ушёл",
+                        scores: { pos1: 1, pos2: 3, pos3: 1, pos4: 1, pos5: 0 }
+                    },
+                    {
+                        text: "🛡️ Героев, которые выдерживают много урона",
+                        scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 1 }
+                    },
+                    {
+                        text: "🤝 Героев с полезными способностями для команды (станы, сейвы, хил)",
+                        scores: { pos1: 0, pos2: 0, pos3: 1, pos4: 3, pos5: 3 }
+                    }
+                ]
             },
             {
-              text: "Предпочитаю играть аккуратно и стабильно",
-              scores: [1, 1, 2, 2, 3],
-            },
-            {
-              text: "Готов рисковать, но только когда у меня есть предметы",
-              scores: [3, 2, 1, 0, 0],
-            },
-            {
-              text: "Слежу за позицией и стараюсь не фидить, но иногда иду в all-in",
-              scores: [1, 2, 2, 2, 2],
-            },
-          ],
-        },
-        {
-          text: "Что тебе нравится больше всего в командной игре?",
-          answers: [
-            {
-              text: "Когда я прихожу на драку и заканчиваю начатое",
-              scores: [3, 2, 1, 0, 0],
-            },
-            {
-              text: "Когда я создаю момент (инициация/комбо), а команда добивает",
-              scores: [1, 2, 3, 2, 1],
-            },
-            {
-              text: "Когда я контролирую карту, вижен и даю сейвы",
-              scores: [0, 1, 1, 2, 3],
-            },
-            {
-              text: "Когда я всегда вовремя оказываюсь там, где нужен",
-              scores: [1, 2, 2, 3, 2],
-            },
-          ],
-        },
-        {
-          text: "Какую линию ты чаще всего выбираешь (по ощущениям)?",
-          answers: [
-            {
-              text: "Легкая линия, где я могу спокойно фармить",
-              scores: [3, 1, 0, 0, 0],
-            },
-            {
-              text: "Мид — люблю соло-линии и дуэли",
-              scores: [0, 3, 0, 0, 0],
-            },
-            {
-              text: "Сложная линия — давлю или стабилизирую её",
-              scores: [0, 0, 3, 1, 0],
-            },
-            {
-              text: "Поддержка: стою с керри или бегаю по карте",
-              scores: [0, 0, 0, 2, 3],
-            },
-          ],
-        },
-      ];
+                question: "На что ты обращаешь внимание в конце игры (статистика)?",
+                answers: [
+                    {
+                        text: "📊 Золото/Фраги/Добито крипов",
+                        scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "⚔️ Фраги и нанесённый урон",
+                        scores: { pos1: 3, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "🎯 Количество контроля и впитанного урона",
+                        scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 2 }
+                    },
+                    {
+                        text: "💚 Количество расходников (варды, дасты), ассистов, лечения",
+                        scores: { pos1: 0, pos2: 0, pos3: 0, pos4: 3, pos5: 3 }
+                    }
+                ]
+            }
+        ];
 
-      const positionNames = [
-        "Керри (позиция 1)",
-        "Мидер (позиция 2)",
-        "Хардлейнер (позиция 3)",
-        "Роумер / Четвёрка (позиция 4)",
-        "Фулл-саппорт (позиция 5)",
-      ];
-      const positionShortNames = ["Керри", "Мидер", "Хардлейнер", "Роумер", "Фулл-саппорт"];
-
-      const positionStats = {
-        "0_1": { farm: 85, fight: 60, support: 30 },
-        "0_2": { farm: 70, fight: 75, support: 25 },
-        "0_3": { farm: 65, fight: 80, support: 35 },
-        "0_4": { farm: 55, fight: 70, support: 45 },
-        "0_5": { farm: 45, fight: 55, support: 70 },
-
-        "1_2": { farm: 75, fight: 65, support: 35 },
-        "1_3": { farm: 70, fight: 72, support: 38 },
-        "1_4": { farm: 60, fight: 68, support: 50 },
-        "1_5": { farm: 50, fight: 58, support: 75 },
-
-        "2_3": { farm: 60, fight: 78, support: 40 },
-        "2_4": { farm: 55, fight: 72, support: 55 },
-        "2_5": { farm: 45, fight: 60, support: 80 },
-
-        "3_4": { farm: 50, fight: 70, support: 60 },
-        "3_5": { farm: 40, fight: 58, support: 85 },
-
-        "4_5": { farm: 35, fight: 50, support: 90 },
-
-        "0_0": { farm: 85, fight: 65, support: 25 },
-        "1_1": { farm: 75, fight: 70, support: 30 },
-        "2_2": { farm: 65, fight: 80, support: 35 },
-        "3_3": { farm: 55, fight: 68, support: 60 },
-        "4_4": { farm: 45, fight: 55, support: 85 },
-      };
-
-      const positionDescriptions = {
-        "0_0":
-          "Ты — классический керри. Ты любишь фармить, набирать слот за слотом и выходить в пик силы ближе к мид/лейту. Когда у тебя есть предметы, ты чувствуешь уверенность и можешь решать исход игры в соло. Важно — не забывать подключаться к ключевым дракам и иногда выходить из леса чуть раньше.",
-        "0_1":
-          "Ты — гибрид керри и мидера. Любишь быть источником урона, но при этом часто влияешь на темп игры, подключаясь к ранним дракам. Такая роль требует хорошего понимания таймингов и чтения карты.",
-        "1_1":
-          "Ты — типичный мидер. Любишь стоять сложные дуэли, контролировать темп игры и быть тем самым героем, который задаёт ритм всей команде. От тебя ждут грамотных перетяжек, ранних гангов и принятия решений.",
-        "1_2":
-          "Ты — мидер с уклоном в оффлейн. Не боишься фронтлайнить, заходить первым и инициировать драки. Часто берёшь на себя функции инициатора и создателя пространства.",
-        "2_2":
-          "Ты — хардлейнер-инициатор. Любишь стоять сложную линию, терпеть давление и потом выходить в драки с ключевыми способностями. От тебя ждут хороших инициаций, frontline и создания пространства для коров.",
-        "2_3":
-          "Ты — игрок, который балансирует между оффлейном и роумом. Любишь быть в центре событий, помогать на линиях и инициировать драки, не забывая про давление на карте.",
-        "3_3":
-          "Ты — классический роум/четвёрка. Любишь бегать по карте, создавать хаос и помогать всей команде. Ты не привязан к одной линии и часто именно ты делаешь первые киллы и создаёшь преимущество.",
-        "3_4":
-          "Ты — переходная роль между роумом и фулл-саппортом. Можешь как активно бегать по карте, так и стоять линию и помогать керри. Гибкий и командный стиль игры.",
-        "4_4":
-          "Ты — фулл-саппорт до мозга костей. Любишь помогать, ставить вижен, сейвить, а не забирать ресурсы. Тебе комфортно играть в стиле <я делаю всё, чтобы коры сияли>. Очень важная и недооценённая роль.",
-        "0_2":
-          "Ты часто балансируешь между фармом и активной игрой. Это похоже на керри, который любит драться раньше других или мидера, который делает ставку на переход в лейт.",
-        "0_3":
-          "У тебя есть задатки оффлейнера: ты не боишься сложных линий и часто оказываешься впереди в драках. При этом тебе всё ещё комфортно собирать предметы и быть кором.",
-        "0_4":
-          "В тебе чувствуется командный игрок. Даже играя на коре, ты склонен помогать, создавать пространство и не жадничать ресурсы.",
-        "0_5":
-          "Ты играешь как очень командно-ориентированный керри. Любишь помогать, возвращаться на деф, сейвить тиммейтов и не палишься на фарме до последнего.",
-        "1_3":
-          "Ты любишь иметь влияние как мидер, но при этом не боишься заходить первым и терпеть давление как оффлейнер. Такой стиль требует хорошего тайминга и понимания рисков.",
-        "1_4":
-          "Ты — очень командный мидер. Любишь помогать лайнам, часто уходишь с мида ради гангов и не играешь только ради собственного фарма.",
-        "1_5":
-          "Ты — мидер с огромным упором на команду. Часто жертвуешь фармом ради сейвов, телепортов и помощи. Такой стиль особенно ценен в стаке.",
-        "2_4":
-          "Ты — инициативный игрок, который любит инициацию и поддержку одновременно. Команда может полагаться на тебя как на того, кто начинает драку и страхует.",
-        "2_5":
-          "Ты — очень командно-ориентированный оффлейнер. Ты не столько про эго и фарм, сколько про фронтлайн, сейвы, ауры и стабильность для команды.",
-        "3_5":
-          "Ты — суппорт с акцентом на активность. Любишь бегать по карте, но при этом умеешь и стоять линию, помогая керри чувствовать себя комфортно.",
-        "4_5":
-          "Ты — абсолютно командный игрок, который закрывает бреши и делает всё, чтобы команда могла играть. Вижен, сейвы, коммуникация — твоя сильная сторона.",
-      };
-
-      let currentQuestionIndex = 0;
-      let scores = [0, 0, 0, 0, 0];
-
-      function renderQuestion() {
-        const questionData = quizData[currentQuestionIndex];
-        if (!questionData) return;
-
-        const current = currentQuestionIndex + 1;
-        const total = quizData.length;
-
-        positionQuizCounterEl.textContent = `Вопрос ${current} из ${total}`;
-        positionQuizQuestionEl.textContent = questionData.text;
-        positionQuizFooterProgressEl.textContent = `${current - 1} / ${total}`;
-
-        const progressPercent = ((current - 1) / total) * 100;
-        positionQuizProgressEl.style.width = `${progressPercent}%`;
-
-        positionQuizAnswersEl.innerHTML = "";
-        questionData.answers.forEach((answer, idx) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "answer-btn";
-          btn.dataset.index = String(idx);
-
-          const labelSpan = document.createElement("span");
-          labelSpan.className = "answer-label";
-          labelSpan.textContent = answer.text;
-
-          btn.appendChild(labelSpan);
-
-          const metaSpan = document.createElement("span");
-          metaSpan.className = "answer-meta";
-          metaSpan.textContent = "Выбрать";
-
-          btn.appendChild(metaSpan);
-
-          btn.addEventListener("click", () => {
-            selectAnswer(idx);
-          });
-
-          positionQuizAnswersEl.appendChild(btn);
-        });
-      }
-
-      function selectAnswer(answerIndex) {
-        const questionData = quizData[currentQuestionIndex];
-        if (!questionData) return;
-
-        const scoresDelta = questionData.answers[answerIndex].scores;
-        scores = scores.map((val, i) => val + (scoresDelta[i] || 0));
-
-        currentQuestionIndex += 1;
-
-        if (currentQuestionIndex >= quizData.length) {
-          showResult();
-        } else {
-          renderQuestion();
-        }
-      }
-
-      function findTopPositions(scoreArr) {
-        const scored = scoreArr.map((val, index) => ({ index, score: val }));
-        scored.sort((a, b) => b.score - a.score);
-
-        const primary = scored[0];
-        const secondary = scored[1];
-
-        return {
-          primaryIndex: primary.index,
-          secondaryIndex: secondary.index,
-        };
-      }
-
-      function showResult() {
-        const total = quizData.length;
-        positionQuizFooterProgressEl.textContent = `${total} / ${total}`;
-        positionQuizProgressEl.style.width = "100%";
-
-        positionQuizScreen.classList.remove("active");
-        positionResultCard.style.display = "block";
-
-        const { primaryIndex, secondaryIndex } = findTopPositions(scores);
-
-        const primaryName = positionNames[primaryIndex];
-        const secondaryName = positionNames[secondaryIndex];
-        const primaryShort = positionShortNames[primaryIndex];
-        const secondaryShort = positionShortNames[secondaryIndex];
-
-        resultMainPositionEl.textContent = primaryName;
-        resultSecondaryPositionEl.textContent = `Дополнительная роль: ${secondaryName}`;
-
-        const key =
-          primaryIndex <= secondaryIndex
-            ? `${primaryIndex}_${secondaryIndex}`
-            : `${secondaryIndex}_${primaryIndex}`;
-        const stats = positionStats[key] || { farm: 60, fight: 60, support: 60 };
-
-        statFarmEl.style.width = `${stats.farm}%`;
-        statFightEl.style.width = `${stats.fight}%`;
-        statSupportEl.style.width = `${stats.support}%`;
-
-        const descKey =
-          primaryIndex <= secondaryIndex
-            ? `${primaryIndex}_${secondaryIndex}`
-            : `${secondaryIndex}_${primaryIndex}`;
-        const description =
-          positionDescriptions[descKey] ||
-          "У тебя довольно гибкий стиль игры, ты можешь комфортно чувствовать себя на нескольких ролях. Попробуй сфокусироваться на 1–2 из них, чтобы прокачать их глубже.";
-
-        resultDetailsTextEl.textContent = description;
-
-        const payload = {
-          positionIndex: primaryIndex,
-          position: primaryName,
-          posShort: primaryShort,
-          secondaryPositionIndex: secondaryIndex,
-          secondaryPosition: secondaryName,
-          secondaryShort: secondaryShort,
-          stats,
-          descKey,
-          desc: description,
-          date: new Date().toISOString(),
+        const positionNames = {
+            pos1: "Pos 1 — Керри",
+            pos2: "Pos 2 — Мидер",
+            pos3: "Pos 3 — Хардлейнер",
+            pos4: "Pos 4 — Роумер",
+            pos5: "Pos 5 — Фулл-саппорт"
         };
 
-        try {
-          localStorage.setItem(QUIZ_RESULT_STORAGE_KEY, JSON.stringify(payload));
-        } catch (e) {
-          console.warn("Не удалось сохранить результат квиза:", e);
+        const positionShortNames = {
+            pos1: "Керри",
+            pos2: "Мидер",
+            pos3: "Хардлейнер",
+            pos4: "Роумер",
+            pos5: "Фулл-саппорт"
+        };
+
+        const positionDescriptions = {
+            pos1: "Ты — керри, главный источник урона команды. Твоя задача — эффективно фармить, развиваться и становиться сильнее с каждой минутой. В поздней игре именно от тебя зависит исход драк.",
+            pos2: "Ты — мидер, который задаёт темп игры. Ты доминируешь на линии, быстро получаешь уровни и начинаешь активно двигаться по карте, помогая союзникам.",
+            pos3: "Ты — хардлейнер, который создаёт пространство для команды. Ты выдерживаешь давление на сложной линии и первым входишь в драки, контролируя врагов.",
+            pos4: "Ты — роумер, который постоянно в движении. Ты помогаешь на всех линиях, контролируешь карту и создаёшь возможности для команды.",
+            pos5: "Ты — фулл-саппорт, основа команды. Ты обеспечиваешь вижн, защищаешь керри на линии и помогаешь команде своими способностями."
+        };
+
+        let currentQuestion = 0;
+        let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
+        let lastResult = null;
+
+        function loadSavedResult() {
+            const saved = localStorage.getItem('dota2helper_lastResult');
+            if (saved) {
+                lastResult = JSON.parse(saved);
+                updateQuizPageResult();
+                updateHeroQuizStart();
+            }
         }
 
-        updateLastResultFromStorage();
-      }
-
-      function openPositionQuiz() {
-        positionResultCard.style.display = "none";
-        positionQuizScreen.classList.add("active");
-
-        currentQuestionIndex = 0;
-        scores = [0, 0, 0, 0, 0];
-
-        renderQuestion();
-      }
-
-      if (quizCardPosition) {
-        quizCardPosition.addEventListener("click", () => {
-          openPositionQuiz();
-        });
-      }
-
-      if (btnRepeatPositionQuiz) {
-        btnRepeatPositionQuiz.addEventListener("click", () => {
-          openPositionQuiz();
-        });
-      }
-
-      if (btnToggleDetails) {
-        btnToggleDetails.addEventListener("click", () => {
-          const isVisible = resultDetailsTextEl.classList.contains("visible");
-          if (isVisible) {
-            resultDetailsTextEl.classList.remove("visible");
-            btnToggleDetails.querySelector(".toggle-icon").textContent = "▼";
-            btnToggleDetails.querySelector("span:nth-child(2)").textContent =
-              "Показать детали";
-          } else {
-            resultDetailsTextEl.classList.add("visible");
-            btnToggleDetails.querySelector(".toggle-icon").textContent = "▲";
-            btnToggleDetails.querySelector("span:nth-child(2)").textContent =
-              "Скрыть детали";
-          }
-        });
-      }
-
-      function formatDate(dateString) {
-        if (!dateString) return "";
-        const date = new Date(dateString);
-        if (Number.isNaN(date.getTime())) return "";
-        const day = String(date.getDate()).padStart(2, "0");
-        const month = String(date.getMonth() + 1).padStart(2, "0");
-        const year = date.getFullYear();
-        const hours = String(date.getHours()).padStart(2, "0");
-        const minutes = String(date.getMinutes()).padStart(2, "0");
-        return `${day}.${month}.${year}, ${hours}:${minutes}`;
-      }
-
-      function updateLastResultFromStorage() {
-        let saved = null;
-        try {
-          const stored = localStorage.getItem(QUIZ_RESULT_STORAGE_KEY);
-          if (stored) {
-            saved = JSON.parse(stored);
-          }
-        } catch (e) {
-          console.warn("Не удалось прочитать сохранённый результат квиза:", e);
+        function saveResult(result) {
+            localStorage.setItem('dota2helper_lastResult', JSON.stringify(result));
         }
 
-        if (!saved || !saved.position) {
-          quizPositionLastLabel.textContent = "Ещё не проходил";
-          quizLastResultContainer.style.display = "none";
-          return;
+        loadSavedResult();
+
+        function switchPage(pageName) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+            document.getElementById(`page-${pageName}`).classList.add('active');
+            event.currentTarget.classList.add('active');
+
+            if (pageName === 'quiz') {
+                document.getElementById('quiz-list').style.display = 'block';
+                document.getElementById('quiz-content-container').style.display = 'none';
+                document.getElementById('hero-quiz-container').style.display = 'none';
+                updateQuizPageResult();
+            }
         }
 
-        quizPositionLastLabel.textContent = "Последний результат сохранён";
-
-        quizLastResultContainer.style.display = "block";
-        lastResultPositionEl.textContent = saved.position;
-        lastResultDateEl.textContent = formatDate(saved.date);
-      }
-
-      updateLastResultFromStorage();
-
-      const tips = [
-        {
-          text: "Не пытайся играть на всех позициях сразу. Выбери 1–2 роли и героев, которые тебе нравятся, и прокачивай их осознанно.",
-          meta: "Стабильность важнее количества героев",
-        },
-        {
-          text: "Если ты играешь на керри — смотри на миникарту так же часто, как и на крипов. Потерянные герои соперника всегда означают возможный ганг.",
-          meta: "Миникарта — лучший друг кор-игрока",
-        },
-        {
-          text: "На саппорте твой нетворт — не главное. Главное — вижен, сейвы и грамотные смоки. Иногда один хороший вард решает больше, чем лишний артефакт.",
-          meta: "Вижен = информация = победа",
-        },
-        {
-          text: "Если ты мидер, твоя задача — не только выиграть линию, но и правильно использовать это преимущество: руны, ганги, контроль темпа.",
-          meta: "Мидер задаёт ритм матча",
-        },
-        {
-          text: "Хардлейнер, который умирает ради информации и кулдаунов врага, часто делает больше, чем керри, который просто фармит лес.",
-          meta: "Создание пространства — ключ к победе",
-        },
-        {
-          text: "Не бойся признавать ошибки в игре. Осознанная ошибка — это уже шаг к росту. Важно не искать виноватых, а находить, что можно улучшить самому.",
-          meta: "Менталитет роста сильнее MMR",
-        },
-      ];
-
-      try {
-        const TIP_STORAGE_KEY = "dota2helper_tip_index";
-        let tipIndex = Number.parseInt(localStorage.getItem(TIP_STORAGE_KEY) || "0", 10);
-        if (Number.isNaN(tipIndex) || tipIndex < 0 || tipIndex >= tips.length) {
-          tipIndex = 0;
+        function startPositionQuiz() {
+            document.getElementById('quiz-list').style.display = 'none';
+            document.getElementById('quiz-content-container').style.display = 'block';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+            initQuiz();
         }
 
-        const tip = tips[tipIndex];
-        if (tip && tipTextEl && tipMetaLabelEl) {
-          tipTextEl.textContent = tip.text;
-          tipMetaLabelEl.textContent = tip.meta;
+        function backToQuizList() {
+            document.getElementById('quiz-list').style.display = 'block';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+            updateQuizPageResult();
         }
 
-        const now = Date.now();
-        const TIP_TIMESTAMP_KEY = "dota2helper_tip_timestamp";
-        const lastTs = Number.parseInt(localStorage.getItem(TIP_TIMESTAMP_KEY) || "0", 10);
-        const oneDayMs = 24 * 60 * 60 * 1000;
-
-        if (!lastTs || now - lastTs > oneDayMs) {
-          const nextIndex = (tipIndex + 1) % tips.length;
-          localStorage.setItem(TIP_STORAGE_KEY, String(nextIndex));
-          localStorage.setItem(TIP_TIMESTAMP_KEY, String(now));
+        function updateQuizPageResult() {
+            if (lastResult) {
+                document.getElementById('quizPageLastResult').style.display = 'block';
+                document.getElementById('quizPagePosition').textContent = lastResult.position;
+                document.getElementById('quizPageDate').textContent = `Пройден: ${lastResult.date}`;
+            }
         }
-      } catch (e) {
-        console.warn("Не удалось работать с localStorage для советов:", e);
-      }
 
-      console.log("Dota 2 Helper инициализирован");
-    })();
-  </script>
+        function goToQuiz() {
+            switchPage('quiz');
+            document.querySelectorAll('.nav-item')[1].classList.add('active');
+            document.querySelectorAll('.nav-item')[0].classList.remove('active');
+            document.getElementById('quiz-list').style.display = 'block';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+            updateQuizPageResult();
+        }
+
+        function goToHeroQuiz() {
+            switchPage('quiz');
+            document.querySelectorAll('.nav-item')[1].classList.add('active');
+            document.querySelectorAll('.nav-item')[0].classList.remove('active');
+            startHeroQuiz();
+        }
+
+        function initQuiz() {
+            currentQuestion = 0;
+            scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
+            
+            document.querySelector('.quiz-content').style.display = 'block';
+            document.getElementById('result').classList.remove('active');
+            
+            showQuestion();
+        }
+
+        function showQuestion() {
+            const questionData = quizData[currentQuestion];
+            const progress = ((currentQuestion + 1) / quizData.length) * 100;
+            
+            document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('question').textContent = questionData.question;
+            
+            const answersContainer = document.getElementById('answers');
+            answersContainer.innerHTML = '';
+            
+            questionData.answers.forEach((answer, index) => {
+                const parts = answer.text.split(' ');
+                const emoji = parts[0];
+                const text = parts.slice(1).join(' ');
+                
+                const button = document.createElement('button');
+                button.className = 'answer-btn';
+                button.innerHTML = `
+                    <span class="emoji">${emoji}</span>
+                    <span class="text">${text}</span>
+                `;
+                button.onclick = () => selectAnswer(index);
+                answersContainer.appendChild(button);
+            });
+        }
+
+        function selectAnswer(index) {
+            const questionData = quizData[currentQuestion];
+            const selectedScores = questionData.answers[index].scores;
+            
+            for (let pos in selectedScores) {
+                scores[pos] += selectedScores[pos];
+            }
+            
+            const buttons = document.querySelectorAll('.answer-btn');
+            buttons.forEach((btn, i) => {
+                if (i === index) {
+                    btn.classList.add('selected');
+                }
+            });
+            
+            setTimeout(() => {
+                currentQuestion++;
+                if (currentQuestion < quizData.length) {
+                    showQuestion();
+                } else {
+                    showResult();
+                }
+            }, 300);
+        }
+
+        function showResult() {
+            document.querySelector('.quiz-content').style.display = 'none';
+            
+            const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+            const firstPos = sortedPositions[0][0];
+
+            lastResult = {
+                position: positionNames[firstPos],
+                posShort: positionShortNames[firstPos],
+                positionIndex: parseInt(firstPos.replace('pos', '')) - 1,
+                date: new Date().toLocaleDateString('ru-RU')
+            };
+
+            saveResult(lastResult);
+            updateQuizPageResult();
+            updateHeroQuizStart();
+
+            document.getElementById('positionPrimary').textContent = positionNames[firstPos];
+            document.getElementById('positionBadge').textContent = positionShortNames[firstPos];
+            document.getElementById('positionDescription').textContent = positionDescriptions[firstPos];
+            document.getElementById('positionDescription').classList.add('hidden');
+
+            document.getElementById('result').classList.add('active');
+        }
+
+        function togglePositionDetails() {
+            const description = document.getElementById('positionDescription');
+            const btn = event.target;
+            
+            if (description.classList.contains('hidden')) {
+                description.classList.remove('hidden');
+                btn.textContent = 'Скрыть детали';
+            } else {
+                description.classList.add('hidden');
+                btn.textContent = 'Показать детали';
+            }
+        }
+
+        // ========== КВИЗ ПО ГЕРОЯМ ==========
+        const heroQuiz = {
+            state: {
+                selectedPosition: null,
+                currentQuestionIndex: 0,
+                answers: [],
+                usedSavedPosition: false
+            },
+
+            heroDatabase: [
+                // Позиция 1 - Керри
+                [
+                    { name: "Anti-Mage", tags: ["mobile", "lategame", "splitpush"], difficulty: "medium" },
+                    { name: "Juggernaut", tags: ["aggressive", "versatile", "balanced"], difficulty: "easy" },
+                    { name: "Phantom Assassin", tags: ["aggressive", "snowball", "burst"], difficulty: "easy" },
+                    { name: "Terrorblade", tags: ["farming", "lategame", "splitpush"], difficulty: "hard" },
+                    { name: "Slark", tags: ["mobile", "pickoff", "snowball"], difficulty: "medium" },
+                    { name: "Spectre", tags: ["farming", "lategame", "teamfight"], difficulty: "easy" },
+                    { name: "Faceless Void", tags: ["teamfight", "control", "lategame"], difficulty: "medium" },
+                    { name: "Medusa", tags: ["farming", "lategame", "durable"], difficulty: "easy" },
+                    { name: "Naga Siren", tags: ["farming", "splitpush", "lategame"], difficulty: "hard" },
+                    { name: "Morphling", tags: ["versatile", "lategame", "mobile"], difficulty: "hard" }
+                ],
+                // Позиция 2 - Мидер
+                [
+                    { name: "Queen of Pain", tags: ["mobile", "burst", "aggressive"], difficulty: "medium" },
+                    { name: "Storm Spirit", tags: ["mobile", "pickoff", "snowball"], difficulty: "hard" },
+                    { name: "Invoker", tags: ["versatile", "control", "teamfight"], difficulty: "hard" },
+                    { name: "Shadow Fiend", tags: ["aggressive", "farming", "burst"], difficulty: "medium" },
+                    { name: "Lina", tags: ["burst", "aggressive", "versatile"], difficulty: "easy" },
+                    { name: "Puck", tags: ["mobile", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Ember Spirit", tags: ["mobile", "aggressive", "versatile"], difficulty: "hard" },
+                    { name: "Templar Assassin", tags: ["aggressive", "snowball", "burst"], difficulty: "medium" },
+                    { name: "Zeus", tags: ["burst", "teamfight", "aggressive"], difficulty: "easy" },
+                    { name: "Tinker", tags: ["farming", "mobile", "versatile"], difficulty: "hard" }
+                ],
+                // Позиция 3 - Хардлейнер
+                [
+                    { name: "Axe", tags: ["aggressive", "durable", "teamfight"], difficulty: "easy" },
+                    { name: "Centaur Warrunner", tags: ["durable", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Tidehunter", tags: ["durable", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Mars", tags: ["aggressive", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Underlord", tags: ["durable", "versatile", "teamfight"], difficulty: "easy" },
+                    { name: "Timbersaw", tags: ["aggressive", "mobile", "durable"], difficulty: "medium" },
+                    { name: "Beastmaster", tags: ["versatile", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Doom", tags: ["versatile", "control", "durable"], difficulty: "easy" },
+                    { name: "Slardar", tags: ["aggressive", "control", "durable"], difficulty: "easy" },
+                    { name: "Legion Commander", tags: ["aggressive", "snowball", "durable"], difficulty: "easy" }
+                ],
+                // Позиция 4 - Роумер
+                [
+                    { name: "Earthshaker", tags: ["teamfight", "control", "aggressive"], difficulty: "medium" },
+                    { name: "Rubick", tags: ["versatile", "control", "teamfight"], difficulty: "hard" },
+                    { name: "Earth Spirit", tags: ["mobile", "control", "versatile"], difficulty: "hard" },
+                    { name: "Tusk", tags: ["aggressive", "pickoff", "snowball"], difficulty: "medium" },
+                    { name: "Spirit Breaker", tags: ["aggressive", "mobile", "pickoff"], difficulty: "easy" },
+                    { name: "Mirana", tags: ["versatile", "mobile", "pickoff"], difficulty: "medium" },
+                    { name: "Clockwerk", tags: ["aggressive", "control", "pickoff"], difficulty: "medium" },
+                    { name: "Phoenix", tags: ["teamfight", "durable", "control"], difficulty: "hard" },
+                    { name: "Nyx Assassin", tags: ["pickoff", "burst", "mobile"], difficulty: "easy" },
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" }
+                ],
+                // Позиция 5 - Фулл-саппорт
+                [
+                    { name: "Crystal Maiden", tags: ["control", "teamfight", "versatile"], difficulty: "easy" },
+                    { name: "Lion", tags: ["burst", "control", "aggressive"], difficulty: "easy" },
+                    { name: "Lich", tags: ["versatile", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Witch Doctor", tags: ["teamfight", "versatile", "burst"], difficulty: "easy" },
+                    { name: "Shadow Shaman", tags: ["control", "versatile", "aggressive"], difficulty: "easy" },
+                    { name: "Jakiro", tags: ["versatile", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Oracle", tags: ["versatile", "control", "durable"], difficulty: "hard" },
+                    { name: "Dazzle", tags: ["versatile", "durable", "balanced"], difficulty: "medium" },
+                    { name: "Vengeful Spirit", tags: ["aggressive", "versatile", "teamfight"], difficulty: "easy" },
+                    { name: "Warlock", tags: ["teamfight", "control", "durable"], difficulty: "easy" }
+                ]
+            ],
+
+            questions: [
+                {
+                    question: "Какой стиль игры тебе ближе?",
+                    answers: [
+                        { text: "⚔️ Агрессивная игра с раннего момента", tags: ["aggressive"] },
+                        { text: "⚖️ Сбалансированная игра — драки и фарм", tags: ["balanced", "versatile"] },
+                        { text: "🌾 Фокус на фарм и поздние стадии", tags: ["farming", "lategame"] },
+                        { text: "🏃 Мобильность и пикоффы по карте", tags: ["mobile", "pickoff"] }
+                    ]
+                },
+                {
+                    question: "Что важнее для тебя в герое?",
+                    answers: [
+                        { text: "🎯 Способность начинать драки и контролить", tags: ["teamfight", "control"] },
+                        { text: "💥 Высокий burst урон и быстрые убийства", tags: ["burst", "snowball"] },
+                        { text: "🛡️ Выживаемость и танковость", tags: ["durable"] },
+                        { text: "🔄 Гибкость и адаптация под разные ситуации", tags: ["versatile"] }
+                    ]
+                },
+                {
+                    question: "Насколько сложного героя готов освоить?",
+                    answers: [
+                        { text: "😊 Простой герой — хочу фокусироваться на игре", tags: ["easy"] },
+                        { text: "⚖️ Средняя сложность — баланс механик и макро", tags: ["medium"] },
+                        { text: "🎓 Сложный герой — готов изучать все нюансы", tags: ["hard"] }
+                    ]
+                }
+            ],
+
+            positionNames: ["Керри", "Мидер", "Хардлейнер", "Роумер", "Фулл-саппорт"],
+
+            init() {
+                this.state = {
+                    selectedPosition: null,
+                    currentQuestionIndex: 0,
+                    answers: [],
+                    usedSavedPosition: false
+                };
+                this.showStartScreen();
+            },
+
+            showStartScreen() {
+                document.getElementById('hero-start').style.display = 'block';
+                document.getElementById('hero-position-select').style.display = 'none';
+                document.getElementById('hero-questions').style.display = 'none';
+                document.getElementById('hero-result').style.display = 'none';
+            },
+
+            useSavedPosition() {
+                if (lastResult && lastResult.positionIndex !== undefined) {
+                    this.state.selectedPosition = lastResult.positionIndex;
+                    this.state.usedSavedPosition = true;
+                    this.startQuestions();
+                }
+            },
+
+            showPositionSelect() {
+                document.getElementById('hero-start').style.display = 'none';
+                document.getElementById('hero-position-select').style.display = 'block';
+            },
+
+            selectPosition(index) {
+                this.state.selectedPosition = index;
+                this.state.usedSavedPosition = false;
+                this.startQuestions();
+            },
+
+            backToStart() {
+                this.showStartScreen();
+            },
+
+            startQuestions() {
+                this.state.currentQuestionIndex = 0;
+                this.state.answers = [];
+                
+                document.getElementById('hero-start').style.display = 'none';
+                document.getElementById('hero-position-select').style.display = 'none';
+                document.getElementById('hero-questions').style.display = 'block';
+                
+                this.showQuestion();
+            },
+
+            showQuestion() {
+                const question = this.questions[this.state.currentQuestionIndex];
+                const progress = ((this.state.currentQuestionIndex + 1) / this.questions.length) * 100;
+                
+                document.getElementById('heroProgressBar').style.width = progress + '%';
+                document.getElementById('heroQuestion').textContent = question.question;
+                
+                const answersContainer = document.getElementById('heroAnswers');
+                answersContainer.innerHTML = '';
+                
+                question.answers.forEach((answer, index) => {
+                    const parts = answer.text.split(' ');
+                    const emoji = parts[0];
+                    const text = parts.slice(1).join(' ');
+                    
+                    const button = document.createElement('button');
+                    button.className = 'answer-btn';
+                    button.innerHTML = `
+                        <span class="emoji">${emoji}</span>
+                        <span class="text">${text}</span>
+                    `;
+                    button.onclick = () => this.selectAnswer(index);
+                    answersContainer.appendChild(button);
+                });
+            },
+
+            selectAnswer(index) {
+                const question = this.questions[this.state.currentQuestionIndex];
+                this.state.answers.push(question.answers[index]);
+                
+                const buttons = document.querySelectorAll('#heroAnswers .answer-btn');
+                buttons.forEach((btn, i) => {
+                    if (i === index) {
+                        btn.classList.add('selected');
+                    }
+                });
+                
+                setTimeout(() => {
+                    this.state.currentQuestionIndex++;
+                    if (this.state.currentQuestionIndex < this.questions.length) {
+                        this.showQuestion();
+                    } else {
+                        this.showResult();
+                    }
+                }, 300);
+            },
+
+            calculateTopHeroes() {
+                const allTags = [];
+                this.state.answers.forEach(answer => {
+                    allTags.push(...answer.tags);
+                });
+
+                const tagFrequency = {};
+                allTags.forEach(tag => {
+                    tagFrequency[tag] = (tagFrequency[tag] || 0) + 1;
+                });
+
+                let selectedDifficulty = null;
+                this.state.answers.forEach(answer => {
+                    if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
+                    else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
+                    else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
+                });
+
+                const heroes = this.heroDatabase[this.state.selectedPosition];
+                const scoredHeroes = heroes.map(hero => {
+                    let score = 0;
+                    
+                    hero.tags.forEach(tag => {
+                        if (tagFrequency[tag]) {
+                            score += tagFrequency[tag];
+                        }
+                    });
+                    
+                    if (selectedDifficulty && hero.difficulty === selectedDifficulty) {
+                        score += 2;
+                    }
+                    
+                    return { ...hero, score };
+                });
+
+                scoredHeroes.sort((a, b) => b.score - a.score);
+                return scoredHeroes.slice(0, 5);
+            },
+
+            showResult() {
+                document.getElementById('hero-questions').style.display = 'none';
+                
+                const topHeroes = this.calculateTopHeroes();
+                const positionName = this.positionNames[this.state.selectedPosition];
+                
+                document.getElementById('heroResultPosition').textContent = `Рекомендуем для ${positionName}`;
+                
+                const topTags = {};
+                this.state.answers.forEach(answer => {
+                    answer.tags.forEach(tag => {
+                        if (tag !== 'easy' && tag !== 'medium' && tag !== 'hard') {
+                            topTags[tag] = (topTags[tag] || 0) + 1;
+                        }
+                    });
+                });
+                
+                const sortedTags = Object.entries(topTags).sort((a, b) => b[1] - a[1]);
+                const top3Tags = sortedTags.slice(0, 3).map(t => t[0]);
+                
+                const tagNames = {
+                    aggressive: "агрессию",
+                    balanced: "баланс",
+                    versatile: "универсальность",
+                    farming: "фарм",
+                    lategame: "лейтгейм",
+                    mobile: "мобильность",
+                    pickoff: "пикоффы",
+                    teamfight: "командные драки",
+                    control: "контроль",
+                    burst: "бёрст урон",
+                    snowball: "снежный ком",
+                    durable: "живучесть",
+                    splitpush: "сплит-пуш"
+                };
+                
+                const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
+                document.getElementById('heroResultDescription').textContent = 
+                    `На основе твоих ответов, мы подобрали героев с упором на: ${tagList}. Попробуй их в игре!`;
+                
+                const heroListContainer = document.getElementById('heroResultList');
+                heroListContainer.innerHTML = '';
+                
+                topHeroes.forEach((hero, index) => {
+                    const heroItem = document.createElement('div');
+                    heroItem.className = 'hero-item';
+                    heroItem.innerHTML = `
+                        <span class="hero-rank">${index + 1}.</span>
+                        <div style="flex: 1;">
+                            <div class="hero-name">${hero.name}</div>
+                            <div class="hero-tags">${hero.tags.slice(0, 3).join(' · ')}</div>
+                        </div>
+                    `;
+                    heroListContainer.appendChild(heroItem);
+                });
+                
+                document.getElementById('hero-result').style.display = 'block';
+            },
+
+            restart() {
+                this.init();
+            }
+        };
+
+        function startHeroQuiz() {
+            document.getElementById('quiz-list').style.display = 'none';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'block';
+            heroQuiz.init();
+        }
+
+        function updateHeroQuizStart() {
+            const btn = document.getElementById('useSavedPositionBtn');
+            const textSpan = document.getElementById('savedPositionText');
+            
+            if (lastResult && lastResult.positionIndex !== undefined) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                textSpan.textContent = `Твоя последняя позиция: ${lastResult.posShort}`;
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                textSpan.textContent = 'Сначала пройди тест по позициям';
+            }
+        }
+    </script>
 </body>
 </html>
