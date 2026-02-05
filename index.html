@@ -162,17 +162,28 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 10px 14px;
+        padding: 12px 14px;
         background: rgba(255, 255, 255, 0.04);
-        border-radius: 10px;
+        border-radius: 12px;
         border: 1px solid rgba(255, 255, 255, 0.06);
+        gap: 12px;
     }
 
     .hero-rank {
         font-size: 16px;
         font-weight: 700;
         color: #00d2ff;
-        min-width: 30px;
+        min-width: 24px;
+        flex-shrink: 0;
+    }
+
+    .hero-icon {
+        width: 48px;
+        height: 27px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        flex-shrink: 0;
     }
 
     .hero-name {
@@ -185,6 +196,37 @@
         font-size: 11px;
         color: var(--text-muted);
         margin-top: 2px;
+    }
+
+    .hero-match {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        min-width: 60px;
+        flex-shrink: 0;
+    }
+
+    .hero-match-percent {
+        font-size: 14px;
+        font-weight: 600;
+        color: #00d2ff;
+    }
+
+    .hero-match-bar {
+        width: 60px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .hero-match-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
+        border-radius: 999px;
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
     }
 
     .tip-card {
@@ -1748,11 +1790,25 @@
                 topHeroes.forEach((hero, index) => {
                     const heroItem = document.createElement('div');
                     heroItem.className = 'hero-item';
+                    
+                    const maxScore = topHeroes[0].score;
+                    const matchPercent = Math.round((hero.score / maxScore) * 100);
+                    
+                    const heroNameFormatted = hero.name.toLowerCase().replace(/'/g, '').replace(/\s+/g, '_');
+                    const heroIconUrl = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroNameFormatted}.png`;
+                    
                     heroItem.innerHTML = `
                         <span class="hero-rank">${index + 1}.</span>
+                        <img src="${heroIconUrl}" alt="${hero.name}" class="hero-icon" onerror="this.style.display='none'">
                         <div style="flex: 1;">
                             <div class="hero-name">${hero.name}</div>
                             <div class="hero-tags">${hero.tags.slice(0, 3).join(' · ')}</div>
+                        </div>
+                        <div class="hero-match">
+                            <div class="hero-match-percent">${matchPercent}%</div>
+                            <div class="hero-match-bar">
+                                <div class="hero-match-fill" style="width: ${matchPercent}%"></div>
+                            </div>
                         </div>
                     `;
                     heroListContainer.appendChild(heroItem);
