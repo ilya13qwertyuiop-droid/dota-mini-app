@@ -1288,7 +1288,6 @@
 
             const statsKey = `${firstPos}_${secondPos}`;
             const statsData = positionStats[statsKey];
-            console.log('firstPos, secondPos, statsKey', firstPos, secondPos, statsKey);
             const statsContainer = document.getElementById('stats');
             statsContainer.innerHTML = '';
             
@@ -1345,16 +1344,46 @@
             heroDatabase: [
                 // Позиция 1 - Керри
                 [
-                    { name: "Anti-Mage", tags: ["mobile", "lategame", "splitpush"], difficulty: "medium" },
-                    { name: "Juggernaut", tags: ["aggressive", "versatile", "balanced"], difficulty: "easy" },
-                    { name: "Phantom Assassin", tags: ["aggressive", "snowball", "burst"], difficulty: "easy" },
-                    { name: "Terrorblade", tags: ["farming", "lategame", "splitpush"], difficulty: "hard" },
-                    { name: "Slark", tags: ["mobile", "pickoff", "snowball"], difficulty: "medium" },
-                    { name: "Spectre", tags: ["farming", "lategame", "teamfight"], difficulty: "easy" },
-                    { name: "Faceless Void", tags: ["teamfight", "control", "lategame"], difficulty: "medium" },
-                    { name: "Medusa", tags: ["farming", "lategame", "durable"], difficulty: "easy" },
-                    { name: "Naga Siren", tags: ["farming", "splitpush", "lategame"], difficulty: "hard" },
-                    { name: "Morphling", tags: ["versatile", "lategame", "mobile"], difficulty: "hard" }
+                    { name: "Alchemist", tags: ["midgame", "lategame", "tempo", "melee", "sustained", "farming", "snowball", "map_pressure", "splitpush", "teamfight"], difficulty: "easy" },
+                    { name: "Chaos Knight", tags: ["midgame", "lategame", "melee", "burst", "sustained", "map_pressure", "teamfight", "durable", "snowball"], difficulty: "medium" },
+                    { name: "Dragon Knight", tags: ["midgame", "lategame", "melee", "ranged", "sustained", "teamfight", "map_pressure", "splitpush", "durable", "control", "farming"], difficulty: "easy" },
+                    { name: "Lifestealer", tags: ["midgame", "lategame", "melee", "sustained", "pickoff", "teamfight", "durable", "snowball"], difficulty: "easy" },
+                    { name: "Omniknight", tags: ["midgame", "lategame", "melee", "sustained", "teamfight", "utility", "durable"], difficulty: "easy" },
+                    { name: "Sven", tags: ["midgame", "lategame", "melee", "burst", "sustained", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Tiny", tags: ["midgame", "lategame", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "snowball", "durable", "control"], difficulty: "medium" },
+                    { name: "Wraith King", tags: ["midgame", "lategame", "melee", "sustained", "teamfight", "map_pressure", "durable", "farming"], difficulty: "easy" },
+                    { name: "Anti-Mage", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "burst", "splitpush", "map_pressure", "mobile", "farming", "snowball"], difficulty: "hard" },
+                    { name: "Bloodseeker", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "aggressive", "snowball"], difficulty: "easy" },
+                    { name: "Broodmother", tags: ["midgame", "lategame", "melee", "sustained", "splitpush", "map_pressure", "farming", "snowball"], difficulty: "hard" },
+                    { name: "Clinkz", tags: ["midgame", "lategame", "tempo", "ranged", "burst", "sustained", "pickoff", "splitpush", "map_pressure", "mobile", "snowball"], difficulty: "easy" },
+                    { name: "Drow Ranger", tags: ["lategame", "superlate", "greedy", "ranged", "sustained", "teamfight", "farming"], difficulty: "easy" },
+                    { name: "Faceless Void", tags: ["lategame", "superlate", "melee", "sustained", "burst", "teamfight", "pickoff", "control", "farming", "mobile"], difficulty: "easy" },
+                    { name: "Gyrocopter", tags: ["lategame", "superlate", "greedy", "lategame", "tempo", "ranged", "sustained", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Juggernaut", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "burst", "teamfight", "map_pressure", "pickoff", "farming"], difficulty: "easy" },
+                    { name: "Kez", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "teamfight", "map_pressure", "pickoff", "farming"], difficulty: "hard" },
+                    { name: "Lone Druid", tags: ["midgame", "lategame", "melee", "ranged", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Luna", tags: ["midgame", "lategame", "ranged", "sustained", "burst", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Medusa", tags: ["lategame", "superlate", "greedy", "ranged", "sustained", "teamfight", "durable", "farming"], difficulty: "easy" },
+                    { name: "Monkey King", tags: ["midgame", "lategame", "melee", "sustained", "burst", "teamfight", "pickoff", "map_pressure", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Morphling", tags: ["lategame", "superlate", "ranged", "burst", "sustained", "teamfight", "pickoff", "map_pressure", "mobile", "snowball", "farming"], difficulty: "hard" },
+                    { name: "Naga Siren", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Phantom Assassin", tags: ["midgame", "lategame", "melee", "burst", "sustained", "pickoff", "teamfight", "snowball", "farming"], difficulty: "easy" },
+                    { name: "Phantom Lancer", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Razor", tags: ["midgame", "lategame", "tempo", "ranged", "sustained", "teamfight", "map_pressure", "durable"], difficulty: "easy" },
+                    { name: "Riki", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "map_pressure", "mobile", "snowball"], difficulty: "easy" },
+                    { name: "Shadow Fiend", tags: ["midgame", "lategame", "ranged", "burst", "sustained", "teamfight", "map_pressure", "farming", "snowball"], difficulty: "medium" },
+                    { name: "Slark", tags: ["midgame", "lategame", "tempo", "melee", "sustained", "burst", "pickoff", "map_pressure", "teamfight", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Sniper", tags: ["lategame", "superlate", "greedy", "ranged", "sustained", "burst", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Spectre", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "teamfight", "map_pressure", "durable", "farming"], difficulty: "medium" },
+                    { name: "Templar Assassin", tags: ["midgame", "lategame", "tempo", "ranged", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "snowball", "farming"], difficulty: "medium" },
+                    { name: "Terrorblade", tags: ["lategame", "superlate", "greedy", "melee", "ranged", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Troll Warlord", tags: ["lategame", "superlate", "melee", "ranged", "sustained", "teamfight", "map_pressure", "farming"], difficulty: "medium" },
+                    { name: "Ursa", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "snowball"], difficulty: "easy" },
+                    { name: "Weaver", tags: ["midgame", "superlate", "lategame", "ranged", "sustained", "burst", "pickoff", "map_pressure", "teamfight", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Abaddon", tags: ["midgame", "lategame", "superlate", "melee", "sustained", "teamfight", "map_pressure", "durable", "utility", "farming"], difficulty: "easy" },
+                    { name: "Windranger", tags: ["midgame", "lategame", "ranged", "sustained", "burst", "pickoff", "teamfight", "map_pressure", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Marci", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Nature's Prophet", tags: ["midgame", "lategame", "ranged", "sustained", "splitpush", "map_pressure", "pickoff", "teamfight", "farming", "mobile"], difficulty: "medium" }
                 ],
                 // Позиция 2 - Мидер
                 [
@@ -1367,7 +1396,27 @@
                     { name: "Ember Spirit", tags: ["mobile", "aggressive", "versatile"], difficulty: "hard" },
                     { name: "Templar Assassin", tags: ["aggressive", "snowball", "burst"], difficulty: "medium" },
                     { name: "Zeus", tags: ["burst", "teamfight", "aggressive"], difficulty: "easy" },
-                    { name: "Tinker", tags: ["farming", "mobile", "versatile"], difficulty: "hard" }
+                    { name: "Tinker", tags: ["farming", "mobile", "versatile"], difficulty: "hard" },
+                    { name: "Void Spirit", tags: ["mobile", "burst", "aggressive"], difficulty: "hard" },
+                    { name: "Kunkka", tags: ["burst", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Magnus", tags: ["teamfight", "control", "versatile"], difficulty: "medium" },
+                    { name: "Bloodseeker", tags: ["aggressive", "pickoff", "snowball"], difficulty: "easy" },
+                    { name: "Death Prophet", tags: ["aggressive", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Huskar", tags: ["aggressive", "snowball", "durable"], difficulty: "medium" },
+                    { name: "Razor", tags: ["aggressive", "durable", "balanced"], difficulty: "easy" },
+                    { name: "Viper", tags: ["aggressive", "durable", "balanced"], difficulty: "easy" },
+                    { name: "Outworld Destroyer", tags: ["burst", "farming", "balanced"], difficulty: "medium" },
+                    { name: "Dragon Knight", tags: ["durable", "balanced", "versatile"], difficulty: "easy" },
+                    { name: "Monkey King", tags: ["aggressive", "mobile", "versatile"], difficulty: "medium" },
+                    { name: "Pangolier", tags: ["mobile", "teamfight", "versatile"], difficulty: "hard" },
+                    { name: "Alchemist", tags: ["farming", "aggressive", "versatile"], difficulty: "medium" },
+                    { name: "Medusa", tags: ["farming", "lategame", "durable"], difficulty: "easy" },
+                    { name: "Sniper", tags: ["farming", "burst", "balanced"], difficulty: "easy" },
+                    { name: "Arc Warden", tags: ["splitpush", "farming", "versatile"], difficulty: "hard" },
+                    { name: "Visage", tags: ["aggressive", "versatile", "control"], difficulty: "hard" },
+                    { name: "Broodmother", tags: ["splitpush", "aggressive", "snowball"], difficulty: "hard" },
+                    { name: "Meepo", tags: ["farming", "snowball", "splitpush"], difficulty: "hard" },
+                    { name: "Lycan", tags: ["splitpush", "aggressive", "farming"], difficulty: "medium" }
                 ],
                 // Позиция 3 - Хардлейнер
                 [
@@ -1380,7 +1429,27 @@
                     { name: "Beastmaster", tags: ["versatile", "control", "teamfight"], difficulty: "medium" },
                     { name: "Doom", tags: ["versatile", "control", "durable"], difficulty: "easy" },
                     { name: "Slardar", tags: ["aggressive", "control", "durable"], difficulty: "easy" },
-                    { name: "Legion Commander", tags: ["aggressive", "snowball", "durable"], difficulty: "easy" }
+                    { name: "Legion Commander", tags: ["aggressive", "snowball", "durable"], difficulty: "easy" },
+                    { name: "Bristleback", tags: ["durable", "aggressive", "balanced"], difficulty: "easy" },
+                    { name: "Omniknight", tags: ["durable", "teamfight", "versatile"], difficulty: "easy" },
+                    { name: "Treant Protector", tags: ["durable", "control", "versatile"], difficulty: "medium" },
+                    { name: "Night Stalker", tags: ["aggressive", "pickoff", "mobile"], difficulty: "easy" },
+                    { name: "Sand King", tags: ["teamfight", "control", "mobile"], difficulty: "medium" },
+                    { name: "Tidehunter", tags: ["durable", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Earthshaker", tags: ["teamfight", "control", "aggressive"], difficulty: "medium" },
+                    { name: "Sven", tags: ["farming", "teamfight", "durable"], difficulty: "easy" },
+                    { name: "Wraith King", tags: ["durable", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Kunkka", tags: ["burst", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Magnus", tags: ["teamfight", "control", "versatile"], difficulty: "medium" },
+                    { name: "Pangolier", tags: ["mobile", "teamfight", "versatile"], difficulty: "hard" },
+                    { name: "Dark Seer", tags: ["versatile", "teamfight", "mobile"], difficulty: "medium" },
+                    { name: "Dragon Knight", tags: ["durable", "balanced", "versatile"], difficulty: "easy" },
+                    { name: "Abaddon", tags: ["durable", "versatile", "balanced"], difficulty: "easy" },
+                    { name: "Brewmaster", tags: ["teamfight", "control", "versatile"], difficulty: "hard" },
+                    { name: "Chaos Knight", tags: ["aggressive", "teamfight", "durable"], difficulty: "medium" },
+                    { name: "Lifestealer", tags: ["aggressive", "durable", "pickoff"], difficulty: "easy" },
+                    { name: "Necrophos", tags: ["durable", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Clockwerk", tags: ["aggressive", "control", "pickoff"], difficulty: "medium" }
                 ],
                 // Позиция 4 - Роумер
                 [
@@ -1393,7 +1462,22 @@
                     { name: "Clockwerk", tags: ["aggressive", "control", "pickoff"], difficulty: "medium" },
                     { name: "Phoenix", tags: ["teamfight", "durable", "control"], difficulty: "hard" },
                     { name: "Nyx Assassin", tags: ["pickoff", "burst", "mobile"], difficulty: "easy" },
-                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" }
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Tiny", tags: ["burst", "control", "versatile"], difficulty: "easy" },
+                    { name: "Sand King", tags: ["teamfight", "control", "mobile"], difficulty: "medium" },
+                    { name: "Slardar", tags: ["aggressive", "control", "durable"], difficulty: "easy" },
+                    { name: "Pangolier", tags: ["mobile", "teamfight", "versatile"], difficulty: "hard" },
+                    { name: "Hoodwink", tags: ["versatile", "pickoff", "mobile"], difficulty: "medium" },
+                    { name: "Marci", tags: ["aggressive", "versatile", "mobile"], difficulty: "medium" },
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Vengeful Spirit", tags: ["aggressive", "versatile", "teamfight"], difficulty: "easy" },
+                    { name: "Skywrath Mage", tags: ["burst", "aggressive", "pickoff"], difficulty: "easy" },
+                    { name: "Ancient Apparition", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Bane", tags: ["control", "pickoff", "versatile"], difficulty: "medium" },
+                    { name: "Grimstroke", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Disruptor", tags: ["control", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Dark Willow", tags: ["control", "versatile", "mobile"], difficulty: "hard" },
+                    { name: "Ogre Magi", tags: ["durable", "aggressive", "versatile"], difficulty: "easy" }
                 ],
                 // Позиция 5 - Фулл-саппорт
                 [
@@ -1406,35 +1490,66 @@
                     { name: "Oracle", tags: ["versatile", "control", "durable"], difficulty: "hard" },
                     { name: "Dazzle", tags: ["versatile", "durable", "balanced"], difficulty: "medium" },
                     { name: "Vengeful Spirit", tags: ["aggressive", "versatile", "teamfight"], difficulty: "easy" },
-                    { name: "Warlock", tags: ["teamfight", "control", "durable"], difficulty: "easy" }
+                    { name: "Warlock", tags: ["teamfight", "control", "durable"], difficulty: "easy" },
+                    { name: "Bane", tags: ["control", "pickoff", "versatile"], difficulty: "medium" },
+                    { name: "Chen", tags: ["versatile", "teamfight", "control"], difficulty: "hard" },
+                    { name: "Enchantress", tags: ["versatile", "aggressive", "mobile"], difficulty: "medium" },
+                    { name: "Keeper of the Light", tags: ["versatile", "teamfight", "farming"], difficulty: "medium" },
+                    { name: "Ancient Apparition", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Rubick", tags: ["versatile", "control", "teamfight"], difficulty: "hard" },
+                    { name: "Disruptor", tags: ["control", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Grimstroke", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Phoenix", tags: ["teamfight", "durable", "control"], difficulty: "hard" },
+                    { name: "Ogre Magi", tags: ["durable", "aggressive", "versatile"], difficulty: "easy" },
+                    { name: "Treant Protector", tags: ["durable", "control", "versatile"], difficulty: "medium" },
+                    { name: "Undying", tags: ["durable", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Abaddon", tags: ["durable", "versatile", "balanced"], difficulty: "easy" },
+                    { name: "Winter Wyvern", tags: ["versatile", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Shadow Demon", tags: ["versatile", "control", "durable"], difficulty: "hard" },
+                    { name: "Silencer", tags: ["control", "versatile", "burst"], difficulty: "easy" },
+                    { name: "Skywrath Mage", tags: ["burst", "aggressive", "pickoff"], difficulty: "easy" },
+                    { name: "Lina", tags: ["burst", "aggressive", "versatile"], difficulty: "easy" }
                 ]
             ],
 
             questions: [
                 {
-                    question: "Какой стиль игры тебе ближе?",
+                    question: "На каком этапе игры ты хочешь быть максимально полезен?",
                     answers: [
-                        { text: "⚔️ Агрессивная игра с раннего момента", tags: ["aggressive"] },
-                        { text: "⚖️ Сбалансированная игра — драки и фарм", tags: ["balanced", "versatile"] },
-                        { text: "🌾 Фокус на фарм и поздние стадии", tags: ["farming", "lategame"] },
-                        { text: "🏃 Мобильность и пикоффы по карте", tags: ["mobile", "pickoff"] }
+                        { text: "⚔️ Середина игры — хочу почувствовать силу уже к 20–30 минуте", tags: ["midgame", "tempo"] },
+                        { text: "🐉 Поздняя игра — пик где-то к 35–45 минуте", tags: ["lategame"] },
+                        { text: "⏳ Суперлейт — люблю затяжные игры 50+ минут", tags: ["lategame", "superlate", "greedy"] }
                     ]
                 },
                 {
-                    question: "Что важнее для тебя в герое?",
+                    question: "Какой тип атаки тебе нравится?",
                     answers: [
-                        { text: "🎯 Способность начинать драки и контролить", tags: ["teamfight", "control"] },
-                        { text: "💥 Высокий burst урон и быстрые убийства", tags: ["burst", "snowball"] },
-                        { text: "🛡️ Выживаемость и танковость", tags: ["durable"] },
-                        { text: "🔄 Гибкость и адаптация под разные ситуации", tags: ["versatile"] }
+                        { text: "🗡️ Ближний бой — не против подойти к врагу вплотную", tags: ["melee"] },
+                        { text: "🏹 Дальняя дистанция — хочу держаться подальше", tags: ["ranged"] }
+                    ]
+                },
+                {
+                    question: "Какой тип урона тебе больше нравится?",
+                    answers: [
+                        { text: "💥 Быстрый урон — врываюсь и за секунды стираю героя", tags: ["burst"] },
+                        { text: "♾ Постоянный урон — хочу просто райткликать", tags: ["sustained"] }
+                    ]
+                },
+                {
+                    question: "Как ты предпочитаешь влиять на карту?",
+                    answers: [
+                        { text: "🗺️ Сплит-пушить, давить линии, выманивать врагов", tags: ["splitpush", "map_pressure"] },
+                        { text: "⚔️ Чаще быть с командой в драках и вокруг объективов", tags: ["teamfight"] },
+                        { text: "🎯 Иметь возможность делать соло пикоффы по карте", tags: ["pickoff", "map_pressure"] }
                     ]
                 },
                 {
                     question: "Насколько сложного героя готов освоить?",
                     answers: [
-                        { text: "😊 Простой герой — хочу фокусироваться на игре", tags: ["easy"] },
-                        { text: "⚖️ Средняя сложность — баланс механик и макро", tags: ["medium"] },
-                        { text: "🎓 Сложный герой — готов изучать все нюансы", tags: ["hard"] }
+                        { text: "😊 Простой — минимум микро, хочу фокус на макро и позиционке", tags: ["easy"] },
+                        { text: "⚖️ Средняя сложность — пару комбинаций/навыков, но без экстремального микро", tags: ["medium"] },
+                        { text: "🎓 Сложный — сложные механики и много кнопок", tags: ["hard"] }
                     ]
                 }
             ],
@@ -1604,6 +1719,10 @@
                     versatile: "универсальность",
                     farming: "фарм",
                     lategame: "лейтгейм",
+                    superlate: "суперлейт",
+                    greedy: "затяжные игры",
+                    midgame: "мидгейм",
+                    tempo: "темп",
                     mobile: "мобильность",
                     pickoff: "пикоффы",
                     teamfight: "командные драки",
@@ -1611,7 +1730,12 @@
                     burst: "бёрст урон",
                     snowball: "снежный ком",
                     durable: "живучесть",
-                    splitpush: "сплит-пуш"
+                    splitpush: "сплит-пуш",
+                    map_pressure: "давление на карту",
+                    melee: "ближний бой",
+                    ranged: "дальний бой",
+                    sustained: "постоянный урон",
+                    utility: "утилита"
                 };
                 
                 const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
