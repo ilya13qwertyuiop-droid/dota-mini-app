@@ -1,0 +1,1848 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dota 2 Helper</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    :root {
+        --bg-main: #050509;
+        --glass-bg: rgba(15, 15, 20, 0.82);
+        --glass-border: rgba(255, 255, 255, 0.06);
+        --accent: #3a7bd5;
+        --accent-soft: rgba(58, 123, 213, 0.18);
+        --text-main: #f5f5f7;
+        --text-muted: #9b9ba1;
+        --nav-height: 70px;
+    }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background:
+            radial-gradient(circle at 0% 0%, rgba(255, 0, 92, 0.24), transparent 55%),
+            radial-gradient(circle at 100% 100%, rgba(255, 0, 0, 0.18), transparent 55%),
+            radial-gradient(circle at 0% 100%, rgba(120, 0, 40, 0.18), transparent 55%),
+            linear-gradient(145deg, #020107 0%, #050509 45%, #050307 100%);
+        min-height: 100vh;
+        color: var(--text-main);
+        padding-bottom: var(--nav-height);
+    }
+
+    .app-container {
+        max-width: 620px;
+        margin: 0 auto;
+        min-height: 100vh;
+        position: relative;
+    }
+
+    .page {
+        display: none;
+        padding: 20px;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .page.active {
+        display: block;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .dashboard-header {
+        text-align: center;
+        margin-bottom: 24px;
+    }
+
+    .dashboard-header h1 {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+
+    .dashboard-header p {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+
+    .card {
+        background: var(--glass-bg);
+        border-radius: 20px;
+        padding: 20px;
+        margin-bottom: 16px;
+        border: 1px solid var(--glass-border);
+        backdrop-filter: blur(22px) saturate(140%);
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .card-icon {
+        font-size: 24px;
+    }
+
+    .card-title {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .card-content {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.6;
+    }
+
+    .position-result {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px;
+        background: rgba(58, 123, 213, 0.12);
+        border-radius: 14px;
+        margin-top: 12px;
+        border: 1px solid rgba(58, 123, 213, 0.3);
+    }
+
+    .position-result-text {
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .position-result-date {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+    }
+
+    .btn-small {
+        padding: 8px 16px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-small:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(58, 123, 213, 0.4);
+    }
+
+    .hero-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .hero-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        gap: 12px;
+    }
+
+    .hero-rank {
+        font-size: 16px;
+        font-weight: 700;
+        color: #00d2ff;
+        min-width: 24px;
+        flex-shrink: 0;
+    }
+
+    .hero-icon {
+        width: 48px;
+        height: 27px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        flex-shrink: 0;
+    }
+
+    .hero-name {
+        font-size: 14px;
+        font-weight: 500;
+        flex: 1;
+    }
+
+    .hero-tags {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 2px;
+    }
+
+    .hero-match {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        min-width: 60px;
+        flex-shrink: 0;
+    }
+
+    .hero-match-percent {
+        font-size: 14px;
+        font-weight: 600;
+        color: #00d2ff;
+    }
+
+    .hero-match-bar {
+        width: 60px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .hero-match-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
+        border-radius: 999px;
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
+    }
+
+    .tip-card {
+        padding: 16px;
+        background: linear-gradient(135deg, rgba(58, 123, 213, 0.15), rgba(0, 210, 255, 0.1));
+        border-radius: 14px;
+        border: 1px solid rgba(58, 123, 213, 0.3);
+    }
+
+    .quick-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    .action-btn {
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        color: var(--text-main);
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .action-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(58, 123, 213, 0.5);
+        transform: translateY(-1px);
+    }
+
+    .action-btn.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .action-btn.disabled:hover {
+        transform: none;
+    }
+
+    .badge-soon {
+        margin-left: auto;
+        padding: 4px 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    .quiz-container {
+        background: var(--glass-bg);
+        border-radius: 26px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9);
+        padding: 28px 20px 26px;
+        backdrop-filter: blur(22px) saturate(140%);
+        border: 1px solid var(--glass-border);
+    }
+
+    h1 {
+        font-size: 22px;
+        color: var(--text-main);
+        margin-bottom: 6px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-align: center;
+    }
+
+    .subtitle {
+        font-size: 14px;
+        color: var(--text-muted);
+        margin-bottom: 22px;
+        text-align: center;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 999px;
+        margin-bottom: 22px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
+        width: 0%;
+        transition: width 0.3s ease;
+        box-shadow: 0 0 12px rgba(0, 210, 255, 0.6);
+    }
+
+    .question {
+        font-size: 17px;
+        color: var(--text-main);
+        margin-bottom: 18px;
+        font-weight: 600;
+        line-height: 1.5;
+        text-align: left;
+    }
+
+    .answers {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .answer-btn {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.12), rgba(10, 10, 16, 0.96));
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 12px 13px;
+        border-radius: 18px;
+        font-size: 15px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        text-align: left;
+        color: var(--text-main);
+        font-weight: 500;
+        line-height: 1.4;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 10px 24px rgba(0, 0, 0, 0.8);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .answer-btn:hover {
+            background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.18), rgba(15, 15, 22, 0.98));
+            border-color: rgba(58, 123, 213, 0.45);
+            transform: translateY(-1px);
+        }
+    }
+
+    .answer-btn.selected {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.28), rgba(8, 8, 14, 0.98));
+        border-color: #3a7bd5;
+        transform: scale(0.98);
+    }
+
+    .answer-btn span.emoji {
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+
+    .answer-btn span.text {
+        flex: 1;
+    }
+
+    .result {
+        display: none;
+        text-align: center;
+    }
+
+    .result.active {
+        display: block;
+        animation: fadeIn 0.45s ease;
+    }
+
+    .result-header {
+        font-size: 32px;
+        margin-bottom: 6px;
+    }
+
+    .result-title {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .position-primary {
+        font-size: 18px;
+        color: var(--text-main);
+        margin-bottom: 10px;
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    .position-badge {
+        display: inline-block;
+        padding: 8px 18px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    .position-secondary-label {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+
+    .position-secondary-badge {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, rgba(58, 123, 213, 0.2), rgba(0, 210, 255, 0.2));
+        border: 1.5px solid rgba(58, 123, 213, 0.5);
+        color: #a0c4ff;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(58, 123, 213, 0.25);
+    }
+
+    .stats {
+        margin-bottom: 24px;
+    }
+
+    .stat-item {
+        margin-bottom: 14px;
+        text-align: left;
+    }
+
+    .stat-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .stat-label {
+        font-size: 13px;
+        color: var(--text-main);
+        margin-bottom: 6px;
+        font-weight: 500;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .stat-value {
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .stat-bar {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .stat-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3a7bd5, #00d2ff);
+        border-radius: 999px;
+        width: 0;
+        transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 0 10px rgba(0, 210, 255, 0.6);
+    }
+
+    .description {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin-bottom: 20px;
+        white-space: pre-line;
+        text-align: left;
+        background: rgba(58, 123, 213, 0.08);
+        border: 1px solid rgba(58, 123, 213, 0.25);
+        border-radius: 16px;
+        padding: 16px;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .btn-outline {
+        background: transparent;
+        color: var(--text-main);
+        border: 1px solid rgba(58, 123, 213, 0.5);
+        padding: 11px 26px;
+        border-radius: 999px;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.15s ease;
+        display: block;
+        margin: 0 auto 12px auto;
+        width: fit-content;
+    }
+
+    .btn-outline:hover {
+        background: rgba(58, 123, 213, 0.1);
+        border-color: #3a7bd5;
+    }
+
+    .btn-secondary {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 11px 26px;
+        border-radius: 999px;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        display: block;
+        margin: 0 auto;
+        width: fit-content;
+    }
+
+    .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.25);
+        color: var(--text-main);
+    }
+
+    .position-select-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    .position-option {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.12), rgba(10, 10, 16, 0.96));
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 14px 16px;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        text-align: left;
+        color: var(--text-main);
+        font-weight: 500;
+        font-size: 15px;
+    }
+
+    .position-option:hover {
+        background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.18), rgba(15, 15, 22, 0.98));
+        border-color: rgba(58, 123, 213, 0.45);
+        transform: translateY(-1px);
+    }
+
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: var(--nav-height);
+        background: rgba(10, 10, 15, 0.95);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0 20px;
+        z-index: 1000;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
+    }
+
+    .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-radius: 12px;
+        color: var(--text-muted);
+    }
+
+    .nav-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .nav-item.active {
+        color: #00d2ff;
+    }
+
+    .nav-icon {
+        font-size: 24px;
+        transition: transform 0.2s ease;
+    }
+
+    .nav-item.active .nav-icon {
+        transform: scale(1.1);
+    }
+
+    .nav-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+    }
+
+    .placeholder {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .placeholder-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .placeholder-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .placeholder-text {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+
+    @media (max-width: 380px) {
+        h1 {
+            font-size: 20px;
+        }
+        .question {
+            font-size: 16px;
+        }
+        .answer-btn {
+            font-size: 14px;
+            padding: 10px 11px;
+        }
+    }
+</style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Главная страница (Dashboard) -->
+        <div id="page-home" class="page active">
+            <div class="dashboard-header">
+                <h1>👋 Привет!</h1>
+                <p>Добро пожаловать в Dota 2 Helper</p>
+            </div>
+
+            <!-- Быстрые действия -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">⚡</span>
+                    <span class="card-title">Быстрые действия</span>
+                </div>
+                <div class="quick-actions">
+                    <button class="action-btn" onclick="goToQuiz()">
+                        <span>🎯</span>
+                        <span>Пройти тест по позициям</span>
+                    </button>
+                    <button class="action-btn" onclick="goToHeroQuiz()">
+                        <span>🦸</span>
+                        <span>Подобрать героя</span>
+                    </button>
+                    <button class="action-btn disabled">
+                        <span>⚔️</span>
+                        <span>Драфт помощник</span>
+                        <span class="badge-soon">Скоро</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Совет дня -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">💡</span>
+                    <span class="card-title">Совет дня</span>
+                </div>
+                <div class="tip-card">
+                    <div class="card-content" id="dailyTip">
+                        Роумеры должны контролировать руны каждые 2 минуты! Это даёт преимущество команде в опыте и ресурсах.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Страница квизов -->
+        <div id="page-quiz" class="page">
+            <!-- Список доступных квизов -->
+            <div id="quiz-list">
+                <div class="dashboard-header">
+                    <h1>🎯 Квизы</h1>
+                    <p>Узнай больше о своём игровом стиле</p>
+                </div>
+
+                <!-- Квиз по позициям -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon">🎮</span>
+                        <span class="card-title">Какая твоя позиция?</span>
+                    </div>
+                    <div class="card-content" style="margin-bottom: 16px;">
+                        Пройди тест за 2 минуты и узнай, на какой роли ты раскроешься лучше всего
+                    </div>
+                    <button class="btn-small" onclick="startPositionQuiz()" style="width: 100%; padding: 12px;">
+                        Начать тест →
+                    </button>
+                </div>
+
+                <!-- Квиз по героям -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon">🦸</span>
+                        <span class="card-title">Подбор идеального героя</span>
+                    </div>
+                    <div class="card-content" style="margin-bottom: 16px;">
+                        Ответь на вопросы и получи список героев, которые идеально подходят под твой стиль игры
+                    </div>
+                    <button class="btn-small" onclick="startHeroQuiz()" style="width: 100%; padding: 12px;">
+                        Подобрать героя →
+                    </button>
+                </div>
+
+                <!-- Последний результат (если есть) -->
+                <div class="card" id="quizPageLastResult" style="display: none;">
+                    <div class="card-header">
+                        <span class="card-icon">📊</span>
+                        <span class="card-title">Твой последний результат</span>
+                    </div>
+                    <div class="position-result">
+                        <div>
+                            <div class="position-result-text" id="quizPagePosition">Pos 4 — Роумер</div>
+                            <div class="position-result-date" id="quizPageDate">Пройден: сегодня</div>
+                        </div>
+                        <button class="btn-small" onclick="startPositionQuiz()">Пересдать</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Квиз по позициям -->
+            <div id="quiz-content-container" style="display: none;">
+                <div class="quiz-container">
+                    <div class="quiz-content">
+                        <h1>🎮 Какая твоя позиция в Dota 2?</h1>
+                        <p class="subtitle">Пройди тест и узнай, на какой роли ты раскроешься лучше всего</p>
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressBar"></div>
+                        </div>
+
+                        <div class="question" id="question"></div>
+                        <div class="answers" id="answers"></div>
+                    </div>
+
+                    <div class="result" id="result">
+                        <div class="result-header">🎯</div>
+                        <div class="result-title">Твоя позиция</div>
+
+                        <div class="position-primary" id="positionPrimary"></div>
+                        <div class="position-badge" id="positionBadge"></div>
+
+                        <div class="position-secondary-label">Дополнительные задатки</div>
+                        <div class="position-secondary-badge" id="positionSecondaryBadge"></div>
+
+                        <div class="stats" id="stats"></div>
+
+                        <button class="btn-outline" onclick="togglePositionDetails()">Показать детали</button>
+                        <div class="description hidden" id="positionDescription"></div>
+                        <button class="btn-secondary" onclick="backToQuizList()">← Назад к квизам</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Квиз по героям -->
+            <div id="hero-quiz-container" style="display: none;">
+                <div class="quiz-container">
+                    <!-- Стартовый экран -->
+                    <div id="hero-start">
+                        <h1>🦸 Подбор идеального героя</h1>
+                        <p class="subtitle">Узнай, какие герои подходят под твой стиль игры</p>
+
+                        <div class="answers">
+                            <button class="answer-btn" id="useSavedPositionBtn" onclick="heroQuiz.useSavedPosition()">
+                                <span class="emoji">📊</span>
+                                <span class="text" id="savedPositionText">Сначала пройди тест по позициям</span>
+                            </button>
+                            <button class="answer-btn" onclick="heroQuiz.showPositionSelect()">
+                                <span class="emoji">🎯</span>
+                                <span class="text">Выбрать позицию вручную</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Ручной выбор позиции -->
+                    <div id="hero-position-select" style="display: none;">
+                        <h1>🎯 Выбери позицию</h1>
+                        <p class="subtitle">На какой позиции ты хочешь играть?</p>
+
+                        <div class="position-select-grid">
+                            <button class="position-option" onclick="heroQuiz.selectPosition(0)">
+                                <strong>Позиция 1 — Керри</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(1)">
+                                <strong>Позиция 2 — Мидер</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(2)">
+                                <strong>Позиция 3 — Хардлейнер</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(3)">
+                                <strong>Позиция 4 — Роумер</strong>
+                            </button>
+                            <button class="position-option" onclick="heroQuiz.selectPosition(4)">
+                                <strong>Позиция 5 — Фулл-саппорт</strong>
+                            </button>
+                        </div>
+
+                        <button class="btn-secondary" onclick="heroQuiz.backToStart()" style="margin-top: 20px;">← Назад</button>
+                    </div>
+
+                    <!-- Вопросы -->
+                    <div id="hero-questions" style="display: none;">
+                        <h1>🦸 Подбор героя</h1>
+                        <p class="subtitle" id="heroQuizSubtitle">Ответь на несколько вопросов</p>
+
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="heroProgressBar"></div>
+                        </div>
+
+                        <div class="question" id="heroQuestion"></div>
+                        <div class="answers" id="heroAnswers"></div>
+                    </div>
+
+                    <!-- Результат -->
+                    <div id="hero-result" style="display: none;">
+                        <div class="result-header">🦸</div>
+                        <div class="result-title" id="heroResultPosition">Рекомендуем для Керри</div>
+
+                        <div class="position-primary">Топ-5 героев под твой стиль</div>
+
+                        <div class="hero-list" id="heroResultList"></div>
+
+                        <div class="description" id="heroResultDescription" style="margin-top: 16px;"></div>
+
+                        <button class="btn-outline" onclick="heroQuiz.restart()">Пройти заново</button>
+                        <button class="btn-secondary" onclick="backToQuizList()">← Назад к квизам</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Страница базы знаний (заглушка) -->
+        <div id="page-database" class="page">
+            <div class="placeholder">
+                <div class="placeholder-icon">📊</div>
+                <div class="placeholder-title">База знаний</div>
+                <div class="placeholder-text">Статистика героев, мета-отчёты и синергия команд. Скоро...</div>
+            </div>
+        </div>
+
+        <!-- Страница профиля (заглушка) -->
+        <div id="page-profile" class="page">
+            <div class="placeholder">
+                <div class="placeholder-icon">⚙️</div>
+                <div class="placeholder-title">Профиль</div>
+                <div class="placeholder-text">История тестов и персональные настройки. Скоро...</div>
+            </div>
+        </div>
+
+        <!-- Нижняя навигация -->
+        <div class="bottom-nav">
+            <div class="nav-item active" onclick="switchPage('home')">
+                <div class="nav-icon">🏠</div>
+                <div class="nav-label">Главная</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('quiz')">
+                <div class="nav-icon">🎯</div>
+                <div class="nav-label">Квизы</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('database')">
+                <div class="nav-icon">📊</div>
+                <div class="nav-label">База</div>
+            </div>
+            <div class="nav-item" onclick="switchPage('profile')">
+                <div class="nav-icon">⚙️</div>
+                <div class="nav-label">Профиль</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+        }
+
+        // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
+        const quizData = [
+            {
+                question: "От каких моментов в игре ты получаешь максимальное удовольствие?",
+                answers: [
+                    {
+                        text: "💰 Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
+                        scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "🔪 Когда я один в правильный момент поймал и стёр врага за пару секунд",
+                        scores: { pos1: 2, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "⚔️ Когда я первый прыгаю в драку и закрываю вражеских героев",
+                        scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
+                    },
+                    {
+                        text: "🤝 Когда моя помощь спасает союзников в критический момент",
+                        scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
+                    }
+                ]
+            },
+            {
+                question: "Первые 10 минут игры. Что ты чаще всего делаешь?",
+                answers: [
+                    {
+                        text: "🌾 Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
+                        scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 0, pos5: 0 }
+                    },
+                    {
+                        text: "⚖️ Хочу переиграть оппонента на линии и начать двигаться по карте",
+                        scores: { pos1: 1, pos2: 3, pos3: 2, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "⚔️ Ищу возможности для агрессии на линии и стараюсь доминировать",
+                        scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 2 }
+                    },
+                    {
+                        text: "🗺️ Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
+                        scores: { pos1: 0, pos2: 1, pos3: 0, pos4: 2, pos5: 3 }
+                    }
+                ]
+            },
+            {
+                question: "Видишь, что враги начали драку на карте. Как ты реагируешь?",
+                answers: [
+                    {
+                        text: "📊 Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
+                        scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 0, pos5: 0 }
+                    },
+                    {
+                        text: "⚔️ Сразу даю ТП, чтобы помочь команде",
+                        scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
+                    },
+                    {
+                        text: "🎯 Пытаюсь 'выключить' опасного вражеского героя",
+                        scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
+                    },
+                    {
+                        text: "💚 Держу позицию, чтобы грамотно раскинуть кнопки",
+                        scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 1, pos5: 3 }
+                    }
+                ]
+            },
+            {
+                question: "Каких героев ты предпочитаешь?",
+                answers: [
+                    {
+                        text: "💎 Героев, которые становятся сильными с дорогими предметами",
+                        scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "🎯 Героев с бёрст уроном — убил и ушёл",
+                        scores: { pos1: 1, pos2: 3, pos3: 1, pos4: 1, pos5: 0 }
+                    },
+                    {
+                        text: "🛡️ Героев, которые выдерживают много урона",
+                        scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 1 }
+                    },
+                    {
+                        text: "🤝 Героев с полезными способностями для команды (станы, сейвы, хил)",
+                        scores: { pos1: 0, pos2: 0, pos3: 1, pos4: 3, pos5: 3 }
+                    }
+                ]
+            },
+            {
+                question: "На что ты обращаешь внимание в конце игры (статистика)?",
+                answers: [
+                    {
+                        text: "📊 Золото/Фраги/Добито крипов",
+                        scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "⚔️ Фраги и нанесённый урон",
+                        scores: { pos1: 3, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
+                    },
+                    {
+                        text: "🎯 Количество контроля и впитанного урона",
+                        scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 2 }
+                    },
+                    {
+                        text: "💚 Количество расходников (варды, дасты), ассистов, лечения",
+                        scores: { pos1: 0, pos2: 0, pos3: 0, pos4: 3, pos5: 3 }
+                    }
+                ]
+            }
+        ];
+
+        const positionNames = {
+            pos1: "Pos 1 — Керри",
+            pos2: "Pos 2 — Мидер",
+            pos3: "Pos 3 — Хардлейнер",
+            pos4: "Pos 4 — Роумер",
+            pos5: "Pos 5 — Фулл-саппорт"
+        };
+
+        const positionShortNames = {
+            pos1: "Керри",
+            pos2: "Мидер",
+            pos3: "Хардлейнер",
+            pos4: "Роумер",
+            pos5: "Фулл-саппорт"
+        };
+
+        const positionStats = {
+            "pos1_pos2": [
+                { label: "Фарм", value: 95 },
+                { label: "Мидгейм", value: 85 },
+                { label: "Темп", value: 75 }
+            ],
+            "pos1_pos3": [
+                { label: "Фарм", value: 90 },
+                { label: "Фронт", value: 80 },
+                { label: "Живучесть", value: 85 }
+            ],
+            "pos1_pos4": [
+                { label: "Фарм", value: 85 },
+                { label: "Роум", value: 70 },
+                { label: "Агрессия", value: 75 }
+            ],
+            "pos1_pos5": [
+                { label: "Фарм", value: 90 },
+                { label: "Командность", value: 80 },
+                { label: "Утилита", value: 70 }
+            ],
+            "pos2_pos1": [
+                { label: "Линия", value: 85 },
+                { label: "Лейт", value: 80 },
+                { label: "Скалирование", value: 90 }
+            ],
+            "pos2_pos3": [
+                { label: "Инициация", value: 85 },
+                { label: "Фронт", value: 80 },
+                { label: "Контроль", value: 90 }
+            ],
+            "pos2_pos4": [
+                { label: "Роум", value: 90 },
+                { label: "Мидгейм", value: 95 },
+                { label: "Активность", value: 85 }
+            ],
+            "pos2_pos5": [
+                { label: "Темп", value: 85 },
+                { label: "Командность", value: 90 },
+                { label: "Контроль карты", value: 75 }
+            ],
+            "pos3_pos1": [
+                { label: "Фронт", value: 85 },
+                { label: "Лейт", value: 80 },
+                { label: "Давление", value: 75 }
+            ],
+            "pos3_pos2": [
+                { label: "Линия", value: 90 },
+                { label: "Агрессия", value: 95 },
+                { label: "Прессинг", value: 85 }
+            ],
+            "pos3_pos4": [
+                { label: "Роум", value: 80 },
+                { label: "Пространство", value: 85 },
+                { label: "Инициация", value: 90 }
+            ],
+            "pos3_pos5": [
+                { label: "Фронт", value: 90 },
+                { label: "Командность", value: 85 },
+                { label: "Контроль", value: 80 }
+            ],
+            "pos4_pos1": [
+                { label: "Роум", value: 85 },
+                { label: "Фарм", value: 70 },
+                { label: "Скалирование", value: 75 }
+            ],
+            "pos4_pos2": [
+                { label: "Роум", value: 95 },
+                { label: "Агрессия", value: 90 },
+                { label: "Ганки", value: 85 }
+            ],
+            "pos4_pos3": [
+                { label: "Фронт", value: 85 },
+                { label: "Контроль", value: 90 },
+                { label: "Танк", value: 80 }
+            ],
+            "pos4_pos5": [
+                { label: "Вижен", value: 95 },
+                { label: "Сейв", value: 90 },
+                { label: "Командность", value: 95 }
+            ],
+            "pos5_pos1": [
+                { label: "Вижен", value: 90 },
+                { label: "Фарм", value: 65 },
+                { label: "Лейт", value: 70 }
+            ],
+            "pos5_pos2": [
+                { label: "Вижен", value: 95 },
+                { label: "Роум", value: 85 },
+                { label: "Темп", value: 80 }
+            ],
+            "pos5_pos3": [
+                { label: "Фронт", value: 85 },
+                { label: "Танк", value: 90 },
+                { label: "Сейв", value: 85 }
+            ],
+            "pos5_pos4": [
+                { label: "Вижен", value: 95 },
+                { label: "Роум", value: 90 },
+                { label: "Контроль", value: 85 }
+            ]
+        };
+
+        const positionDescriptions = {
+            "pos1_pos2": "Ты — керри, который не просто фармит до поздней игры, а начинает оказывать давление уже после первых ключевых предметов. В отличие от классических кэрри, ты умеешь читать карту и контролировать темп, выбирая момент, когда нужно включиться в драку, а когда продолжить развитие.\n\nТы не ждёшь 40-й минуты — ты влияешь на игру в мидгейме, сочетая эффективный фарм со способностью наказывать врагов за ошибки. Твоя сила в балансе между терпением и агрессией.",
+            "pos1_pos3": "Ты — керри, который не боится первым входить в драку. Тебе нравится стоять на передовой и выдерживать фокус врагов, оставаясь при этом главным источником урона. Ты предпочитаешь прочных героев и готов собрать 1-2 защитных предмета, чтобы диктовать условия боя.\n\nВ отличие от «стеклянных» героев, ты сам создаёшь пространство для команды и контролируешь зону драки. Твоя игра — это сочетание живучести и разрушительной силы.",
+            "pos1_pos4": "Ты — керри, который не сидит на одной линии 30 минут. После ключевых предметов ты активно двигаешься по карте, помогая в драках и создавая давление. Ты легко находишь баланс между личным развитием и участием в ключевых моментах игры.\n\nТебе подходят мобильные герои с возможностями для инициации или контроля. Твоя особенность — гибкость: ты не ждёшь, пока команда создаст тебе пространство, ты сам участвуешь в его создании.",
+            "pos1_pos5": "Ты — редкий тип керри, который думает не только о своём фарме, но и о команде. Ты готов пожертвовать чем-то личным ради критичного момента: купить вард, если саппорт разорён, или дать TP для спасения союзника.\n\nТебе нравятся герои, которые дают команде не только урон, но и утилиту (ауры, AoE, контроль). Твоя сила — в умении балансировать между личным развитием и помощью команде, что делает тебя надёжным игроком.",
+            "pos2_pos1": "Ты — мидер, который умеет не только доминировать на линии, но и масштабироваться в позднюю игру. В отличие от классических мидеров с пиком силы в середине игры, ты не торопишься закончить игру в мидгейме — ты строишь долгосрочное преимущество.\n\nТы предпочитаешь героев, которые остаются релевантными в любой стадии игры, и умеешь балансировать между активными действиями на карте и эффективным фармом. Твоя сила — в способности переходить от роли инициатора к роли главной ударной силы.",
+            "pos2_pos3": "Ты — мидер, который любит открывать драки и контролировать пространство. Тебе нравятся прочные герои с возможностями для инициации, которые не боятся стоять на передовой. Ты не ждёшь, пока команда создаст условия — ты сам диктуешь темп.\n\nВ отличие от хрупких мидеров, ты готов собрать защитные предметы и первым врываться в драку, создавая хаос в рядах врага. Твоя игра — это сочетание агрессии, живучести и контроля над картой.",
+            "pos2_pos4": "Ты — классический мидер, который не сидит на линии после получения ключевого уровня или предмета. Ты постоянно двигаешься по карте, создавая давление и помогая союзникам. Твоя сила — в способности читать игру и быть там, где решается её исход.\n\nТебе нравятся мобильные герои с высоким импактом в мидгейме. Ты понимаешь, что контроль карты и помощь союзникам важнее личной статистики, и умеешь превращать свою мобильность в победу команды.",
+            "pos2_pos5": "Ты — редкий тип мидера, который думает не только о своём фарме и убийствах, но и о команде. Ты готов купить дополнительные варды, дать важные предметы союзникам или пожертвовать личным преимуществом ради победы.\n\nТебе нравятся герои с утилитой для команды — контролем, спасающими способностями или аурами. Твоя сила в зрелом подходе к игре: ты понимаешь, что победа команды важнее личной статистики.",
+            "pos3_pos1": "Ты — офлейнер, который не просто создаёт пространство, но и сам превращается в серьёзную угрозу в поздней игре. Ты умеешь балансировать между своей основной ролью танка/инициатора и способностью наносить значительный урон.\n\nТебе нравятся герои, которые остаются релевантными на всех стадиях игры и могут вытягивать сложные матчи. Твоя сила — в умении быть одновременно прочным и опасным, что делает тебя сложной целью для врага.",
+            "pos3_pos2": "Ты — офлейнер, который не просто выживает на сложной линии, а доминирует на ней. Ты активно давишь вражеского керри и быстро начинаешь двигаться по карте, создавая проблемы на всех линиях.\n\nТебе нравятся герои с высоким сольным потенциалом, способные убивать врагов один-на-один. Твоя игра — это чистая агрессия: ты создаёшь пространство не пассивным выживанием, а активным давлением.",
+            "pos3_pos4": "Ты — офлейнер, который после получения ключевых предметов становится чрезвычайно активным на карте. Ты не сидишь на линии — ты двигаешься, создаёшь давление, помогаешь в драках и контролируешь пространство.\n\nТебе подходят мобильные герои-инициаторы с хорошим импактом. Твоя особенность — гибкость: ты одинаково комфортно чувствуешь себя как на передовой в драке, так и в роуме по карте.",
+            "pos3_pos5": "Ты — офлейнер, который думает не только о своём фарме, но и о команде. Ты готов жертвовать личным преимуществом ради критичных моментов: купить важный предмет для инициации раньше, чем BKB, или умереть первым, чтобы союзники выжили.\n\nТебе нравятся герои с контролем и утилитой для команды. Твоя сила — в надёжности: союзники знают, что ты всегда будешь там, где нужно, и возьмёшь на себя удар.",
+            "pos4_pos1": "Ты — саппорт, который умеет находить фарм даже в сложных условиях и превращать небольшое преимущество в значительную силу к поздней игре. Ты не просто ставишь варды — ты активно участвуешь в драках и можешь стать серьёзной угрозой.\n\nТебе подходят саппорты, которые хорошо масштабируются (Shadow Shaman, Jakiro, Warlock). Твоя особенность — ты не забываешь о собственном развитии, сохраняя баланс между поддержкой команды и личным ростом.",
+            "pos4_pos2": "Ты — агрессивный роумер, который постоянно создаёт давление на карте. Ты не сидишь пассивно на линии — ты активно ищешь возможности для ганков и помогаешь команде захватывать контроль над игрой в ранней и средней стадии.\n\nТебе нравятся мобильные герои с высоким импактом (Earthshaker, Tusk, Spirit Breaker). Твоя игра — это постоянное движение, чтение карты и способность быть там, где решается исход драки.",
+            "pos4_pos3": "Ты — прочный саппорт, который не боится стоять на передовой. Ты готов первым входить в драку, танковать урон и создавать пространство для команды. В отличие от хрупких роумеров, ты выдерживаешь фокус и контролируешь зону боя.\n\nТебе подходят танковые саппорты-инициаторы (Axe 4-ка, Clockwerk, Mars 4-ка). Твоя сила — в способности диктовать условия драки и брать на себя удар.",
+            "pos4_pos5": "Ты — универсальный саппорт, который одинаково хорошо справляется с ролью роумера и классического саппорта. Ты умеешь ставить варды в критических точках, спасать союзников и создавать давление на карте.\n\nТебе подходят герои с гибким набором способностей (Rubick, Snapfire, Phoenix). Твоя сила — в адаптивности: ты можешь подстроиться под любую ситуацию и всегда найдёшь способ помочь команде.",
+            "pos5_pos1": "Ты — саппорт, который умеет находить фарм даже после покупки вардов. Ты понимаешь важность поддержки команды, но не забываешь о собственном развитии, что позволяет тебе оставаться полезным на всех стадиях игры.\n\nТебе подходят саппорты с потенциалом роста (Crystal Maiden с аганимом, Warlock, Witch Doctor). Твоя особенность — умение балансировать между жертвенностью ради команды и собственным прогрессом.",
+            "pos5_pos2": "Ты — активный фулл-саппорт, который не просто стоит за керри на линии. Ты активно двигаешься по карте, помогаешь мидеру, контролируешь руны и создаёшь давление.\n\nТебе нравятся герои с высоким импактом в раннем и среднем гейме (Vengeful Spirit, Jakiro, Shadow Shaman). Твоя сила — в способности влиять на темп игры через правильное позиционирование и тайминги.",
+            "pos5_pos3": "Ты — саппорт, который не боится стоять на передовой. Ты готов первым входить в драку рядом с офлейнером, танковать урон и создавать хаос в рядах врага своими способностями.\n\nТебе подходят прочные саппорты (Ogre Magi, Undying, Abaddon 5-ка). Твоя особенность — ты не прячешься за спинами керри, а активно участвуешь в создании пространства.",
+            "pos5_pos4": "Ты — классический фулл-саппорт, который делает всё для команды. Ты обеспечиваешь идеальный вижн, спасаешь союзников в критические моменты и жертвуешь собой ради победы.\n\nТебе нравятся герои с сильными защитными и контрольными способностями (Dazzle, Oracle, Lion). Твоя сила — в понимании приоритетов и способности всегда быть в нужном месте в нужное время."
+        };
+
+        let currentQuestion = 0;
+        let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
+        let lastResult = null;
+
+        function loadSavedResult() {
+            const saved = localStorage.getItem('dota2helper_lastResult');
+            if (saved) {
+                lastResult = JSON.parse(saved);
+                updateQuizPageResult();
+                updateHeroQuizStart();
+            }
+        }
+
+        function saveResult(result) {
+            localStorage.setItem('dota2helper_lastResult', JSON.stringify(result));
+        }
+
+        loadSavedResult();
+
+        function switchPage(pageName) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+            document.getElementById(`page-${pageName}`).classList.add('active');
+            event.currentTarget.classList.add('active');
+
+            if (pageName === 'quiz') {
+                document.getElementById('quiz-list').style.display = 'block';
+                document.getElementById('quiz-content-container').style.display = 'none';
+                document.getElementById('hero-quiz-container').style.display = 'none';
+                updateQuizPageResult();
+            }
+        }
+
+        function startPositionQuiz() {
+            document.getElementById('quiz-list').style.display = 'none';
+            document.getElementById('quiz-content-container').style.display = 'block';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+            initQuiz();
+        }
+
+        function backToQuizList() {
+            document.getElementById('quiz-list').style.display = 'block';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+            updateQuizPageResult();
+        }
+
+        function updateQuizPageResult() {
+            if (lastResult) {
+                document.getElementById('quizPageLastResult').style.display = 'block';
+                document.getElementById('quizPagePosition').textContent = lastResult.position;
+                document.getElementById('quizPageDate').textContent = `Пройден: ${lastResult.date}`;
+            }
+        }
+
+        function goToQuiz() {
+            switchPage('quiz');
+            document.querySelectorAll('.nav-item')[1].classList.add('active');
+            document.querySelectorAll('.nav-item')[0].classList.remove('active');
+            document.getElementById('quiz-list').style.display = 'block';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+            updateQuizPageResult();
+        }
+
+        function goToHeroQuiz() {
+            switchPage('quiz');
+            document.querySelectorAll('.nav-item')[1].classList.add('active');
+            document.querySelectorAll('.nav-item')[0].classList.remove('active');
+            startHeroQuiz();
+        }
+
+        function initQuiz() {
+            currentQuestion = 0;
+            scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
+            
+            document.querySelector('.quiz-content').style.display = 'block';
+            document.getElementById('result').classList.remove('active');
+            
+            showQuestion();
+        }
+
+        function showQuestion() {
+            const questionData = quizData[currentQuestion];
+            const progress = ((currentQuestion + 1) / quizData.length) * 100;
+            
+            document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('question').textContent = questionData.question;
+            
+            const answersContainer = document.getElementById('answers');
+            answersContainer.innerHTML = '';
+            
+            questionData.answers.forEach((answer, index) => {
+                const parts = answer.text.split(' ');
+                const emoji = parts[0];
+                const text = parts.slice(1).join(' ');
+                
+                const button = document.createElement('button');
+                button.className = 'answer-btn';
+                button.innerHTML = `
+                    <span class="emoji">${emoji}</span>
+                    <span class="text">${text}</span>
+                `;
+                button.onclick = () => selectAnswer(index);
+                answersContainer.appendChild(button);
+            });
+        }
+
+        function selectAnswer(index) {
+            const questionData = quizData[currentQuestion];
+            const selectedScores = questionData.answers[index].scores;
+            
+            for (let pos in selectedScores) {
+                scores[pos] += selectedScores[pos];
+            }
+            
+            const buttons = document.querySelectorAll('.answer-btn');
+            buttons.forEach((btn, i) => {
+                if (i === index) {
+                    btn.classList.add('selected');
+                }
+            });
+            
+            setTimeout(() => {
+                currentQuestion++;
+                if (currentQuestion < quizData.length) {
+                    showQuestion();
+                } else {
+                    showResult();
+                }
+            }, 300);
+        }
+
+        function showResult() {
+            document.querySelector('.quiz-content').style.display = 'none';
+            
+            const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+            const firstPos = sortedPositions[0][0];
+            const secondPos = sortedPositions[1][0];
+
+            lastResult = {
+                position: positionNames[firstPos],
+                posShort: positionShortNames[firstPos],
+                positionIndex: parseInt(firstPos.replace('pos', '')) - 1,
+                date: new Date().toLocaleDateString('ru-RU')
+            };
+
+            saveResult(lastResult);
+            updateQuizPageResult();
+            updateHeroQuizStart();
+
+            document.getElementById('positionPrimary').textContent = positionNames[firstPos];
+            document.getElementById('positionBadge').textContent = positionShortNames[firstPos];
+            document.getElementById('positionSecondaryBadge').textContent = positionShortNames[secondPos];
+
+            const statsKey = `${firstPos}_${secondPos}`;
+            const statsData = positionStats[statsKey];
+            const statsContainer = document.getElementById('stats');
+            statsContainer.innerHTML = '';
+            
+            statsData.forEach(stat => {
+                const statItem = document.createElement('div');
+                statItem.className = 'stat-item';
+                statItem.innerHTML = `
+                    <div class="stat-label">
+                        <span>${stat.label}</span>
+                        <span class="stat-value">${stat.value}%</span>
+                    </div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" style="width: 0%"></div>
+                    </div>
+                `;
+                statsContainer.appendChild(statItem);
+            });
+
+            setTimeout(() => {
+                document.querySelectorAll('.stat-bar-fill').forEach((bar, index) => {
+                    bar.style.width = statsData[index].value + '%';
+                });
+            }, 100);
+
+            const descriptionKey = `${firstPos}_${secondPos}`;
+            document.getElementById('positionDescription').textContent = positionDescriptions[descriptionKey];
+            document.getElementById('positionDescription').classList.add('hidden');
+
+            document.getElementById('result').classList.add('active');
+        }
+
+        function togglePositionDetails() {
+            const description = document.getElementById('positionDescription');
+            const btn = event.target;
+            
+            if (description.classList.contains('hidden')) {
+                description.classList.remove('hidden');
+                btn.textContent = 'Скрыть детали';
+            } else {
+                description.classList.add('hidden');
+                btn.textContent = 'Показать детали';
+            }
+        }
+
+        // ========== КВИЗ ПО ГЕРОЯМ ==========
+        const heroQuiz = {
+            state: {
+                selectedPosition: null,
+                currentQuestionIndex: 0,
+                answers: [],
+                usedSavedPosition: false
+            },
+
+            heroDatabase: [
+                // Позиция 1 - Керри
+                [
+                    { name: "Alchemist", tags: ["midgame", "lategame", "tempo", "melee", "sustained", "farming", "snowball", "map_pressure", "splitpush", "teamfight"], difficulty: "easy" },
+                    { name: "Chaos Knight", tags: ["midgame", "lategame", "melee", "burst", "sustained", "map_pressure", "teamfight", "durable", "snowball"], difficulty: "medium" },
+                    { name: "Dragon Knight", tags: ["midgame", "lategame", "melee", "ranged", "sustained", "teamfight", "map_pressure", "splitpush", "durable", "control", "farming"], difficulty: "easy" },
+                    { name: "Lifestealer", tags: ["midgame", "lategame", "melee", "sustained", "pickoff", "teamfight", "durable", "snowball"], difficulty: "easy" },
+                    { name: "Omniknight", tags: ["midgame", "lategame", "melee", "sustained", "teamfight", "utility", "durable"], difficulty: "easy" },
+                    { name: "Sven", tags: ["midgame", "lategame", "melee", "burst", "sustained", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Tiny", tags: ["midgame", "lategame", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "snowball", "durable", "control"], difficulty: "medium" },
+                    { name: "Wraith King", tags: ["midgame", "lategame", "melee", "sustained", "teamfight", "map_pressure", "durable", "farming"], difficulty: "easy" },
+                    { name: "Anti-Mage", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "burst", "splitpush", "map_pressure", "mobile", "farming", "snowball"], difficulty: "hard" },
+                    { name: "Bloodseeker", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "aggressive", "snowball"], difficulty: "easy" },
+                    { name: "Broodmother", tags: ["midgame", "lategame", "melee", "sustained", "splitpush", "map_pressure", "farming", "snowball"], difficulty: "hard" },
+                    { name: "Clinkz", tags: ["midgame", "lategame", "tempo", "ranged", "burst", "sustained", "pickoff", "splitpush", "map_pressure", "mobile", "snowball"], difficulty: "easy" },
+                    { name: "Drow Ranger", tags: ["lategame", "superlate", "greedy", "ranged", "sustained", "teamfight", "farming"], difficulty: "easy" },
+                    { name: "Faceless Void", tags: ["lategame", "superlate", "melee", "sustained", "burst", "teamfight", "pickoff", "control", "farming", "mobile"], difficulty: "easy" },
+                    { name: "Gyrocopter", tags: ["lategame", "superlate", "greedy", "lategame", "tempo", "ranged", "sustained", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Juggernaut", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "burst", "teamfight", "map_pressure", "pickoff", "farming"], difficulty: "easy" },
+                    { name: "Kez", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "teamfight", "map_pressure", "pickoff", "farming"], difficulty: "hard" },
+                    { name: "Lone Druid", tags: ["midgame", "lategame", "melee", "ranged", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Luna", tags: ["midgame", "lategame", "ranged", "sustained", "burst", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Medusa", tags: ["lategame", "superlate", "greedy", "ranged", "sustained", "teamfight", "durable", "farming"], difficulty: "easy" },
+                    { name: "Monkey King", tags: ["midgame", "lategame", "melee", "sustained", "burst", "teamfight", "pickoff", "map_pressure", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Morphling", tags: ["lategame", "superlate", "ranged", "burst", "sustained", "teamfight", "pickoff", "map_pressure", "mobile", "snowball", "farming"], difficulty: "hard" },
+                    { name: "Naga Siren", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Phantom Assassin", tags: ["midgame", "lategame", "melee", "burst", "sustained", "pickoff", "teamfight", "snowball", "farming"], difficulty: "easy" },
+                    { name: "Phantom Lancer", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Razor", tags: ["midgame", "lategame", "tempo", "ranged", "sustained", "teamfight", "map_pressure", "durable"], difficulty: "easy" },
+                    { name: "Riki", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "map_pressure", "mobile", "snowball"], difficulty: "easy" },
+                    { name: "Shadow Fiend", tags: ["midgame", "lategame", "ranged", "burst", "sustained", "teamfight", "map_pressure", "farming", "snowball"], difficulty: "medium" },
+                    { name: "Slark", tags: ["midgame", "lategame", "tempo", "melee", "sustained", "burst", "pickoff", "map_pressure", "teamfight", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Sniper", tags: ["lategame", "superlate", "greedy", "ranged", "sustained", "burst", "teamfight", "map_pressure", "farming"], difficulty: "easy" },
+                    { name: "Spectre", tags: ["lategame", "superlate", "greedy", "melee", "sustained", "teamfight", "map_pressure", "durable", "farming"], difficulty: "medium" },
+                    { name: "Templar Assassin", tags: ["midgame", "lategame", "tempo", "ranged", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "snowball", "farming"], difficulty: "medium" },
+                    { name: "Terrorblade", tags: ["lategame", "superlate", "greedy", "melee", "ranged", "sustained", "splitpush", "map_pressure", "teamfight", "farming"], difficulty: "hard" },
+                    { name: "Troll Warlord", tags: ["lategame", "superlate", "melee", "ranged", "sustained", "teamfight", "map_pressure", "farming"], difficulty: "medium" },
+                    { name: "Ursa", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "snowball"], difficulty: "easy" },
+                    { name: "Weaver", tags: ["midgame", "superlate", "lategame", "ranged", "sustained", "burst", "pickoff", "map_pressure", "teamfight", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Abaddon", tags: ["midgame", "lategame", "superlate", "melee", "sustained", "teamfight", "map_pressure", "durable", "utility", "farming"], difficulty: "easy" },
+                    { name: "Windranger", tags: ["midgame", "lategame", "ranged", "sustained", "burst", "pickoff", "teamfight", "map_pressure", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Marci", tags: ["midgame", "lategame", "tempo", "melee", "burst", "sustained", "pickoff", "teamfight", "map_pressure", "mobile", "snowball"], difficulty: "medium" },
+                    { name: "Nature's Prophet", tags: ["midgame", "lategame", "ranged", "sustained", "splitpush", "map_pressure", "pickoff", "teamfight", "farming", "mobile"], difficulty: "medium" }
+                ],
+                // Позиция 2 - Мидер
+                [
+                    { name: "Queen of Pain", tags: ["mobile", "burst", "aggressive"], difficulty: "medium" },
+                    { name: "Storm Spirit", tags: ["mobile", "pickoff", "snowball"], difficulty: "hard" },
+                    { name: "Invoker", tags: ["versatile", "control", "teamfight"], difficulty: "hard" },
+                    { name: "Shadow Fiend", tags: ["aggressive", "farming", "burst"], difficulty: "medium" },
+                    { name: "Lina", tags: ["burst", "aggressive", "versatile"], difficulty: "easy" },
+                    { name: "Puck", tags: ["mobile", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Ember Spirit", tags: ["mobile", "aggressive", "versatile"], difficulty: "hard" },
+                    { name: "Templar Assassin", tags: ["aggressive", "snowball", "burst"], difficulty: "medium" },
+                    { name: "Zeus", tags: ["burst", "teamfight", "aggressive"], difficulty: "easy" },
+                    { name: "Tinker", tags: ["farming", "mobile", "versatile"], difficulty: "hard" },
+                    { name: "Void Spirit", tags: ["mobile", "burst", "aggressive"], difficulty: "hard" },
+                    { name: "Kunkka", tags: ["burst", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Magnus", tags: ["teamfight", "control", "versatile"], difficulty: "medium" },
+                    { name: "Bloodseeker", tags: ["aggressive", "pickoff", "snowball"], difficulty: "easy" },
+                    { name: "Death Prophet", tags: ["aggressive", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Huskar", tags: ["aggressive", "snowball", "durable"], difficulty: "medium" },
+                    { name: "Razor", tags: ["aggressive", "durable", "balanced"], difficulty: "easy" },
+                    { name: "Viper", tags: ["aggressive", "durable", "balanced"], difficulty: "easy" },
+                    { name: "Outworld Destroyer", tags: ["burst", "farming", "balanced"], difficulty: "medium" },
+                    { name: "Dragon Knight", tags: ["durable", "balanced", "versatile"], difficulty: "easy" },
+                    { name: "Monkey King", tags: ["aggressive", "mobile", "versatile"], difficulty: "medium" },
+                    { name: "Pangolier", tags: ["mobile", "teamfight", "versatile"], difficulty: "hard" },
+                    { name: "Alchemist", tags: ["farming", "aggressive", "versatile"], difficulty: "medium" },
+                    { name: "Medusa", tags: ["farming", "lategame", "durable"], difficulty: "easy" },
+                    { name: "Sniper", tags: ["farming", "burst", "balanced"], difficulty: "easy" },
+                    { name: "Arc Warden", tags: ["splitpush", "farming", "versatile"], difficulty: "hard" },
+                    { name: "Visage", tags: ["aggressive", "versatile", "control"], difficulty: "hard" },
+                    { name: "Broodmother", tags: ["splitpush", "aggressive", "snowball"], difficulty: "hard" },
+                    { name: "Meepo", tags: ["farming", "snowball", "splitpush"], difficulty: "hard" },
+                    { name: "Lycan", tags: ["splitpush", "aggressive", "farming"], difficulty: "medium" }
+                ],
+                // Позиция 3 - Хардлейнер
+                [
+                    { name: "Axe", tags: ["aggressive", "durable", "teamfight"], difficulty: "easy" },
+                    { name: "Centaur Warrunner", tags: ["durable", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Tidehunter", tags: ["durable", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Mars", tags: ["aggressive", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Underlord", tags: ["durable", "versatile", "teamfight"], difficulty: "easy" },
+                    { name: "Timbersaw", tags: ["aggressive", "mobile", "durable"], difficulty: "medium" },
+                    { name: "Beastmaster", tags: ["versatile", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Doom", tags: ["versatile", "control", "durable"], difficulty: "easy" },
+                    { name: "Slardar", tags: ["aggressive", "control", "durable"], difficulty: "easy" },
+                    { name: "Legion Commander", tags: ["aggressive", "snowball", "durable"], difficulty: "easy" },
+                    { name: "Bristleback", tags: ["durable", "aggressive", "balanced"], difficulty: "easy" },
+                    { name: "Omniknight", tags: ["durable", "teamfight", "versatile"], difficulty: "easy" },
+                    { name: "Treant Protector", tags: ["durable", "control", "versatile"], difficulty: "medium" },
+                    { name: "Night Stalker", tags: ["aggressive", "pickoff", "mobile"], difficulty: "easy" },
+                    { name: "Sand King", tags: ["teamfight", "control", "mobile"], difficulty: "medium" },
+                    { name: "Tidehunter", tags: ["durable", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Earthshaker", tags: ["teamfight", "control", "aggressive"], difficulty: "medium" },
+                    { name: "Sven", tags: ["farming", "teamfight", "durable"], difficulty: "easy" },
+                    { name: "Wraith King", tags: ["durable", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Kunkka", tags: ["burst", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Magnus", tags: ["teamfight", "control", "versatile"], difficulty: "medium" },
+                    { name: "Pangolier", tags: ["mobile", "teamfight", "versatile"], difficulty: "hard" },
+                    { name: "Dark Seer", tags: ["versatile", "teamfight", "mobile"], difficulty: "medium" },
+                    { name: "Dragon Knight", tags: ["durable", "balanced", "versatile"], difficulty: "easy" },
+                    { name: "Abaddon", tags: ["durable", "versatile", "balanced"], difficulty: "easy" },
+                    { name: "Brewmaster", tags: ["teamfight", "control", "versatile"], difficulty: "hard" },
+                    { name: "Chaos Knight", tags: ["aggressive", "teamfight", "durable"], difficulty: "medium" },
+                    { name: "Lifestealer", tags: ["aggressive", "durable", "pickoff"], difficulty: "easy" },
+                    { name: "Necrophos", tags: ["durable", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Clockwerk", tags: ["aggressive", "control", "pickoff"], difficulty: "medium" }
+                ],
+                // Позиция 4 - Роумер
+                [
+                    { name: "Earthshaker", tags: ["teamfight", "control", "aggressive"], difficulty: "medium" },
+                    { name: "Rubick", tags: ["versatile", "control", "teamfight"], difficulty: "hard" },
+                    { name: "Earth Spirit", tags: ["mobile", "control", "versatile"], difficulty: "hard" },
+                    { name: "Tusk", tags: ["aggressive", "pickoff", "snowball"], difficulty: "medium" },
+                    { name: "Spirit Breaker", tags: ["aggressive", "mobile", "pickoff"], difficulty: "easy" },
+                    { name: "Mirana", tags: ["versatile", "mobile", "pickoff"], difficulty: "medium" },
+                    { name: "Clockwerk", tags: ["aggressive", "control", "pickoff"], difficulty: "medium" },
+                    { name: "Phoenix", tags: ["teamfight", "durable", "control"], difficulty: "hard" },
+                    { name: "Nyx Assassin", tags: ["pickoff", "burst", "mobile"], difficulty: "easy" },
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Tiny", tags: ["burst", "control", "versatile"], difficulty: "easy" },
+                    { name: "Sand King", tags: ["teamfight", "control", "mobile"], difficulty: "medium" },
+                    { name: "Slardar", tags: ["aggressive", "control", "durable"], difficulty: "easy" },
+                    { name: "Pangolier", tags: ["mobile", "teamfight", "versatile"], difficulty: "hard" },
+                    { name: "Hoodwink", tags: ["versatile", "pickoff", "mobile"], difficulty: "medium" },
+                    { name: "Marci", tags: ["aggressive", "versatile", "mobile"], difficulty: "medium" },
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Vengeful Spirit", tags: ["aggressive", "versatile", "teamfight"], difficulty: "easy" },
+                    { name: "Skywrath Mage", tags: ["burst", "aggressive", "pickoff"], difficulty: "easy" },
+                    { name: "Ancient Apparition", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Bane", tags: ["control", "pickoff", "versatile"], difficulty: "medium" },
+                    { name: "Grimstroke", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Disruptor", tags: ["control", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Dark Willow", tags: ["control", "versatile", "mobile"], difficulty: "hard" },
+                    { name: "Ogre Magi", tags: ["durable", "aggressive", "versatile"], difficulty: "easy" }
+                ],
+                // Позиция 5 - Фулл-саппорт
+                [
+                    { name: "Crystal Maiden", tags: ["control", "teamfight", "versatile"], difficulty: "easy" },
+                    { name: "Lion", tags: ["burst", "control", "aggressive"], difficulty: "easy" },
+                    { name: "Lich", tags: ["versatile", "teamfight", "balanced"], difficulty: "easy" },
+                    { name: "Witch Doctor", tags: ["teamfight", "versatile", "burst"], difficulty: "easy" },
+                    { name: "Shadow Shaman", tags: ["control", "versatile", "aggressive"], difficulty: "easy" },
+                    { name: "Jakiro", tags: ["versatile", "teamfight", "control"], difficulty: "easy" },
+                    { name: "Oracle", tags: ["versatile", "control", "durable"], difficulty: "hard" },
+                    { name: "Dazzle", tags: ["versatile", "durable", "balanced"], difficulty: "medium" },
+                    { name: "Vengeful Spirit", tags: ["aggressive", "versatile", "teamfight"], difficulty: "easy" },
+                    { name: "Warlock", tags: ["teamfight", "control", "durable"], difficulty: "easy" },
+                    { name: "Bane", tags: ["control", "pickoff", "versatile"], difficulty: "medium" },
+                    { name: "Chen", tags: ["versatile", "teamfight", "control"], difficulty: "hard" },
+                    { name: "Enchantress", tags: ["versatile", "aggressive", "mobile"], difficulty: "medium" },
+                    { name: "Keeper of the Light", tags: ["versatile", "teamfight", "farming"], difficulty: "medium" },
+                    { name: "Ancient Apparition", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Rubick", tags: ["versatile", "control", "teamfight"], difficulty: "hard" },
+                    { name: "Disruptor", tags: ["control", "teamfight", "versatile"], difficulty: "medium" },
+                    { name: "Grimstroke", tags: ["control", "versatile", "teamfight"], difficulty: "medium" },
+                    { name: "Snapfire", tags: ["versatile", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Phoenix", tags: ["teamfight", "durable", "control"], difficulty: "hard" },
+                    { name: "Ogre Magi", tags: ["durable", "aggressive", "versatile"], difficulty: "easy" },
+                    { name: "Treant Protector", tags: ["durable", "control", "versatile"], difficulty: "medium" },
+                    { name: "Undying", tags: ["durable", "aggressive", "teamfight"], difficulty: "easy" },
+                    { name: "Abaddon", tags: ["durable", "versatile", "balanced"], difficulty: "easy" },
+                    { name: "Winter Wyvern", tags: ["versatile", "control", "teamfight"], difficulty: "medium" },
+                    { name: "Shadow Demon", tags: ["versatile", "control", "durable"], difficulty: "hard" },
+                    { name: "Silencer", tags: ["control", "versatile", "burst"], difficulty: "easy" },
+                    { name: "Skywrath Mage", tags: ["burst", "aggressive", "pickoff"], difficulty: "easy" },
+                    { name: "Lina", tags: ["burst", "aggressive", "versatile"], difficulty: "easy" }
+                ]
+            ],
+
+            questions: [
+                {
+                    question: "На каком этапе игры ты хочешь быть максимально полезен?",
+                    answers: [
+                        { text: "⚔️ Середина игры — хочу почувствовать силу уже к 20–30 минуте", tags: ["midgame", "tempo"] },
+                        { text: "🐉 Поздняя игра — пик где-то к 35–45 минуте", tags: ["lategame"] },
+                        { text: "⏳ Суперлейт — люблю затяжные игры 50+ минут", tags: ["lategame", "superlate", "greedy"] }
+                    ]
+                },
+                {
+                    question: "Какой тип атаки тебе нравится?",
+                    answers: [
+                        { text: "🗡️ Ближний бой — не против подойти к врагу вплотную", tags: ["melee"] },
+                        { text: "🏹 Дальняя дистанция — хочу держаться подальше", tags: ["ranged"] }
+                    ]
+                },
+                {
+                    question: "Какой тип урона тебе больше нравится?",
+                    answers: [
+                        { text: "💥 Быстрый урон — врываюсь и за секунды стираю героя", tags: ["burst"] },
+                        { text: "♾ Постоянный урон — хочу просто райткликать", tags: ["sustained"] }
+                    ]
+                },
+                {
+                    question: "Как ты предпочитаешь влиять на карту?",
+                    answers: [
+                        { text: "🗺️ Сплит-пушить, давить линии, выманивать врагов", tags: ["splitpush", "map_pressure"] },
+                        { text: "⚔️ Чаще быть с командой в драках и вокруг объективов", tags: ["teamfight"] },
+                        { text: "🎯 Иметь возможность делать соло пикоффы по карте", tags: ["pickoff", "map_pressure"] }
+                    ]
+                },
+                {
+                    question: "Насколько сложного героя готов освоить?",
+                    answers: [
+                        { text: "😊 Простой — минимум микро, хочу фокус на макро и позиционке", tags: ["easy"] },
+                        { text: "⚖️ Средняя сложность — пару комбинаций/навыков, но без экстремального микро", tags: ["medium"] },
+                        { text: "🎓 Сложный — сложные механики и много кнопок", tags: ["hard"] }
+                    ]
+                }
+            ],
+
+            positionNames: ["Керри", "Мидер", "Хардлейнер", "Роумер", "Фулл-саппорт"],
+
+            init() {
+                this.state = {
+                    selectedPosition: null,
+                    currentQuestionIndex: 0,
+                    answers: [],
+                    usedSavedPosition: false
+                };
+                this.showStartScreen();
+            },
+
+            showStartScreen() {
+                document.getElementById('hero-start').style.display = 'block';
+                document.getElementById('hero-position-select').style.display = 'none';
+                document.getElementById('hero-questions').style.display = 'none';
+                document.getElementById('hero-result').style.display = 'none';
+            },
+
+            useSavedPosition() {
+                if (lastResult && lastResult.positionIndex !== undefined) {
+                    this.state.selectedPosition = lastResult.positionIndex;
+                    this.state.usedSavedPosition = true;
+                    this.startQuestions();
+                }
+            },
+
+            showPositionSelect() {
+                document.getElementById('hero-start').style.display = 'none';
+                document.getElementById('hero-position-select').style.display = 'block';
+            },
+
+            selectPosition(index) {
+                this.state.selectedPosition = index;
+                this.state.usedSavedPosition = false;
+                this.startQuestions();
+            },
+
+            backToStart() {
+                this.showStartScreen();
+            },
+
+            startQuestions() {
+                this.state.currentQuestionIndex = 0;
+                this.state.answers = [];
+                
+                document.getElementById('hero-start').style.display = 'none';
+                document.getElementById('hero-position-select').style.display = 'none';
+                document.getElementById('hero-questions').style.display = 'block';
+                
+                this.showQuestion();
+            },
+
+            showQuestion() {
+                const question = this.questions[this.state.currentQuestionIndex];
+                const progress = ((this.state.currentQuestionIndex + 1) / this.questions.length) * 100;
+                
+                document.getElementById('heroProgressBar').style.width = progress + '%';
+                document.getElementById('heroQuestion').textContent = question.question;
+                
+                const answersContainer = document.getElementById('heroAnswers');
+                answersContainer.innerHTML = '';
+                
+                question.answers.forEach((answer, index) => {
+                    const parts = answer.text.split(' ');
+                    const emoji = parts[0];
+                    const text = parts.slice(1).join(' ');
+                    
+                    const button = document.createElement('button');
+                    button.className = 'answer-btn';
+                    button.innerHTML = `
+                        <span class="emoji">${emoji}</span>
+                        <span class="text">${text}</span>
+                    `;
+                    button.onclick = () => this.selectAnswer(index);
+                    answersContainer.appendChild(button);
+                });
+            },
+
+            selectAnswer(index) {
+                const question = this.questions[this.state.currentQuestionIndex];
+                this.state.answers.push(question.answers[index]);
+                
+                const buttons = document.querySelectorAll('#heroAnswers .answer-btn');
+                buttons.forEach((btn, i) => {
+                    if (i === index) {
+                        btn.classList.add('selected');
+                    }
+                });
+                
+                setTimeout(() => {
+                    this.state.currentQuestionIndex++;
+                    if (this.state.currentQuestionIndex < this.questions.length) {
+                        this.showQuestion();
+                    } else {
+                        this.showResult();
+                    }
+                }, 300);
+            },
+
+            calculateTopHeroes() {
+                const allTags = [];
+                this.state.answers.forEach(answer => {
+                    allTags.push(...answer.tags);
+                });
+
+                const tagFrequency = {};
+                allTags.forEach(tag => {
+                    tagFrequency[tag] = (tagFrequency[tag] || 0) + 1;
+                });
+
+                let selectedDifficulty = null;
+                this.state.answers.forEach(answer => {
+                    if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
+                    else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
+                    else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
+                });
+
+                const heroes = this.heroDatabase[this.state.selectedPosition];
+                const scoredHeroes = heroes.map(hero => {
+                    let score = 0;
+                    
+                    hero.tags.forEach(tag => {
+                        if (tagFrequency[tag]) {
+                            score += tagFrequency[tag];
+                        }
+                    });
+                    
+                    if (selectedDifficulty && hero.difficulty === selectedDifficulty) {
+                        score += 2;
+                    }
+                    
+                    return { ...hero, score };
+                });
+
+                scoredHeroes.sort((a, b) => b.score - a.score);
+                return scoredHeroes.slice(0, 5);
+            },
+
+            showResult() {
+                document.getElementById('hero-questions').style.display = 'none';
+                
+                const topHeroes = this.calculateTopHeroes();
+                const positionName = this.positionNames[this.state.selectedPosition];
+                
+                document.getElementById('heroResultPosition').textContent = `Рекомендуем для ${positionName}`;
+                
+                const topTags = {};
+                this.state.answers.forEach(answer => {
+                    answer.tags.forEach(tag => {
+                        if (tag !== 'easy' && tag !== 'medium' && tag !== 'hard') {
+                            topTags[tag] = (topTags[tag] || 0) + 1;
+                        }
+                    });
+                });
+                
+                const sortedTags = Object.entries(topTags).sort((a, b) => b[1] - a[1]);
+                const top3Tags = sortedTags.slice(0, 3).map(t => t[0]);
+                
+                const tagNames = {
+                    aggressive: "агрессию",
+                    balanced: "баланс",
+                    versatile: "универсальность",
+                    farming: "фарм",
+                    lategame: "лейтгейм",
+                    superlate: "суперлейт",
+                    greedy: "затяжные игры",
+                    midgame: "мидгейм",
+                    tempo: "темп",
+                    mobile: "мобильность",
+                    pickoff: "пикоффы",
+                    teamfight: "командные драки",
+                    control: "контроль",
+                    burst: "бёрст урон",
+                    snowball: "снежный ком",
+                    durable: "живучесть",
+                    splitpush: "сплит-пуш",
+                    map_pressure: "давление на карту",
+                    melee: "ближний бой",
+                    ranged: "дальний бой",
+                    sustained: "постоянный урон",
+                    utility: "утилита"
+                };
+                
+                const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
+                document.getElementById('heroResultDescription').textContent = 
+                    `На основе твоих ответов, мы подобрали героев с упором на: ${tagList}. Попробуй их в игре!`;
+                
+                const heroListContainer = document.getElementById('heroResultList');
+                heroListContainer.innerHTML = '';
+                
+                topHeroes.forEach((hero, index) => {
+                    const heroItem = document.createElement('div');
+                    heroItem.className = 'hero-item';
+                    
+                    const maxScore = topHeroes[0].score;
+                    const matchPercent = Math.round((hero.score / maxScore) * 100);
+                    
+                    const heroNameFormatted = hero.name.toLowerCase().replace(/'/g, '').replace(/\s+/g, '_');
+                    const heroIconUrl = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroNameFormatted}.png`;
+                    
+                    heroItem.innerHTML = `
+                        <span class="hero-rank">${index + 1}.</span>
+                        <img src="${heroIconUrl}" alt="${hero.name}" class="hero-icon" onerror="this.style.display='none'">
+                        <div style="flex: 1;">
+                            <div class="hero-name">${hero.name}</div>
+                            <div class="hero-tags">${hero.tags.slice(0, 3).join(' · ')}</div>
+                        </div>
+                        <div class="hero-match">
+                            <div class="hero-match-percent">${matchPercent}%</div>
+                            <div class="hero-match-bar">
+                                <div class="hero-match-fill" style="width: ${matchPercent}%"></div>
+                            </div>
+                        </div>
+                    `;
+                    heroListContainer.appendChild(heroItem);
+                });
+                
+                document.getElementById('hero-result').style.display = 'block';
+            },
+
+            restart() {
+                this.init();
+            }
+        };
+
+        function startHeroQuiz() {
+            document.getElementById('quiz-list').style.display = 'none';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'block';
+            heroQuiz.init();
+        }
+
+        function updateHeroQuizStart() {
+            const btn = document.getElementById('useSavedPositionBtn');
+            const textSpan = document.getElementById('savedPositionText');
+            
+            if (lastResult && lastResult.positionIndex !== undefined) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                textSpan.textContent = `Твоя последняя позиция: ${lastResult.posShort}`;
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                textSpan.textContent = 'Сначала пройди тест по позициям';
+            }
+        }
+    </script>
+</body>
+</html>
