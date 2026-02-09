@@ -1,3 +1,5 @@
-// data/heroes-offlane.js — Данные для Pos 3 (Хардлейнер)
+// data/heroes-offlane.js
 window.heroOfflaneData = {
-}
+  questions: null,
+  heroes: []
+};
