@@ -1,0 +1,2 @@
+window.heroPos4Data = {
+}
