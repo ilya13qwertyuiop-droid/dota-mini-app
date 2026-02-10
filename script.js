@@ -4,6 +4,7 @@
             tg.expand();
         }
 
+
         // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
         const quizData = [
             {
@@ -113,6 +114,7 @@
             }
         ];
 
+
         const positionNames = {
             pos1: "Pos 1 — Керри",
             pos2: "Pos 2 — Мидер",
@@ -121,6 +123,7 @@
             pos5: "Pos 5 — Фулл-саппорт"
         };
 
+
         const positionShortNames = {
             pos1: "Керри",
             pos2: "Мидер",
@@ -128,6 +131,7 @@
             pos4: "Роумер",
             pos5: "Фулл-саппорт"
         };
+
 
         const positionStats = {
             "pos1_pos2": [
@@ -232,6 +236,7 @@
             ]
         };
 
+
         const positionDescriptions = {
             "pos1_pos2": "Ты — керри, который не просто фармит до поздней игры, а начинает оказывать давление уже после первых ключевых предметов. В отличие от классических кэрри, ты умеешь читать карту и контролировать темп, выбирая момент, когда нужно включиться в драку, а когда продолжить развитие.\n\nТы не ждёшь 40-й минуты — ты влияешь на игру в мидгейме, сочетая эффективный фарм со способностью наказывать врагов за ошибки. Твоя сила в балансе между терпением и агрессией.",
             "pos1_pos3": "Ты — керри, который не боится первым входить в драку. Тебе нравится стоять на передовой и выдерживать фокус врагов, оставаясь при этом главным источником урона. Ты предпочитаешь прочных героев и готов собрать 1-2 защитных предмета, чтобы диктовать условия боя.\n\nВ отличие от «стеклянных» героев, ты сам создаёшь пространство для команды и контролируешь зону драки. Твоя игра — это сочетание живучести и разрушительной силы.",
@@ -255,9 +260,11 @@
             "pos5_pos4": "Ты — классический фулл-саппорт, который делает всё для команды. Ты обеспечиваешь идеальный вижн, спасаешь союзников в критические моменты и жертвуешь собой ради победы.\n\nТебе нравятся герои с сильными защитными и контрольными способностями (Dazzle, Oracle, Lion). Твоя сила — в понимании приоритетов и способности всегда быть в нужном месте в нужное время."
         };
 
+
         let currentQuestion = 0;
         let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
         let lastResult = null;
+
 
         function loadSavedResult() {
             const saved = localStorage.getItem('dota2helper_lastResult');
@@ -268,18 +275,23 @@
             }
         }
 
+
         function saveResult(result) {
             localStorage.setItem('dota2helper_lastResult', JSON.stringify(result));
         }
 
+
         loadSavedResult();
+
 
         function switchPage(pageName) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
+
             document.getElementById(`page-${pageName}`).classList.add('active');
             event.currentTarget.classList.add('active');
+
 
             if (pageName === 'quiz') {
                 document.getElementById('quiz-list').style.display = 'block';
@@ -289,12 +301,14 @@
             }
         }
 
+
         function startPositionQuiz() {
             document.getElementById('quiz-list').style.display = 'none';
             document.getElementById('quiz-content-container').style.display = 'block';
             document.getElementById('hero-quiz-container').style.display = 'none';
             initQuiz();
         }
+
 
         function backToQuizList() {
             document.getElementById('quiz-list').style.display = 'block';
@@ -303,6 +317,7 @@
             updateQuizPageResult();
         }
 
+
         function updateQuizPageResult() {
             if (lastResult) {
                 document.getElementById('quizPageLastResult').style.display = 'block';
@@ -310,6 +325,7 @@
                 document.getElementById('quizPageDate').textContent = `Пройден: ${lastResult.date}`;
             }
         }
+
 
         function goToQuiz() {
             switchPage('quiz');
@@ -321,6 +337,7 @@
             updateQuizPageResult();
         }
 
+
         function goToHeroQuiz() {
             switchPage('quiz');
             document.querySelectorAll('.nav-item')[1].classList.add('active');
@@ -328,30 +345,38 @@
             startHeroQuiz();
         }
 
+
         function initQuiz() {
             currentQuestion = 0;
             scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
 
+
             document.querySelector('.quiz-content').style.display = 'block';
             document.getElementById('result').classList.remove('active');
 
+
             showQuestion();
         }
+
 
         function showQuestion() {
             const questionData = quizData[currentQuestion];
             const progress = ((currentQuestion + 1) / quizData.length) * 100;
 
+
             document.getElementById('progressBar').style.width = progress + '%';
             document.getElementById('question').textContent = questionData.question;
 
+
             const answersContainer = document.getElementById('answers');
             answersContainer.innerHTML = '';
+
 
             questionData.answers.forEach((answer, index) => {
                 const parts = answer.text.split(' ');
                 const emoji = parts[0];
                 const text = parts.slice(1).join(' ');
+
 
                 const button = document.createElement('button');
                 button.className = 'answer-btn';
@@ -364,13 +389,16 @@
             });
         }
 
+
         function selectAnswer(index) {
             const questionData = quizData[currentQuestion];
             const selectedScores = questionData.answers[index].scores;
 
+
             for (let pos in selectedScores) {
                 scores[pos] += selectedScores[pos];
             }
+
 
             const buttons = document.querySelectorAll('.answer-btn');
             buttons.forEach((btn, i) => {
@@ -378,6 +406,7 @@
                     btn.classList.add('selected');
                 }
             });
+
 
             setTimeout(() => {
                 currentQuestion++;
@@ -389,12 +418,15 @@
             }, 300);
         }
 
+
         function showResult() {
             document.querySelector('.quiz-content').style.display = 'none';
+
 
             const sortedPositions = Object.entries(scores).sort((a, b) => b[1] - a[1]);
             const firstPos = sortedPositions[0][0];
             const secondPos = sortedPositions[1][0];
+
 
             lastResult = {
                 position: positionNames[firstPos],
@@ -403,18 +435,22 @@
                 date: new Date().toLocaleDateString('ru-RU')
             };
 
+
             saveResult(lastResult);
             updateQuizPageResult();
             updateHeroQuizStart();
+
 
             document.getElementById('positionPrimary').textContent = positionNames[firstPos];
             document.getElementById('positionBadge').textContent = positionShortNames[firstPos];
             document.getElementById('positionSecondaryBadge').textContent = positionShortNames[secondPos];
 
+
             const statsKey = `${firstPos}_${secondPos}`;
             const statsData = positionStats[statsKey];
             const statsContainer = document.getElementById('stats');
             statsContainer.innerHTML = '';
+
 
             statsData.forEach(stat => {
                 const statItem = document.createElement('div');
@@ -431,22 +467,27 @@
                 statsContainer.appendChild(statItem);
             });
 
+
             setTimeout(() => {
                 document.querySelectorAll('.stat-bar-fill').forEach((bar, index) => {
                     bar.style.width = statsData[index].value + '%';
                 });
             }, 100);
 
+
             const descriptionKey = `${firstPos}_${secondPos}`;
             document.getElementById('positionDescription').textContent = positionDescriptions[descriptionKey];
             document.getElementById('positionDescription').classList.add('hidden');
 
+
             document.getElementById('result').classList.add('active');
         }
+
 
         function togglePositionDetails() {
             const description = document.getElementById('positionDescription');
             const btn = event.target;
+
 
             if (description.classList.contains('hidden')) {
                 description.classList.remove('hidden');
@@ -457,7 +498,9 @@
             }
         }
 
+
         // ========== КВИЗ ПО ГЕРОЯМ ==========
+
 
         const heroQuiz = {
             state: {
@@ -468,9 +511,12 @@
                 currentQuestionSet: []
             },
 
+
             questions: window.heroCarryData.questions,
 
+
             positionNames: ["Керри", "Мидер", "Хардлейнер", "Роумер", "Фулл-саппорт"],
+
 
             heroDatabase: {
                 0: window.heroCarryData.heroes,
@@ -479,6 +525,7 @@
                 3: window.heroPos4Data.heroes,
                 4: window.heroPos5Data.heroes
             },
+
 
 
             init() {
@@ -490,12 +537,14 @@
                 this.showStartScreen();
             },
 
+
             showStartScreen() {
                 document.getElementById('hero-start').style.display = 'block';
                 document.getElementById('hero-position-select').style.display = 'none';
                 document.getElementById('hero-questions').style.display = 'none';
                 document.getElementById('hero-result').style.display = 'none';
             },
+
 
             useSavedPosition() {
                 if (lastResult && lastResult.positionIndex !== undefined) {
@@ -505,10 +554,12 @@
                 }
             },
 
+
             showPositionSelect() {
                 document.getElementById('hero-start').style.display = 'none';
                 document.getElementById('hero-position-select').style.display = 'block';
             },
+
 
             selectPosition(index) {
                 this.state.selectedPosition = index;
@@ -516,46 +567,57 @@
                 this.startQuestions();
             },
 
+
             backToStart() {
                 this.showStartScreen();
             },
+
 
             startQuestions() {
                 this.state.currentQuestionIndex = 0;
                 this.state.answers = [];
 
+
             const questionSets = {
                 0: window.heroCarryData.questions,
                 1: window.heroMidData.questions,
-                // 2: window.heroOfflaneData.questions,  // раскомментируй когда добавишь
+                2: window.heroOfflaneData.questions,
                 // 3: window.heroPos4Data.questions,
                 // 4: window.heroPos5Data.questions,
             };
 
+
             this.state.currentQuestionSet =
                 questionSets[this.state.selectedPosition] || this.questions;
+
 
                 document.getElementById('hero-start').style.display = 'none';
                 document.getElementById('hero-position-select').style.display = 'none';
                 document.getElementById('hero-questions').style.display = 'block';
 
+
                 this.showQuestion();
             },
+
 
             showQuestion() {
                 const question = this.state.currentQuestionSet[this.state.currentQuestionIndex];
                 const progress = ((this.state.currentQuestionIndex + 1) / this.state.currentQuestionSet.length) * 100;
 
+
                 document.getElementById('heroProgressBar').style.width = progress + '%';
                 document.getElementById('heroQuestion').textContent = question.question;
 
+
                 const answersContainer = document.getElementById('heroAnswers');
                 answersContainer.innerHTML = '';
+
 
                 question.answers.forEach((answer, index) => {
                     const parts = answer.text.split(' ');
                     const emoji = parts[0];
                     const text = parts.slice(1).join(' ');
+
 
                     const button = document.createElement('button');
                     button.className = 'answer-btn';
@@ -568,9 +630,11 @@
                 });
             },
 
+
             selectAnswer(index) {
                 const question = this.state.currentQuestionSet[this.state.currentQuestionIndex];
                 this.state.answers.push(question.answers[index]);
+
 
                 const buttons = document.querySelectorAll('#heroAnswers .answer-btn');
                 buttons.forEach((btn, i) => {
@@ -578,6 +642,7 @@
                         btn.classList.add('selected');
                     }
                 });
+
 
                 setTimeout(() => {
                     this.state.currentQuestionIndex++;
@@ -589,52 +654,80 @@
                 }, 300);
             },
 
+
             calculateTopHeroes() {
-                const allTags = [];
+                // Бонусы для редких тегов
+                const rareTagBonus = {
+                    lane_push_jungle: 0.2,
+                    needs_tank_items: 0.2,
+                    lane_roam: 0.6,
+                    splitpush: 0.6
+                };
+
+                // Собираем все выбранные теги
+                const selectedTags = [];
                 this.state.answers.forEach(answer => {
-                    allTags.push(...answer.tags);
+                    answer.tags.forEach(tag => {
+                        selectedTags.push(tag);
+                    });
                 });
 
-                const tagFrequency = {};
-                allTags.forEach(tag => {
-                    tagFrequency[tag] = (tagFrequency[tag] || 0) + 1;
-                });
-
-                let selectedDifficulty = null;
-                this.state.answers.forEach(answer => {
-                    if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
-                    else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
-                    else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
-                });
-
+                // Получаем героев выбранной позиции
                 const heroes = this.heroDatabase[this.state.selectedPosition];
+                
+                // Считаем score для каждого героя с учётом весов и бонусов
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
-
-                    hero.tags.forEach(tag => {
-                        if (tagFrequency[tag]) {
-                            score += tagFrequency[tag];
+                    
+                    // Проходим по всем выбранным тегам
+                    selectedTags.forEach(tag => {
+                        // Если у героя есть этот тег, добавляем его вес
+                        if (hero.tags[tag] !== undefined) {
+                            let weight = hero.tags[tag];
+                            
+                            // Добавляем бонус для редких тегов
+                            if (rareTagBonus[tag]) {
+                                weight += rareTagBonus[tag];
+                            }
+                            
+                            score += weight;
                         }
                     });
-
+                    
+                    // Фильтр по сложности (если выбрана)
+                    let selectedDifficulty = null;
+                    this.state.answers.forEach(answer => {
+                        if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
+                        else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
+                        else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
+                    });
+                    
+                    // Бонус за совпадение сложности
                     if (selectedDifficulty && hero.difficulty === selectedDifficulty) {
-                        score += 2;
+                        score += 1.5;
                     }
-
+                    
                     return { ...hero, score };
                 });
 
+                // Сортируем по убыванию score
                 scoredHeroes.sort((a, b) => b.score - a.score);
+                
+                // Возвращаем топ-5
                 return scoredHeroes.slice(0, 5);
             },
+
 
             showResult() {
                 document.getElementById('hero-questions').style.display = 'none';
 
+
                 const topHeroes = this.calculateTopHeroes();
                 const positionName = this.positionNames[this.state.selectedPosition];
 
+
                 document.getElementById('heroResultPosition').textContent = `Рекомендуем для ${positionName}`;
+
 
                 const topTags = {};
                 this.state.answers.forEach(answer => {
@@ -645,8 +738,10 @@
                     });
                 });
 
+
                 const sortedTags = Object.entries(topTags).sort((a, b) => b[1] - a[1]);
                 const top3Tags = sortedTags.slice(0, 3).map(t => t[0]);
+
 
                 const tagNames = {
                     aggressive: "агрессию",
@@ -672,6 +767,7 @@
                     sustained: "постоянный урон",
                     utility: "утилита",
 
+
                     // новые мид-теги
                     gank_level_rune: "ганги от уровня и рун",
                     gank_item: "ганги от ключевых предметов",
@@ -686,38 +782,67 @@
                     role_control: "контроль и позиционку",
                     difficulty_easy: "простых героев",
                     difficulty_medium: "среднюю сложность",
-                    difficulty_hard: "сложных героев"
+                    difficulty_hard: "сложных героев",
+
+                    // офлейн-теги
+                    needs_blink: "блинк для инициации",
+                    needs_tank_items: "танковые предметы",
+                    level_dependent: "силу от уровней",
+                    needs_farm_scaling: "фарм для скейла",
+                    long_control: "длительный контроль",
+                    burst_control: "бёрст-контроль",
+                    zone_control: "зональный контроль",
+                    high_damage: "высокий урон",
+                    lane_aggressive: "агрессию на линии",
+                    lane_passive: "пассивную линию",
+                    lane_push_jungle: "пуш и джангл",
+                    lane_roam: "роум после 6",
+                    teamfight_5v5: "командные драки",
+                    hunt_pickoff: "охоту за героями",
+                    flexible: "гибкий стиль"
                 };
+
 
                 const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
                 document.getElementById('heroResultDescription').textContent =
                     `На основе твоих ответов мы подобрали героев с упором на: ${tagList}. Попробуй их в игре!`;
 
+
                 const heroListContainer = document.getElementById('heroResultList');
                 heroListContainer.innerHTML = '';
 
+
                 const maxScore = topHeroes[0].score || 1;
+
 
                 topHeroes.forEach((hero, index) => {
                     const heroItem = document.createElement('div');
                     heroItem.className = 'hero-item';
 
+
                     const matchPercent = Math.round((hero.score / maxScore) * 100);
+
 
                     const heroNameFormatted = hero.name
                         .toLowerCase()
                         .replace(/'/g, '')
                         .replace(/\s+/g, '_');
 
+
                     const heroIconUrl =
                         `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroNameFormatted}.png`;
+
+                    // Отображаем теги героя (только первые 3)
+                    const heroTagsArray = Object.keys(hero.tags).slice(0, 3);
+                    const heroTagsText = heroTagsArray.map(tag => tagNames[tag] || tag).join(' · ');
+
 
                     heroItem.innerHTML = `
                         <span class="hero-rank">${index + 1}.</span>
                         <img src="${heroIconUrl}" alt="${hero.name}" class="hero-icon" onerror="this.style.display='none'">
                         <div style="flex: 1;">
                             <div class="hero-name">${hero.name}</div>
-                            <div class="hero-tags">${hero.tags.slice(0, 3).join(' · ')}</div>
+                            <div class="hero-tags">${heroTagsText}</div>
                         </div>
                         <div class="hero-match">
                             <div class="hero-match-percent">${matchPercent}%</div>
@@ -729,13 +854,16 @@
                     heroListContainer.appendChild(heroItem);
                 });
 
+
                 document.getElementById('hero-result').style.display = 'block';
             },
+
 
             restart() {
                 this.init();
             }
         };
+
 
         function startHeroQuiz() {
             document.getElementById('quiz-list').style.display = 'none';
@@ -743,6 +871,7 @@
             document.getElementById('hero-quiz-container').style.display = 'block';
             heroQuiz.init();
         }
+
 
         function updateHeroQuizStart() {
             const btn = document.getElementById('useSavedPositionBtn');
