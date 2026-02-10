@@ -721,14 +721,12 @@
             showResult() {
                 document.getElementById('hero-questions').style.display = 'none';
 
-
-                const topHeroes = this.calculateTopHeroes();
+                const topHeroes = this.calculateTopHeroes().slice(0, 6); // максимум 6
                 const positionName = this.positionNames[this.state.selectedPosition];
-
 
                 document.getElementById('heroResultPosition').textContent = `Рекомендуем для ${positionName}`;
 
-
+                // Считаем топ-теги по ответам
                 const topTags = {};
                 this.state.answers.forEach(answer => {
                     answer.tags.forEach(tag => {
@@ -738,10 +736,8 @@
                     });
                 });
 
-
                 const sortedTags = Object.entries(topTags).sort((a, b) => b[1] - a[1]);
                 const top3Tags = sortedTags.slice(0, 3).map(t => t[0]);
-
 
                 const tagNames = {
                     aggressive: "агрессию",
@@ -767,10 +763,9 @@
                     sustained: "постоянный урон",
                     utility: "утилита",
 
-
-                    // новые мид-теги
+                    // мид
                     gank_level_rune: "ганги от уровня и рун",
-                    gank_item: "ганги от ключевых предметов",
+                    gank_item: "ганги от предметов",
                     lane_pressure: "прессинг на линии",
                     lane_mixed: "гибкую линию",
                     lane_farm: "спокойный фарм линии",
@@ -784,79 +779,98 @@
                     difficulty_medium: "среднюю сложность",
                     difficulty_hard: "сложных героев",
 
-                    // офлейн-теги
-                    needs_blink: "блинк для инициации",
+                    // оффлейн
+                    needs_blink: "блинк/инициацию с предмета",
                     needs_tank_items: "танковые предметы",
                     level_dependent: "силу от уровней",
-                    needs_farm_scaling: "фарм для скейла",
+                    needs_farm_scaling: "фарм и скейл",
                     long_control: "длительный контроль",
-                    burst_control: "бёрст-контроль",
+                    burst_control: "быстрый контроль",
                     zone_control: "зональный контроль",
                     high_damage: "высокий урон",
                     lane_aggressive: "агрессию на линии",
                     lane_passive: "пассивную линию",
-                    lane_push_jungle: "пуш и джангл",
-                    lane_roam: "роум после 6",
-                    teamfight_5v5: "командные драки",
-                    hunt_pickoff: "охоту за героями",
-                    flexible: "гибкий стиль"
-                };
+                    lane_push_jungle: "пуш и лес",
+                    lane_roam: "роум после линии",
+                    teamfight_5v5: "5v5 драки",
+                    hunt_pickoff: "поиск пикоффов",
+                    flexible: "гибкий стиль",
 
+                    // pos4/5
+                    from_level: "зависимость от уровня",
+                    from_items: "утилити‑предметы",
+                    from_control: "контроль",
+                    from_damage: "урон",
+                    from_save: "сейвы/баффы",
+                    from_initiation: "инициацию",
+                    from_counterinitiation: "контр‑инициацию",
+                    from_position: "позиционную игру"
+                };
 
                 const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
                 document.getElementById('heroResultDescription').textContent =
                     `На основе твоих ответов мы подобрали героев с упором на: ${tagList}. Попробуй их в игре!`;
 
-
                 const heroListContainer = document.getElementById('heroResultList');
                 heroListContainer.innerHTML = '';
 
-
                 const maxScore = topHeroes[0].score || 1;
 
-
-                topHeroes.forEach((hero, index) => {
-                    const heroItem = document.createElement('div');
-                    heroItem.className = 'hero-item';
-
+                topHeroes.forEach(hero => {
+                    const card = document.createElement('div');
 
                     const matchPercent = Math.round((hero.score / maxScore) * 100);
 
+                    // рамка по совпадению
+                    if (matchPercent >= 90) {
+                        card.className = 'hero-card hero-card--gold';
+                    } else if (matchPercent >= 70) {
+                        card.className = 'hero-card hero-card--silver';
+                    } else {
+                        card.className = 'hero-card hero-card--bronze';
+                    }
 
                     const heroNameFormatted = hero.name
                         .toLowerCase()
                         .replace(/'/g, '')
                         .replace(/\s+/g, '_');
 
-
                     const heroIconUrl =
                         `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroNameFormatted}.png`;
 
-                    // Отображаем теги героя (только первые 3)
-                    const heroTagsArray = Object.keys(hero.tags).slice(0, 3);
-                    const heroTagsText = heroTagsArray.map(tag => tagNames[tag] || tag).join(' · ');
+                    // пока API не подключен: заглушки для винрейта/игр
+                    const winrate = hero.winrate ?? null;   // сюда потом подставишь данные из API
+                    const games = hero.games ?? null;
 
+                    const winrateText = winrate != null ? `${winrate.toFixed(1)}%` : '—';
+                    const gamesText = games != null ? `${games}` : '—';
 
-                    heroItem.innerHTML = `
-                        <span class="hero-rank">${index + 1}.</span>
-                        <img src="${heroIconUrl}" alt="${hero.name}" class="hero-icon" onerror="this.style.display='none'">
-                        <div style="flex: 1;">
-                            <div class="hero-name">${hero.name}</div>
-                            <div class="hero-tags">${heroTagsText}</div>
+                    card.innerHTML = `
+                        <div class="hero-card__top">
+                            <img src="${heroIconUrl}" alt="${hero.name}" class="hero-card__icon" onerror="this.style.display='none'">
+                            <div class="hero-card__info">
+                                <div class="hero-card__name">${hero.name}</div>
+                                <div class="hero-card__match">Совпадение: <span>${matchPercent}%</span></div>
+                            </div>
                         </div>
-                        <div class="hero-match">
-                            <div class="hero-match-percent">${matchPercent}%</div>
-                            <div class="hero-match-bar">
-                                <div class="hero-match-fill" style="width: ${matchPercent}%"></div>
+                        <div class="hero-card__stats">
+                            <div class="hero-card__stat-row">
+                                <span>Винрейт:</span>
+                                <span>${winrateText}</span>
+                            </div>
+                            <div class="hero-card__stat-row">
+                                <span>Сыграно игр:</span>
+                                <span>${gamesText}</span>
                             </div>
                         </div>
                     `;
-                    heroListContainer.appendChild(heroItem);
-                });
 
+                    heroListContainer.appendChild(card);
+                });
 
                 document.getElementById('hero-result').style.display = 'block';
             },
+
 
 
             restart() {
