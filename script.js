@@ -582,8 +582,8 @@
                 0: window.heroCarryData.questions,
                 1: window.heroMidData.questions,
                 2: window.heroOfflaneData.questions,
-                // 3: window.heroPos4Data.questions,
-                // 4: window.heroPos5Data.questions,
+                3: window.heroPos4Data.questions,
+                4: window.heroPos5Data.questions,
             };
 
 
