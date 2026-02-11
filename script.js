@@ -830,13 +830,7 @@
                         card.className = 'hero-card hero-card--bronze';
                     }
 
-                    const heroNameFormatted = hero.name
-                        .toLowerCase()
-                        .replace(/'/g, '')
-                        .replace(/\s+/g, '_');
-
-                    const heroIconUrl =
-                        `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroNameFormatted}.png`;
+                    const heroIconUrl = window.getHeroIconUrlByName(hero.name);
 
                     // пока API не подключен: заглушки для винрейта/игр
                     const winrate = hero.winrate ?? null;   // сюда потом подставишь данные из API
