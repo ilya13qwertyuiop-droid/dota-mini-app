@@ -13,6 +13,9 @@
 
             const unsafe = tg.initDataUnsafe || {};
 
+            console.log('tg:', tg);
+            console.log('tg.initDataUnsafe:', unsafe);
+
             if (unsafe.user && unsafe.user.id) {
                 TELEGRAM_USER_ID = unsafe.user.id;
                 console.log('TELEGRAM_USER_ID from initDataUnsafe:', TELEGRAM_USER_ID);
@@ -20,6 +23,7 @@
                 console.warn('No Telegram user in initDataUnsafe');
             }
         }
+
 
         // --- Проверка подписки через backend ---
         async function checkSubscription() {
