@@ -9,10 +9,65 @@
             tg.expand();
 
             if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                TELEGRAM_USER_ID = tg.initDataUnsafe.user.id; // Telegram user_id [web:62][web:59]
+                TELEGRAM_USER_ID = tg.initDataUnsafe.user.id;
             }
         }
-        
+
+        // --- Проверка подписки через backend ---
+        async function checkSubscription() {
+            if (!TELEGRAM_USER_ID) {
+                console.warn('No Telegram user id, denying by default');
+                return false;
+            }
+
+            try {
+                const resp = await fetch('http://ТВОЙ_IP:8000/api/check-subscription', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: TELEGRAM_USER_ID }),
+                });
+
+                if (!resp.ok) {
+                    console.error('Subscription check failed', resp.status);
+                    return false;
+                }
+
+                const data = await resp.json(); // { allowed: true/false }
+                return !!data.allowed;
+            } catch (e) {
+                console.error('Subscription check error', e);
+                return false;
+            }
+        }
+
+        async function initSubscriptionGuard() {
+            const overlay = document.getElementById('subscription-overlay');
+            const checkBtn = document.getElementById('subscription-check-btn');
+
+            if (!overlay) {
+                console.warn('subscription-overlay not found in DOM');
+                return;
+            }
+
+            async function runCheck() {
+                const allowed = await checkSubscription();
+                overlay.style.display = allowed ? 'none' : 'flex';
+            }
+
+            if (checkBtn) {
+                checkBtn.addEventListener('click', async () => {
+                    checkBtn.textContent = 'Проверяю...';
+                    checkBtn.disabled = true;
+                    await runCheck();
+                    checkBtn.textContent = 'Я подписался';
+                    checkBtn.disabled = false;
+                });
+            }
+
+            await runCheck();
+        }
+
+
         // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
         const quizData = [
             {
@@ -908,4 +963,7 @@
                 textSpan.textContent = 'Сначала пройди тест по позициям';
             }
         }
-        
+        document.addEventListener('DOMContentLoaded', () => {
+        initSubscriptionGuard();
+        // твой существующий стартовый код можно оставить как есть
+});
