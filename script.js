@@ -27,6 +27,8 @@
 
         // --- Проверка подписки через backend ---
         async function checkSubscription() {
+            console.log('checkSubscription, TELEGRAM_USER_ID =', TELEGRAM_USER_ID);
+
             if (!TELEGRAM_USER_ID) {
                 console.warn('No Telegram user id, denying by default');
                 return false;
@@ -39,18 +41,22 @@
                     body: JSON.stringify({ user_id: TELEGRAM_USER_ID }),
                 });
 
+                console.log('checkSubscription response status =', resp.status);
+
                 if (!resp.ok) {
                     console.error('Subscription check failed', resp.status);
                     return false;
                 }
 
                 const data = await resp.json(); // { allowed: true/false }
+                console.log('checkSubscription response JSON =', data);
                 return !!data.allowed;
             } catch (e) {
                 console.error('Subscription check error', e);
                 return false;
             }
         }
+
 
         async function initSubscriptionGuard() {
             const overlay = document.getElementById('subscription-overlay');
