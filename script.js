@@ -27,10 +27,14 @@
             const params = new URLSearchParams(window.location.search);
             return params.get('token');
         }
-        
+
         // --- Проверка подписки через backend ---
         async function checkSubscription() {
+            alert('checkSubscription called');
+
             const token = getTokenFromUrl();
+            console.log('token from URL =', token);
+
             if (!token) {
                 console.warn('No token in URL, denying by default');
                 return false;
@@ -55,6 +59,7 @@
                 return false;
             }
         }
+
 
         async function initSubscriptionGuard() {
             const overlay = document.getElementById('subscription-overlay');
