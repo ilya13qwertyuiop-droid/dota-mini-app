@@ -2,7 +2,10 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,shrink-to-fit=no,viewport-fit=cover"
+    />
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
@@ -370,6 +373,24 @@
       </div>
     </div>
 
+    <!-- Инициализация Telegram WebApp -->
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        const tg = window.Telegram ? window.Telegram.WebApp : null;
+        if (!tg) return;
+
+        tg.expand();
+
+        if (tg.requestFullscreen) {
+          tg.requestFullscreen();
+        }
+
+        if (tg.backgroundColor) {
+          document.body.style.backgroundColor = tg.backgroundColor;
+        }
+      });
+    </script>
+
     <!-- Твой JS -->
     <script src="heroes-carry.js"></script>
     <script src="heroes-mid.js"></script>
@@ -377,5 +398,5 @@
     <script src="heroes-pos45.js"></script>
     <script src="hero-images.js"></script>
     <script src="script.js"></script>
-</body>
+  </body>
 </html>

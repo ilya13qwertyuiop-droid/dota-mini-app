@@ -4,6 +4,13 @@ padding: 0;
 box-sizing: border-box;
 }
 
+html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
 :root {
 --bg-main: #050509;
 --glass-bg: rgba(15, 15, 20, 0.82);
