@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+import secrets
+from datetime import datetime, timedelta
 
 import httpx
 from telegram import (
@@ -11,7 +13,6 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 from telegram.ext import Application, CommandHandler, ContextTypes
-
 
 # -------- загрузка переменных из .env --------
 def load_env():
@@ -33,6 +34,28 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
 
+# -------- простое хранилище токенов --------
+TOKEN_STORE: dict[str, dict] = {}  # token -> {"user_id": int, "expires_at": datetime}
+
+
+def create_token_for_user(user_id: int) -> str:
+    token = secrets.token_urlsafe(16)
+    TOKEN_STORE[token] = {
+        "user_id": user_id,
+        "expires_at": datetime.utcnow() + timedelta(hours=1),
+    }
+    return token
+
+
+def get_user_id_by_token(token: str) -> int | None:
+    data = TOKEN_STORE.get(token)
+    if not data:
+        return None
+    if data["expires_at"] < datetime.utcnow():
+        del TOKEN_STORE[token]
+        return None
+    return data["user_id"]
+
 
 async def _is_subscribed(user_id: int) -> bool:
     if not BOT_TOKEN or not CHECK_CHAT_ID:
@@ -53,7 +76,6 @@ async def _is_subscribed(user_id: int) -> bool:
     print("CHECK_SUB", user_id, "status:", status, "raw:", data)
 
     return status in {"member", "administrator", "creator"}
-
 
 
 # -------- handlers --------
@@ -79,11 +101,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # пользователь подписан – выдаём токен и прокидываем в URL мини‑апа
+    token = create_token_for_user(user_id)
+    mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
+
     keyboard = [
         [
             KeyboardButton(
                 text="🔮 Найти своего героя",
-                web_app=WebAppInfo(url=MINI_APP_URL),
+                web_app=WebAppInfo(url=mini_app_url_with_token),
             )
         ]
     ]
@@ -126,3 +152,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
