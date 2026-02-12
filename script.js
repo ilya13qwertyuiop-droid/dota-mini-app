@@ -29,7 +29,7 @@
             }
 
             try {
-                const resp = await fetch('http://ТВОЙ_IP:8000/api/check-subscription', {
+                const resp = await fetch('http://62.171.144.53:8000/api/check-subscription', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: TELEGRAM_USER_ID }),
