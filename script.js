@@ -23,69 +23,6 @@
                 console.warn('No Telegram user in initDataUnsafe');
             }
         }
-        function getTokenFromUrl() {
-            const params = new URLSearchParams(window.location.search);
-            return params.get('token');
-        }
-
-        // --- Проверка подписки через backend ---
-        async function checkSubscription() {
-            const token = getTokenFromUrl();
-            alert('checkSubscription called, token = ' + token);
-            console.log('token from URL =', token);
-
-            if (!token) {
-                console.warn('No token in URL, denying by default');
-                return false;
-            }
-
-            try {
-                const resp = await fetch('/api/check-subscription', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token }),
-                });
-
-                if (!resp.ok) {
-                    console.error('Subscription check failed', resp.status);
-                    return false;
-                }
-
-                const data = await resp.json(); // { allowed: true/false }
-                return !!data.allowed;
-            } catch (e) {
-                console.error('Subscription check error', e);
-                return false;
-            }
-        }
-
-        async function initSubscriptionGuard() {
-            const overlay = document.getElementById('subscription-overlay');
-            const checkBtn = document.getElementById('subscription-check-btn');
-
-            if (!overlay) {
-                console.warn('subscription-overlay not found in DOM');
-                return;
-            }
-
-            async function runCheck() {
-                const allowed = await checkSubscription();
-                overlay.style.display = allowed ? 'none' : 'flex';
-            }
-
-            if (checkBtn) {
-                checkBtn.addEventListener('click', async () => {
-                    checkBtn.textContent = 'Проверяю...';
-                    checkBtn.disabled = true;
-                    await runCheck();
-                    checkBtn.textContent = 'Я подписался';
-                    checkBtn.disabled = false;
-                });
-            }
-
-            await runCheck();
-        }
-
 
         // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
         const quizData = [
@@ -982,7 +919,3 @@
                 textSpan.textContent = 'Сначала пройди тест по позициям';
             }
         }
-        document.addEventListener('DOMContentLoaded', () => {
-        initTelegramUser();
-        initSubscriptionGuard();
-});
