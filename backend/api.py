@@ -3,6 +3,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from bot import get_user_id_by_token
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
@@ -26,7 +27,7 @@ app.add_middleware(
 
 
 class CheckRequest(BaseModel):
-    user_id: int  # Telegram user_id из mini app (позже добавим initData)
+    token: str  # одноразовый токен из URL мини-апа
 
 
 class CheckResponse(BaseModel):
@@ -45,8 +46,15 @@ fake_profiles: dict[int, Profile] = {}
 
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
+    # 1. по токену достаём user_id
+    user_id = get_user_id_by_token(data.token)
+    if not user_id:
+        # нет такого токена или он просрочен
+        return CheckResponse(allowed=False)
+
+    # 2. проверяем подписку через getChatMember
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
-    params = {"chat_id": CHECK_CHAT_ID, "user_id": data.user_id}
+    params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
 
     async with httpx.AsyncClient() as client:
         r = await client.get(url, params=params)
