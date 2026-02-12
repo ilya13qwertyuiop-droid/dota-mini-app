@@ -23,14 +23,16 @@
                 console.warn('No Telegram user in initDataUnsafe');
             }
         }
-
-
+        function getTokenFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('token');
+        }
+        
         // --- Проверка подписки через backend ---
         async function checkSubscription() {
-            console.log('checkSubscription, TELEGRAM_USER_ID =', TELEGRAM_USER_ID);
-
-            if (!TELEGRAM_USER_ID) {
-                console.warn('No Telegram user id, denying by default');
+            const token = getTokenFromUrl();
+            if (!token) {
+                console.warn('No token in URL, denying by default');
                 return false;
             }
 
@@ -38,10 +40,8 @@
                 const resp = await fetch('http://62.171.144.53:8000/api/check-subscription', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: TELEGRAM_USER_ID }),
+                    body: JSON.stringify({ token }),
                 });
-
-                console.log('checkSubscription response status =', resp.status);
 
                 if (!resp.ok) {
                     console.error('Subscription check failed', resp.status);
@@ -49,14 +49,12 @@
                 }
 
                 const data = await resp.json(); // { allowed: true/false }
-                console.log('checkSubscription response JSON =', data);
                 return !!data.allowed;
             } catch (e) {
                 console.error('Subscription check error', e);
                 return false;
             }
         }
-
 
         async function initSubscriptionGuard() {
             const overlay = document.getElementById('subscription-overlay');
