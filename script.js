@@ -876,11 +876,16 @@
                 heroListContainer.innerHTML = '';
 
                 const maxScore = topHeroes[0].score || 1;
+                const minScore = topHeroes[topHeroes.length - 1].score || 0;
+                const range = maxScore - minScore;
 
                 topHeroes.forEach(hero => {
                     const card = document.createElement('div');
 
-                    const matchPercent = Math.round((hero.score / maxScore) * 100);
+                    // Нормализация процентов: 1-е место = 100%, последнее = ~55-65%
+                    const matchPercent = range > 0
+                        ? Math.round(55 + ((hero.score - minScore) / range) * 45)
+                        : 100;
 
                     // рамка по совпадению
                     if (matchPercent >= 90) {

@@ -1,6 +1,7 @@
 import os
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -12,6 +13,16 @@ if not CHECK_CHAT_ID:
     raise RuntimeError("CHECK_CHAT_ID is not set")
 
 app = FastAPI(title="Dota Mini App Backend")
+
+# CORS нужен, чтобы фронтенд (мини-ап) мог вызывать этот API из браузера.
+# Для продакшена лучше сузить allow_origins до домена мини-апа.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class CheckRequest(BaseModel):
