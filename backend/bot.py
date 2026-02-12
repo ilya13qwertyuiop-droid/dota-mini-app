@@ -1,8 +1,15 @@
 import os
 from pathlib import Path
 
-import asyncio
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
+import httpx
+from telegram import (
+    Update,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 
@@ -24,10 +31,49 @@ load_env()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
+CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
+
+
+async def _is_subscribed(user_id: int) -> bool:
+    if not BOT_TOKEN or not CHECK_CHAT_ID:
+        return False
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+    params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, params=params)
+
+    if r.status_code != 200:
+        return False
+
+    status = (r.json().get("result") or {}).get("status")
+    return status in {"member", "administrator", "creator"}
 
 
 # -------- handlers --------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN не найден. Проверь файл .env")
+    if not MINI_APP_URL:
+        raise RuntimeError("MINI_APP_URL не найден. Проверь файл .env")
+    if not CHECK_CHAT_ID:
+        raise RuntimeError("CHECK_CHAT_ID не найден. Проверь файл .env")
+
+    user_id = update.effective_user.id
+    subscribed = await _is_subscribed(user_id)
+
+    if not subscribed:
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
+        )
+        await update.message.reply_text(
+            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
+            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            reply_markup=kb,
+        )
+        return
+
     keyboard = [
         [
             KeyboardButton(
@@ -75,4 +121,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

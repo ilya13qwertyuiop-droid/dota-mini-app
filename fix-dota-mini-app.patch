@@ -1,0 +1,128 @@
+diff --git a/backend/api.py b/backend/api.py
+index c34c173..eb776c2 100644
+--- a/backend/api.py
++++ b/backend/api.py
+@@ -1,6 +1,7 @@
+ import os
+ import httpx
+ from fastapi import FastAPI, HTTPException
++from fastapi.middleware.cors import CORSMiddleware
+ from pydantic import BaseModel
+ 
+ BOT_TOKEN = os.environ.get("BOT_TOKEN")
+@@ -13,6 +14,16 @@ if not CHECK_CHAT_ID:
+ 
+ app = FastAPI(title="Dota Mini App Backend")
+ 
++# CORS нужен, чтобы фронтенд (мини-ап) мог вызывать этот API из браузера.
++# Для продакшена лучше сузить allow_origins до домена мини-апа.
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=["*"],
++    allow_credentials=False,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
++
+ 
+ class CheckRequest(BaseModel):
+     user_id: int  # Telegram user_id из mini app (позже добавим initData)
+diff --git a/backend/bot.py b/backend/bot.py
+index 8385741..91c7e4c 100644
+--- a/backend/bot.py
++++ b/backend/bot.py
+@@ -1,8 +1,15 @@
+ import os
+ from pathlib import Path
+ 
+-import asyncio
+-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
++import httpx
++from telegram import (
++    Update,
++    KeyboardButton,
++    ReplyKeyboardMarkup,
++    WebAppInfo,
++    InlineKeyboardButton,
++    InlineKeyboardMarkup,
++)
+ from telegram.ext import Application, CommandHandler, ContextTypes
+ 
+ 
+@@ -24,10 +31,49 @@ load_env()
+ 
+ BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ MINI_APP_URL = os.environ.get("MINI_APP_URL")
++CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
++
++
++async def _is_subscribed(user_id: int) -> bool:
++    if not BOT_TOKEN or not CHECK_CHAT_ID:
++        return False
++
++    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
++    params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
++
++    async with httpx.AsyncClient(timeout=10) as client:
++        r = await client.get(url, params=params)
++
++    if r.status_code != 200:
++        return False
++
++    status = (r.json().get("result") or {}).get("status")
++    return status in {"member", "administrator", "creator"}
+ 
+ 
+ # -------- handlers --------
+ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
++    if not BOT_TOKEN:
++        raise RuntimeError("BOT_TOKEN не найден. Проверь файл .env")
++    if not MINI_APP_URL:
++        raise RuntimeError("MINI_APP_URL не найден. Проверь файл .env")
++    if not CHECK_CHAT_ID:
++        raise RuntimeError("CHECK_CHAT_ID не найден. Проверь файл .env")
++
++    user_id = update.effective_user.id
++    subscribed = await _is_subscribed(user_id)
++
++    if not subscribed:
++        kb = InlineKeyboardMarkup(
++            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
++        )
++        await update.message.reply_text(
++            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
++            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
++            reply_markup=kb,
++        )
++        return
++
+     keyboard = [
+         [
+             KeyboardButton(
+@@ -75,4 +121,3 @@ def main():
+ 
+ if __name__ == "__main__":
+     main()
+-
+diff --git a/script.js b/script.js
+index 60a91c4..6279c86 100644
+--- a/script.js
++++ b/script.js
+@@ -876,11 +876,16 @@
+                 heroListContainer.innerHTML = '';
+ 
+                 const maxScore = topHeroes[0].score || 1;
++                const minScore = topHeroes[topHeroes.length - 1].score || 0;
++                const range = maxScore - minScore;
+ 
+                 topHeroes.forEach(hero => {
+                     const card = document.createElement('div');
+ 
+-                    const matchPercent = Math.round((hero.score / maxScore) * 100);
++                    // Нормализация процентов: 1-е место = 100%, последнее = ~55-65%
++                    const matchPercent = range > 0
++                        ? Math.round(55 + ((hero.score - minScore) / range) * 45)
++                        : 100;
+ 
+                     // рамка по совпадению
+                     if (matchPercent >= 90) {
