@@ -12,60 +12,7 @@
                 TELEGRAM_USER_ID = tg.initDataUnsafe.user.id; // Telegram user_id [web:62][web:59]
             }
         }
-        // --- Проверка подписки через backend ---
-        async function checkSubscription() {
-            if (!TELEGRAM_USER_ID) {
-                console.warn('No Telegram user id, denying by default');
-                return false;
-            }
-
-            try {
-                const resp = await fetch('http://62.171.144.53:8000/api/check-subscription', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: TELEGRAM_USER_ID }),
-                });
-
-                if (!resp.ok) {
-                    console.error('Subscription check failed', resp.status);
-                    return false;
-                }
-
-                const data = await resp.json(); // { allowed: true/false } [web:189]
-                return !!data.allowed;
-            } catch (e) {
-                console.error('Subscription check error', e);
-                return false;
-            }
-        }
-
-        async function initSubscriptionGuard() {
-            const overlay = document.getElementById('subscription-overlay');
-            const retryBtn = document.getElementById('subscription-retry');
-
-            if (!overlay) {
-                console.warn('subscription-overlay not found in DOM');
-                return;
-            }
-
-            async function runCheck() {
-                const allowed = await checkSubscription();
-                if (allowed) {
-                    overlay.style.display = 'none';
-                } else {
-                    overlay.style.display = 'flex';
-                }
-            }
-
-            if (retryBtn) {
-                retryBtn.addEventListener('click', () => {
-                    runCheck();
-                });
-            }
-
-            runCheck();
-        }
-
+        
         // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
         const quizData = [
             {
@@ -961,7 +908,4 @@
                 textSpan.textContent = 'Сначала пройди тест по позициям';
             }
         }
-        document.addEventListener('DOMContentLoaded', () => {
-        initSubscriptionGuard();
-        // твой существующий стартовый код можно оставить как есть
-});
+        
