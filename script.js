@@ -1,15 +1,23 @@
-        
-        // --- Telegram WebApp user info + init ---
         const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
         let TELEGRAM_USER_ID = null;
 
-        if (tg) {
+        function initTelegramUser() {
+            if (!tg) {
+                console.warn('Telegram WebApp object not found');
+                return;
+            }
+
             tg.ready();
             tg.expand();
 
-            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                TELEGRAM_USER_ID = tg.initDataUnsafe.user.id;
+            const unsafe = tg.initDataUnsafe || {};
+
+            if (unsafe.user && unsafe.user.id) {
+                TELEGRAM_USER_ID = unsafe.user.id;
+                console.log('TELEGRAM_USER_ID from initDataUnsafe:', TELEGRAM_USER_ID);
+            } else {
+                console.warn('No Telegram user in initDataUnsafe');
             }
         }
 
@@ -964,6 +972,6 @@
             }
         }
         document.addEventListener('DOMContentLoaded', () => {
+        initTelegramUser();
         initSubscriptionGuard();
-        // твой существующий стартовый код можно оставить как есть
 });
