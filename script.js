@@ -30,9 +30,8 @@
 
         // --- Проверка подписки через backend ---
         async function checkSubscription() {
-            alert('checkSubscription called');
-
             const token = getTokenFromUrl();
+            alert('checkSubscription called, token = ' + token);
             console.log('token from URL =', token);
 
             if (!token) {
