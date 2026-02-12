@@ -45,10 +45,15 @@ async def _is_subscribed(user_id: int) -> bool:
         r = await client.get(url, params=params)
 
     if r.status_code != 200:
+        print("CHECK_SUB ERROR", user_id, "status_code:", r.status_code, "raw:", r.text)
         return False
 
-    status = (r.json().get("result") or {}).get("status")
+    data = r.json()
+    status = (data.get("result") or {}).get("status")
+    print("CHECK_SUB", user_id, "status:", status, "raw:", data)
+
     return status in {"member", "administrator", "creator"}
+
 
 
 # -------- handlers --------
