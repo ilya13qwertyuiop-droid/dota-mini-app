@@ -11,8 +11,10 @@ from telegram import (
     WebAppInfo,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from telegram.ext import Application, CommandHandler, ContextTypes
+
 
 # -------- загрузка переменных из .env --------
 def load_env():
@@ -33,6 +35,7 @@ load_env()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
+
 
 # -------- простое хранилище токенов --------
 TOKEN_STORE: dict[str, dict] = {}  # token -> {"user_id": int, "expires_at": datetime}
@@ -91,6 +94,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subscribed = await _is_subscribed(user_id)
 
     if not subscribed:
+        # Сообщение с просьбой подписаться
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
         )
@@ -99,9 +103,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
             reply_markup=kb,
         )
+        # Убираем старую клавиатуру с кнопкой мини-апа, если она была
+        try:
+            await update.message.reply_reply_markup(reply_markup=ReplyKeyboardRemove())
+        except Exception as e:
+            print("Failed to remove old keyboard:", e)
         return
 
-    # пользователь подписан – выдаём токен и прокидываем в URL мини‑апа
+    # Пользователь подписан – выдаём токен и прокидываем в URL мини‑апа
     token = create_token_for_user(user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
@@ -152,4 +161,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
