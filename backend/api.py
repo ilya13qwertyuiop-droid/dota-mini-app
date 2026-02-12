@@ -3,7 +3,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from bot import get_user_id_by_token
+from backend.bot import get_user_id_by_token
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
