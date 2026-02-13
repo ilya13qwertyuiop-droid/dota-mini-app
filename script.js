@@ -680,66 +680,45 @@
 
 
             calculateTopHeroes() {
-                // Бонусы для редких тегов
-                const rareTagBonus = {
-                    lane_push_jungle: 0.2,
-                    needs_tank_items: 0.2,
-                    lane_roam: 0.6,
-                    splitpush: 0.6
-                };
-
-                // Собираем все выбранные теги
+                // Собираем выбранные теги
                 const selectedTags = [];
                 this.state.answers.forEach(answer => {
-                    answer.tags.forEach(tag => {
-                        selectedTags.push(tag);
-                    });
+                    answer.tags.forEach(tag => selectedTags.push(tag));
                 });
 
-                // Получаем героев выбранной позиции
+                // Определяем выбранную сложность (easy/medium/hard)
+                let selectedDifficulty = null;
+                this.state.answers.forEach(answer => {
+                    if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
+                    else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
+                    else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
+                });
+
                 const heroes = this.heroDatabase[this.state.selectedPosition];
-                
-                // Считаем score для каждого героя с учётом весов и бонусов
+
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
-                    
-                    // Проходим по всем выбранным тегам
+
+                    // hero.tags сейчас МАССИВ → считаем количество совпадающих тегов
                     selectedTags.forEach(tag => {
-                        // Если у героя есть этот тег, добавляем его вес
-                        if (hero.tags[tag] !== undefined) {
-                            let weight = hero.tags[tag];
-                            
-                            // Добавляем бонус для редких тегов
-                            if (rareTagBonus[tag]) {
-                                weight += rareTagBonus[tag];
-                            }
-                            
-                            score += weight;
+                        if (hero.tags.includes(tag)) {
+                            score += 1; // один балл за совпадающий тег
                         }
                     });
-                    
-                    // Фильтр по сложности (если выбрана)
-                    let selectedDifficulty = null;
-                    this.state.answers.forEach(answer => {
-                        if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
-                        else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
-                        else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
-                    });
-                    
+
                     // Бонус за совпадение сложности
                     if (selectedDifficulty && hero.difficulty === selectedDifficulty) {
                         score += 1.5;
                     }
-                    
+
                     return { ...hero, score };
                 });
 
-                // Сортируем по убыванию score
+                // Сортируем по убыванию и берём топ‑5
                 scoredHeroes.sort((a, b) => b.score - a.score);
-                
-                // Возвращаем топ-5
                 return scoredHeroes.slice(0, 5);
             },
+
 
 
             showResult() {
