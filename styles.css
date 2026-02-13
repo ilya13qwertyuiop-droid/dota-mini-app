@@ -382,24 +382,32 @@ flex-shrink: 0;
 flex: 1;
 }
 
-.quiz-controls {
-  margin-top: 24px;            /* чуть отступить от ответов */
+/* Обёртка: карточка + кнопка "Назад" под ней */
+.quiz-card-with-back {
   display: flex;
-  justify-content: flex-start; /* всегда слева */
+  flex-direction: column;
+  align-items: flex-start;  /* всё привязано к левому краю */
 }
 
+/* Внутренняя карточка с вопросом */
+.quiz-card-inner {
+  width: 100%;
+}
+
+/* Кнопка "Назад" под карточкой */
 .btn-back {
-  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
+  margin-top: 16px;         /* расстояние от низа карточки */
+  background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;      /* прямоугольная с лёгким скруглением */
   color: rgba(255, 255, 255, 0.78);
-  font-size: 12px;
-  padding: 6px 14px;
+  font-size: 13px;
+  padding: 8px 18px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   outline: none;
 }
 
@@ -410,8 +418,8 @@ flex: 1;
 }
 
 .btn-back:hover {
-  border-color: rgba(255, 255, 255, 0.24);
-  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  border-color: rgba(255, 255, 255, 0.26);
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
 }
 
 .btn-back:active {

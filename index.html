@@ -264,38 +264,40 @@
               </div>
 
               <button
-                class="btn-secondary"
+                class="btn-back"
                 onclick="backToQuizListFromHero()"
                 style="margin-top: 20px;"
               >
-                ← Назад
+                Назад
               </button>
             </div>
 
             <!-- Вопросы -->
             <div id="hero-questions" style="display: none;">
-              <h1>🦸 Подбор героя</h1>
-              <p class="subtitle" id="heroQuizSubtitle">
-                Ответь на несколько вопросов
-              </p>
+              <div class="quiz-card-with-back">
+                <div class="quiz-card-inner">
+                  <h1>🦸 Подбор героя</h1>
+                  <p class="subtitle" id="heroQuizSubtitle">
+                    Ответь на несколько вопросов
+                  </p>
 
-              <div class="progress-bar">
-                <div
-                  class="progress-fill"
-                  id="heroProgressBar"
-                ></div>
-              </div>
+                  <div class="progress-bar">
+                    <div
+                      class="progress-fill"
+                      id="heroProgressBar"
+                    ></div>
+                  </div>
 
-              <div class="question" id="heroQuestion"></div>
-              <div class="answers" id="heroAnswers"></div>
+                  <div class="question" id="heroQuestion"></div>
+                  <div class="answers" id="heroAnswers"></div>
+                </div>
 
-              <!-- Кнопки управления квизом по героям -->
-              <div class="quiz-controls">
                 <button class="btn-back" onclick="goBackInHeroQuiz()">
                   Назад
                 </button>
               </div>
             </div>
+
 
             <!-- Результат -->
             <div id="hero-result" style="display: none;">
