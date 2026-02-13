@@ -687,49 +687,60 @@
                 this.state.answers.forEach(answer => {
                     answer.tags.forEach(tag => {
                         if (tag === 'easy' || tag === 'medium' || tag === 'hard') {
-                            selectedDifficulty = tag; // запоминаем сложность
+                            selectedDifficulty = tag; // сложность
                         } else {
-                            selectedTags.push(tag);   // только "игровые" теги
+                            selectedTags.push(tag);   // поведенческие теги
                         }
                     });
                 });
 
                 const heroes = this.heroDatabase[this.state.selectedPosition];
 
-                // 2. Считаем score для каждого героя
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
 
-                    // базовый счёт: кол-во совпавших тегов
+                    const heroTags = hero.tags;
+
                     selectedTags.forEach(tag => {
-                        if (hero.tags.includes(tag)) {
-                            score += 1;
+                        // Вариант 1: hero.tags — МАССИВ (керри)
+                        if (Array.isArray(heroTags)) {
+                            if (heroTags.includes(tag)) {
+                                score += 1; // 1 балл за совпавший тег
+                            }
+                        }
+                        // Вариант 2: hero.tags — ОБЪЕКТ с весами (оффлейн, pos4/5)
+                        else if (heroTags && typeof heroTags === 'object') {
+                            if (heroTags[tag] !== undefined) {
+                                score += heroTags[tag]; // прибавляем вес
+                            }
                         }
                     });
 
-                    // отдельный маленький бонус, если герой соответствует выбранной сложности
+                    // Бонус за совпадение сложности
                     if (selectedDifficulty && hero.difficulty === selectedDifficulty) {
                         score += 1.5;
                     }
 
-                    // дополнительный приоритет для чёткого совпадения ближний/дальний бой
-                    const wantsMelee = selectedTags.includes('melee');
-                    const wantsRanged = selectedTags.includes('ranged');
+                    // Дополнительный приоритет только для керри (melee/ranged)
+                    if (this.state.selectedPosition === 0) {
+                        const wantsMelee = selectedTags.includes('melee');
+                        const wantsRanged = selectedTags.includes('ranged');
 
-                    if (wantsMelee && hero.tags.includes('melee') && !hero.tags.includes('ranged')) {
-                        score += 0.75; // чёткий ближник
-                    }
-                    if (wantsRanged && hero.tags.includes('ranged') && !hero.tags.includes('melee')) {
-                        score += 0.75; // чёткий дальник
+                        if (Array.isArray(heroTags)) {
+                            if (wantsMelee && heroTags.includes('melee') && !heroTags.includes('ranged')) {
+                                score += 0.75;
+                            }
+                            if (wantsRanged && heroTags.includes('ranged') && !heroTags.includes('melee')) {
+                                score += 0.75;
+                            }
+                        }
                     }
 
                     return { ...hero, score };
                 });
 
-                // 3. Сортируем по убыванию score
+                // Сортируем по убыванию score и берём топ-5
                 scoredHeroes.sort((a, b) => b.score - a.score);
-
-                // 4. Берём топ-5
                 return scoredHeroes.slice(0, 5);
             },
 
