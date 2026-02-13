@@ -361,6 +361,18 @@
             updateQuizPageResult();
         }
 
+        function goToPositionQuiz() {
+            // переходим на вкладку "Квизы"
+            switchPage('quiz');
+            document.querySelectorAll('.nav-item')[1].classList.add('active');
+            document.querySelectorAll('.nav-item')[0].classList.remove('active');
+            // запускаем квиз по позициям
+            if (typeof initQuiz === 'function') {
+                initQuiz();       // у тебя уже есть функция инициализации позиционного квиза
+            } else if (typeof startQuiz === 'function') {
+                startQuiz();      // запасной вариант, если она у тебя называется иначе
+            }
+        }
 
         function goToHeroQuiz() {
             switchPage('quiz');
@@ -940,4 +952,22 @@
             } else {
                 window.open(url, '_blank'); // запасной вариант
             }
+        
+        const quickHeroBtn = document.getElementById('quick-hero-quiz');
+        if (quickHeroBtn) {
+            quickHeroBtn.addEventListener('click', function () {
+                // сразу открыть квиз по героям
+                openPage('page-quiz');      // если нужно переключиться на вкладку
+                startHeroQuiz();
+            });
+        }
+
+        const quickPositionBtn = document.getElementById('quick-position-quiz');
+        if (quickPositionBtn) {
+            quickPositionBtn.addEventListener('click', function () {
+                // СРАЗУ открыть квиз по позициям
+                openPage('page-quiz');      // переключаемся на вкладку "Квизы"
+                startPositionQuiz();        // запускаем сам тест
+            });
+        }
         });
