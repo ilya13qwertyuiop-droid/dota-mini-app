@@ -680,46 +680,58 @@
 
 
             calculateTopHeroes() {
-                // Собираем выбранные теги
+                // 1. Собираем выбранные теги
                 const selectedTags = [];
-                this.state.answers.forEach(answer => {
-                    answer.tags.forEach(tag => selectedTags.push(tag));
-                });
-
-                // Определяем выбранную сложность (easy/medium/hard)
                 let selectedDifficulty = null;
+
                 this.state.answers.forEach(answer => {
-                    if (answer.tags.includes('easy')) selectedDifficulty = 'easy';
-                    else if (answer.tags.includes('medium')) selectedDifficulty = 'medium';
-                    else if (answer.tags.includes('hard')) selectedDifficulty = 'hard';
+                    answer.tags.forEach(tag => {
+                        if (tag === 'easy' || tag === 'medium' || tag === 'hard') {
+                            selectedDifficulty = tag; // запоминаем сложность
+                        } else {
+                            selectedTags.push(tag);   // только "игровые" теги
+                        }
+                    });
                 });
 
                 const heroes = this.heroDatabase[this.state.selectedPosition];
 
+                // 2. Считаем score для каждого героя
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
 
-                    // hero.tags сейчас МАССИВ → считаем количество совпадающих тегов
+                    // базовый счёт: кол-во совпавших тегов
                     selectedTags.forEach(tag => {
                         if (hero.tags.includes(tag)) {
-                            score += 1; // один балл за совпадающий тег
+                            score += 1;
                         }
                     });
 
-                    // Бонус за совпадение сложности
+                    // отдельный маленький бонус, если герой соответствует выбранной сложности
                     if (selectedDifficulty && hero.difficulty === selectedDifficulty) {
                         score += 1.5;
+                    }
+
+                    // дополнительный приоритет для чёткого совпадения ближний/дальний бой
+                    const wantsMelee = selectedTags.includes('melee');
+                    const wantsRanged = selectedTags.includes('ranged');
+
+                    if (wantsMelee && hero.tags.includes('melee') && !hero.tags.includes('ranged')) {
+                        score += 0.75; // чёткий ближник
+                    }
+                    if (wantsRanged && hero.tags.includes('ranged') && !hero.tags.includes('melee')) {
+                        score += 0.75; // чёткий дальник
                     }
 
                     return { ...hero, score };
                 });
 
-                // Сортируем по убыванию и берём топ‑5
+                // 3. Сортируем по убыванию score
                 scoredHeroes.sort((a, b) => b.score - a.score);
+
+                // 4. Берём топ-5
                 return scoredHeroes.slice(0, 5);
             },
-
-
 
             showResult() {
                 document.getElementById('hero-questions').style.display = 'none';
@@ -817,35 +829,34 @@
                 const heroListContainer = document.getElementById('heroResultList');
                 heroListContainer.innerHTML = '';
 
-                const maxScore = topHeroes[0].score || 1;
-                const minScore = topHeroes[topHeroes.length - 1].score || 0;
-                const range = maxScore - minScore;
+                // Находим реальные max/min среди выбранных героев
+                const scores = topHeroes.map(h => h.score);
+                const maxScore = Math.max(...scores);
+                const minScore = Math.min(...scores);
+                const range = maxScore - minScore || 1; // защита от 0
 
                 topHeroes.forEach(hero => {
                     const card = document.createElement('div');
 
-                    // Нормализация процентов: 1-е место = 100%, последнее = ~55-65%
-                    const matchPercent = range > 0
-                        ? Math.round(55 + ((hero.score - minScore) / range) * 45)
-                        : 100;
+                    // Если у всех score одинаковый, не будем врать 100% — дадим всем 75%
+                    let matchPercent;
+                    if (maxScore === minScore) {
+                        matchPercent = 75;
+                    } else {
+                        const normalized = (hero.score - minScore) / range; // от 0 до 1
+                        matchPercent = Math.round(60 + normalized * 40);    // 60–100%
+                    }
 
                     // рамка по совпадению
                     if (matchPercent >= 90) {
                         card.className = 'hero-card hero-card--gold';
-                    } else if (matchPercent >= 70) {
+                    } else if (matchPercent >= 75) {
                         card.className = 'hero-card hero-card--silver';
                     } else {
                         card.className = 'hero-card hero-card--bronze';
                     }
 
                     const heroIconUrl = window.getHeroIconUrlByName(hero.name);
-
-                    // пока API не подключен: заглушки для винрейта/игр
-                    const winrate = hero.winrate ?? null;   // сюда потом подставишь данные из API
-                    const games = hero.games ?? null;
-
-                    const winrateText = winrate != null ? `${winrate.toFixed(1)}%` : '—';
-                    const gamesText = games != null ? `${games}` : '—';
 
                     card.innerHTML = `
                         <div class="hero-card__top">
@@ -861,7 +872,7 @@
                                 <span 
                                     class="hero-card__guide-chip hero-card__guide-btn" 
                                     data-hero-name="${hero.name}">
-                                    Dota2ProTracker
+                                    D2PT
                                 </span>
                             </div>
                         </div>
