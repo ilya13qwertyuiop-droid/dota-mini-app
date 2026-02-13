@@ -877,13 +877,13 @@
                             </div>
                         </div>
                         <div class="hero-card__stats">
-                            <div class="hero-card__stat-row">
-                                <span>Гайд:</span>
-                                <button 
-                                    class="hero-card__guide-btn" 
+                            <div class="hero-card__stat-row hero-card__stat-row--guide">
+                                <span class="hero-card__stat-label">Гайд:</span>
+                                <span 
+                                    class="hero-card__guide-chip hero-card__guide-btn" 
                                     data-hero-name="${hero.name}">
-                                    Открыть на D2PT
-                                </button>
+                                    Dota2ProTracker
+                                </span>
                             </div>
                         </div>
                     `;
@@ -924,14 +924,19 @@
                 textSpan.textContent = 'Сначала пройди тест по позициям';
             }
         }
-        
+
         document.addEventListener('click', (event) => {
-        const btn = event.target.closest('.hero-card__guide-btn');
-        if (!btn) return;
+            const btn = event.target.closest('.hero-card__guide-btn');
+            if (!btn) return;
 
-        const heroName = btn.getAttribute('data-hero-name');
-        if (!heroName) return;
+            const heroName = btn.getAttribute('data-hero-name');
+            if (!heroName) return;
 
-        const url = getDota2ProTrackerUrl(heroName);
-        window.open(url, '_blank');
+            const url = getDota2ProTrackerUrl(heroName);
+
+            if (tg && typeof tg.openLink === 'function') {
+                tg.openLink(url);          // откроет во встроенном браузере Telegram
+            } else {
+                window.open(url, '_blank'); // запасной вариант
+            }
         });
