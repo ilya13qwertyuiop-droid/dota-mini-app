@@ -382,6 +382,40 @@ flex-shrink: 0;
 flex: 1;
 }
 
+.quiz-controls {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.quiz-controls .btn-secondary {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: none;
+}
+
+.quiz-controls .btn-secondary::before {
+  content: "←";
+  display: inline-block;
+  opacity: 0.8;
+}
+
+.quiz-controls .btn-secondary:hover {
+  color: #ffffff;
+  opacity: 0.9;
+}
+
+.quiz-controls .btn-secondary:active {
+  transform: translateY(1px);
+  opacity: 0.8;
+}
+
 .result {
 display: none;
 text-align: center;

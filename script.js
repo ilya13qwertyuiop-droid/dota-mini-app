@@ -342,6 +342,18 @@
             updateQuizPageResult();
         }
 
+        function backToQuizListFromHero() {
+            // скрываем все экраны hero-квиза
+            document.getElementById('hero-start').style.display = 'block';
+            document.getElementById('hero-position-select').style.display = 'none';
+            document.getElementById('hero-questions').style.display = 'none';
+            document.getElementById('hero-result').style.display = 'none';
+
+            // показываем список квизов
+            document.getElementById('quiz-list').style.display = 'block';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'none';
+        }
 
         function updateQuizPageResult() {
             if (lastResult) {
@@ -450,13 +462,15 @@
         }
 
         function goBackInPositionQuiz() {
-            // если на первом вопросе — назад нельзя
-            if (currentQuestion <= 0) return;
+            // если на первом вопросе — возвращаем к списку квизов
+            if (currentQuestion <= 0) {
+                backToQuizList();
+                return;
+            }
 
             // откатываемся на предыдущий вопрос
             currentQuestion--;
 
-            // забираем очки за предыдущий ответ, если он был
             const questionData = quizData[currentQuestion];
             const prevAnswerIndex = selectedAnswersHistory[currentQuestion];
 
@@ -467,7 +481,6 @@
                 }
             }
 
-            // показываем предыдущий вопрос
             showQuestion();
         }
 
@@ -928,20 +941,21 @@
         };
 
         function goBackInHeroQuiz() {
-            if (heroQuiz.state.currentQuestionIndex <= 0) return;
+            // если на первом вопросе — возвращаемся к выбору позиции
+            if (heroQuiz.state.currentQuestionIndex <= 0) {
+                heroQuiz.state.currentQuestionIndex = 0;
+                heroQuiz.state.answers = [];
 
+                document.getElementById('hero-questions').style.display = 'none';
+                document.getElementById('hero-position-select').style.display = 'block';
+                return;
+            }
+
+            // иначе шаг назад по вопросам
             heroQuiz.state.currentQuestionIndex--;
             heroQuiz.state.answers.pop();
             heroQuiz.showQuestion();
         }
-        
-        function startHeroQuiz() {
-            document.getElementById('quiz-list').style.display = 'none';
-            document.getElementById('quiz-content-container').style.display = 'none';
-            document.getElementById('hero-quiz-container').style.display = 'block';
-            heroQuiz.init();
-        }
-
 
         function updateHeroQuizStart() {
             const btn = document.getElementById('useSavedPositionBtn');
