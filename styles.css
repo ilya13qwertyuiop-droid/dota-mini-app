@@ -772,3 +772,35 @@ font-size: 12px;
 font-size: 10px;
 }
 }
+.hero-card__stat-row--guide {
+  align-items: center;
+}
+
+.hero-card__stat-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.hero-card__guide-chip {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(74, 158, 255, 0.12);
+  color: #4a9eff;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(74, 158, 255, 0.4);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.hero-card__guide-chip:hover {
+  background: rgba(74, 158, 255, 0.2);
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.hero-card__guide-chip:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
