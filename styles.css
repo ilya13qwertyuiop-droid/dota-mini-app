@@ -777,8 +777,11 @@ font-size: 10px;
 }
 
 .hero-card__stat-label {
-  font-size: 11px;
-  opacity: 0.7;
+  font-size: 12px;                 /* чуть крупнее */
+  font-weight: 600;                /* полужирный */
+  letter-spacing: 0.02em;
+  color: #ffffff;                  /* ярче текст */
+  text-transform: uppercase;       /* ГАЙД (по желанию) */
 }
 
 .hero-card__guide-chip {
