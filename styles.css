@@ -383,38 +383,40 @@ flex: 1;
 }
 
 .quiz-controls {
-  margin-top: 16px;
+  margin-top: 24px;            /* чуть отступить от ответов */
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-start; /* всегда слева */
 }
 
-.quiz-controls .btn-secondary {
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
-  padding: 4px 0;
+.btn-back {
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  padding: 6px 14px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  box-shadow: none;
-  min-width: 0;           /* чтобы не растягивалась как большая кнопка */
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  outline: none;
 }
 
-.quiz-controls .btn-secondary::before {
+.btn-back::before {
   content: "←";
   display: inline-block;
-  opacity: 0.8;
-}
-
-.quiz-controls .btn-secondary:hover {
-  color: #ffffff;
   opacity: 0.9;
 }
 
-.quiz-controls .btn-secondary:active {
+.btn-back:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+}
+
+.btn-back:active {
   transform: translateY(1px);
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
 .result {
