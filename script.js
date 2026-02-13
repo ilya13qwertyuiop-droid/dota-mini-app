@@ -24,6 +24,11 @@
             }
         }
 
+        function getDota2ProTrackerUrl(heroName) {
+            return `https://dota2protracker.com/hero/${encodeURIComponent(heroName)}`;
+        }
+
+
         // ========== КВИЗ ПО ПОЗИЦИЯМ ==========
         const quizData = [
             {
@@ -873,12 +878,12 @@
                         </div>
                         <div class="hero-card__stats">
                             <div class="hero-card__stat-row">
-                                <span>Винрейт:</span>
-                                <span>${winrateText}</span>
-                            </div>
-                            <div class="hero-card__stat-row">
-                                <span>Сыграно игр:</span>
-                                <span>${gamesText}</span>
+                                <span>Гайд:</span>
+                                <button 
+                                    class="hero-card__guide-btn" 
+                                    data-hero-name="${hero.name}">
+                                    Открыть на D2PT
+                                </button>
                             </div>
                         </div>
                     `;
@@ -919,3 +924,14 @@
                 textSpan.textContent = 'Сначала пройди тест по позициям';
             }
         }
+        
+        document.addEventListener('click', (event) => {
+        const btn = event.target.closest('.hero-card__guide-btn');
+        if (!btn) return;
+
+        const heroName = btn.getAttribute('data-hero-name');
+        if (!heroName) return;
+
+        const url = getDota2ProTrackerUrl(heroName);
+        window.open(url, '_blank');
+        });
