@@ -288,6 +288,7 @@
         let currentQuestion = 0;
         let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
         let lastResult = null;
+        let selectedAnswersHistory = [];
 
 
         function loadSavedResult() {
@@ -362,16 +363,13 @@
         }
 
         function goToPositionQuiz() {
-            // переходим на вкладку "Квизы"
+            // переключаемся на вкладку "Квизы"
             switchPage('quiz');
             document.querySelectorAll('.nav-item')[1].classList.add('active');
             document.querySelectorAll('.nav-item')[0].classList.remove('active');
-            // запускаем квиз по позициям
-            if (typeof initQuiz === 'function') {
-                initQuiz();       // у тебя уже есть функция инициализации позиционного квиза
-            } else if (typeof startQuiz === 'function') {
-                startQuiz();      // запасной вариант, если она у тебя называется иначе
-            }
+
+            // сразу открываем сам квиз по позициям
+            startPositionQuiz();
         }
 
         function goToHeroQuiz() {
@@ -381,19 +379,16 @@
             startHeroQuiz();
         }
 
-
         function initQuiz() {
             currentQuestion = 0;
             scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
-
+            selectedAnswersHistory = [];
 
             document.querySelector('.quiz-content').style.display = 'block';
             document.getElementById('result').classList.remove('active');
 
-
             showQuestion();
         }
-
 
         function showQuestion() {
             const questionData = quizData[currentQuestion];
@@ -425,16 +420,17 @@
             });
         }
 
-
         function selectAnswer(index) {
             const questionData = quizData[currentQuestion];
             const selectedScores = questionData.answers[index].scores;
 
+            // сохраняем выбранный ответ для текущего вопроса
+            selectedAnswersHistory[currentQuestion] = index;
 
+            // добавляем очки
             for (let pos in selectedScores) {
                 scores[pos] += selectedScores[pos];
             }
-
 
             const buttons = document.querySelectorAll('.answer-btn');
             buttons.forEach((btn, i) => {
@@ -442,7 +438,6 @@
                     btn.classList.add('selected');
                 }
             });
-
 
             setTimeout(() => {
                 currentQuestion++;
@@ -454,6 +449,27 @@
             }, 300);
         }
 
+        function goBackInPositionQuiz() {
+            // если на первом вопросе — назад нельзя
+            if (currentQuestion <= 0) return;
+
+            // откатываемся на предыдущий вопрос
+            currentQuestion--;
+
+            // забираем очки за предыдущий ответ, если он был
+            const questionData = quizData[currentQuestion];
+            const prevAnswerIndex = selectedAnswersHistory[currentQuestion];
+
+            if (prevAnswerIndex !== undefined) {
+                const prevScores = questionData.answers[prevAnswerIndex].scores;
+                for (let pos in prevScores) {
+                    scores[pos] -= prevScores[pos];
+                }
+            }
+
+            // показываем предыдущий вопрос
+            showQuestion();
+        }
 
         function showResult() {
             document.querySelector('.quiz-content').style.display = 'none';
@@ -519,7 +535,6 @@
             document.getElementById('result').classList.add('active');
         }
 
-
         function togglePositionDetails() {
             const description = document.getElementById('positionDescription');
             const btn = event.target;
@@ -534,9 +549,7 @@
             }
         }
 
-
         // ========== КВИЗ ПО ГЕРОЯМ ==========
-
 
         const heroQuiz = {
             state: {
@@ -547,7 +560,7 @@
                 currentQuestionSet: []
             },
 
-
+        
             questions: window.heroCarryData.questions,
 
 
@@ -782,8 +795,8 @@
                     balanced: "баланс",
                     versatile: "универсальность",
                     farming: "фарм",
-                    lategame: "лейтгейм",
-                    superlate: "суперлейт",
+                    lategame: "лейт",
+                    superlate: "лейт+",
                     greedy: "затяжные игры",
                     midgame: "мидгейм",
                     tempo: "темп",
@@ -792,7 +805,7 @@
                     teamfight: "командные драки",
                     control: "контроль",
                     burst: "бёрст урон",
-                    snowball: "снежный ком",
+                    snowball: "сноубол",
                     durable: "живучесть",
                     splitpush: "сплит-пуш",
                     map_pressure: "давление на карту",
@@ -807,9 +820,9 @@
                     lane_pressure: "прессинг на линии",
                     lane_mixed: "гибкую линию",
                     lane_farm: "спокойный фарм линии",
-                    post_team_gank: "игру с командой после линии",
+                    post_team_gank: "игру с командой",
                     post_mix: "баланс фарма и драк",
-                    post_farm_push: "фарм и пуш после линии",
+                    post_farm_push: "фарм и пуш",
                     role_initiator: "инициацию",
                     role_burst: "бёрст",
                     role_control: "контроль и позиционку",
@@ -818,8 +831,8 @@
                     difficulty_hard: "сложных героев",
 
                     // оффлейн
-                    needs_blink: "блинк/инициацию с предмета",
-                    needs_tank_items: "танковые предметы",
+                    needs_blink: "предметы",
+                    needs_tank_items: "стойкость",
                     level_dependent: "силу от уровней",
                     needs_farm_scaling: "фарм и скейл",
                     long_control: "длительный контроль",
@@ -828,7 +841,7 @@
                     high_damage: "высокий урон",
                     lane_aggressive: "агрессию на линии",
                     lane_passive: "пассивную линию",
-                    lane_push_jungle: "пуш и лес",
+                    lane_push_jungle: "быстрый фарм",
                     lane_roam: "роум после линии",
                     teamfight_5v5: "5v5 драки",
                     hunt_pickoff: "поиск пикоффов",
@@ -914,7 +927,14 @@
             }
         };
 
+        function goBackInHeroQuiz() {
+            if (heroQuiz.state.currentQuestionIndex <= 0) return;
 
+            heroQuiz.state.currentQuestionIndex--;
+            heroQuiz.state.answers.pop();
+            heroQuiz.showQuestion();
+        }
+        
         function startHeroQuiz() {
             document.getElementById('quiz-list').style.display = 'none';
             document.getElementById('quiz-content-container').style.display = 'none';
@@ -959,15 +979,6 @@
                 // сразу открыть квиз по героям
                 openPage('page-quiz');      // если нужно переключиться на вкладку
                 startHeroQuiz();
-            });
-        }
-
-        const quickPositionBtn = document.getElementById('quick-position-quiz');
-        if (quickPositionBtn) {
-            quickPositionBtn.addEventListener('click', function () {
-                // СРАЗУ открыть квиз по позициям
-                openPage('page-quiz');      // переключаемся на вкладку "Квизы"
-                startPositionQuiz();        // запускаем сам тест
             });
         }
         });

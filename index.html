@@ -77,7 +77,7 @@
             </div>
             <button
               class="btn-small"
-              onclick="startPositionQuiz()"
+              onclick="startPositionQuiz()" 
               style="width: 100%; padding: 12px;"
             >
               Начать тест →
@@ -146,6 +146,13 @@
 
               <div class="question" id="question"></div>
               <div class="answers" id="answers"></div>
+
+              <!-- Кнопки управления квизом по позициям -->
+              <div class="quiz-controls">
+                <button class="btn-secondary" onclick="goBackInPositionQuiz()">
+                  ← Назад
+                </button>
+              </div>
             </div>
 
             <div class="result" id="result">
@@ -281,6 +288,13 @@
 
               <div class="question" id="heroQuestion"></div>
               <div class="answers" id="heroAnswers"></div>
+
+              <!-- Кнопки управления квизом по героям -->
+              <div class="quiz-controls">
+                <button class="btn-secondary" onclick="goBackInHeroQuiz()">
+                  ← Назад
+                </button>
+              </div>
             </div>
 
             <!-- Результат -->
