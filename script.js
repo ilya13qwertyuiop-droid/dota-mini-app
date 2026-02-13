@@ -333,6 +333,13 @@
             document.getElementById('hero-quiz-container').style.display = 'none';
             initQuiz();
         }
+        
+        function startHeroQuiz() {
+            document.getElementById('quiz-list').style.display = 'none';
+            document.getElementById('quiz-content-container').style.display = 'none';
+            document.getElementById('hero-quiz-container').style.display = 'block';
+            heroQuiz.init();
+        }
 
 
         function backToQuizList() {

@@ -398,6 +398,7 @@ flex: 1;
   align-items: center;
   gap: 6px;
   box-shadow: none;
+  min-width: 0;           /* чтобы не растягивалась как большая кнопка */
 }
 
 .quiz-controls .btn-secondary::before {
