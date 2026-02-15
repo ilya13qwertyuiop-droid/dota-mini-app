@@ -528,7 +528,8 @@
             // сохраняем id ответа для проверки чистых паттернов
             selectedAnswersHistory.push({
                 questionId: questionData.questionId,
-                answerId: selectedAnswer.id
+                answerId: selectedAnswer.id,
+                answerIndex: index
             });
 
             for (let pos in selectedScores) {
@@ -561,13 +562,14 @@
             currentQuestion--;
 
             const questionData = quizData[currentQuestion];
-            const prevAnswerIndex = selectedAnswersHistory[currentQuestion];
+            const prevEntry = selectedAnswersHistory[currentQuestion];
 
-            if (prevAnswerIndex !== undefined) {
-                const prevScores = questionData.answers[prevAnswerIndex].scores;
+            if (prevEntry !== undefined) {
+                const prevScores = questionData.answers[prevEntry.answerIndex].scores;
                 for (let pos in prevScores) {
                     scores[pos] -= prevScores[pos];
                 }
+                selectedAnswersHistory.pop();
             }
 
             showQuestion();
@@ -1096,7 +1098,7 @@
             } else {
                 window.open(url, '_blank'); // запасной вариант
             }
-        
+        });
         const quickHeroBtn = document.getElementById('quick-hero-quiz');
         if (quickHeroBtn) {
             quickHeroBtn.addEventListener('click', function () {
@@ -1105,4 +1107,3 @@
                 startHeroQuiz();
             });
         }
-        });
