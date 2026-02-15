@@ -56,7 +56,7 @@ window.heroCarryData = {
     { name: "Clinkz", tags: ["midgame","lategame","tempo","ranged","burst","sustained","pickoff","splitpush","map_pressure","mobile","snowball"], difficulty: "easy" },
     { name: "Drow Ranger", tags: ["lategame","superlate","greedy","ranged","sustained","teamfight","farming"], difficulty: "easy" },
     { name: "Faceless Void", tags: ["lategame","superlate","melee","sustained","burst","teamfight","pickoff","control","farming","mobile"], difficulty: "easy" },
-    { name: "Gyrocopter", tags: ["lategame","superlate","greedy","lategame","tempo","ranged","sustained","teamfight","map_pressure","farming"], difficulty: "easy" },
+    { name: "Gyrocopter", tags: ["lategame","superlate","greedy","tempo","ranged","sustained","teamfight","map_pressure","farming"], difficulty: "easy" },
     { name: "Juggernaut", tags: ["lategame","superlate","greedy","melee","sustained","burst","teamfight","map_pressure","pickoff","farming"], difficulty: "easy" },
     { name: "Kez", tags: ["midgame","lategame","tempo","melee","burst","sustained","teamfight","map_pressure","pickoff","farming"], difficulty: "hard" },
     { name: "Lone Druid", tags: ["midgame","lategame","melee","ranged","sustained","splitpush","map_pressure","teamfight","farming"], difficulty: "hard" },
