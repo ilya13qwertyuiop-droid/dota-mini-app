@@ -160,32 +160,25 @@
               <div class="result-title">Твоя позиция</div>
 
               <div class="position-primary" id="positionPrimary"></div>
-              <div class="position-badge" id="positionBadge"></div>
+
+              <!-- основной бейдж -->
+              <div class="position-main-badge" id="positionBadge"></div>
 
               <div class="position-secondary-label">
                 Дополнительные задатки
               </div>
-              <div
-                class="position-secondary-badge"
-                id="positionSecondaryBadge"
-              ></div>
+
+              <!-- доп. бейдж -->
+              <div class="position-extra-badge" id="positionSecondaryBadge"></div>
 
               <div class="stats" id="stats"></div>
 
-              <button
-                class="btn-outline"
-                onclick="togglePositionDetails()"
-              >
+              <button class="btn-outline" onclick="togglePositionDetails()">
                 Показать детали
               </button>
-              <div
-                class="description hidden"
-                id="positionDescription"
-              ></div>
-              <button
-                class="btn-secondary"
-                onclick="backToQuizList()"
-              >
+              <div class="description hidden" id="positionDescription"></div>
+
+              <button class="btn-secondary" onclick="backToQuizList()">
                 ← Назад к квизам
               </button>
             </div>
@@ -298,42 +291,25 @@
               </div>
             </div>
 
-
             <!-- Результат -->
             <div id="hero-result" style="display: none;">
-              <div class="result-header">🦸</div>
-              <div
-                class="result-title"
-                id="heroResultPosition"
-              >
-                Рекомендуем для Керри
+              <div class="hero-result-header">
+                <div class="hero-header-icon">★</div>
+                <div class="hero-header-text" id="heroResultPosition">
+                  Герои для мидера
+                </div>
               </div>
-
-              <div class="position-primary">
-                Топ-5 героев под твой стиль
-              </div>
-
-              <div
-                class="hero-list"
-                id="heroResultList"
-              ></div>
-
+              <div class="hero-list" id="heroResultList"></div>
               <div
                 class="description"
                 id="heroResultDescription"
                 style="margin-top: 16px;"
               ></div>
 
-              <button
-                class="btn-outline"
-                onclick="heroQuiz.restart()"
-              >
+              <button class="btn-outline" onclick="heroQuiz.restart()">
                 Пройти заново
               </button>
-              <button
-                class="btn-secondary"
-                onclick="backToQuizList()"
-              >
+              <button class="btn-secondary" onclick="backToQuizList()">
                 ← Назад к квизам
               </button>
             </div>
