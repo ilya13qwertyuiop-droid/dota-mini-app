@@ -377,28 +377,86 @@
         let lastResult = null;
         let selectedAnswersHistory = [];
 
-        function loadSavedResult() {
-            const saved = localStorage.getItem('dota2helper_lastResult');
+        // Получаем token из URL параметров
+        function getTokenFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('token');
+        }
+
+        const USER_TOKEN = getTokenFromUrl();
+
+        // Сохранение результата на backend
+        async function saveResultToBackend(result) {
+            if (!USER_TOKEN) {
+                console.warn('No token available, cannot save to backend');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/save_result', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        token: USER_TOKEN,
+                        result: result
+                    })
+                });
+
+                if (!response.ok) {
+                    console.error('Failed to save result to backend:', response.status);
+                }
+            } catch (error) {
+                console.error('Error saving result to backend:', error);
+            }
+        }
+
+        // Загрузка результата с backend
+        async function loadResultFromBackend() {
+            if (!USER_TOKEN) {
+                console.warn('No token available, cannot load from backend');
+                return null;
+            }
+
+            try {
+                const response = await fetch(`/api/get_result?token=${USER_TOKEN}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.result;
+                }
+            } catch (error) {
+                console.error('Error loading result from backend:', error);
+            }
+
+            return null;
+        }
+
+        async function loadSavedResult() {
+            const saved = await loadResultFromBackend();
             if (saved) {
-                lastResult = JSON.parse(saved);
+                lastResult = saved;
                 updateQuizPageResult();
                 updateHeroQuizStart();
             }
         }
 
         function saveResult(result) {
-            localStorage.setItem('dota2helper_lastResult', JSON.stringify(result));
+            saveResultToBackend(result);
         }
 
         loadSavedResult();
 
-        function switchPage(pageName) {
+        function switchPage(pageName, event) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
 
             document.getElementById(`page-${pageName}`).classList.add('active');
-            event.currentTarget.classList.add('active');
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
 
 
             if (pageName === 'quiz') {
@@ -647,10 +705,11 @@
             document.getElementById('result').classList.add('active');
         }
 
-        function togglePositionDetails() {
+        function togglePositionDetails(event) {
             const description = document.getElementById('positionDescription');
-            const btn = event.target;
+            const btn = event?.target;
 
+            if (!btn) return;
 
             if (description.classList.contains('hidden')) {
                 description.classList.remove('hidden');
