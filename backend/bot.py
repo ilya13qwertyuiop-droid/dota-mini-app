@@ -36,7 +36,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
 
-print("[BOT DEBUG] BOT_TOKEN =", BOT_TOKEN)
 
 # -------- простое хранилище токенов --------
 TOKEN_STORE: dict[str, dict] = {}  # token -> {"user_id": int, "expires_at": datetime}
@@ -115,6 +114,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = create_token_for_user(user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
+    print(f"[BOT DEBUG] MINI_APP_URL = {MINI_APP_URL}")
+    print(f"[BOT DEBUG] mini_app_url_with_token = {mini_app_url_with_token}")
+    
     keyboard = [
         [
             KeyboardButton(
@@ -155,8 +157,6 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    
-    print("[BOT DEBUG] starting polling...")
 
     print("✅ Бот запущен! Открой Telegram и напиши боту /start")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
