@@ -173,7 +173,7 @@
 
               <div class="stats" id="stats"></div>
 
-              <button class="btn-outline" onclick="togglePositionDetails()">
+              <button class="btn-outline" onclick="togglePositionDetails(event)">
                 Показать детали
               </button>
               <div class="description hidden" id="positionDescription"></div>
@@ -341,19 +341,19 @@
 
       <!-- Нижняя навигация -->
       <div class="bottom-nav">
-        <div class="nav-item active" onclick="switchPage('home')">
+        <div class="nav-item active" onclick="switchPage('home', event)">
           <div class="nav-icon">🏠</div>
           <div class="nav-label">Главная</div>
         </div>
-        <div class="nav-item" onclick="switchPage('quiz')">
+        <div class="nav-item" onclick="switchPage('quiz', event)">
           <div class="nav-icon">🎯</div>
           <div class="nav-label">Квизы</div>
         </div>
-        <div class="nav-item" onclick="switchPage('database')">
+        <div class="nav-item" onclick="switchPage('database', event)">
           <div class="nav-icon">📊</div>
           <div class="nav-label">База</div>
         </div>
-        <div class="nav-item" onclick="switchPage('profile')">
+        <div class="nav-item" onclick="switchPage('profile', event)">
           <div class="nav-icon">⚙️</div>
           <div class="nav-label">Профиль</div>
         </div>
