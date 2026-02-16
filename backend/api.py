@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-from db import get_user_id_by_token, init_tokens_table
+from backend.db import get_user_id_by_token, init_tokens_table
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
