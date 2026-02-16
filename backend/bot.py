@@ -120,7 +120,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             KeyboardButton(
-                text="🔮 Найти своего героя",
+                text="Играть NEW",
                 web_app=WebAppInfo(url=mini_app_url_with_token),
             )
         ]
