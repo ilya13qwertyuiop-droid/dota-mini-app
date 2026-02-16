@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-from backend.bot import get_user_id_by_token
+from db import get_user_id_by_token, init_tokens_table
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
@@ -62,6 +62,7 @@ def get_db() -> Generator[Session, None, None]:
 
 # Создаём таблицы при старте приложения
 Base.metadata.create_all(bind=engine)
+init_tokens_table()
 # --- DB setup end ---
 
 app = FastAPI(title="Dota Mini App Backend")
@@ -200,7 +201,9 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     # 1. по токену достаём user_id
     user_id = get_user_id_by_token(data.token)
     if not user_id:
+        print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    print(f"[API DEBUG] Token valid, user_id={user_id}")
 
     # 2. Убедимся, что профиль пользователя существует (для foreign key)
     db_user_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
@@ -239,10 +242,14 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
 
 @app.get("/api/get_result", response_model=GetResultResponse)
 async def get_result(token: str, db: Session = Depends(get_db)):
+    print(f"[API DEBUG] get_result: token={token[:10]}...")
     # 1. по токену достаём user_id
     user_id = get_user_id_by_token(token)
     if not user_id:
+        print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    print(f"[API DEBUG] Token valid, user_id={user_id}")
 
     # 2. Ищем результат квиза в БД по user_id
     db_quiz_result = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()

@@ -14,6 +14,7 @@ from telegram import (
     ReplyKeyboardRemove,
 )
 from telegram.ext import Application, CommandHandler, ContextTypes
+from db import init_tokens_table, create_token_for_user, get_user_id_by_token
 
 
 # -------- загрузка переменных из .env --------
@@ -35,30 +36,6 @@ load_env()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
-
-
-# -------- простое хранилище токенов --------
-TOKEN_STORE: dict[str, dict] = {}  # token -> {"user_id": int, "expires_at": datetime}
-
-
-def create_token_for_user(user_id: int) -> str:
-    token = secrets.token_urlsafe(16)
-    TOKEN_STORE[token] = {
-        "user_id": user_id,
-        "expires_at": datetime.utcnow() + timedelta(hours=1),
-    }
-    return token
-
-
-def get_user_id_by_token(token: str) -> int | None:
-    data = TOKEN_STORE.get(token)
-    if not data:
-        return None
-    if data["expires_at"] < datetime.utcnow():
-        del TOKEN_STORE[token]
-        return None
-    return data["user_id"]
-
 
 async def _is_subscribed(user_id: int) -> bool:
     if not BOT_TOKEN or not CHECK_CHAT_ID:
@@ -114,13 +91,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = create_token_for_user(user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
-    print(f"[BOT DEBUG] MINI_APP_URL = {MINI_APP_URL}")
-    print(f"[BOT DEBUG] mini_app_url_with_token = {mini_app_url_with_token}")
-    
     keyboard = [
         [
             KeyboardButton(
-                text="Играть NEW",
+                text="Найди своего героя",
                 web_app=WebAppInfo(url=mini_app_url_with_token),
             )
         ]
@@ -148,6 +122,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    init_tokens_table()
     print("🤖 Бот запускается...")
 
     if not BOT_TOKEN:
