@@ -32,6 +32,8 @@
             }
         }
 
+        initTelegramUser();
+
         function getDota2ProTrackerUrl(heroName) {
             return `https://dota2protracker.com/hero/${encodeURIComponent(heroName)}`;
         }
@@ -1274,23 +1276,32 @@
             const nameEl = document.getElementById('profile-name');
             const usernameEl = document.getElementById('profile-username');
 
+            // Пробуем получить данные из разных источников
+            let userData = null;
+            
             if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                const user = tg.initDataUnsafe.user;
-                const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                userData = tg.initDataUnsafe.user;
+                console.log('[PROFILE] Got user from initDataUnsafe:', userData);
+            }
+
+            if (userData) {
+                const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim();
                 nameEl.textContent = fullName || 'Пользователь';
 
-                if (user.username) {
-                    usernameEl.textContent = `@${user.username}`;
+                if (userData.username) {
+                    usernameEl.textContent = `@${userData.username}`;
                 } else {
                     usernameEl.textContent = '';
                 }
 
-                if (user.photo_url) {
-                    avatar.src = user.photo_url;
+                if (userData.photo_url) {
+                    avatar.src = userData.photo_url;
                 } else {
-                    avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
+                    avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
                 }
             } else {
+                // Если данных нет — показываем заглушку
+                console.warn('[PROFILE] No Telegram user data available');
                 nameEl.textContent = 'Пользователь';
                 usernameEl.textContent = '';
                 avatar.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
@@ -1300,6 +1311,38 @@
                 this.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
             };
         }
+
+        // Убираем saveTelegramDataToBackend — не нужна, если user недоступен
+        async function initProfile() {
+            console.log('[PROFILE] Загрузка профиля...');
+            
+            updateProfileHeader();
+            
+            if (!USER_TOKEN) {
+                console.error('[PROFILE] Токен отсутствует');
+                showEmptyProfile();
+                return;
+            }
+
+            try {
+                // Сразу загружаем профиль (без сохранения Telegram данных)
+                const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const profile = await response.json();
+                console.log('[PROFILE] Данные получены:', profile);
+
+                displayPositionResult(profile);
+                displayHeroesResult(profile);
+
+            } catch (error) {
+                console.error('[PROFILE] Ошибка загрузки:', error);
+                showEmptyProfile();
+            }
+        }
+
 
         // Отображаем результат квиза по позиции
         function displayPositionResult(profile) {
