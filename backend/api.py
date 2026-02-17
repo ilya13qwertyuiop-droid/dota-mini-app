@@ -254,10 +254,31 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
     # 4. Формируем историю
     quiz_history = []
     for quiz in quiz_results:
-        quiz_history.append({
-            "date": quiz.updated_at.isoformat() if quiz.updated_at else None,
-            "result": quiz.result
-        })
+        base_date = quiz.updated_at.isoformat() if quiz.updated_at else None
+        res = quiz.result or {}
+
+        # если старый формат — просто один объект
+        if isinstance(res, dict) and "type" in res:
+            quiz_history.append({
+                "date": base_date,
+                "result": res
+            })
+        elif isinstance(res, dict):
+            # новый формат: отдельные блоки
+            position_res = res.get("position_quiz")
+            hero_res = res.get("hero_quiz")
+
+            if position_res:
+                quiz_history.append({
+                    "date": base_date,
+                    "result": position_res
+                })
+            if hero_res:
+                quiz_history.append({
+                    "date": base_date,
+                    "result": hero_res
+                })
+
     
     # 5. Извлекаем данные Telegram из settings
     settings = db_profile.settings or {}
@@ -336,13 +357,11 @@ async def save_profile(profile: Profile, db: Session = Depends(get_db)):
         settings=db_profile.settings or {}
     )
 
-
 @app.post("/api/save_result", response_model=SaveResultResponse)
 async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
-    """Сохраняет результат квиза"""
+    """Сохраняет результат квиза (позиции и герои в одном JSON)"""
     print(f"[API DEBUG] save_result: token={data.token[:10]}...")
     
-    # 1. по токену достаём user_id
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         print("[API DEBUG] Token validation FAILED")
@@ -350,11 +369,9 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     
     print(f"[API DEBUG] Token valid, user_id={user_id}")
 
-
-    # 2. Убедимся, что профиль пользователя существует (для foreign key)
+    # Профиль для FK
     db_user_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
     if not db_user_profile:
-        # Создаём профиль автоматически, если его ещё нет
         db_user_profile = DBUserProfile(
             user_id=user_id,
             favorite_heroes=[],
@@ -362,27 +379,55 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
         )
         db.add(db_user_profile)
         db.commit()
+        db.refresh(db_user_profile)
 
+    # Определяем тип квиза
+    result_type = None
+    if isinstance(data.result, dict):
+        result_type = data.result.get("type")
 
-    # 3. Ищем существующий результат квиза в БД
+    # Достаём существующий агрегированный результат
     db_quiz_result = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
 
+    if db_quiz_result and isinstance(db_quiz_result.result, dict):
+        combined_result = dict(db_quiz_result.result)
+    else:
+        combined_result = {}
+
+    # Обновляем только нужную часть
+    if result_type == "position_quiz":
+        combined_result["position_quiz"] = data.result
+    elif result_type == "hero_quiz":
+        combined_result["hero_quiz"] = data.result
+    else:
+        # на всякий случай, если тип не указан — просто перезапишем всё
+        combined_result = data.result
 
     if db_quiz_result:
-        # 4. Если найден — обновляем result и updated_at
-        db_quiz_result.result = data.result
+        db_quiz_result.result = combined_result
         db_quiz_result.updated_at = datetime.now(timezone.utc)
     else:
-        # 5. Если не найден — создаём новый
         db_quiz_result = DBQuizResult(
             user_id=user_id,
-            result=data.result,
+            result=combined_result,
             updated_at=datetime.now(timezone.utc)
         )
         db.add(db_quiz_result)
 
+    # Обновляем favorite_heroes для профиля, если это геройский квиз
+    try:
+        if result_type == "hero_quiz":
+            heroes = data.result.get("heroes") or []
+            hero_names = [
+                h.get("name")
+                for h in heroes
+                if isinstance(h, dict) and h.get("name")
+            ]
+            db_user_profile.favorite_heroes = hero_names
+            print(f"[API DEBUG] favorite_heroes updated for user {user_id}: {hero_names}")
+    except Exception as e:
+        print(f"[API DEBUG] Failed to update favorite_heroes for user {user_id}: {e}")
 
-    # 6. Сохраняем изменения в БД
     db.commit()
     db.refresh(db_quiz_result)
 
