@@ -389,6 +389,41 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     print(f"[API DEBUG] Quiz result saved for user {user_id}")
     return SaveResultResponse(success=True)
 
+@app.post("/api/save_telegram_data")
+async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
+    """Сохраняет данные пользователя из Telegram (имя, username, фото)"""
+    print(f"[API DEBUG] === save_telegram_data START ===")
+    print(f"[API DEBUG] token={data.token[:10]}...")
+    print(f"[API DEBUG] first_name={data.first_name}")
+    print(f"[API DEBUG] last_name={data.last_name}")
+    print(f"[API DEBUG] username={data.username}")
+    print(f"[API DEBUG] photo_url={data.photo_url}")
+    
+    user_id = get_user_id_by_token(data.token)
+    if not user_id:
+        print("[API DEBUG] Token validation FAILED")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    print(f"[API DEBUG] Token valid, user_id={user_id}")
+    
+    db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
+    if not db_profile:
+        db_profile = DBUserProfile(user_id=user_id, favorite_heroes=[], settings={})
+        db.add(db_profile)
+    
+    if not db_profile.settings:
+        db_profile.settings = {}
+    
+    db_profile.settings["username"] = data.username
+    db_profile.settings["first_name"] = data.first_name
+    db_profile.settings["last_name"] = data.last_name
+    db_profile.settings["photo_url"] = data.photo_url
+    
+    db.commit()
+    
+    print(f"[API DEBUG] Telegram data saved for user {user_id}")
+    print(f"[API DEBUG] === save_telegram_data END ===")
+    return {"success": True}
 
 @app.get("/api/get_result", response_model=GetResultResponse)
 async def get_result(token: str, db: Session = Depends(get_db)):
