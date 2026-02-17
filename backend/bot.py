@@ -75,7 +75,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
 
-        # В новых версиях PTB нет user.photo_url, нужно через get_profile_photos
         photo_url = None
         try:
             photos = await context.bot.get_user_profile_photos(user.id, limit=1)
@@ -92,7 +91,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "first_name": user.first_name,
             "last_name": getattr(user, "last_name", None),
             "username": user.username,
-            "photo_url": photo_url,
         }
     except Exception as e:
         print("Failed to build Telegram user payload:", e)
