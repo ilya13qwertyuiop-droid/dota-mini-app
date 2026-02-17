@@ -371,10 +371,32 @@
               <span class="profile-card-icon">⚔️</span>
               <span class="profile-card-title">Твои герои</span>
             </div>
+
             <!-- Если квиз пройден -->
             <div id="profile-heroes-result" style="display: none;">
-              <div id="profile-heroes-list" class="profile-heroes-grid"></div>
+              <div id="profile-heroes-list" class="heroes-list">
+                <!-- сюда JS рендерит 5 .hero-row -->
+                <!-- пример одной строки, для ориентира структуры:
+
+                <a class="hero-row hero-row-main" href="https://d2pt.com/hero/clinkz" target="_blank" rel="noopener noreferrer">
+                  <div class="hero-row-rank">1</div>
+                  <div class="hero-row-img"></div>
+                  <div class="hero-row-main-text">
+                    <div class="hero-row-name">Clinkz</div>
+                    <div class="hero-row-sub">Лучший матч • 78%</div>
+                  </div>
+                </a>
+
+                -->
+              </div>
+              <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span class="muted">Нажми на героя, чтобы открыть гайд</span>
+                <button class="link-button" type="button" onclick="goToHeroQuiz()">
+                  Пройти заново
+                </button>
+              </div>
             </div>
+
             <!-- Если квиз НЕ пройден -->
             <div id="profile-heroes-empty" style="display: none;">
               <p class="profile-empty-text">Ты ещё не проходил квиз по героям</p>
@@ -383,7 +405,6 @@
               </button>
             </div>
           </div>
-
         </div>
       </div>
 
