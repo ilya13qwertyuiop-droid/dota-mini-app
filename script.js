@@ -1179,283 +1179,169 @@
                 startHeroQuiz();
             });
         }
-        // ========== ПРОФИЛЬ ==========
+// ========== ПРОФИЛЬ ==========
 
-        async function initProfile() {
-            console.log('[PROFILE] Загрузка профиля...');
+async function initProfile() {
+    console.log('[PROFILE] Загрузка профиля...');
 
-            // 1. Аватарка и имя из Telegram
-            updateProfileHeader();
+    if (!USER_TOKEN) {
+        console.error('[PROFILE] Токен отсутствует');
+        updateProfileHeader(null);
+        showEmptyProfile();
+        return;
+    }
 
-            // 2. Загружаем данные с backend
-            if (!USER_TOKEN) {
-                console.error('[PROFILE] Токен отсутствует');
-                showEmptyProfile();
-                return;
-            }
-
-            try {
-                // Сначала сохраняем данные Telegram на backend
-                await saveTelegramDataToBackend();
-
-                // Потом загружаем полный профиль
-                const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
-                if (!response.ok) {
-                    throw new Error(`API error: ${response.status}`);
-                }
-
-                const profile = await response.json();
-                console.log('[PROFILE] Данные получены:', profile);
-
-                // Отображаем результаты
-                displayPositionResult(profile);
-                displayHeroesResult(profile);
-
-            } catch (error) {
-                console.error('[PROFILE] Ошибка загрузки:', error);
-                showEmptyProfile();
-            }
+    try {
+        const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
         }
 
-        // Сохраняем Telegram данные на backend
-        async function saveTelegramDataToBackend() {
-            console.log('[PROFILE] === saveTelegramDataToBackend START ===');
-            console.log('[PROFILE] tg exists:', !!tg);
-            console.log('[PROFILE] tg.initDataUnsafe exists:', !!(tg && tg.initDataUnsafe));
-            console.log('[PROFILE] tg.initDataUnsafe.user exists:', !!(tg && tg.initDataUnsafe && tg.initDataUnsafe.user));
-            
-            if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
-                console.error('[PROFILE] Telegram user data NOT available');
-                alert('ОШИБКА: Данные Telegram не доступны!\ntg=' + !!tg + '\ninitDataUnsafe=' + !!(tg && tg.initDataUnsafe) + '\nuser=' + !!(tg && tg.initDataUnsafe && tg.initDataUnsafe.user));
-                return;
-            }
+        const profile = await response.json();
+        console.log('[PROFILE] Данные получены:', profile);
 
-            const user = tg.initDataUnsafe.user;
-            console.log('[PROFILE] user.first_name:', user.first_name);
-            console.log('[PROFILE] user.last_name:', user.last_name);
-            console.log('[PROFILE] user.username:', user.username);
-            console.log('[PROFILE] user.photo_url:', user.photo_url);
-            
-            try {
-                const payload = {
-                    token: USER_TOKEN,
-                    first_name: user.first_name || 'Гость',
-                    last_name: user.last_name || '',
-                    username: user.username || null,
-                    photo_url: user.photo_url || null
-                };
-                
-                console.log('[PROFILE] Sending payload:', JSON.stringify(payload));
-                
-                const response = await fetch('/api/save_telegram_data', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                
-                console.log('[PROFILE] Response status:', response.status);
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('[PROFILE] Response error:', errorText);
-                    alert('ОШИБКА API: ' + response.status + '\n' + errorText);
-                } else {
-                    console.log('[PROFILE] Telegram data saved successfully');
-                }
-            } catch (error) {
-                console.error('[PROFILE] Ошибка сохранения Telegram данных:', error);
-                alert('ОШИБКА fetch: ' + error.message);
-            }
-            
-            console.log('[PROFILE] === saveTelegramDataToBackend END ===');
-        }
+        updateProfileHeader(profile);
+        displayPositionResult(profile);
+        displayHeroesResult(profile);
 
-        // Обновляем шапку профиля
-        function updateProfileHeader() {
-            const avatar = document.getElementById('profile-avatar');
-            const nameEl = document.getElementById('profile-name');
-            const usernameEl = document.getElementById('profile-username');
+    } catch (error) {
+        console.error('[PROFILE] Ошибка загрузки:', error);
+        updateProfileHeader(null);
+        showEmptyProfile();
+    }
+}
 
-            // Пробуем получить данные из разных источников
-            let userData = null;
-            
-            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                userData = tg.initDataUnsafe.user;
-                console.log('[PROFILE] Got user from initDataUnsafe:', userData);
-            }
+function updateProfileHeader(profile) {
+    const avatar = document.getElementById('profile-avatar');
+    const nameEl = document.getElementById('profile-name');
+    const usernameEl = document.getElementById('profile-username');
 
-            if (userData) {
-                const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim();
-                nameEl.textContent = fullName || 'Пользователь';
+    let userData = null;
 
-                if (userData.username) {
-                    usernameEl.textContent = `@${userData.username}`;
-                } else {
-                    usernameEl.textContent = '';
-                }
-
-                if (userData.photo_url) {
-                    avatar.src = userData.photo_url;
-                } else {
-                    avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
-                }
-            } else {
-                // Если данных нет — показываем заглушку
-                console.warn('[PROFILE] No Telegram user data available');
-                nameEl.textContent = 'Пользователь';
-                usernameEl.textContent = '';
-                avatar.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
-            }
-
-            avatar.onerror = function () {
-                this.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
-            };
-        }
-
-        // Убираем saveTelegramDataToBackend — не нужна, если user недоступен
-        async function initProfile() {
-            console.log('[PROFILE] Загрузка профиля...');
-            
-            updateProfileHeader();
-            
-            if (!USER_TOKEN) {
-                console.error('[PROFILE] Токен отсутствует');
-                showEmptyProfile();
-                return;
-            }
-
-            try {
-                // Сразу загружаем профиль (без сохранения Telegram данных)
-                const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
-                if (!response.ok) {
-                    throw new Error(`API error: ${response.status}`);
-                }
-
-                const profile = await response.json();
-                console.log('[PROFILE] Данные получены:', profile);
-
-                displayPositionResult(profile);
-                displayHeroesResult(profile);
-
-            } catch (error) {
-                console.error('[PROFILE] Ошибка загрузки:', error);
-                showEmptyProfile();
-            }
-        }
-
-
-        // Отображаем результат квиза по позиции
-        function displayPositionResult(profile) {
-            const posResult = document.getElementById('profile-position-result');
-            const posEmpty = document.getElementById('profile-position-empty');
-
-            // Ищем последний результат с позицией
-            let positionData = null;
-            if (profile.quiz_history && profile.quiz_history.length > 0) {
-                for (const quiz of profile.quiz_history) {
-                    if (quiz.result && quiz.result.position) {
-                        positionData = quiz.result;
-                        break; // берём последний
-                    }
-                }
-            }
-
-            if (positionData) {
-                posResult.style.display = 'block';
-                posEmpty.style.display = 'none';
-
-                // Бейдж основной позиции
-                const badgeEl = document.getElementById('profile-position-badge');
-                badgeEl.textContent = positionData.posShort || positionData.position;
-
-                // Название позиции
-                const nameEl = document.getElementById('profile-position-name');
-                nameEl.textContent = positionData.position || 'Позиция не указана';
-
-                // Доп. позиция
-                const extraEl = document.getElementById('profile-position-extra');
-                if (positionData.extraPos && !positionData.isPure) {
-                    extraEl.textContent = positionShortNames[positionData.extraPos] || '';
-                    extraEl.style.display = 'inline-flex';
-                } else {
-                    extraEl.style.display = 'none';
-                }
-
-                // Дата
-                const dateEl = document.getElementById('profile-position-date');
-                if (positionData.date) {
-                    dateEl.textContent = `Пройден: ${positionData.date}`;
-                } else {
-                    dateEl.textContent = '';
-                }
-            } else {
-                posResult.style.display = 'none';
-                posEmpty.style.display = 'block';
-            }
-        }
-
-        // Отображаем результат квиза по героям
-        function displayHeroesResult(profile) {
-            const heroesResult = document.getElementById('profile-heroes-result');
-            const heroesEmpty = document.getElementById('profile-heroes-empty');
-            const heroesList = document.getElementById('profile-heroes-list');
-
-            // Ищем последний результат с героями
-            let heroData = null;
-            if (profile.quiz_history && profile.quiz_history.length > 0) {
-                for (const quiz of profile.quiz_history) {
-                    if (quiz.result && quiz.result.heroes && quiz.result.heroes.length > 0) {
-                        heroData = quiz.result;
-                        break;
-                    }
-                }
-            }
-
-            if (heroData && heroData.heroes && heroData.heroes.length > 0) {
-                heroesResult.style.display = 'block';
-                heroesEmpty.style.display = 'none';
-                renderProfileHeroes(heroesList, heroData.heroes);
-            } else {
-                heroesResult.style.display = 'none';
-                heroesEmpty.style.display = 'block';
-            }
-        }
-
-        // Рендерим сетку героев
-        function renderProfileHeroes(container, heroes) {
-            container.innerHTML = '';
-
-            heroes.slice(0, 6).forEach((hero, index) => {
-                const heroName = hero.name || hero;
-                const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
-
-                const card = document.createElement('div');
-                card.className = 'profile-hero-card';
-
-                card.innerHTML = `
-                    <div class="profile-hero-rank">${index + 1}</div>
-                    <img src="${heroIconUrl}" alt="${heroName}" class="profile-hero-icon" onerror="this.style.display='none'">
-                    <div class="profile-hero-name">${heroName}</div>
-                `;
-
-                container.appendChild(card);
-            });
-        }
-
-        // Показываем пустой профиль при ошибке
-        function showEmptyProfile() {
-            document.getElementById('profile-position-result').style.display = 'none';
-            document.getElementById('profile-position-empty').style.display = 'block';
-            document.getElementById('profile-heroes-result').style.display = 'none';
-            document.getElementById('profile-heroes-empty').style.display = 'block';
-        }
-
-        // Обновляем switchPage — загружаем профиль при открытии вкладки
-        const _originalSwitchPage = switchPage;
-        switchPage = function (pageName, event) {
-            _originalSwitchPage(pageName, event);
-            if (pageName === 'profile') {
-                initProfile();
-            }
+    if (profile && profile.first_name) {
+        userData = {
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            username: profile.username,
+            photo_url: profile.photo_url
         };
+    } else if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        userData = tg.initDataUnsafe.user;
+    }
+
+    if (userData) {
+        const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim();
+        nameEl.textContent = fullName || 'Пользователь';
+        if (userData.username) {
+            usernameEl.textContent = `@${userData.username}`;
+        } else {
+            usernameEl.textContent = '';
+        }
+        if (userData.photo_url) {
+            avatar.src = userData.photo_url;
+        } else {
+            avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
+        }
+    } else {
+        nameEl.textContent = 'Пользователь';
+        usernameEl.textContent = '';
+        avatar.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
+    }
+
+    avatar.onerror = function () {
+        this.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
+    };
+}
+
+function displayPositionResult(profile) {
+    const posResult = document.getElementById('profile-position-result');
+    const posEmpty = document.getElementById('profile-position-empty');
+
+    let positionData = null;
+    if (profile.quiz_history && profile.quiz_history.length > 0) {
+        for (const quiz of profile.quiz_history) {
+            if (quiz.result && quiz.result.type === 'position_quiz') {
+                positionData = quiz.result;
+                break;
+            }
+        }
+    }
+
+    if (positionData) {
+        posResult.style.display = 'block';
+        posEmpty.style.display = 'none';
+        document.getElementById('profile-position-badge').textContent = positionData.posShort || positionData.position;
+        document.getElementById('profile-position-name').textContent = positionData.position || 'Позиция не указана';
+        const extraEl = document.getElementById('profile-position-extra');
+        if (positionData.extraPos && !positionData.isPure) {
+            extraEl.textContent = positionShortNames[positionData.extraPos] || '';
+            extraEl.style.display = 'inline-flex';
+        } else {
+            extraEl.style.display = 'none';
+        }
+        const dateEl = document.getElementById('profile-position-date');
+        if (positionData.date) {
+            dateEl.textContent = `Пройден: ${positionData.date}`;
+        }
+    } else {
+        posResult.style.display = 'none';
+        posEmpty.style.display = 'block';
+    }
+}
+
+function displayHeroesResult(profile) {
+    const heroesResult = document.getElementById('profile-heroes-result');
+    const heroesEmpty = document.getElementById('profile-heroes-empty');
+    const heroesList = document.getElementById('profile-heroes-list');
+
+    let heroData = null;
+    if (profile.quiz_history && profile.quiz_history.length > 0) {
+        for (const quiz of profile.quiz_history) {
+            if (quiz.result && quiz.result.type === 'hero_quiz' && quiz.result.heroes) {
+                heroData = quiz.result;
+                break;
+            }
+        }
+    }
+
+    if (heroData && heroData.heroes && heroData.heroes.length > 0) {
+        heroesResult.style.display = 'block';
+        heroesEmpty.style.display = 'none';
+        renderProfileHeroes(heroesList, heroData.heroes);
+    } else {
+        heroesResult.style.display = 'none';
+        heroesEmpty.style.display = 'block';
+    }
+}
+
+function renderProfileHeroes(container, heroes) {
+    container.innerHTML = '';
+    heroes.slice(0, 6).forEach((hero, index) => {
+        const heroName = hero.name || hero;
+        const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+        const card = document.createElement('div');
+        card.className = 'profile-hero-card';
+        card.innerHTML = `
+            <div class="profile-hero-rank">${index + 1}</div>
+            <img src="${heroIconUrl}" alt="${heroName}" class="profile-hero-icon" onerror="this.style.display='none'">
+            <div class="profile-hero-name">${heroName}</div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function showEmptyProfile() {
+    document.getElementById('profile-position-result').style.display = 'none';
+    document.getElementById('profile-position-empty').style.display = 'block';
+    document.getElementById('profile-heroes-result').style.display = 'none';
+    document.getElementById('profile-heroes-empty').style.display = 'block';
+}
+
+const _originalSwitchPage = switchPage;
+switchPage = function (pageName, event) {
+    _originalSwitchPage(pageName, event);
+    if (pageName === 'profile') {
+        initProfile();
+    }
+};
 
