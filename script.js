@@ -1419,35 +1419,36 @@ function displayHeroesResult(profile) {
         }
     }
 
-    // Находим последний результат hero-квиза
+    // Находим hero-квиз для ТЕКУЩЕЙ позиции (не обязательно последний)
     let heroData = null;
-    if (profile.quiz_history && profile.quiz_history.length > 0) {
+    if (positionData && positionData.positionIndex !== undefined && profile.quiz_history && profile.quiz_history.length > 0) {
+        const currentPosIndex = positionData.positionIndex;
+
         for (const quiz of profile.quiz_history) {
             const res = quiz.result;
             if (!res) continue;
 
+            let candidate = null;
             if (res.hero_quiz) {
-                heroData = res.hero_quiz;
-                break;
+                candidate = res.hero_quiz;
             } else if (res.type === 'hero_quiz' && res.topHeroes) {
-                heroData = res;
-                break;
+                candidate = res;
+            }
+
+            // Проверяем совпадение позиции
+            if (candidate && candidate.heroPositionIndex === currentPosIndex && candidate.topHeroes && candidate.topHeroes.length > 0) {
+                heroData = candidate;
+                break; // Берём первый найденный (самый свежий)
             }
         }
     }
 
-    // Проверяем соответствие позиции и героев
-    if (heroData && heroData.topHeroes && heroData.topHeroes.length > 0) {
-        // Если есть позиция, проверяем совпадение
-        if (positionData && positionData.positionIndex !== undefined) {
-            if (heroData.heroPositionIndex === positionData.positionIndex) {
-                // Позиция совпадает - показываем героев
-                heroesResult.style.display = 'block';
-                heroesEmpty.style.display = 'none';
-                renderProfileHeroes(heroesList, heroData.topHeroes);
-                return;
-            }
-        }
+    // Показываем героев или заглушку
+    if (heroData) {
+        heroesResult.style.display = 'block';
+        heroesEmpty.style.display = 'none';
+        renderProfileHeroes(heroesList, heroData.topHeroes);
+        return;
     }
 
     // Иначе показываем заглушку
@@ -1460,6 +1461,7 @@ function renderProfileHeroes(container, heroes) {
     heroes.slice(0, 5).forEach((hero, index) => {
         const heroName = hero.name || hero;
         const matchPercent = hero.matchPercent || 75;
+        const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
         const row = document.createElement('a');
         row.className = 'hero-row' + (index === 0 ? ' hero-row-main' : '');
@@ -1469,7 +1471,9 @@ function renderProfileHeroes(container, heroes) {
 
         row.innerHTML = `
             <div class="hero-row-rank">${index + 1}</div>
-            <div class="hero-row-img"></div>
+            <div class="hero-row-img">
+                <img src="${heroIconUrl}" alt="${heroName}" style="width:100%; height:100%; object-fit:cover; border-radius:6px;" onerror="this.style.display='none'">
+            </div>
             <div class="hero-row-main-text">
                 <div class="hero-row-name">${heroName}</div>
                 <div class="hero-row-sub">
