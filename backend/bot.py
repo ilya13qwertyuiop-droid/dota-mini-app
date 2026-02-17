@@ -69,7 +69,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raise RuntimeError("CHECK_CHAT_ID не найден. Проверь файл .env")
 
     user_id = update.effective_user.id
-        # Сохраняем данные пользователя в backend для профиля
+    print("DEBUG start called for user", user_id)
+    
+    # Сохраняем данные пользователя в backend для профиля
     try:
         user = update.effective_user
         payload = {
@@ -105,7 +107,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Пользователь подписан – выдаём токен и прокидываем в URL мини‑апа
     token = create_token_for_user(user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
-        # --- отправляем данные пользователя на backend ---
+
+    # --- отправляем данные пользователя на backend ---
     if payload is not None:
         payload["token"] = token
         try:
