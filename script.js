@@ -1419,7 +1419,7 @@ function displayHeroesResult(profile) {
         }
     }
 
-    // Находим hero-квиз для ТЕКУЩЕЙ позиции (не обязательно последний)
+    // Находим hero-квиз для ТЕКУЩЕЙ позиции
     let heroData = null;
     if (positionData && positionData.positionIndex !== undefined && profile.quiz_history && profile.quiz_history.length > 0) {
         const currentPosIndex = positionData.positionIndex;
@@ -1428,6 +1428,16 @@ function displayHeroesResult(profile) {
             const res = quiz.result;
             if (!res) continue;
 
+            // НОВЫЙ ФОРМАТ: hero_quiz_by_position[positionIndex]
+            if (res.hero_quiz_by_position) {
+                const heroByPos = res.hero_quiz_by_position[currentPosIndex.toString()];
+                if (heroByPos && heroByPos.topHeroes && heroByPos.topHeroes.length > 0) {
+                    heroData = heroByPos;
+                    break; // Берём первый найденный (самый свежий)
+                }
+            }
+
+            // СТАРЫЙ ФОРМАТ: hero_quiz (для обратной совместимости)
             let candidate = null;
             if (res.hero_quiz) {
                 candidate = res.hero_quiz;
@@ -1435,10 +1445,10 @@ function displayHeroesResult(profile) {
                 candidate = res;
             }
 
-            // Проверяем совпадение позиции
+            // Проверяем совпадение позиции (старый формат)
             if (candidate && candidate.heroPositionIndex === currentPosIndex && candidate.topHeroes && candidate.topHeroes.length > 0) {
                 heroData = candidate;
-                break; // Берём первый найденный (самый свежий)
+                break;
             }
         }
     }

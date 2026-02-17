@@ -264,19 +264,28 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
                 "result": res
             })
         elif isinstance(res, dict):
-            # новый формат: отдельные блоки
-            position_res = res.get("position_quiz")
-            hero_res = res.get("hero_quiz")
+            # новый формат: position_quiz + hero_quiz_by_position
+            # Добавляем один результат с обоими данными
+            combined_result = {}
 
+            position_res = res.get("position_quiz")
             if position_res:
-                quiz_history.append({
-                    "date": base_date,
-                    "result": position_res
-                })
+                combined_result["position_quiz"] = position_res
+
+            # Новый формат: hero_quiz_by_position (словарь по позициям)
+            hero_by_pos = res.get("hero_quiz_by_position")
+            if hero_by_pos:
+                combined_result["hero_quiz_by_position"] = hero_by_pos
+
+            # Старый формат: hero_quiz (один результат)
+            hero_res = res.get("hero_quiz")
             if hero_res:
+                combined_result["hero_quiz"] = hero_res
+
+            if combined_result:
                 quiz_history.append({
                     "date": base_date,
-                    "result": hero_res
+                    "result": combined_result
                 })
 
     
@@ -398,7 +407,19 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     if result_type == "position_quiz":
         combined_result["position_quiz"] = data.result
     elif result_type == "hero_quiz":
-        combined_result["hero_quiz"] = data.result
+        # Сохраняем hero_quiz по позициям (0-4)
+        hero_position_index = data.result.get("heroPositionIndex")
+        if hero_position_index is not None:
+            # Инициализируем словарь если его нет
+            if "hero_quiz_by_position" not in combined_result:
+                combined_result["hero_quiz_by_position"] = {}
+
+            # Сохраняем результат для конкретной позиции
+            combined_result["hero_quiz_by_position"][str(hero_position_index)] = data.result
+            print(f"[API DEBUG] Saved hero_quiz for position {hero_position_index}")
+        else:
+            # Старый формат без heroPositionIndex - сохраняем как раньше
+            combined_result["hero_quiz"] = data.result
     else:
         # на всякий случай, если тип не указан — просто перезапишем всё
         combined_result = data.result
