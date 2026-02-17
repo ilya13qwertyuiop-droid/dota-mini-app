@@ -342,11 +342,6 @@
 
           <!-- Результат квиза по позиции -->
           <div class="profile-card">
-            <div class="profile-card-header">
-              <span class="profile-card-icon">🎯</span>
-              <span class="profile-card-title">Твоя позиция</span>
-            </div>
-
             <!-- Если квиз пройден -->
             <div id="profile-position-result" style="display: none;">
               <div class="status-row">
@@ -355,9 +350,9 @@
                   <div id="profile-position-main-name" class="status-main-title"></div>
                   <div id="profile-position-extra-name" class="status-main-sub"></div>
                 </div>
-                <div class="status-link" onclick="goToPositionQuiz()">
+                <button class="profile-status-btn" onclick="goToPositionQuiz()">
                   Пройти заново
-                </div>
+                </button>
               </div>
               <div id="profile-position-date" class="profile-position-date"></div>
             </div>

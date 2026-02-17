@@ -1318,7 +1318,7 @@ function displayPositionResult(profile) {
     // Дата
     if (positionData.date) {
         const posText = posLabel ? ` (${posLabel})` : '';
-        dateEl.textContent = `Пройден: ${positionData.date}${posText}`;
+        dateEl.textContent = `Пройден: ${positionData.date}`;
     } else {
         dateEl.textContent = '';
     }
