@@ -1295,34 +1295,35 @@ function displayPositionResult(profile) {
     posEmpty.style.display = 'none';
 
     const mainNameEl = document.getElementById('profile-position-main-name');
-    const extraBlockEl = document.getElementById('profile-position-extra-block');
     const extraNameEl = document.getElementById('profile-position-extra-name');
     const dateEl = document.getElementById('profile-position-date');
 
-    // Разбираем строку "Pos 1 — Керри" на номер и роль
+    // full = "Pos 1 — Керри"
     const full = positionData.position || '';
     const parts = full.split('—').map(s => s.trim());
+    const posLabel = parts[0] || ''; // "Pos 1"
     const roleLabel = parts[1] || positionData.posShort || full || 'Не указана';
 
-    // Основная позиция
-    mainNameEl.textContent = roleLabel;
+    // Основная строка: "Основная позиция: Керри"
+    mainNameEl.textContent = `Основная позиция: ${roleLabel}`;
 
-    // Дополнительная позиция, если есть
+    // Дополнительная строка, если есть
     if (positionData.extraPos && !positionData.isPure) {
         const extraShort = positionShortNames[positionData.extraPos] || '';
-        extraNameEl.textContent = extraShort || 'Доп. позиция';
-        extraBlockEl.style.display = 'block';
+        extraNameEl.textContent = `Доп. позиция: ${extraShort || '—'}`;
     } else {
-        extraBlockEl.style.display = 'none';
+        extraNameEl.textContent = '';
     }
 
-    // Дата прохождения
+    // Дата
     if (positionData.date) {
-        dateEl.textContent = `Пройден: ${positionData.date}`;
+        const posText = posLabel ? ` (${posLabel})` : '';
+        dateEl.textContent = `Пройден: ${positionData.date}${posText}`;
     } else {
         dateEl.textContent = '';
     }
 }
+
 
 function displayHeroesResult(profile) {
     const heroesResult = document.getElementById('profile-heroes-result');
