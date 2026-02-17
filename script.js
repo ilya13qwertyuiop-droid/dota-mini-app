@@ -523,6 +523,83 @@
             }
         }
 
+        function initProfile() {
+            // обновляем блок "Последний результат" (позиции)
+            updateQuizPageResult();
+            // показываем героев под актуальную позицию
+            renderProfileHeroes();
+        }
+        function renderProfileHeroes() {
+            const resultBlock = document.getElementById('profile-heroes-result');
+            const emptyBlock = document.getElementById('profile-heroes-empty');
+            const listEl = document.getElementById('profile-heroes-list');
+
+            // если нет никаких данных — заглушка
+            if (!lastResult) {
+                resultBlock.style.display = 'none';
+                emptyBlock.style.display = 'block';
+                return;
+            }
+
+            // позиция из позиционного квиза (если lastResult пришёл как position_quiz)
+            const currentPositionIndex =
+                (lastResult.positionIndex !== undefined) ? lastResult.positionIndex : null;
+
+            // если lastResult не hero_quiz — героев в нём нет
+            if (lastResult.type !== 'hero_quiz') {
+                resultBlock.style.display = 'none';
+                emptyBlock.style.display = 'block';
+                return;
+            }
+
+            // проверяем, что hero-квиз был по той же позиции
+            if (
+                currentPositionIndex === null ||
+                lastResult.heroPositionIndex === undefined ||
+                lastResult.heroPositionIndex !== currentPositionIndex
+            ) {
+                resultBlock.style.display = 'none';
+                emptyBlock.style.display = 'block';
+                return;
+            }
+
+            const heroes = lastResult.topHeroes || [];
+
+            if (!heroes.length) {
+                resultBlock.style.display = 'none';
+                emptyBlock.style.display = 'block';
+                return;
+            }
+
+            // рисуем top‑5
+            listEl.innerHTML = '';
+            heroes.slice(0, 5).forEach((hero, index) => {
+                const a = document.createElement('a');
+                a.className = 'hero-row' + (index === 0 ? ' hero-row-main' : '');
+                a.href = getDota2ProTrackerUrl(hero.name);
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+
+                const matchPercent = hero.matchPercent || hero.percent || 0;
+
+                a.innerHTML = `
+                    <div class="hero-row-rank">${index + 1}</div>
+                    <div class="hero-row-img"></div>
+                    <div class="hero-row-main-text">
+                        <div class="hero-row-name">${hero.name}</div>
+                        <div class="hero-row-sub">
+                            ${index === 0 ? 'Лучший матч' : 'Совпадение'} • ${matchPercent}%
+                        </div>
+                    </div>
+                `;
+
+                listEl.appendChild(a);
+            });
+
+            emptyBlock.style.display = 'none';
+            resultBlock.style.display = 'block';
+        }
+
         function goToQuiz() {
             switchPage('quiz');
             document.querySelectorAll('.nav-item')[1].classList.add('active');
@@ -1116,16 +1193,27 @@
 
 
                 document.getElementById('hero-result').style.display = 'block';
+                // сохраняем результат hero-квиза
                 const heroQuizResult = {
                     type: 'hero_quiz',
-                    positionIndex: positionIndex,
-                    heroes: topHeroes.map(h => ({
-                        name: h.name,
-                        score: h.score
-                    }))
+                    heroPositionIndex: positionIndex, // 0..4
+                    topHeroes: topHeroes.map(hero => {
+                        let matchPercent;
+                        if (maxScore === minScore) {
+                            matchPercent = 75;
+                        } else {
+                            const normalized = (hero.score - minScore) / range; // 0..1
+                            matchPercent = Math.round(60 + normalized * 40);    // 60–100%
+                        }
+                        return {
+                            name: hero.name,
+                            score: hero.score,
+                            matchPercent: matchPercent
+                        };
+                    })
                 };
 
-                saveResultToBackend(heroQuizResult);
+                saveResult(heroQuizResult);
             },
 
 
