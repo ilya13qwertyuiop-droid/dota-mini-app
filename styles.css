@@ -1014,57 +1014,52 @@ margin-top: 14px;
   font-weight: 700;
   color: var(--text-main);
 }
+/* --- Позиция в профиле (строка статуса) --- */
 
-/* --- Позиция в профиле --- */
-
-/* основной блок позиции по центру */
-.profile-position-main-block {
-  text-align: center;
-  padding: 12px 16px;
-  border-radius: 16px;
-  background: radial-gradient(circle at 0 0, #2aa4ff33, transparent 60%),
-              linear-gradient(135deg, #1b2638, #111827);
-  border: 1px solid #3cc3ff;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.65),
-    0 0 12px rgba(60, 195, 255, 0.45);
-  margin-bottom: 10px;
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-/* блок дополнительной позиции под основной */
-.profile-position-extra-block {
-  text-align: center;
-  padding: 10px 16px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.5);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
-  margin-bottom: 8px;
+.status-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 20%, #1d4ed8, #020617);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
 }
 
-.profile-position-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #9ca3af;
-  margin-bottom: 4px;
+.status-main {
+  flex: 1;
+  min-width: 0;
 }
 
-.profile-position-role {
+.status-main-title {
   font-size: 14px;
-  font-weight: 600;
-  color: #e5ecff;
+  font-weight: 500;
 }
 
-.profile-position-role--extra {
-  color: #d7e2ff;
+.status-main-sub {
+  font-size: 12px;
+  color: #9b9ba1;
+  margin-top: 2px;
+}
+
+.status-link {
+  font-size: 12px;
+  color: #60a5fa;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .profile-position-date {
-  text-align: center;
   font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 /* Пустое состояние */
