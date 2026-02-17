@@ -1296,7 +1296,6 @@ function displayPositionResult(profile) {
 
     const mainNameEl = document.getElementById('profile-position-main-name');
     const extraNameEl = document.getElementById('profile-position-extra-name');
-    const dateEl = document.getElementById('profile-position-date');
 
     // full = "Pos 1 — Керри"
     const full = positionData.position || '';
@@ -1315,13 +1314,6 @@ function displayPositionResult(profile) {
         extraNameEl.textContent = '';
     }
 
-    // Дата
-    if (positionData.date) {
-        const posText = posLabel ? ` (${posLabel})` : '';
-        dateEl.textContent = `Пройден: ${positionData.date}`;
-    } else {
-        dateEl.textContent = '';
-    }
 }
 
 

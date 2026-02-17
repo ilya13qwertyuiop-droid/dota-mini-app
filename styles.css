@@ -1087,12 +1087,6 @@ margin-top: 14px;
     0 0 8px rgba(58, 123, 213, 0.5);
 }
 
-.profile-position-date {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 8px;
-}
-
 /* Пустое состояние */
 .profile-empty-text {
   text-align: center;
