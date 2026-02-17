@@ -1406,8 +1406,14 @@ function displayHeroesResult(profile) {
     let positionData = null;
     if (profile.quiz_history && profile.quiz_history.length > 0) {
         for (const quiz of profile.quiz_history) {
-            if (quiz.result && quiz.result.type === 'position_quiz') {
-                positionData = quiz.result;
+            const res = quiz.result;
+            if (!res) continue;
+
+            if (res.position_quiz) {
+                positionData = res.position_quiz;
+                break;
+            } else if (res.type === 'position_quiz') {
+                positionData = res;
                 break;
             }
         }
@@ -1417,8 +1423,14 @@ function displayHeroesResult(profile) {
     let heroData = null;
     if (profile.quiz_history && profile.quiz_history.length > 0) {
         for (const quiz of profile.quiz_history) {
-            if (quiz.result && quiz.result.type === 'hero_quiz' && quiz.result.topHeroes) {
-                heroData = quiz.result;
+            const res = quiz.result;
+            if (!res) continue;
+
+            if (res.hero_quiz) {
+                heroData = res.hero_quiz;
+                break;
+            } else if (res.type === 'hero_quiz' && res.topHeroes) {
+                heroData = res;
                 break;
             }
         }
