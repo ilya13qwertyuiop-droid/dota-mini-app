@@ -1116,6 +1116,16 @@
 
 
                 document.getElementById('hero-result').style.display = 'block';
+                const heroQuizResult = {
+                    type: 'hero_quiz',
+                    positionIndex: positionIndex,
+                    heroes: topHeroes.map(h => ({
+                        name: h.name,
+                        score: h.score
+                    }))
+                };
+
+                saveResultToBackend(heroQuizResult);
             },
 
 
