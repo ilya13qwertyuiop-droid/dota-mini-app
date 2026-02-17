@@ -1015,54 +1015,56 @@ margin-top: 14px;
   color: var(--text-main);
 }
 
-/* Бейдж позиции */
-.profile-position-badge-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
+/* --- Позиция в профиле --- */
 
-.profile-position-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 28px;
-  border-radius: 999px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #e9f5ff;
+/* основной блок позиции по центру */
+.profile-position-main-block {
+  text-align: center;
+  padding: 12px 16px;
+  border-radius: 16px;
   background: radial-gradient(circle at 0 0, #2aa4ff33, transparent 60%),
               linear-gradient(135deg, #1b2638, #111827);
   border: 1px solid #3cc3ff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65),
-              0 0 12px rgba(60, 195, 255, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.65),
+    0 0 12px rgba(60, 195, 255, 0.45);
+  margin-bottom: 10px;
 }
 
-.profile-position-extra {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 20px;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #d7e2ff;
-  background: linear-gradient(135deg, #0f172a, #020617);
-  border: 1px solid rgba(80, 180, 255, 0.5);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+/* блок дополнительной позиции под основной */
+.profile-position-extra-block {
+  text-align: center;
+  padding: 10px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
+  margin-bottom: 8px;
 }
 
-.profile-position-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-main);
+.profile-position-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
   margin-bottom: 4px;
 }
 
+.profile-position-role {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5ecff;
+}
+
+.profile-position-role--extra {
+  color: #d7e2ff;
+}
+
 .profile-position-date {
+  text-align: center;
   font-size: 12px;
   color: var(--text-muted);
+  margin-bottom: 8px;
 }
 
 /* Пустое состояние */
@@ -1100,7 +1102,8 @@ margin-top: 14px;
   transform: translateY(0);
 }
 
-/* Сетка героев */
+/* --- Герои в профиле --- */
+
 .profile-heroes-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1213,3 +1216,4 @@ margin-top: 14px;
     font-size: 11px;
   }
 }
+

@@ -1285,25 +1285,42 @@ function displayPositionResult(profile) {
         }
     }
 
-    if (positionData) {
-        posResult.style.display = 'block';
-        posEmpty.style.display = 'none';
-        document.getElementById('profile-position-badge').textContent = positionData.posShort || positionData.position;
-        document.getElementById('profile-position-name').textContent = positionData.position || 'Позиция не указана';
-        const extraEl = document.getElementById('profile-position-extra');
-        if (positionData.extraPos && !positionData.isPure) {
-            extraEl.textContent = positionShortNames[positionData.extraPos] || '';
-            extraEl.style.display = 'inline-flex';
-        } else {
-            extraEl.style.display = 'none';
-        }
-        const dateEl = document.getElementById('profile-position-date');
-        if (positionData.date) {
-            dateEl.textContent = `Пройден: ${positionData.date}`;
-        }
-    } else {
+    if (!positionData) {
         posResult.style.display = 'none';
         posEmpty.style.display = 'block';
+        return;
+    }
+
+    posResult.style.display = 'block';
+    posEmpty.style.display = 'none';
+
+    const mainNameEl = document.getElementById('profile-position-main-name');
+    const extraBlockEl = document.getElementById('profile-position-extra-block');
+    const extraNameEl = document.getElementById('profile-position-extra-name');
+    const dateEl = document.getElementById('profile-position-date');
+
+    // Разбираем строку "Pos 1 — Керри" на номер и роль
+    const full = positionData.position || '';
+    const parts = full.split('—').map(s => s.trim());
+    const roleLabel = parts[1] || positionData.posShort || full || 'Не указана';
+
+    // Основная позиция
+    mainNameEl.textContent = roleLabel;
+
+    // Дополнительная позиция, если есть
+    if (positionData.extraPos && !positionData.isPure) {
+        const extraShort = positionShortNames[positionData.extraPos] || '';
+        extraNameEl.textContent = extraShort || 'Доп. позиция';
+        extraBlockEl.style.display = 'block';
+    } else {
+        extraBlockEl.style.display = 'none';
+    }
+
+    // Дата прохождения
+    if (positionData.date) {
+        dateEl.textContent = `Пройден: ${positionData.date}`;
+    } else {
+        dateEl.textContent = '';
     }
 }
 

@@ -348,12 +348,21 @@
             </div>
             <!-- Если квиз пройден -->
             <div id="profile-position-result" style="display: none;">
-              <div class="profile-position-badge-row">
-                <span id="profile-position-badge" class="profile-position-badge"></span>
-                <span id="profile-position-extra" class="profile-position-extra"></span>
+              <div class="profile-position-main-block">
+                <div class="profile-position-label">Основная позиция</div>
+                <div id="profile-position-main-name" class="profile-position-role"></div>
               </div>
-              <div id="profile-position-name" class="profile-position-name"></div>
+
+              <div id="profile-position-extra-block" class="profile-position-extra-block" style="display:none;">
+                <div class="profile-position-label">Дополнительная позиция</div>
+                <div id="profile-position-extra-name" class="profile-position-role profile-position-role--extra"></div>
+              </div>
+
               <div id="profile-position-date" class="profile-position-date"></div>
+
+              <button class="profile-action-btn" onclick="goToPositionQuiz()">
+                Пройти квиз по позиции заново
+              </button>
             </div>
             <!-- Если квиз НЕ пройден -->
             <div id="profile-position-empty" style="display: none;">
