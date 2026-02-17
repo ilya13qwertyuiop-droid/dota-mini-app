@@ -474,7 +474,7 @@
                 updateQuizPageResult();
             }
             if (pageName === 'profile') {
-                loadProfile();
+                initProfile();
             }
         }
 
@@ -1217,26 +1217,55 @@
 
         // Сохраняем Telegram данные на backend
         async function saveTelegramDataToBackend() {
+            console.log('[PROFILE] === saveTelegramDataToBackend START ===');
+            console.log('[PROFILE] tg exists:', !!tg);
+            console.log('[PROFILE] tg.initDataUnsafe exists:', !!(tg && tg.initDataUnsafe));
+            console.log('[PROFILE] tg.initDataUnsafe.user exists:', !!(tg && tg.initDataUnsafe && tg.initDataUnsafe.user));
+            
             if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
+                console.error('[PROFILE] Telegram user data NOT available');
+                alert('ОШИБКА: Данные Telegram не доступны!\ntg=' + !!tg + '\ninitDataUnsafe=' + !!(tg && tg.initDataUnsafe) + '\nuser=' + !!(tg && tg.initDataUnsafe && tg.initDataUnsafe.user));
                 return;
             }
 
             const user = tg.initDataUnsafe.user;
+            console.log('[PROFILE] user.first_name:', user.first_name);
+            console.log('[PROFILE] user.last_name:', user.last_name);
+            console.log('[PROFILE] user.username:', user.username);
+            console.log('[PROFILE] user.photo_url:', user.photo_url);
+            
             try {
-                await fetch('/api/save_telegram_data', {
+                const payload = {
+                    token: USER_TOKEN,
+                    first_name: user.first_name || 'Гость',
+                    last_name: user.last_name || '',
+                    username: user.username || null,
+                    photo_url: user.photo_url || null
+                };
+                
+                console.log('[PROFILE] Sending payload:', JSON.stringify(payload));
+                
+                const response = await fetch('/api/save_telegram_data', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        token: USER_TOKEN,
-                        first_name: user.first_name || 'Гость',
-                        last_name: user.last_name || '',
-                        username: user.username || null,
-                        photo_url: user.photo_url || null
-                    })
+                    body: JSON.stringify(payload)
                 });
+                
+                console.log('[PROFILE] Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[PROFILE] Response error:', errorText);
+                    alert('ОШИБКА API: ' + response.status + '\n' + errorText);
+                } else {
+                    console.log('[PROFILE] Telegram data saved successfully');
+                }
             } catch (error) {
                 console.error('[PROFILE] Ошибка сохранения Telegram данных:', error);
+                alert('ОШИБКА fetch: ' + error.message);
             }
+            
+            console.log('[PROFILE] === saveTelegramDataToBackend END ===');
         }
 
         // Обновляем шапку профиля
