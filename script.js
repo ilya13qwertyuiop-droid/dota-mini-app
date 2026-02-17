@@ -385,6 +385,8 @@
         let currentQuestion = 0;
         let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
         let lastResult = null;
+        let lastPositionResult = null;
+        let lastHeroResult = null;
         let selectedAnswersHistory = [];
 
         // Получаем token из URL параметров
@@ -446,7 +448,14 @@
         async function loadSavedResult() {
             const saved = await loadResultFromBackend();
             if (saved) {
-                lastResult = saved;
+                // Разбираем результат по типу
+                if (saved.type === 'position_quiz') {
+                    lastPositionResult = saved;
+                    lastResult = saved;
+                } else if (saved.type === 'hero_quiz') {
+                    lastHeroResult = saved;
+                    lastResult = saved;
+                }
                 updateQuizPageResult();
                 updateHeroQuizStart();
             }
@@ -516,60 +525,40 @@
         }
 
         function updateQuizPageResult() {
-            if (lastResult) {
+            if (lastPositionResult) {
                 document.getElementById('quizPageLastResult').style.display = 'block';
-                document.getElementById('quizPagePosition').textContent = lastResult.position;
-                document.getElementById('quizPageDate').textContent = `Пройден: ${lastResult.date}`;
+                document.getElementById('quizPagePosition').textContent = lastPositionResult.position;
+                document.getElementById('quizPageDate').textContent = `Пройден: ${lastPositionResult.date}`;
             }
         }
 
-        function initProfile() {
-            // обновляем блок "Последний результат" (позиции)
-            updateQuizPageResult();
-            // показываем героев под актуальную позицию
-            renderProfileHeroes();
-        }
         function renderProfileHeroes() {
             const resultBlock = document.getElementById('profile-heroes-result');
             const emptyBlock = document.getElementById('profile-heroes-empty');
             const listEl = document.getElementById('profile-heroes-list');
 
-            // если нет никаких данных — заглушка
-            if (!lastResult) {
+            // Проверяем наличие позиции
+            if (!lastPositionResult || lastPositionResult.positionIndex === undefined) {
                 resultBlock.style.display = 'none';
                 emptyBlock.style.display = 'block';
                 return;
             }
 
-            // позиция из позиционного квиза (если lastResult пришёл как position_quiz)
-            const currentPositionIndex =
-                (lastResult.positionIndex !== undefined) ? lastResult.positionIndex : null;
-
-            // если lastResult не hero_quiz — героев в нём нет
-            if (lastResult.type !== 'hero_quiz') {
+            // Проверяем наличие героев
+            if (!lastHeroResult || !lastHeroResult.topHeroes || !lastHeroResult.topHeroes.length) {
                 resultBlock.style.display = 'none';
                 emptyBlock.style.display = 'block';
                 return;
             }
 
-            // проверяем, что hero-квиз был по той же позиции
-            if (
-                currentPositionIndex === null ||
-                lastResult.heroPositionIndex === undefined ||
-                lastResult.heroPositionIndex !== currentPositionIndex
-            ) {
+            // Проверяем совпадение позиции
+            if (lastHeroResult.heroPositionIndex !== lastPositionResult.positionIndex) {
                 resultBlock.style.display = 'none';
                 emptyBlock.style.display = 'block';
                 return;
             }
 
-            const heroes = lastResult.topHeroes || [];
-
-            if (!heroes.length) {
-                resultBlock.style.display = 'none';
-                emptyBlock.style.display = 'block';
-                return;
-            }
+            const heroes = lastHeroResult.topHeroes;
 
             // рисуем top‑5
             listEl.innerHTML = '';
@@ -734,7 +723,7 @@
             const statsKey = isPure ? `${mainPos}_pure` : `${mainPos}_${extraPos}`;
 
             // сохраняем результат
-            lastResult = {
+            lastPositionResult = {
                 type: 'position_quiz',
                 position: positionNames[mainPos],
                 posShort: positionShortNames[mainPos],
@@ -743,7 +732,8 @@
                 isPure: isPure,
                 extraPos: extraPos
             };
-            saveResult(lastResult);
+            lastResult = lastPositionResult; // для обратной совместимости
+            saveResult(lastPositionResult);
             updateQuizPageResult();
             updateHeroQuizStart();
 
@@ -858,8 +848,8 @@
 
 
             useSavedPosition() {
-                if (lastResult && lastResult.positionIndex !== undefined) {
-                    this.state.selectedPosition = lastResult.positionIndex;
+                if (lastPositionResult && lastPositionResult.positionIndex !== undefined) {
+                    this.state.selectedPosition = lastPositionResult.positionIndex;
                     this.state.usedSavedPosition = true;
                     this.startQuestions();
                 }
@@ -1213,6 +1203,8 @@
                     })
                 };
 
+                lastHeroResult = heroQuizResult; // сохраняем отдельно
+                lastResult = heroQuizResult; // для обратной совместимости
                 saveResult(heroQuizResult);
             },
 
@@ -1243,11 +1235,11 @@
         function updateHeroQuizStart() {
             const btn = document.getElementById('useSavedPositionBtn');
             const textSpan = document.getElementById('savedPositionText');
-            
-            if (lastResult && lastResult.positionIndex !== undefined) {
+
+            if (lastPositionResult && lastPositionResult.positionIndex !== undefined) {
                 btn.disabled = false;
                 btn.style.opacity = '1';
-                textSpan.textContent = `Твоя последняя позиция: ${lastResult.posShort}`;
+                textSpan.textContent = `Твоя последняя позиция: ${lastPositionResult.posShort}`;
             } else {
                 btn.disabled = true;
                 btn.style.opacity = '0.5';
@@ -1410,46 +1402,71 @@ function displayHeroesResult(profile) {
     const heroesEmpty = document.getElementById('profile-heroes-empty');
     const heroesList = document.getElementById('profile-heroes-list');
 
-    let heroData = null;
+    // Находим последний результат позиционного квиза
+    let positionData = null;
     if (profile.quiz_history && profile.quiz_history.length > 0) {
         for (const quiz of profile.quiz_history) {
-            const res = quiz.result;
-            if (!res) continue;
-
-            if (res.hero_quiz && res.hero_quiz.heroes) {
-                heroData = res.hero_quiz;
-                break;
-            } else if (res.type === 'hero_quiz' && res.heroes) {
-                // поддержка старого формата
-                heroData = res;
+            if (quiz.result && quiz.result.type === 'position_quiz') {
+                positionData = quiz.result;
                 break;
             }
         }
     }
 
-    if (heroData && heroData.heroes && heroData.heroes.length > 0) {
-        heroesResult.style.display = 'block';
-        heroesEmpty.style.display = 'none';
-        renderProfileHeroes(heroesList, heroData.heroes);
-    } else {
-        heroesResult.style.display = 'none';
-        heroesEmpty.style.display = 'block';
+    // Находим последний результат hero-квиза
+    let heroData = null;
+    if (profile.quiz_history && profile.quiz_history.length > 0) {
+        for (const quiz of profile.quiz_history) {
+            if (quiz.result && quiz.result.type === 'hero_quiz' && quiz.result.topHeroes) {
+                heroData = quiz.result;
+                break;
+            }
+        }
     }
+
+    // Проверяем соответствие позиции и героев
+    if (heroData && heroData.topHeroes && heroData.topHeroes.length > 0) {
+        // Если есть позиция, проверяем совпадение
+        if (positionData && positionData.positionIndex !== undefined) {
+            if (heroData.heroPositionIndex === positionData.positionIndex) {
+                // Позиция совпадает - показываем героев
+                heroesResult.style.display = 'block';
+                heroesEmpty.style.display = 'none';
+                renderProfileHeroes(heroesList, heroData.topHeroes);
+                return;
+            }
+        }
+    }
+
+    // Иначе показываем заглушку
+    heroesResult.style.display = 'none';
+    heroesEmpty.style.display = 'block';
 }
 
 function renderProfileHeroes(container, heroes) {
     container.innerHTML = '';
-    heroes.slice(0, 6).forEach((hero, index) => {
+    heroes.slice(0, 5).forEach((hero, index) => {
         const heroName = hero.name || hero;
-        const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
-        const card = document.createElement('div');
-        card.className = 'profile-hero-card';
-        card.innerHTML = `
-            <div class="profile-hero-rank">${index + 1}</div>
-            <img src="${heroIconUrl}" alt="${heroName}" class="profile-hero-icon" onerror="this.style.display='none'">
-            <div class="profile-hero-name">${heroName}</div>
+        const matchPercent = hero.matchPercent || 75;
+
+        const row = document.createElement('a');
+        row.className = 'hero-row' + (index === 0 ? ' hero-row-main' : '');
+        row.href = getDota2ProTrackerUrl(heroName);
+        row.target = '_blank';
+        row.rel = 'noopener noreferrer';
+
+        row.innerHTML = `
+            <div class="hero-row-rank">${index + 1}</div>
+            <div class="hero-row-img"></div>
+            <div class="hero-row-main-text">
+                <div class="hero-row-name">${heroName}</div>
+                <div class="hero-row-sub">
+                    ${index === 0 ? 'Лучший матч' : 'Совпадение'} • ${matchPercent}%
+                </div>
+            </div>
         `;
-        container.appendChild(card);
+
+        container.appendChild(row);
     });
 }
 
