@@ -3,52 +3,65 @@ import httpx
 from datetime import datetime, timezone
 from typing import Generator
 
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
+
 from backend.db import get_user_id_by_token, init_tokens_table
+
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
+
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
 if not CHECK_CHAT_ID:
     raise RuntimeError("CHECK_CHAT_ID is not set")
 
+
 # --- DB setup start ---
 # Путь к БД SQLite
 DATABASE_URL = "sqlite:///./backend/dota_bot.db"
+
 
 # Создаём engine и session
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 # Декларативная база для моделей
 Base = declarative_base()
+
 
 
 # Модель UserProfile
 class DBUserProfile(Base):
     __tablename__ = "user_profiles"
 
+
     user_id = Column(Integer, primary_key=True, index=True)
     favorite_heroes = Column(JSON, default=list)  # список героев
     settings = Column(JSON, default=dict)  # произвольные настройки
+
 
 
 # Модель QuizResult
 class DBQuizResult(Base):
     __tablename__ = "quiz_results"
 
+
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("user_profiles.user_id"), index=True)
     result = Column(JSON, nullable=False)  # результат квиза
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
 
 
 # Функция для получения сессии БД (dependency injection для FastAPI)
@@ -60,12 +73,15 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
+
 # Создаём таблицы при старте приложения
 Base.metadata.create_all(bind=engine)
 init_tokens_table()
 # --- DB setup end ---
 
+
 app = FastAPI(title="Dota Mini App Backend")
+
 
 # CORS нужен, чтобы фронтенд (мини-ап) мог вызывать этот API из браузера.
 # Для продакшена лучше сузить allow_origins до домена мини-апа.
@@ -77,6 +93,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
+# ========== Pydantic Models ==========
 
 class CheckRequest(BaseModel):
     token: str  # одноразовый токен из URL мини-апа
@@ -99,53 +118,170 @@ class GetResultResponse(BaseModel):
     result: dict | None
 
 
-# простейшая заглушка профиля на будущее
 class Profile(BaseModel):
     user_id: int
     favorite_heroes: list[str] = []
     settings: dict = {}
 
 
-# УСТАРЕЛО: эндпоинты /api/profile/* теперь работают с БД (DBUserProfile)
-# Оставлено на случай, если используется где-то ещё
-fake_profiles: dict[int, Profile] = {}
+class UserStats(BaseModel):
+    """Статистика пользователя для профиля"""
+    user_id: int
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    photo_url: str | None = None
+    total_quizzes: int = 0
+    last_quiz_date: str | None = None
+    quiz_history: list[dict] = []  # последние 5-10 квизов
 
-# УСТАРЕЛО: эндпоинты /api/save_result и /api/get_result теперь работают с БД (DBQuizResult)
-# Оставлено на случай, если используется где-то ещё
-quiz_results: dict[int, dict] = {}
 
+class TelegramUserData(BaseModel):
+    """Данные пользователя из Telegram Web App"""
+    token: str
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    photo_url: str | None = None
+
+
+
+# ========== API Endpoints ==========
 
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
+    """Проверяет подписку пользователя на канал"""
     # 1. по токену достаём user_id
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         # нет такого токена или он просрочен
         return CheckResponse(allowed=False)
 
+
     # 2. проверяем подписку через getChatMember
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
     params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
 
+
     async with httpx.AsyncClient() as client:
         r = await client.get(url, params=params)
+
 
     if r.status_code != 200:
         raise HTTPException(status_code=500, detail="Telegram API error")
 
+
     result = r.json().get("result", {})
     status = result.get("status")
+
 
     allowed_statuses = {"member", "administrator", "creator"}
     allowed = status in allowed_statuses
 
+
     return CheckResponse(allowed=allowed)
+
+
+@app.post("/api/save_telegram_data")
+async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
+    """Сохраняет данные пользователя из Telegram (имя, username, фото)"""
+    print(f"[API DEBUG] save_telegram_data: token={data.token[:10]}...")
+    
+    user_id = get_user_id_by_token(data.token)
+    if not user_id:
+        print("[API DEBUG] Token validation FAILED")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    print(f"[API DEBUG] Token valid, user_id={user_id}")
+    
+    # Обновляем профиль
+    db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
+    if not db_profile:
+        db_profile = DBUserProfile(
+            user_id=user_id,
+            favorite_heroes=[],
+            settings={}
+        )
+        db.add(db_profile)
+    
+    # Сохраняем данные Telegram в settings
+    if not db_profile.settings:
+        db_profile.settings = {}
+    
+    db_profile.settings["username"] = data.username
+    db_profile.settings["first_name"] = data.first_name
+    db_profile.settings["last_name"] = data.last_name
+    db_profile.settings["photo_url"] = data.photo_url
+    
+    db.commit()
+    
+    print(f"[API DEBUG] Telegram data saved for user {user_id}")
+    return {"success": True}
+
+
+@app.get("/api/profile_full", response_model=UserStats)
+async def get_profile_full(token: str, db: Session = Depends(get_db)):
+    """Получает полный профиль пользователя с историей квизов"""
+    print(f"[API DEBUG] get_profile_full: token={token[:10]}...")
+    
+    # 1. Проверяем токен
+    user_id = get_user_id_by_token(token)
+    if not user_id:
+        print("[API DEBUG] Token validation FAILED")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    print(f"[API DEBUG] Token valid, user_id={user_id}")
+    
+    # 2. Получаем профиль из БД
+    db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
+    if not db_profile:
+        db_profile = DBUserProfile(
+            user_id=user_id,
+            favorite_heroes=[],
+            settings={}
+        )
+        db.add(db_profile)
+        db.commit()
+        db.refresh(db_profile)
+    
+    # 3. Получаем историю квизов
+    quiz_results = db.query(DBQuizResult)\
+        .filter(DBQuizResult.user_id == user_id)\
+        .order_by(DBQuizResult.updated_at.desc())\
+        .limit(10)\
+        .all()
+    
+    # 4. Формируем историю
+    quiz_history = []
+    for quiz in quiz_results:
+        quiz_history.append({
+            "date": quiz.updated_at.isoformat() if quiz.updated_at else None,
+            "result": quiz.result
+        })
+    
+    # 5. Извлекаем данные Telegram из settings
+    settings = db_profile.settings or {}
+    
+    print(f"[API DEBUG] Profile loaded: {len(quiz_results)} quizzes found")
+    
+    return UserStats(
+        user_id=user_id,
+        username=settings.get("username"),
+        first_name=settings.get("first_name"),
+        last_name=settings.get("last_name"),
+        photo_url=settings.get("photo_url"),
+        total_quizzes=len(quiz_results),
+        last_quiz_date=quiz_results[0].updated_at.isoformat() if quiz_results and quiz_results[0].updated_at else None,
+        quiz_history=quiz_history
+    )
 
 
 @app.get("/api/profile/{user_id}", response_model=Profile)
 async def get_profile(user_id: int, db: Session = Depends(get_db)):
+    """Получает базовый профиль пользователя (устаревший эндпоинт)"""
     # 1. Ищем профиль в БД по user_id
     db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
+
 
     # 2. Если не найден — создаём новый с пустыми данными
     if not db_profile:
@@ -158,6 +294,7 @@ async def get_profile(user_id: int, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_profile)
 
+
     # 3. Возвращаем Pydantic модель Profile
     return Profile(
         user_id=db_profile.user_id,
@@ -168,8 +305,10 @@ async def get_profile(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/profile", response_model=Profile)
 async def save_profile(profile: Profile, db: Session = Depends(get_db)):
+    """Сохраняет базовый профиль пользователя (устаревший эндпоинт)"""
     # 1. Ищем существующий профиль в БД
     db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == profile.user_id).first()
+
 
     # 2. Если не найден — создаём новый
     if not db_profile:
@@ -184,9 +323,11 @@ async def save_profile(profile: Profile, db: Session = Depends(get_db)):
         db_profile.favorite_heroes = profile.favorite_heroes
         db_profile.settings = profile.settings
 
+
     # 4. Сохраняем изменения в БД
     db.commit()
     db.refresh(db_profile)
+
 
     # 5. Возвращаем актуальный профиль
     return Profile(
@@ -198,12 +339,17 @@ async def save_profile(profile: Profile, db: Session = Depends(get_db)):
 
 @app.post("/api/save_result", response_model=SaveResultResponse)
 async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
+    """Сохраняет результат квиза"""
+    print(f"[API DEBUG] save_result: token={data.token[:10]}...")
+    
     # 1. по токену достаём user_id
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
     print(f"[API DEBUG] Token valid, user_id={user_id}")
+
 
     # 2. Убедимся, что профиль пользователя существует (для foreign key)
     db_user_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
@@ -217,8 +363,10 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
         db.add(db_user_profile)
         db.commit()
 
+
     # 3. Ищем существующий результат квиза в БД
     db_quiz_result = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
+
 
     if db_quiz_result:
         # 4. Если найден — обновляем result и updated_at
@@ -233,16 +381,20 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
         )
         db.add(db_quiz_result)
 
+
     # 6. Сохраняем изменения в БД
     db.commit()
     db.refresh(db_quiz_result)
 
+    print(f"[API DEBUG] Quiz result saved for user {user_id}")
     return SaveResultResponse(success=True)
 
 
 @app.get("/api/get_result", response_model=GetResultResponse)
 async def get_result(token: str, db: Session = Depends(get_db)):
+    """Получает результат квиза по токену"""
     print(f"[API DEBUG] get_result: token={token[:10]}...")
+    
     # 1. по токену достаём user_id
     user_id = get_user_id_by_token(token)
     if not user_id:
@@ -251,11 +403,16 @@ async def get_result(token: str, db: Session = Depends(get_db)):
     
     print(f"[API DEBUG] Token valid, user_id={user_id}")
 
+
     # 2. Ищем результат квиза в БД по user_id
     db_quiz_result = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
 
+
     # 3. Возвращаем результат (или None, если записи нет)
     if db_quiz_result:
+        print(f"[API DEBUG] Quiz result found for user {user_id}")
         return GetResultResponse(result=db_quiz_result.result)
     else:
+        print(f"[API DEBUG] No quiz result found for user {user_id}")
         return GetResultResponse(result=None)
+

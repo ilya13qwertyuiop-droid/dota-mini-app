@@ -330,14 +330,35 @@
 
       <!-- Страница профиля (заглушка) -->
       <div id="page-profile" class="page">
-        <div class="placeholder">
-          <div class="placeholder-icon">⚙️</div>
-          <div class="placeholder-title">Профиль</div>
-          <div class="placeholder-text">
-            История тестов и персональные настройки. Скоро...
-          </div>
+        <div class="profile-container">
+            <!-- Шапка профиля -->
+            <div class="profile-header">
+                <img id="profile-avatar" src="" alt="Avatar" class="profile-avatar">
+                <div class="profile-info">
+                    <h2 id="profile-name">Загрузка...</h2>
+                    <p id="profile-username"></p>
+                </div>
+            </div>
+            
+            <!-- Статистика -->
+            <div class="profile-stats">
+                <div class="stat-item">
+                    <span class="stat-value" id="total-quizzes">0</span>
+                    <span class="stat-label">Пройдено квизов</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="last-quiz-date">—</span>
+                    <span class="stat-label">Последний квиз</span>
+                </div>
+            </div>
+            
+            <!-- История квизов -->
+            <div class="quiz-history">
+                <h3>📜 История квизов</h3>
+                <div id="quiz-history-list"></div>
+            </div>
         </div>
-      </div>
+    </div>
 
       <!-- Нижняя навигация -->
       <div class="bottom-nav">
