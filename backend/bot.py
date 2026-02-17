@@ -70,16 +70,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     print("DEBUG start called for user", user_id)
-    
+
     # Сохраняем данные пользователя в backend для профиля
     try:
         user = update.effective_user
+
+        # В новых версиях PTB нет user.photo_url, нужно через get_profile_photos
+        photo_url = None
+        try:
+            photos = await context.bot.get_user_profile_photos(user.id, limit=1)
+            if photos.total_count > 0:
+                file_id = photos.photos[0][0].file_id
+                file = await context.bot.get_file(file_id)
+                photo_url = file.file_path
+        except Exception as e:
+            print("Failed to fetch user photo:", e)
+            photo_url = None
+
         payload = {
-            "token": None,  # временно, заполним ниже после create_token_for_user
+            "token": None,  # заполним позже
             "first_name": user.first_name,
-            "last_name": user.last_name,
+            "last_name": getattr(user, "last_name", None),
             "username": user.username,
-            "photo_url": user.photo_url,
+            "photo_url": photo_url,
         }
     except Exception as e:
         print("Failed to build Telegram user payload:", e)
