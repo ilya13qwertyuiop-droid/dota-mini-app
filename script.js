@@ -658,6 +658,7 @@
 
             // сохраняем результат
             lastResult = {
+                type: 'position_quiz',
                 position: positionNames[mainPos],
                 posShort: positionShortNames[mainPos],
                 positionIndex: parseInt(mainPos.replace('pos', '')) - 1,
