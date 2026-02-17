@@ -1177,170 +1177,213 @@
                 startHeroQuiz();
             });
         }
-        // Получаем данные Telegram пользователя
-        function getTelegramUserData() {
-            if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
-                return {
-                    first_name: "Гость",
-                    last_name: "",
-                    username: null,
-                    photo_url: null
-                };
-            }
-            
-            const user = tg.initDataUnsafe.user;
-            return {
-                first_name: user.first_name || "Гость",
-                last_name: user.last_name || "",
-                username: user.username || null,
-                photo_url: user.photo_url || null
-            };
-        }
+        // ========== ПРОФИЛЬ ==========
 
-        // Загружаем профиль
-        async function loadProfile() {
+        async function initProfile() {
+            console.log('[PROFILE] Загрузка профиля...');
+
+            // 1. Аватарка и имя из Telegram
+            updateProfileHeader();
+
+            // 2. Загружаем данные с backend
             if (!USER_TOKEN) {
-                console.error("Токен не найден для загрузки профиля");
+                console.error('[PROFILE] Токен отсутствует');
+                showEmptyProfile();
                 return;
             }
-            
+
             try {
-                // 1. Сначала сохраняем данные Telegram на backend
-                const telegramData = getTelegramUserData();
+                // Сначала сохраняем данные Telegram на backend
+                await saveTelegramDataToBackend();
+
+                // Потом загружаем полный профиль
+                const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const profile = await response.json();
+                console.log('[PROFILE] Данные получены:', profile);
+
+                // Отображаем результаты
+                displayPositionResult(profile);
+                displayHeroesResult(profile);
+
+            } catch (error) {
+                console.error('[PROFILE] Ошибка загрузки:', error);
+                showEmptyProfile();
+            }
+        }
+
+        // Сохраняем Telegram данные на backend
+        async function saveTelegramDataToBackend() {
+            if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
+                return;
+            }
+
+            const user = tg.initDataUnsafe.user;
+            try {
                 await fetch('/api/save_telegram_data', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         token: USER_TOKEN,
-                        ...telegramData
+                        first_name: user.first_name || 'Гость',
+                        last_name: user.last_name || '',
+                        username: user.username || null,
+                        photo_url: user.photo_url || null
                     })
                 });
-                
-                // 2. Загружаем полный профиль
-                const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
-                if (!response.ok) {
-                    throw new Error('Ошибка загрузки профиля: ' + response.status);
-                }
-                
-                const profile = await response.json();
-                console.log('[PROFILE] Загружен профиль:', profile);
-                
-                // 3. Отображаем данные профиля
-                displayProfile(profile, telegramData);
-                
             } catch (error) {
-                console.error('Ошибка загрузки профиля:', error);
+                console.error('[PROFILE] Ошибка сохранения Telegram данных:', error);
             }
         }
 
-        // Отображаем профиль на странице
-        function displayProfile(profile, telegramData) {
-            // Аватарка
+        // Обновляем шапку профиля
+        function updateProfileHeader() {
             const avatar = document.getElementById('profile-avatar');
-            if (avatar) {
-                if (telegramData.photo_url) {
-                    avatar.src = telegramData.photo_url;
-                } else {
-                    // Плейсхолдер с инициалами
-                    const name = telegramData.first_name || 'User';
-                    avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=667eea&color=fff&size=200`;
-                }
-            }
-            
-            // Имя
-            const fullName = `${telegramData.first_name} ${telegramData.last_name || ''}`.trim();
             const nameEl = document.getElementById('profile-name');
-            if (nameEl) {
-                nameEl.textContent = fullName;
-            }
-            
-            // Username
             const usernameEl = document.getElementById('profile-username');
-            if (usernameEl) {
-                if (telegramData.username) {
-                    usernameEl.textContent = `@${telegramData.username}`;
+
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                nameEl.textContent = fullName || 'Пользователь';
+
+                if (user.username) {
+                    usernameEl.textContent = `@${user.username}`;
                 } else {
                     usernameEl.textContent = '';
                 }
-            }
-            
-            // Статистика
-            const totalQuizzesEl = document.getElementById('total-quizzes');
-            if (totalQuizzesEl) {
-                totalQuizzesEl.textContent = profile.total_quizzes;
-            }
-            
-            // Дата последнего квиза
-            const lastDateEl = document.getElementById('last-quiz-date');
-            if (lastDateEl) {
-                if (profile.last_quiz_date) {
-                    const date = new Date(profile.last_quiz_date);
-                    lastDateEl.textContent = formatDate(date);
+
+                if (user.photo_url) {
+                    avatar.src = user.photo_url;
                 } else {
-                    lastDateEl.textContent = '—';
+                    avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
+                }
+            } else {
+                nameEl.textContent = 'Пользователь';
+                usernameEl.textContent = '';
+                avatar.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
+            }
+
+            avatar.onerror = function () {
+                this.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
+            };
+        }
+
+        // Отображаем результат квиза по позиции
+        function displayPositionResult(profile) {
+            const posResult = document.getElementById('profile-position-result');
+            const posEmpty = document.getElementById('profile-position-empty');
+
+            // Ищем последний результат с позицией
+            let positionData = null;
+            if (profile.quiz_history && profile.quiz_history.length > 0) {
+                for (const quiz of profile.quiz_history) {
+                    if (quiz.result && quiz.result.position) {
+                        positionData = quiz.result;
+                        break; // берём последний
+                    }
                 }
             }
-            
-            // История квизов
-            displayQuizHistory(profile.quiz_history);
-        }
 
-        // Форматируем дату
-        function formatDate(date) {
-            const now = new Date();
-            const diffMs = now - date;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
-            
-            if (diffMins < 1) return 'только что';
-            if (diffMins < 60) return `${diffMins} мин назад`;
-            if (diffHours < 24) return `${diffHours} ч назад`;
-            if (diffDays < 7) return `${diffDays} дн назад`;
-            
-            return date.toLocaleDateString('ru-RU', {day: 'numeric', month: 'short', year: 'numeric'});
-        }
+            if (positionData) {
+                posResult.style.display = 'block';
+                posEmpty.style.display = 'none';
 
-        // Отображаем историю квизов
-        function displayQuizHistory(history) {
-            const container = document.getElementById('quiz-history-list');
-            if (!container) return;
-            
-            container.innerHTML = '';
-            
-            if (!history || history.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">История пуста. Пройди первый квиз!</p>';
-                return;
+                // Бейдж основной позиции
+                const badgeEl = document.getElementById('profile-position-badge');
+                badgeEl.textContent = positionData.posShort || positionData.position;
+
+                // Название позиции
+                const nameEl = document.getElementById('profile-position-name');
+                nameEl.textContent = positionData.position || 'Позиция не указана';
+
+                // Доп. позиция
+                const extraEl = document.getElementById('profile-position-extra');
+                if (positionData.extraPos && !positionData.isPure) {
+                    extraEl.textContent = positionShortNames[positionData.extraPos] || '';
+                    extraEl.style.display = 'inline-flex';
+                } else {
+                    extraEl.style.display = 'none';
+                }
+
+                // Дата
+                const dateEl = document.getElementById('profile-position-date');
+                if (positionData.date) {
+                    dateEl.textContent = `Пройден: ${positionData.date}`;
+                } else {
+                    dateEl.textContent = '';
+                }
+            } else {
+                posResult.style.display = 'none';
+                posEmpty.style.display = 'block';
             }
-            
-            history.forEach(quiz => {
-                const item = document.createElement('div');
-                item.className = 'quiz-history-item';
-                
-                const date = quiz.date ? new Date(quiz.date) : null;
-                const result = quiz.result || {};
-                
-                // Извлекаем данные из результата
-                const heroName = result.recommendedHero || result.hero || 'Неизвестный герой';
-                const position = result.position || result.posShort || 'Позиция не указана';
-                
-                item.innerHTML = `
-                    <div class="quiz-date">${date ? formatDate(date) : 'Недавно'}</div>
-                    <div class="quiz-result">
-                        <div class="hero-info">
-                            <div class="hero-name">🎮 ${heroName}</div>
-                            <div class="hero-role">Позиция: ${position}</div>
-                        </div>
-                    </div>
+        }
+
+        // Отображаем результат квиза по героям
+        function displayHeroesResult(profile) {
+            const heroesResult = document.getElementById('profile-heroes-result');
+            const heroesEmpty = document.getElementById('profile-heroes-empty');
+            const heroesList = document.getElementById('profile-heroes-list');
+
+            // Ищем последний результат с героями
+            let heroData = null;
+            if (profile.quiz_history && profile.quiz_history.length > 0) {
+                for (const quiz of profile.quiz_history) {
+                    if (quiz.result && quiz.result.heroes && quiz.result.heroes.length > 0) {
+                        heroData = quiz.result;
+                        break;
+                    }
+                }
+            }
+
+            if (heroData && heroData.heroes && heroData.heroes.length > 0) {
+                heroesResult.style.display = 'block';
+                heroesEmpty.style.display = 'none';
+                renderProfileHeroes(heroesList, heroData.heroes);
+            } else {
+                heroesResult.style.display = 'none';
+                heroesEmpty.style.display = 'block';
+            }
+        }
+
+        // Рендерим сетку героев
+        function renderProfileHeroes(container, heroes) {
+            container.innerHTML = '';
+
+            heroes.slice(0, 6).forEach((hero, index) => {
+                const heroName = hero.name || hero;
+                const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+
+                const card = document.createElement('div');
+                card.className = 'profile-hero-card';
+
+                card.innerHTML = `
+                    <div class="profile-hero-rank">${index + 1}</div>
+                    <img src="${heroIconUrl}" alt="${heroName}" class="profile-hero-icon" onerror="this.style.display='none'">
+                    <div class="profile-hero-name">${heroName}</div>
                 `;
-                
-                container.appendChild(item);
+
+                container.appendChild(card);
             });
         }
 
-        // Показываем профиль
-        function showProfile() {
-            console.log('[PROFILE] Открываем профиль');
-            switchPage('profile');
-            loadProfile();
+        // Показываем пустой профиль при ошибке
+        function showEmptyProfile() {
+            document.getElementById('profile-position-result').style.display = 'none';
+            document.getElementById('profile-position-empty').style.display = 'block';
+            document.getElementById('profile-heroes-result').style.display = 'none';
+            document.getElementById('profile-heroes-empty').style.display = 'block';
         }
+
+        // Обновляем switchPage — загружаем профиль при открытии вкладки
+        const _originalSwitchPage = switchPage;
+        switchPage = function (pageName, event) {
+            _originalSwitchPage(pageName, event);
+            if (pageName === 'profile') {
+                initProfile();
+            }
+        };
+

@@ -328,37 +328,64 @@
         </div>
       </div>
 
-      <!-- Страница профиля (заглушка) -->
       <div id="page-profile" class="page">
         <div class="profile-container">
-            <!-- Шапка профиля -->
-            <div class="profile-header">
-                <img id="profile-avatar" src="" alt="Avatar" class="profile-avatar">
-                <div class="profile-info">
-                    <h2 id="profile-name">Загрузка...</h2>
-                    <p id="profile-username"></p>
-                </div>
+
+          <!-- Шапка профиля -->
+          <div class="profile-header">
+            <img id="profile-avatar" src="" alt="" class="profile-avatar">
+            <div class="profile-info">
+              <h2 id="profile-name">Загрузка...</h2>
+              <p id="profile-username"></p>
             </div>
-            
-            <!-- Статистика -->
-            <div class="profile-stats">
-                <div class="stat-item">
-                    <span class="stat-value" id="total-quizzes">0</span>
-                    <span class="stat-label">Пройдено квизов</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="last-quiz-date">—</span>
-                    <span class="stat-label">Последний квиз</span>
-                </div>
+          </div>
+
+          <!-- Результат квиза по позиции -->
+          <div class="profile-card">
+            <div class="profile-card-header">
+              <span class="profile-card-icon">🎯</span>
+              <span class="profile-card-title">Твоя позиция</span>
             </div>
-            
-            <!-- История квизов -->
-            <div class="quiz-history">
-                <h3>📜 История квизов</h3>
-                <div id="quiz-history-list"></div>
+            <!-- Если квиз пройден -->
+            <div id="profile-position-result" style="display: none;">
+              <div class="profile-position-badge-row">
+                <span id="profile-position-badge" class="profile-position-badge"></span>
+                <span id="profile-position-extra" class="profile-position-extra"></span>
+              </div>
+              <div id="profile-position-name" class="profile-position-name"></div>
+              <div id="profile-position-date" class="profile-position-date"></div>
             </div>
+            <!-- Если квиз НЕ пройден -->
+            <div id="profile-position-empty" style="display: none;">
+              <p class="profile-empty-text">Ты ещё не проходил квиз по позициям</p>
+              <button class="profile-action-btn" onclick="goToPositionQuiz()">
+                🎯 Пройти квиз по позиции
+              </button>
+            </div>
+          </div>
+
+          <!-- Результат квиза по героям -->
+          <div class="profile-card">
+            <div class="profile-card-header">
+              <span class="profile-card-icon">⚔️</span>
+              <span class="profile-card-title">Твои герои</span>
+            </div>
+            <!-- Если квиз пройден -->
+            <div id="profile-heroes-result" style="display: none;">
+              <div id="profile-heroes-list" class="profile-heroes-grid"></div>
+            </div>
+            <!-- Если квиз НЕ пройден -->
+            <div id="profile-heroes-empty" style="display: none;">
+              <p class="profile-empty-text">Ты ещё не проходил квиз по героям</p>
+              <button class="profile-action-btn" onclick="goToHeroQuiz()">
+                ⚔️ Пройти квиз по героям
+              </button>
+            </div>
+          </div>
+
         </div>
-    </div>
+      </div>
+
 
       <!-- Нижняя навигация -->
       <div class="bottom-nav">
