@@ -251,21 +251,14 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
         .limit(10)\
         .all()
     
-    # 4. Формируем историю
+    # 4. Формируем историю (НОВЫЙ формат)
     quiz_history = []
     for quiz in quiz_results:
         base_date = quiz.updated_at.isoformat() if quiz.updated_at else None
         res = quiz.result or {}
 
-        # если старый формат — просто один объект
-        if isinstance(res, dict) and "type" in res:
-            quiz_history.append({
-                "date": base_date,
-                "result": res
-            })
-        elif isinstance(res, dict):
-            # новый формат: position_quiz + hero_quiz_by_position
-            # Добавляем один результат с обоими данными
+        if isinstance(res, dict):
+            # Новый формат: position_quiz + hero_quiz_by_position
             combined_result = {}
 
             position_res = res.get("position_quiz")
@@ -277,10 +270,12 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
             if hero_by_pos:
                 combined_result["hero_quiz_by_position"] = hero_by_pos
 
-            # Старый формат: hero_quiz (один результат)
-            hero_res = res.get("hero_quiz")
-            if hero_res:
-                combined_result["hero_quiz"] = hero_res
+            # Legacy fallback (will disappear after full migration)
+            if not combined_result:
+                # Старый формат — просто один объект с type в корне
+                if "type" in res:
+                    combined_result = res
+                    print(f"[API DEBUG] Legacy format detected in quiz_history for user {user_id}")
 
             if combined_result:
                 quiz_history.append({
@@ -370,12 +365,12 @@ async def save_profile(profile: Profile, db: Session = Depends(get_db)):
 async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     """Сохраняет результат квиза (позиции и герои в одном JSON)"""
     print(f"[API DEBUG] save_result: token={data.token[:10]}...")
-    
+
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     print(f"[API DEBUG] Token valid, user_id={user_id}")
 
     # Профиль для FK
@@ -403,9 +398,17 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     else:
         combined_result = {}
 
-    # Обновляем только нужную часть
+    # Обновляем только нужную часть в НОВОМ формате
     if result_type == "position_quiz":
+        # Сохраняем position_quiz
         combined_result["position_quiz"] = data.result
+
+        # Чистим legacy верхнеуровневые ключи
+        for legacy_key in ["type", "position", "posShort", "positionIndex", "date", "isPure", "extraPos"]:
+            combined_result.pop(legacy_key, None)
+
+        print(f"[API DEBUG] Saved position_quiz in new format")
+
     elif result_type == "hero_quiz":
         # Сохраняем hero_quiz по позициям (0-4)
         hero_position_index = data.result.get("heroPositionIndex")
@@ -416,13 +419,17 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
 
             # Сохраняем результат для конкретной позиции
             combined_result["hero_quiz_by_position"][str(hero_position_index)] = data.result
-            print(f"[API DEBUG] Saved hero_quiz for position {hero_position_index}")
+            print(f"[API DEBUG] Saved hero_quiz for position {hero_position_index} in new format")
+
+            # Чистим legacy hero_quiz (если был)
+            combined_result.pop("hero_quiz", None)
         else:
-            # Старый формат без heroPositionIndex - сохраняем как раньше
-            combined_result["hero_quiz"] = data.result
+            # Нет heroPositionIndex - неожиданная ситуация
+            print(f"[API DEBUG] WARNING: hero_quiz without heroPositionIndex, skipping save")
     else:
-        # на всякий случай, если тип не указан — просто перезапишем всё
-        combined_result = data.result
+        # Неизвестный тип - не трогаем данные
+        print(f"[API DEBUG] Unknown or missing result.type: {result_type}, skip update")
+        return SaveResultResponse(success=True)
 
     if db_quiz_result:
         db_quiz_result.result = combined_result
@@ -438,14 +445,16 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     # Обновляем favorite_heroes для профиля, если это геройский квиз
     try:
         if result_type == "hero_quiz":
-            heroes = data.result.get("heroes") or []
+            # Берём topHeroes из нового формата
+            top_heroes = data.result.get("topHeroes") or []
             hero_names = [
-                h.get("name")
-                for h in heroes
-                if isinstance(h, dict) and h.get("name")
+                h.get("name") if isinstance(h, dict) else h
+                for h in top_heroes
+                if h
             ]
-            db_user_profile.favorite_heroes = hero_names
-            print(f"[API DEBUG] favorite_heroes updated for user {user_id}: {hero_names}")
+            if hero_names:
+                db_user_profile.favorite_heroes = hero_names
+                print(f"[API DEBUG] favorite_heroes updated for user {user_id}: {hero_names}")
     except Exception as e:
         print(f"[API DEBUG] Failed to update favorite_heroes for user {user_id}: {e}")
 
