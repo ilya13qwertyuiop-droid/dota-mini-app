@@ -430,6 +430,8 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
         # Неизвестный тип - не трогаем данные
         print(f"[API DEBUG] Unknown or missing result.type: {result_type}, skip update")
         return SaveResultResponse(success=True)
+    
+    print(f"[API DEBUG] BEFORE COMMIT combined_result for user {user_id}: {combined_result}")
 
     if db_quiz_result:
         db_quiz_result.result = combined_result
