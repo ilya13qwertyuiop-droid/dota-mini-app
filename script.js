@@ -1354,12 +1354,15 @@ function displayPositionResult(profile) {
             const res = quiz.result;
             if (!res) continue;
 
+            // Приоритет: новый формат
             if (res.position_quiz) {
                 positionData = res.position_quiz;
                 break;
-            } else if (res.type === 'position_quiz') {
-                // поддержка старого формата
+            }
+            // Legacy fallback (старый формат с type в корне)
+            else if (res.type === 'position_quiz') {
                 positionData = res;
+                console.log('[PROFILE] Legacy position_quiz format detected');
                 break;
             }
         }
@@ -1402,18 +1405,22 @@ function displayHeroesResult(profile) {
     const heroesEmpty = document.getElementById('profile-heroes-empty');
     const heroesList = document.getElementById('profile-heroes-list');
 
-    // Находим последний результат позиционного квиза
+    // Находим последний результат позиционного квиза (НОВЫЙ формат)
     let positionData = null;
     if (profile.quiz_history && profile.quiz_history.length > 0) {
         for (const quiz of profile.quiz_history) {
             const res = quiz.result;
             if (!res) continue;
 
+            // Приоритет: новый формат
             if (res.position_quiz) {
                 positionData = res.position_quiz;
                 break;
-            } else if (res.type === 'position_quiz') {
+            }
+            // Legacy fallback
+            else if (res.type === 'position_quiz') {
                 positionData = res;
+                console.log('[PROFILE] Legacy position_quiz format detected in heroes');
                 break;
             }
         }
@@ -1437,18 +1444,21 @@ function displayHeroesResult(profile) {
                 }
             }
 
-            // СТАРЫЙ ФОРМАТ: hero_quiz (для обратной совместимости)
-            let candidate = null;
-            if (res.hero_quiz) {
-                candidate = res.hero_quiz;
-            } else if (res.type === 'hero_quiz' && res.topHeroes) {
-                candidate = res;
-            }
+            // Legacy fallback: СТАРЫЙ ФОРМАТ hero_quiz
+            if (!heroData) {
+                let candidate = null;
+                if (res.hero_quiz) {
+                    candidate = res.hero_quiz;
+                } else if (res.type === 'hero_quiz' && res.topHeroes) {
+                    candidate = res;
+                }
 
-            // Проверяем совпадение позиции (старый формат)
-            if (candidate && candidate.heroPositionIndex === currentPosIndex && candidate.topHeroes && candidate.topHeroes.length > 0) {
-                heroData = candidate;
-                break;
+                // Проверяем совпадение позиции
+                if (candidate && candidate.heroPositionIndex === currentPosIndex && candidate.topHeroes && candidate.topHeroes.length > 0) {
+                    heroData = candidate;
+                    console.log('[PROFILE] Legacy hero_quiz format detected');
+                    break;
+                }
             }
         }
     }
