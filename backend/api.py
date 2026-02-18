@@ -436,6 +436,7 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     if db_quiz_result:
         db_quiz_result.result = combined_result
         db_quiz_result.updated_at = datetime.now(timezone.utc)
+        print(f"[API DEBUG] AFTER ASSIGN db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
     else:
         db_quiz_result = DBQuizResult(
             user_id=user_id,
@@ -443,6 +444,7 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
             updated_at=datetime.now(timezone.utc)
         )
         db.add(db_quiz_result)
+        print(f"[API DEBUG] AFTER CREATE db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
 
     # Обновляем favorite_heroes для профиля, если это геройский квиз
     try:
