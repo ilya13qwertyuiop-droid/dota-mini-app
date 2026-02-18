@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm.attributes import flag_modified
 
 
 from backend.db import get_user_id_by_token, init_tokens_table
@@ -212,9 +213,10 @@ async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_d
     db_profile.settings["first_name"] = data.first_name
     db_profile.settings["last_name"] = data.last_name
     db_profile.settings["photo_url"] = data.photo_url
-    
+    flag_modified(db_profile, "settings")  # ✅ Помечаем JSON-поле как измененное
+
     db.commit()
-    
+
     print(f"[API DEBUG] Telegram data saved for user {user_id}")
     return {"success": True}
 
@@ -347,6 +349,8 @@ async def save_profile(profile: Profile, db: Session = Depends(get_db)):
         # 3. Если найден — обновляем данные
         db_profile.favorite_heroes = profile.favorite_heroes
         db_profile.settings = profile.settings
+        flag_modified(db_profile, "favorite_heroes")  # ✅ Помечаем JSON-поля как измененные
+        flag_modified(db_profile, "settings")
 
 
     # 4. Сохраняем изменения в БД
@@ -436,6 +440,7 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     if db_quiz_result:
         db_quiz_result.result = combined_result
         db_quiz_result.updated_at = datetime.now(timezone.utc)
+        flag_modified(db_quiz_result, "result")  # ✅ КРИТИЧНО: помечаем JSON-поле как измененное
         print(f"[API DEBUG] AFTER ASSIGN db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
     else:
         db_quiz_result = DBQuizResult(
@@ -458,6 +463,7 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
             ]
             if hero_names:
                 db_user_profile.favorite_heroes = hero_names
+                flag_modified(db_user_profile, "favorite_heroes")  # ✅ Помечаем JSON-поле как измененное
                 print(f"[API DEBUG] favorite_heroes updated for user {user_id}: {hero_names}")
     except Exception as e:
         print(f"[API DEBUG] Failed to update favorite_heroes for user {user_id}: {e}")
@@ -466,43 +472,15 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     db.refresh(db_quiz_result)
 
     print(f"[API DEBUG] Quiz result saved for user {user_id}")
+    print(f"[API DEBUG] AFTER COMMIT & REFRESH db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
+
+    # Дополнительная проверка: читаем данные напрямую из БД
+    verification_query = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
+    if verification_query:
+        print(f"[API DEBUG] VERIFICATION READ from DB for user {user_id}: {verification_query.result}")
+
     return SaveResultResponse(success=True)
 
-@app.post("/api/save_telegram_data")
-async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
-    """Сохраняет данные пользователя из Telegram (имя, username, фото)"""
-    print(f"[API DEBUG] === save_telegram_data START ===")
-    print(f"[API DEBUG] token={data.token[:10]}...")
-    print(f"[API DEBUG] first_name={data.first_name}")
-    print(f"[API DEBUG] last_name={data.last_name}")
-    print(f"[API DEBUG] username={data.username}")
-    print(f"[API DEBUG] photo_url={data.photo_url}")
-    
-    user_id = get_user_id_by_token(data.token)
-    if not user_id:
-        print("[API DEBUG] Token validation FAILED")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    print(f"[API DEBUG] Token valid, user_id={user_id}")
-    
-    db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
-    if not db_profile:
-        db_profile = DBUserProfile(user_id=user_id, favorite_heroes=[], settings={})
-        db.add(db_profile)
-    
-    if not db_profile.settings:
-        db_profile.settings = {}
-    
-    db_profile.settings["username"] = data.username
-    db_profile.settings["first_name"] = data.first_name
-    db_profile.settings["last_name"] = data.last_name
-    db_profile.settings["photo_url"] = data.photo_url
-    
-    db.commit()
-    
-    print(f"[API DEBUG] Telegram data saved for user {user_id}")
-    print(f"[API DEBUG] === save_telegram_data END ===")
-    return {"success": True}
 
 @app.get("/api/get_result", response_model=GetResultResponse)
 async def get_result(token: str, db: Session = Depends(get_db)):
