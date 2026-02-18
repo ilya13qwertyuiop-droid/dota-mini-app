@@ -1376,8 +1376,9 @@ function displayHeroesResult(profile) {
 
     // Находим hero-квиз для ТЕКУЩЕЙ позиции
     let heroData = null;
+    let currentPosIndex = null;
     if (positionData && positionData.positionIndex !== undefined && profile.quiz_history && profile.quiz_history.length > 0) {
-        const currentPosIndex = positionData.positionIndex;
+        currentPosIndex = positionData.positionIndex;
 
         for (const quiz of profile.quiz_history) {
             const res = quiz.result;
@@ -1409,6 +1410,12 @@ function displayHeroesResult(profile) {
                 }
             }
         }
+    }
+
+    // Обновляем заголовок блока героев
+    const heroesTitleEl = document.getElementById('profile-heroes-title');
+    if (heroesTitleEl) {
+        heroesTitleEl.textContent = (currentPosIndex !== null ? heroHeaderTexts[currentPosIndex] : null) || 'Твои герои';
     }
 
     // Показываем героев или заглушку
@@ -1445,7 +1452,7 @@ function renderProfileHeroes(container, heroes) {
             <div class="hero-row-main-text">
                 <div class="hero-row-name">${heroName}</div>
                 <div class="hero-row-sub">
-                    ${index === 0 ? 'Лучший матч' : 'Совпадение'} • ${matchPercent}%
+                    ${index === 0 ? 'Лучший мэтч' : 'Совпадение'} • ${matchPercent}%
                 </div>
             </div>
         `;
