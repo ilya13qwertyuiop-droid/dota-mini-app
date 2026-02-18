@@ -218,6 +218,7 @@ async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_d
     db.commit()
 
     print(f"[API DEBUG] Telegram data saved for user {user_id}")
+    print(f"[API DEBUG] photo_url: {data.photo_url}")  # ✅ Логируем аватар для отладки
     return {"success": True}
 
 

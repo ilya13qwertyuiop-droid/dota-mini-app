@@ -753,6 +753,10 @@
                     this.state.selectedPosition = lastPositionResult.positionIndex;
                     this.state.usedSavedPosition = true;
                     this.startQuestions();
+                } else {
+                    // ✅ БАГ-ФИХ: Если позиция не сохранена, перенаправляем на квиз позиций
+                    console.log('[HERO QUIZ] Нет сохранённой позиции, перенаправление на position quiz');
+                    goToPositionQuiz();
                 }
             },
 
@@ -1192,6 +1196,31 @@ async function initProfile() {
         const profile = await response.json();
         console.log('[PROFILE] Данные получены:', profile);
 
+        // ✅ БАГ-ФИХ: Fallback - сохраняем данные Telegram если их нет в профиле
+        if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            const user = tg.initDataUnsafe.user;
+            // Проверяем, есть ли хоть какие-то данные в профиле
+            if (!profile.first_name && user.first_name) {
+                console.log('[PROFILE] Отправляем данные Telegram на backend (fallback)');
+                try {
+                    await fetch('/api/save_telegram_data', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            token: USER_TOKEN,
+                            first_name: user.first_name,
+                            last_name: user.last_name || null,
+                            username: user.username || null,
+                            photo_url: user.photo_url || null
+                        })
+                    });
+                    console.log('[PROFILE] Данные Telegram отправлены');
+                } catch (e) {
+                    console.error('[PROFILE] Ошибка отправки данных Telegram:', e);
+                }
+            }
+        }
+
         updateProfileHeader(profile);
         displayPositionResult(profile);
         displayHeroesResult(profile);
@@ -1272,8 +1301,26 @@ function displayPositionResult(profile) {
     if (!positionData) {
         posResult.style.display = 'none';
         posEmpty.style.display = 'block';
+        // ✅ БАГ-ФИХ: Сбрасываем lastPositionResult и обновляем кнопку hero-квиза
+        lastPositionResult = null;
+        updateHeroQuizStart();
         return;
     }
+
+    // ✅ БАГ-ФИХ: Синхронизируем lastPositionResult с данными из профиля
+    lastPositionResult = {
+        type: 'position_quiz',
+        position: positionData.position,
+        posShort: positionData.posShort,
+        positionIndex: positionData.positionIndex,
+        date: positionData.date,
+        isPure: positionData.isPure,
+        extraPos: positionData.extraPos
+    };
+
+    // ✅ Обновляем кнопку "использовать сохранённую позицию" в hero-квизе
+    updateHeroQuizStart();
+    console.log('[PROFILE] lastPositionResult синхронизирован:', lastPositionResult);
 
     posResult.style.display = 'block';
     posEmpty.style.display = 'none';
