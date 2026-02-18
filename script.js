@@ -384,9 +384,7 @@
 
         let currentQuestion = 0;
         let scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
-        let lastResult = null;
         let lastPositionResult = null;
-        let lastHeroResult = null;
         let selectedAnswersHistory = [];
 
         // Получаем token из URL параметров
@@ -424,48 +422,9 @@
             }
         }
 
-        // Загрузка результата с backend
-        async function loadResultFromBackend() {
-            if (!USER_TOKEN) {
-                console.warn('No token available, cannot load from backend');
-                return null;
-            }
-
-            try {
-                const response = await fetch(`/api/get_result?token=${USER_TOKEN}`);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    return data.result;
-                }
-            } catch (error) {
-                console.error('Error loading result from backend:', error);
-            }
-
-            return null;
-        }
-
-        async function loadSavedResult() {
-            const saved = await loadResultFromBackend();
-            if (saved) {
-                // Разбираем результат по типу
-                if (saved.type === 'position_quiz') {
-                    lastPositionResult = saved;
-                    lastResult = saved;
-                } else if (saved.type === 'hero_quiz') {
-                    lastHeroResult = saved;
-                    lastResult = saved;
-                }
-                updateQuizPageResult();
-                updateHeroQuizStart();
-            }
-        }
-
         function saveResult(result) {
             saveResultToBackend(result);
         }
-
-        loadSavedResult();
 
         function switchPage(pageName, event) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -530,63 +489,6 @@
                 document.getElementById('quizPagePosition').textContent = lastPositionResult.position;
                 document.getElementById('quizPageDate').textContent = `Пройден: ${lastPositionResult.date}`;
             }
-        }
-
-        function renderProfileHeroes() {
-            const resultBlock = document.getElementById('profile-heroes-result');
-            const emptyBlock = document.getElementById('profile-heroes-empty');
-            const listEl = document.getElementById('profile-heroes-list');
-
-            // Проверяем наличие позиции
-            if (!lastPositionResult || lastPositionResult.positionIndex === undefined) {
-                resultBlock.style.display = 'none';
-                emptyBlock.style.display = 'block';
-                return;
-            }
-
-            // Проверяем наличие героев
-            if (!lastHeroResult || !lastHeroResult.topHeroes || !lastHeroResult.topHeroes.length) {
-                resultBlock.style.display = 'none';
-                emptyBlock.style.display = 'block';
-                return;
-            }
-
-            // Проверяем совпадение позиции
-            if (lastHeroResult.heroPositionIndex !== lastPositionResult.positionIndex) {
-                resultBlock.style.display = 'none';
-                emptyBlock.style.display = 'block';
-                return;
-            }
-
-            const heroes = lastHeroResult.topHeroes;
-
-            // рисуем top‑5
-            listEl.innerHTML = '';
-            heroes.slice(0, 5).forEach((hero, index) => {
-                const a = document.createElement('a');
-                a.className = 'hero-row' + (index === 0 ? ' hero-row-main' : '');
-                a.href = getDota2ProTrackerUrl(hero.name);
-                a.target = '_blank';
-                a.rel = 'noopener noreferrer';
-
-                const matchPercent = hero.matchPercent || hero.percent || 0;
-
-                a.innerHTML = `
-                    <div class="hero-row-rank">${index + 1}</div>
-                    <div class="hero-row-img"></div>
-                    <div class="hero-row-main-text">
-                        <div class="hero-row-name">${hero.name}</div>
-                        <div class="hero-row-sub">
-                            ${index === 0 ? 'Лучший матч' : 'Совпадение'} • ${matchPercent}%
-                        </div>
-                    </div>
-                `;
-
-                listEl.appendChild(a);
-            });
-
-            emptyBlock.style.display = 'none';
-            resultBlock.style.display = 'block';
         }
 
         function goToQuiz() {
@@ -732,7 +634,6 @@
                 isPure: isPure,
                 extraPos: extraPos
             };
-            lastResult = lastPositionResult; // для обратной совместимости
             saveResult(lastPositionResult);
             updateQuizPageResult();
             updateHeroQuizStart();
@@ -1183,7 +1084,8 @@
 
 
                 document.getElementById('hero-result').style.display = 'block';
-                // сохраняем результат hero-квиза
+
+                // Сохраняем результат hero-квиза
                 const heroQuizResult = {
                     type: 'hero_quiz',
                     heroPositionIndex: positionIndex, // 0..4
@@ -1203,8 +1105,7 @@
                     })
                 };
 
-                lastHeroResult = heroQuizResult; // сохраняем отдельно
-                lastResult = heroQuizResult; // для обратной совместимости
+                console.log('[HERO QUIZ] Finish, saving result:', heroQuizResult);
                 saveResult(heroQuizResult);
             },
 
