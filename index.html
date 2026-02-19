@@ -334,7 +334,6 @@
               class="matchup-search-input"
               placeholder="Введите имя героя"
               autocomplete="off"
-              oninput="matchupPage.onInput(this.value)"
             />
             <div id="matchup-suggestions" class="matchup-suggestions"></div>
           </div>
@@ -342,7 +341,6 @@
 
         <!-- Экран конкретного героя -->
         <div id="matchup-hero-screen" style="display:none;">
-          <button class="btn-back" onclick="matchupPage.showSearch()">Назад</button>
 
           <div class="matchup-hero-header">
             <img id="matchup-hero-icon" src="" alt="" class="matchup-hero-avatar" onerror="this.style.display='none'">
@@ -368,6 +366,8 @@
               <p class="matchup-placeholder-text">Здесь будут показаны 3 героя, которые контрят этого героя</p>
             </div>
           </div>
+
+          <button class="btn-back" onclick="matchupPage.showSearch()">Назад</button>
         </div>
 
       </div>

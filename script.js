@@ -1576,8 +1576,17 @@ const matchupPage = {
     }
 };
 
-// Делегирование кликов по подсказкам
+// Привязка событий для поиска и подсказок
 (function () {
+    // Событие ввода текста — через addEventListener, чтобы работало и на desktop
+    var inputEl = document.getElementById('matchup-hero-input');
+    if (inputEl) {
+        inputEl.addEventListener('input', function () {
+            matchupPage.onInput(this.value);
+        });
+    }
+
+    // Делегирование кликов по подсказкам
     var suggestionsEl = document.getElementById('matchup-suggestions');
     if (suggestionsEl) {
         suggestionsEl.addEventListener('click', function (e) {
