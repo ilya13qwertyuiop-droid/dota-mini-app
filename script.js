@@ -1474,5 +1474,129 @@ switchPage = function (pageName, event) {
     if (pageName === 'profile') {
         initProfile();
     }
+    if (pageName === 'database') {
+        matchupPage.showSearch();
+    }
 };
+
+// ========== МАТЧАПЫ ==========
+
+// Собираем единый массив всех героев из всех позиций (без дублей)
+const allMatchupHeroes = (function () {
+    const seen = new Set();
+    const result = [];
+    const sources = [
+        window.heroCarryData.heroes,
+        window.heroMidData.heroes,
+        window.heroOfflaneData.heroes,
+        window.heroPos4Data.heroes,
+        window.heroPos5Data.heroes
+    ];
+    sources.forEach(function (heroList) {
+        heroList.forEach(function (hero) {
+            if (!seen.has(hero.name)) {
+                seen.add(hero.name);
+                result.push(hero.name);
+            }
+        });
+    });
+    result.sort();
+    return result;
+}());
+
+const matchupPage = {
+    showSearch: function () {
+        const searchScreen = document.getElementById('matchup-search-screen');
+        const heroScreen = document.getElementById('matchup-hero-screen');
+        const input = document.getElementById('matchup-hero-input');
+        const suggestions = document.getElementById('matchup-suggestions');
+        if (searchScreen) searchScreen.style.display = 'block';
+        if (heroScreen) heroScreen.style.display = 'none';
+        if (input) input.value = '';
+        if (suggestions) {
+            suggestions.innerHTML = '';
+            suggestions.style.display = 'none';
+        }
+    },
+
+    showHero: function (heroName) {
+        const searchScreen = document.getElementById('matchup-search-screen');
+        const heroScreen = document.getElementById('matchup-hero-screen');
+        const iconEl = document.getElementById('matchup-hero-icon');
+        const nameEl = document.getElementById('matchup-hero-name');
+        if (searchScreen) searchScreen.style.display = 'none';
+        if (heroScreen) heroScreen.style.display = 'block';
+        if (iconEl) {
+            iconEl.src = window.getHeroIconUrlByName(heroName);
+            iconEl.alt = heroName;
+            iconEl.style.display = '';
+        }
+        if (nameEl) {
+            nameEl.textContent = heroName;
+        }
+    },
+
+    onInput: function (value) {
+        const suggestionsEl = document.getElementById('matchup-suggestions');
+        if (!suggestionsEl) return;
+        const query = value.trim().toLowerCase();
+        if (!query) {
+            suggestionsEl.innerHTML = '';
+            suggestionsEl.style.display = 'none';
+            return;
+        }
+        const matches = allMatchupHeroes.filter(function (name) {
+            return name.toLowerCase().includes(query);
+        }).slice(0, 8);
+        if (matches.length === 0) {
+            suggestionsEl.innerHTML = '';
+            suggestionsEl.style.display = 'none';
+            return;
+        }
+        suggestionsEl.innerHTML = matches.map(function (name) {
+            const iconUrl = window.getHeroIconUrlByName(name);
+            const escaped = name.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            return '<div class="matchup-suggestion-item" data-hero-name="' + escaped + '">' +
+                '<img src="' + iconUrl + '" alt="" class="matchup-suggestion-icon" onerror="this.style.display=\'none\'">' +
+                '<span class="matchup-suggestion-name">' + name + '</span>' +
+                '</div>';
+        }).join('');
+        suggestionsEl.style.display = 'block';
+    },
+
+    selectHero: function (heroName) {
+        const input = document.getElementById('matchup-hero-input');
+        const suggestionsEl = document.getElementById('matchup-suggestions');
+        if (input) input.value = '';
+        if (suggestionsEl) {
+            suggestionsEl.innerHTML = '';
+            suggestionsEl.style.display = 'none';
+        }
+        this.showHero(heroName);
+    }
+};
+
+// Делегирование кликов по подсказкам
+(function () {
+    var suggestionsEl = document.getElementById('matchup-suggestions');
+    if (suggestionsEl) {
+        suggestionsEl.addEventListener('click', function (e) {
+            var item = e.target.closest('.matchup-suggestion-item');
+            if (!item) return;
+            var heroName = item.dataset.heroName;
+            if (heroName) matchupPage.selectHero(heroName);
+        });
+    }
+}());
+
+// Закрытие подсказок при клике вне поля поиска
+document.addEventListener('click', function (e) {
+    if (!e.target.closest('.matchup-search-wrap')) {
+        var suggestionsEl = document.getElementById('matchup-suggestions');
+        if (suggestionsEl) {
+            suggestionsEl.innerHTML = '';
+            suggestionsEl.style.display = 'none';
+        }
+    }
+});
 
