@@ -317,15 +317,59 @@
         </div>
       </div>
 
-      <!-- Страница базы знаний (заглушка) -->
+      <!-- Страница матчапов -->
       <div id="page-database" class="page">
-        <div class="placeholder">
-          <div class="placeholder-icon">📊</div>
-          <div class="placeholder-title">База знаний</div>
-          <div class="placeholder-text">
-            Статистика героев, мета-отчёты и синергия команд. Скоро...
+
+        <!-- Экран поиска героя -->
+        <div id="matchup-search-screen">
+          <div class="dashboard-header">
+            <h1>⚔️ Матчапы</h1>
+            <p>Выбери героя и посмотри, кого он контрит и кто контрит его</p>
+          </div>
+
+          <div class="matchup-search-wrap">
+            <input
+              type="text"
+              id="matchup-hero-input"
+              class="matchup-search-input"
+              placeholder="Введите имя героя"
+              autocomplete="off"
+              oninput="matchupPage.onInput(this.value)"
+            />
+            <div id="matchup-suggestions" class="matchup-suggestions"></div>
           </div>
         </div>
+
+        <!-- Экран конкретного героя -->
+        <div id="matchup-hero-screen" style="display:none;">
+          <button class="btn-back" onclick="matchupPage.showSearch()">Назад</button>
+
+          <div class="matchup-hero-header">
+            <img id="matchup-hero-icon" src="" alt="" class="matchup-hero-avatar" onerror="this.style.display='none'">
+            <div id="matchup-hero-name" class="matchup-hero-name-title"></div>
+          </div>
+
+          <div class="matchup-block">
+            <div class="matchup-block-title">
+              <span>✅</span> Кого он контрит
+            </div>
+            <div class="matchup-block-body">
+              <!-- TODO: подключить Stratz API для получения реальных данных контрпиков -->
+              <p class="matchup-placeholder-text">Здесь будут показаны 3 героя, которых этот герой контрит</p>
+            </div>
+          </div>
+
+          <div class="matchup-block">
+            <div class="matchup-block-title">
+              <span>❌</span> Кто контрит его
+            </div>
+            <div class="matchup-block-body">
+              <!-- TODO: подключить Stratz API для получения реальных данных контрпиков -->
+              <p class="matchup-placeholder-text">Здесь будут показаны 3 героя, которые контрят этого героя</p>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div id="page-profile" class="page">
@@ -420,8 +464,8 @@
           <div class="nav-label">Квизы</div>
         </div>
         <div class="nav-item" onclick="switchPage('database', event)">
-          <div class="nav-icon">📊</div>
-          <div class="nav-label">База</div>
+          <div class="nav-icon">⚔️</div>
+          <div class="nav-label">Матчапы</div>
         </div>
         <div class="nav-item" onclick="switchPage('profile', event)">
           <div class="nav-icon">⚙️</div>

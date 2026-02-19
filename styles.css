@@ -1211,3 +1211,149 @@ margin-top: 14px;
 .profile-action-btn:active {
   transform: translateY(0);
 }
+
+/* ========== МАТЧАПЫ ========== */
+
+.matchup-search-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.matchup-search-input {
+  width: 100%;
+  padding: 14px 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  color: var(--text-main);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.matchup-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.matchup-search-input:focus {
+  border-color: rgba(58, 123, 213, 0.6);
+  box-shadow: 0 0 0 2px rgba(58, 123, 213, 0.15), 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.matchup-suggestions {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: rgba(12, 12, 18, 0.98);
+  border: 1px solid rgba(58, 123, 213, 0.3);
+  border-radius: 18px;
+  overflow: hidden;
+  z-index: 200;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.matchup-suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.matchup-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.matchup-suggestion-item:hover,
+.matchup-suggestion-item:active {
+  background: rgba(58, 123, 213, 0.18);
+}
+
+.matchup-suggestion-icon {
+  width: 44px;
+  height: 25px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.matchup-suggestion-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+/* Шапка экрана героя */
+.matchup-hero-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: radial-gradient(circle at 0% 0%, rgba(58, 123, 213, 0.18), transparent 65%),
+              var(--glass-bg);
+  border-radius: 20px;
+  border: 1px solid rgba(58, 123, 213, 0.25);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  margin-bottom: 16px;
+  margin-top: 12px;
+}
+
+.matchup-hero-avatar {
+  width: 88px;
+  height: 50px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 2px solid rgba(58, 123, 213, 0.5);
+  box-shadow: 0 0 14px rgba(58, 123, 213, 0.3);
+  flex-shrink: 0;
+}
+
+.matchup-hero-name-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+/* Блоки контрпиков */
+.matchup-block {
+  background: var(--glass-bg);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.matchup-block-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.matchup-placeholder-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  text-align: center;
+  padding: 10px 0;
+}
