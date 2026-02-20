@@ -535,13 +535,24 @@ async def debug_hero_matchups(hero_id: int):
 
     print(f"[STRATZ DEBUG] debug_hero_matchups called: hero_id={hero_id}")
 
+    print(f"[STRATZ DEBUG] Calling Stratz API for hero_id={hero_id}...")
     try:
         data = await execute_stratz_query(
             _HERO_MATCHUPS_QUERY,
             variables={"heroId": hero_id},
         )
-    except Exception as e:
-        print(f"[STRATZ DEBUG] execute_stratz_query failed for hero_id={hero_id}: {e}")
+        print(f"[STRATZ DEBUG] Stratz API call succeeded for hero_id={hero_id}")
+    except RuntimeError as e:
+        err_msg = str(e)
+        print(f"[STRATZ DEBUG] Stratz API call FAILED for hero_id={hero_id}: {err_msg}")
+        if "403" in err_msg:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Stratz API returned 403 – please verify STRATZ_API_TOKEN "
+                    "and API access rights"
+                ),
+            )
         raise HTTPException(status_code=502, detail="Failed to fetch matchups")
 
     # Достаём список записей из ответа

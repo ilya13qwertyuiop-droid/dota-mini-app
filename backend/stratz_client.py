@@ -5,15 +5,25 @@ import httpx
 
 STRATZ_API_URL = "https://api.stratz.com/graphql"
 
+# Stratz стоит за Cloudflare. Без правдоподобного User-Agent
+# WAF возвращает 403 + HTML-страницу (не GraphQL-ошибку).
+_EXTRA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; DotaBot/1.0)",
+    "Accept": "application/json",
+}
+
 
 def get_stratz_headers() -> dict:
     """Возвращает заголовки для запросов к Stratz API."""
     token = os.environ.get("STRATZ_API_TOKEN")
     if not token:
         raise RuntimeError("STRATZ_API_TOKEN is not set")
+    # Логируем только длину и первые 5 символов — токен не раскрываем
+    print(f"[STRATZ DEBUG] Token loaded: len={len(token)}, prefix={token[:5]}***")
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
+        **_EXTRA_HEADERS,
     }
 
 
@@ -24,6 +34,7 @@ async def execute_stratz_query(query: str, variables: dict | None = None) -> dic
         payload["variables"] = variables
 
     headers = get_stratz_headers()
+    print(f"[STRATZ DEBUG] POST {STRATZ_API_URL} | variables={variables}")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -33,13 +44,42 @@ async def execute_stratz_query(query: str, variables: dict | None = None) -> dic
                 headers=headers,
                 timeout=15.0,
             )
-            r.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        print(f"[STRATZ DEBUG] HTTP error {e.response.status_code}: {e.response.text[:200]}")
-        raise RuntimeError(f"Stratz API returned HTTP {e.response.status_code}") from e
     except httpx.RequestError as e:
         print(f"[STRATZ DEBUG] Network error: {e}")
         raise RuntimeError(f"Stratz API network error: {e}") from e
+
+    # Логируем статус и начало тела — до raise_for_status, чтобы видеть контекст ошибки
+    print(
+        f"[STRATZ DEBUG] Response status={r.status_code} | "
+        f"body[:150]={r.text[:150]!r}"
+    )
+
+    # 403 разбираем отдельно: HTML-тело → WAF/Cloudflare, JSON → проблема с токеном
+    if r.status_code == 403:
+        is_html = r.text.lstrip()[:9].lower().startswith(("<!doctype", "<html"))
+        if is_html:
+            print(
+                "[STRATZ DEBUG] 403 + HTML body → скорее всего блокировка Cloudflare/WAF, "
+                "а не проблема с правами токена. Причина: неподходящий User-Agent или IP."
+            )
+        else:
+            print(
+                "[STRATZ DEBUG] 403 + non-HTML body → вероятно невалидный или истёкший "
+                "STRATZ_API_TOKEN, либо недостаточно прав."
+            )
+        raise RuntimeError(
+            "Stratz API returned HTTP 403 – "
+            "verify STRATZ_API_TOKEN validity and API access rights"
+        )
+
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        print(
+            f"[STRATZ DEBUG] HTTP error {e.response.status_code}: "
+            f"{e.response.text[:200]!r}"
+        )
+        raise RuntimeError(f"Stratz API returned HTTP {e.response.status_code}") from e
 
     body: dict = r.json()
 
