@@ -48,7 +48,7 @@ query HeroVsHeroByRank($heroId: Short!, $brackets: [RankBracketBasicEnum!], $mat
 # Stratz стоит за Cloudflare. Без правдоподобного User-Agent
 # WAF возвращает 403 + HTML-страницу (не GraphQL-ошибку).
 _EXTRA_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; DotaBot/1.0)",
+    "User-Agent": "STRATZ_API",
     "Accept": "application/json",
 }
 
