@@ -15,7 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 
 from backend.db import get_user_id_by_token, init_tokens_table
-from backend.stratz_client import execute_stratz_query
+from backend.stratz_client import execute_stratz_query, get_hero_matchups, VALID_RANKS
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -509,6 +509,109 @@ async def get_result(token: str, db: Session = Depends(get_db)):
     else:
         print(f"[API DEBUG] No quiz result found for user {user_id}")
         return GetResultResponse(result=None)
+
+
+# ========== Hero Matchups ==========
+
+class HeroMatchupEntry(BaseModel):
+    hero_id: int
+    match_count: int
+    win_count: int
+    win_rate: float
+    synergy: float
+
+
+class HeroMatchupsResponse(BaseModel):
+    hero_id: int
+    rank: str
+    counters: list[HeroMatchupEntry]       # кого контрит (disadvantage.vs, synergy < 0)
+    countered_by: list[HeroMatchupEntry]   # кто контрит его  (disadvantage.vs, synergy > 0)
+    synergy_with: list[HeroMatchupEntry]   # хорошие тиммейты (advantage.with, synergy > 0)
+    bad_teammates: list[HeroMatchupEntry]  # плохие тиммейты  (advantage.with, synergy < 0)
+
+
+def _build_matchup_entry(record: dict) -> HeroMatchupEntry:
+    match_count: int = record.get("matchCount") or 0
+    win_count: int = record.get("winCount") or 0
+    win_rate = round(win_count / match_count, 3) if match_count else 0.0
+    synergy: float = record.get("synergy") or 0.0
+    return HeroMatchupEntry(
+        hero_id=record["heroId2"],
+        match_count=match_count,
+        win_count=win_count,
+        win_rate=win_rate,
+        synergy=round(synergy, 3),
+    )
+
+
+@app.get("/api/hero_matchups", response_model=HeroMatchupsResponse)
+async def hero_matchups(hero_id: int, rank: str = "LEGEND_ANCIENT"):
+    """Возвращает матчапы героя с фильтрацией по рангу."""
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+    if rank not in VALID_RANKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid rank '{rank}'. Valid values: {sorted(VALID_RANKS)}",
+        )
+
+    print(f"[MATCHUPS] hero_id={hero_id}, rank={rank}")
+
+    try:
+        data = await get_hero_matchups(hero_id, rank)
+    except RuntimeError as e:
+        err_msg = str(e)
+        print(f"[MATCHUPS] Stratz API error: {err_msg}")
+        if "403" in err_msg:
+            raise HTTPException(status_code=502, detail="Stratz API returned 403 – verify STRATZ_API_TOKEN")
+        raise HTTPException(status_code=502, detail="Failed to fetch matchups from Stratz API")
+
+    try:
+        matchup = data["heroStats"]["heroVsHeroMatchup"]
+        vs_list: list[dict] = (matchup.get("disadvantage") or {}).get("vs") or []
+        with_list: list[dict] = (matchup.get("advantage") or {}).get("with") or []
+    except (KeyError, TypeError):
+        print(f"[MATCHUPS] Unexpected response shape: {data}")
+        raise HTTPException(status_code=502, detail="Unexpected response shape from Stratz API")
+
+    # disadvantage.vs: synergy < 0 → мы контрим их; synergy > 0 → они контрят нас
+    counters = sorted(
+        [_build_matchup_entry(r) for r in vs_list if (r.get("synergy") or 0) < 0],
+        key=lambda e: e.synergy,
+    )[:10]
+
+    countered_by = sorted(
+        [_build_matchup_entry(r) for r in vs_list if (r.get("synergy") or 0) > 0],
+        key=lambda e: e.synergy,
+        reverse=True,
+    )[:10]
+
+    # advantage.with: synergy > 0 → хорошая синергия; synergy < 0 → плохая
+    synergy_with = sorted(
+        [_build_matchup_entry(r) for r in with_list if (r.get("synergy") or 0) > 0],
+        key=lambda e: e.synergy,
+        reverse=True,
+    )[:10]
+
+    bad_teammates = sorted(
+        [_build_matchup_entry(r) for r in with_list if (r.get("synergy") or 0) < 0],
+        key=lambda e: e.synergy,
+    )[:10]
+
+    print(
+        f"[MATCHUPS] hero_id={hero_id} rank={rank} "
+        f"counters={len(counters)} countered_by={len(countered_by)} "
+        f"synergy_with={len(synergy_with)} bad_teammates={len(bad_teammates)}"
+    )
+
+    return HeroMatchupsResponse(
+        hero_id=hero_id,
+        rank=rank,
+        counters=counters,
+        countered_by=countered_by,
+        synergy_with=synergy_with,
+        bad_teammates=bad_teammates,
+    )
 
 
 # ========== Debug: Stratz Matchups ==========
