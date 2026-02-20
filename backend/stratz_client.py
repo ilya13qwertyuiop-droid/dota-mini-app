@@ -90,6 +90,8 @@ async def execute_stratz_query(query: str, variables: dict | None = None) -> dic
         payload["variables"] = variables
 
     headers = get_stratz_headers()
+    safe_headers = {k: (v[:10] + "***" if k == "Authorization" else v) for k, v in headers.items()}
+    print(f"[STRATZ DEBUG] headers={safe_headers}")
     print(f"[STRATZ DEBUG] POST {STRATZ_API_URL} | variables={variables}")
 
     try:
