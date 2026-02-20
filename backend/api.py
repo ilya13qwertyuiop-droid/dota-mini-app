@@ -15,6 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 
 from backend.db import get_user_id_by_token, init_tokens_table
+from backend.stratz_client import execute_stratz_query
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -508,4 +509,76 @@ async def get_result(token: str, db: Session = Depends(get_db)):
     else:
         print(f"[API DEBUG] No quiz result found for user {user_id}")
         return GetResultResponse(result=None)
+
+
+# ========== Debug: Stratz Matchups ==========
+
+_HERO_MATCHUPS_QUERY = """
+query HeroMatchups($heroId: Short!) {
+  heroStats {
+    heroVsHeroMatchup(heroId: $heroId) {
+      advantage {
+        heroId2
+        winCount
+        matchCount
+      }
+    }
+  }
+}
+"""
+
+@app.get("/api/debug/hero_matchups")
+async def debug_hero_matchups(hero_id: int):
+    """Тестовый эндпоинт: возвращает топ контрпики для героя через Stratz API."""
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    print(f"[STRATZ DEBUG] debug_hero_matchups called: hero_id={hero_id}")
+
+    try:
+        data = await execute_stratz_query(
+            _HERO_MATCHUPS_QUERY,
+            variables={"heroId": hero_id},
+        )
+    except Exception as e:
+        print(f"[STRATZ DEBUG] execute_stratz_query failed for hero_id={hero_id}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch matchups")
+
+    # Достаём список записей из ответа
+    try:
+        advantage_list: list[dict] = (
+            data["heroStats"]["heroVsHeroMatchup"]["advantage"]
+        )
+    except (KeyError, TypeError):
+        print(f"[STRATZ DEBUG] Unexpected response shape for hero_id={hero_id}: {data}")
+        raise HTTPException(status_code=502, detail="Failed to fetch matchups")
+
+    # Фильтруем нерелевантные матчапы и считаем advantage
+    MIN_MATCH_COUNT = 100
+    scored: list[dict] = []
+    for entry in advantage_list:
+        match_count: int = entry.get("matchCount", 0)
+        win_count: int = entry.get("winCount", 0)
+        if match_count < MIN_MATCH_COUNT:
+            continue
+        adv = round((win_count / match_count) - 0.5, 4)
+        scored.append({"heroId": entry["heroId2"], "advantage": adv})
+
+    # Сортируем по advantage
+    scored.sort(key=lambda x: x["advantage"], reverse=True)
+
+    i_counter_them = scored[:3]            # наибольший advantage → мы контрим их
+    counters_against_me = scored[-3:][::-1]  # наименьший advantage → они контрят нас
+
+    print(
+        f"[STRATZ DEBUG] hero_id={hero_id} "
+        f"iCounterThem={[x['heroId'] for x in i_counter_them]} "
+        f"countersAgainstMe={[x['heroId'] for x in counters_against_me]}"
+    )
+
+    return {
+        "heroId": hero_id,
+        "iCounterThem": i_counter_them,
+        "countersAgainstMe": counters_against_me,
+    }
 
