@@ -1214,6 +1214,36 @@ margin-top: 14px;
 
 /* ========== МАТЧАПЫ ========== */
 
+/* Центрирование блока поиска по вертикали */
+#matchup-search-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - var(--nav-height) - 40px);
+}
+
+/* Заголовок внутри матчапов — менее акцентный */
+#matchup-search-screen .dashboard-header {
+  margin-bottom: 14px;
+}
+
+#matchup-search-screen .dashboard-header h1 {
+  font-size: 19px;
+  font-weight: 600;
+  opacity: 0.68;
+  margin-bottom: 4px;
+}
+
+#matchup-search-screen .dashboard-header p {
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+/* Поле поиска — главный акцент */
+#matchup-search-screen .matchup-search-wrap {
+  margin-top: 4px;
+}
+
 .matchup-search-wrap {
   position: relative;
   margin-bottom: 8px;
