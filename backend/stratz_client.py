@@ -5,6 +5,46 @@ import httpx
 
 STRATZ_API_URL = "https://api.stratz.com/graphql"
 
+VALID_RANKS = frozenset({"HERALD_GUARDIAN", "CRUSADER_ARCHON", "LEGEND_ANCIENT", "DIVINE_IMMORTAL"})
+
+MATCHLIMIT_BY_RANK: dict[str, int] = {
+    "HERALD_GUARDIAN": 1000,
+    "CRUSADER_ARCHON": 1500,
+    "LEGEND_ANCIENT": 1500,
+    "DIVINE_IMMORTAL": 500,
+}
+
+_HERO_VS_HERO_QUERY = """
+query HeroVsHeroByRank($heroId: Short!, $brackets: [RankBracketBasicEnum!], $matchLimit: Int!) {
+  heroStats {
+    heroVsHeroMatchup(heroId: $heroId, bracketBasicIds: $brackets, matchLimit: $matchLimit) {
+      advantage {
+        with {
+          heroId1
+          heroId2
+          matchCount
+          winCount
+          winRateHeroId1
+          winRateHeroId2
+          synergy
+        }
+      }
+      disadvantage {
+        vs {
+          heroId1
+          heroId2
+          matchCount
+          winCount
+          winRateHeroId1
+          winRateHeroId2
+          synergy
+        }
+      }
+    }
+  }
+}
+"""
+
 # Stratz стоит за Cloudflare. Без правдоподобного User-Agent
 # WAF возвращает 403 + HTML-страницу (не GraphQL-ошибку).
 _EXTRA_HEADERS = {
@@ -25,6 +65,22 @@ def get_stratz_headers() -> dict:
         "Content-Type": "application/json",
         **_EXTRA_HEADERS,
     }
+
+
+async def get_hero_matchups(hero_id: int, rank: str) -> dict:
+    """Запрашивает матчапы героя у STRATZ с фильтрацией по рангу.
+
+    Возвращает поле data из ответа GraphQL (словарь).
+    Поднимает RuntimeError при сетевых / API ошибках.
+    """
+    match_limit = MATCHLIMIT_BY_RANK[rank]
+    variables: dict = {
+        "heroId": hero_id,
+        "brackets": [rank],
+        "matchLimit": match_limit,
+    }
+    print(f"[STRATZ DEBUG] get_hero_matchups: hero_id={hero_id}, rank={rank}, matchLimit={match_limit}")
+    return await execute_stratz_query(_HERO_VS_HERO_QUERY, variables=variables)
 
 
 async def execute_stratz_query(query: str, variables: dict | None = None) -> dict:
