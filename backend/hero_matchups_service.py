@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime, timedelta
+from typing import Optional
 
 from backend.db import get_hero_matchups_from_cache, replace_hero_matchups_in_cache
 from backend.opendota_client import get_hero_matchups as fetch_from_api
@@ -77,24 +78,57 @@ async def get_hero_matchups_cached(hero_id: int) -> list[dict]:
     return sorted(to_cache, key=lambda x: x["winrate"], reverse=True)
 
 
-def build_matchup_groups(matchups: list[dict]) -> dict:
+def build_matchup_groups(matchups: list[dict], base_winrate: Optional[float]) -> dict:
     """Разбивает плоский список матчапов на strong_against и weak_against.
 
-    strong_against — герои с winrate >= WINRATE_STRONG_THRESHOLD (наш герой их контрит).
-    weak_against   — герои с winrate <= WINRATE_WEAK_THRESHOLD  (они контрят нашего).
-    Оба списка фильтруются по MIN_MATCHUPS_GAMES и обрезаются до MAX_MATCHUPS_PER_GROUP.
+    Если base_winrate передан — считает advantage = winrate_vs - base_winrate
+    и использует его для сортировки (аналог DotaBuff advantage).
+    Если base_winrate is None — fallback на старую логику (только по winrate).
     """
     filtered = [m for m in matchups if m["games"] >= MIN_MATCHUPS_GAMES]
 
-    strong_against = sorted(
-        [m for m in filtered if m["winrate"] >= WINRATE_STRONG_THRESHOLD],
-        key=lambda x: x["winrate"],
-        reverse=True,
-    )[:MAX_MATCHUPS_PER_GROUP]
+    if base_winrate is not None:
+        logger.info("[matchups groups] base_winrate=%.4f, filtered=%d", base_winrate, len(filtered))
 
-    weak_against = sorted(
-        [m for m in filtered if m["winrate"] <= WINRATE_WEAK_THRESHOLD],
-        key=lambda x: x["winrate"],
-    )[:MAX_MATCHUPS_PER_GROUP]
+        # Добавляем advantage в копии записей (не мутируем оригинал кэша)
+        enriched = []
+        for m in filtered:
+            entry = dict(m)
+            entry["advantage"] = round(entry["winrate"] - base_winrate, 4)
+            enriched.append(entry)
 
+        # Диагностика: первые 3 значения
+        sample = [(e["opponent_hero_id"], e["winrate"], e["advantage"]) for e in enriched[:3]]
+        logger.info("[matchups groups] sample (id, wr, adv): %s", sample)
+
+        strong_against = sorted(
+            [e for e in enriched if e["advantage"] >= 0 and e["winrate"] >= WINRATE_STRONG_THRESHOLD],
+            key=lambda x: x["advantage"],
+            reverse=True,
+        )[:MAX_MATCHUPS_PER_GROUP]
+
+        weak_against = sorted(
+            [e for e in enriched if e["advantage"] <= 0 and e["winrate"] <= WINRATE_WEAK_THRESHOLD],
+            key=lambda x: x["advantage"],
+        )[:MAX_MATCHUPS_PER_GROUP]
+
+    else:
+        # Fallback: base_winrate неизвестен — используем только winrate
+        logger.warning("[matchups groups] base_winrate unavailable, fallback to winrate-only logic")
+
+        strong_against = sorted(
+            [m for m in filtered if m["winrate"] >= WINRATE_STRONG_THRESHOLD],
+            key=lambda x: x["winrate"],
+            reverse=True,
+        )[:MAX_MATCHUPS_PER_GROUP]
+
+        weak_against = sorted(
+            [m for m in filtered if m["winrate"] <= WINRATE_WEAK_THRESHOLD],
+            key=lambda x: x["winrate"],
+        )[:MAX_MATCHUPS_PER_GROUP]
+
+    logger.info(
+        "[matchups groups] result: strong=%d weak=%d",
+        len(strong_against), len(weak_against),
+    )
     return {"strong_against": strong_against, "weak_against": weak_against}

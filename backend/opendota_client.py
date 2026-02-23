@@ -37,6 +37,28 @@ async def get_heroes() -> list[dict]:
     return r.json()
 
 
+async def get_hero_stats() -> list[dict]:
+    """GET /api/heroStats — статистика всех героев по брекетам.
+
+    Каждый объект содержит поля id, localized_name,
+    и пары {N_pick, N_win} для N = 1..8 (ранговые брекеты).
+    Поднимает RuntimeError при сетевых или API-ошибках.
+    """
+    url = f"{_BASE_URL}/heroStats"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, params=_build_params(), timeout=15.0)
+    except httpx.RequestError as e:
+        logger.error("OpenDota network error (get_hero_stats): %s", e)
+        raise RuntimeError(f"OpenDota network error: {e}") from e
+
+    if r.status_code != 200:
+        logger.error("OpenDota get_hero_stats returned HTTP %s: %s", r.status_code, r.text[:200])
+        raise RuntimeError(f"OpenDota API returned HTTP {r.status_code}")
+
+    return r.json()
+
+
 async def get_hero_matchups(hero_id: int) -> list[dict]:
     """GET /api/heroes/{hero_id}/matchups — агрегированные матчапы героя.
 
