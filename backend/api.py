@@ -1,7 +1,10 @@
+import logging
 import os
 import httpx
 from datetime import datetime, timezone
 from typing import Generator
+
+logger = logging.getLogger(__name__)
 
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -536,6 +539,12 @@ async def api_hero_matchups(hero_id: int):
 
     base_wr = await get_hero_base_winrate(hero_id)
     groups = build_matchup_groups(matchups, base_wr)
+    logger.info(
+        "[matchups api] hero_id=%s strong=%d weak=%d",
+        hero_id,
+        len(groups.get("strong_against", [])),
+        len(groups.get("weak_against", [])),
+    )
     return {
         "hero_id": hero_id,
         "strong_against": groups["strong_against"],

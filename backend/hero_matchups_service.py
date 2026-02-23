@@ -127,8 +127,10 @@ def build_matchup_groups(matchups: list[dict], base_winrate: Optional[float]) ->
             key=lambda x: x["winrate"],
         )[:MAX_MATCHUPS_PER_GROUP]
 
+    base_wr_str = f"{base_winrate:.4f}" if base_winrate is not None else "None"
     logger.info(
-        "[matchups groups] result: strong=%d weak=%d",
-        len(strong_against), len(weak_against),
+        "[matchups groups] total=%d filtered(>=%dgames)=%d base_wr=%s strong=%d weak=%d",
+        len(matchups), MIN_MATCHUPS_GAMES, len(filtered),
+        base_wr_str, len(strong_against), len(weak_against),
     )
     return {"strong_against": strong_against, "weak_against": weak_against}

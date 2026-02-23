@@ -118,7 +118,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Пользователь подписан – выдаём токен и прокидываем в URL мини‑апа
     token = create_token_for_user(user_id)
-    mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
+    # tgWebAppDebug=1 включает DevTools в Telegram Desktop: Ctrl+Shift+I внутри окна WebApp.
+    # Убрать этот параметр перед релизом или вынести в env-флаг DEBUG_WEBAPP.
+    mini_app_url_with_token = f"{MINI_APP_URL}?token={token}&tgWebAppDebug=1"
 
     # --- отправляем данные пользователя на backend ---
     if payload is not None:
