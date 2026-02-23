@@ -1575,11 +1575,13 @@ const matchupPage = {
         this.showHero(heroName);
 
         const heroId = window.dotaHeroIds && window.dotaHeroIds[heroName];
-        if (heroId) {
-            loadHeroMatchups(heroId);
-        } else {
+        console.log('[matchups] selected heroName =', heroName, 'heroId =', heroId);
+        if (!heroId) {
+            console.warn('[matchups] no heroId for heroName =', heroName);
             showMatchupsError('Матчапы для этого героя пока недоступны');
+            return;
         }
+        loadHeroMatchups(heroId);
     }
 };
 
@@ -1609,35 +1611,53 @@ function renderMatchupList(containerId, items, type) {
         return;
     }
 
-    container.innerHTML = items.map(function (entry) {
-        var name = (window.dotaHeroIdToName && window.dotaHeroIdToName[entry.opponent_hero_id])
-            || ('Hero #' + entry.opponent_hero_id);
-        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+    var rendered = [];
+    for (var i = 0; i < items.length; i++) {
+        var entry = items[i];
+        var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.opponent_hero_id];
+        if (!heroName) {
+            console.warn('[matchups] skip opponent: no name mapping for id =', entry.opponent_hero_id);
+            continue;
+        }
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
         var winratePercent = Math.round(entry.winrate * 100);
 
-        return '<div class="matchup-item ' + type + '">' +
+        rendered.push(
+            '<div class="matchup-item ' + type + '">' +
             '<div class="matchup-item-hero">' +
                 '<img src="' + iconUrl + '" alt="" class="matchup-item-icon" onerror="this.style.display=\'none\'">' +
-                '<span class="matchup-item-name">' + name + '</span>' +
+                '<span class="matchup-item-name">' + heroName + '</span>' +
             '</div>' +
             '<div class="matchup-bar-wrapper">' +
                 '<div class="matchup-bar-fill" style="width:' + winratePercent + '%"></div>' +
                 '<div class="matchup-bar-label">' + winratePercent + '% (' + entry.games + ' игр)</div>' +
             '</div>' +
-        '</div>';
-    }).join('');
+            '</div>'
+        );
+    }
+
+    if (rendered.length === 0) {
+        container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
+    } else {
+        container.innerHTML = rendered.join('');
+    }
 }
 
 async function loadHeroMatchups(heroId) {
+    console.log('[matchups] loading matchups for heroId =', heroId);
     showMatchupsLoading();
     try {
         var response = await fetch('/api/hero_matchups?hero_id=' + heroId);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         var data = await response.json();
+        console.log('[matchups] API response strong_against.length =', data.strong_against && data.strong_against.length,
+                    'weak_against.length =', data.weak_against && data.weak_against.length);
+        console.log('[matchups] API sample strong_against[0] =', data.strong_against && data.strong_against[0]);
+        console.log('[matchups] API sample weak_against[0] =', data.weak_against && data.weak_against[0]);
         renderMatchupList('strongAgainstList', data.strong_against, 'strong');
         renderMatchupList('weakAgainstList', data.weak_against, 'weak');
     } catch (err) {
-        console.error('Failed to load hero matchups', err);
+        console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
     }
 }
