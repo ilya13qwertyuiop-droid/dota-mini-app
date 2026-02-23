@@ -16,6 +16,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
+from backend.hero_stats_service import get_hero_base_winrate
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -533,6 +534,11 @@ async def api_hero_matchups(hero_id: int):
         print(f"[MATCHUPS] Failed for hero_id={hero_id}: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch hero matchups")
 
-    groups = build_matchup_groups(matchups)
-    return {"hero_id": hero_id, **groups}
+    base_wr = await get_hero_base_winrate(hero_id)
+    groups = build_matchup_groups(matchups, base_wr)
+    return {
+        "hero_id": hero_id,
+        "strong_against": groups["strong_against"],
+        "weak_against": groups["weak_against"],
+    }
 
