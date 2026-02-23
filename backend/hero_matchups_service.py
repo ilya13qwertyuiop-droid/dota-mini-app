@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 # TTL кэша в часах (по умолчанию 24, переопределяется через env)
 CACHE_TTL_HOURS = int(os.getenv("HERO_MATCHUPS_TTL_HOURS", "24"))
 
+# Параметры группировки
+MIN_MATCHUPS_GAMES = int(os.getenv("HERO_MATCHUPS_MIN_GAMES", "100"))
+WINRATE_STRONG_THRESHOLD = float(os.getenv("HERO_MATCHUPS_STRONG_THRESHOLD", "0.55"))
+WINRATE_WEAK_THRESHOLD = float(os.getenv("HERO_MATCHUPS_WEAK_THRESHOLD", "0.45"))
+MAX_MATCHUPS_PER_GROUP = int(os.getenv("HERO_MATCHUPS_MAX_PER_GROUP", "5"))
+
 
 async def get_hero_matchups_cached(hero_id: int) -> list[dict]:
     """Возвращает матчапы героя, используя кэш в SQLite.
@@ -69,3 +75,26 @@ async def get_hero_matchups_cached(hero_id: int) -> list[dict]:
     logger.info("[matchups cache] stored %d rows for hero_id=%s", len(to_cache), hero_id)
 
     return sorted(to_cache, key=lambda x: x["winrate"], reverse=True)
+
+
+def build_matchup_groups(matchups: list[dict]) -> dict:
+    """Разбивает плоский список матчапов на strong_against и weak_against.
+
+    strong_against — герои с winrate >= WINRATE_STRONG_THRESHOLD (наш герой их контрит).
+    weak_against   — герои с winrate <= WINRATE_WEAK_THRESHOLD  (они контрят нашего).
+    Оба списка фильтруются по MIN_MATCHUPS_GAMES и обрезаются до MAX_MATCHUPS_PER_GROUP.
+    """
+    filtered = [m for m in matchups if m["games"] >= MIN_MATCHUPS_GAMES]
+
+    strong_against = sorted(
+        [m for m in filtered if m["winrate"] >= WINRATE_STRONG_THRESHOLD],
+        key=lambda x: x["winrate"],
+        reverse=True,
+    )[:MAX_MATCHUPS_PER_GROUP]
+
+    weak_against = sorted(
+        [m for m in filtered if m["winrate"] <= WINRATE_WEAK_THRESHOLD],
+        key=lambda x: x["winrate"],
+    )[:MAX_MATCHUPS_PER_GROUP]
+
+    return {"strong_against": strong_against, "weak_against": weak_against}

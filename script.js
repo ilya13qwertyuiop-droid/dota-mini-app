@@ -1573,8 +1573,74 @@ const matchupPage = {
             suggestionsEl.style.display = 'none';
         }
         this.showHero(heroName);
+
+        const heroId = window.dotaHeroIds && window.dotaHeroIds[heroName];
+        if (heroId) {
+            loadHeroMatchups(heroId);
+        } else {
+            showMatchupsError('Матчапы для этого героя пока недоступны');
+        }
     }
 };
+
+// ---------- Matchups: загрузка и рендер ----------
+
+function showMatchupsLoading() {
+    ['strongAgainstList', 'weakAgainstList'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
+    });
+}
+
+function showMatchupsError(msg) {
+    var text = msg || 'Не удалось загрузить матчапы. Попробуй позже.';
+    ['strongAgainstList', 'weakAgainstList'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + text + '</p>';
+    });
+}
+
+function renderMatchupList(containerId, items, type) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!items || items.length === 0) {
+        container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
+        return;
+    }
+
+    container.innerHTML = items.map(function (entry) {
+        var name = (window.dotaHeroIdToName && window.dotaHeroIdToName[entry.opponent_hero_id])
+            || ('Hero #' + entry.opponent_hero_id);
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+        var winratePercent = Math.round(entry.winrate * 100);
+
+        return '<div class="matchup-item ' + type + '">' +
+            '<div class="matchup-item-hero">' +
+                '<img src="' + iconUrl + '" alt="" class="matchup-item-icon" onerror="this.style.display=\'none\'">' +
+                '<span class="matchup-item-name">' + name + '</span>' +
+            '</div>' +
+            '<div class="matchup-bar-wrapper">' +
+                '<div class="matchup-bar-fill" style="width:' + winratePercent + '%"></div>' +
+                '<div class="matchup-bar-label">' + winratePercent + '% (' + entry.games + ' игр)</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function loadHeroMatchups(heroId) {
+    showMatchupsLoading();
+    try {
+        var response = await fetch('/api/hero_matchups?hero_id=' + heroId);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        var data = await response.json();
+        renderMatchupList('strongAgainstList', data.strong_against, 'strong');
+        renderMatchupList('weakAgainstList', data.weak_against, 'weak');
+    } catch (err) {
+        console.error('Failed to load hero matchups', err);
+        showMatchupsError();
+    }
+}
 
 // Привязка событий для поиска и подсказок
 (function () {
