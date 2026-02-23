@@ -15,7 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 
 from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table
-from backend.hero_matchups_service import get_hero_matchups_cached
+from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -515,15 +515,13 @@ async def get_result(token: str, db: Session = Depends(get_db)):
 
 @app.get("/api/hero_matchups")
 async def api_hero_matchups(hero_id: int):
-    """Возвращает матчапы героя из кэша (обновляет при необходимости).
+    """Возвращает матчапы героя, сгруппированные по strong_against / weak_against.
 
     Формат ответа:
     {
       "hero_id": 1,
-      "matchups": [
-        {"opponent_hero_id": 2, "games": 123, "wins": 45, "winrate": 0.3659, "updated_at": "..."},
-        ...
-      ]
+      "strong_against": [{"opponent_hero_id": 18, "games": 560, "wins": 350, "winrate": 0.625, "updated_at": "..."}],
+      "weak_against":   [{"opponent_hero_id": 33, "games": 530, "wins": 100, "winrate": 0.1886, "updated_at": "..."}]
     }
     """
     if hero_id <= 0:
@@ -535,5 +533,6 @@ async def api_hero_matchups(hero_id: int):
         print(f"[MATCHUPS] Failed for hero_id={hero_id}: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch hero matchups")
 
-    return {"hero_id": hero_id, "matchups": matchups}
+    groups = build_matchup_groups(matchups)
+    return {"hero_id": hero_id, **groups}
 
