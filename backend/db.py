@@ -69,3 +69,106 @@ def delete_token(token: str):
     cursor.execute("DELETE FROM tokens WHERE token = ?", (token,))
     conn.commit()
     conn.close()
+
+
+# ========== Hero matchups cache ==========
+
+def init_hero_matchups_cache_table():
+    """Создаёт таблицу hero_matchups_cache, если её нет."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS hero_matchups_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hero_id INTEGER NOT NULL,
+            opponent_hero_id INTEGER NOT NULL,
+            games INTEGER NOT NULL,
+            wins INTEGER NOT NULL,
+            winrate REAL NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(hero_id, opponent_hero_id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_hero_matchups_from_cache(hero_id: int) -> tuple[list[dict], str | None]:
+    """Читает матчапы героя из кэша.
+
+    Возвращает:
+        - список словарей {opponent_hero_id, games, wins, winrate, updated_at}
+        - максимальный updated_at для данного hero_id (или None, если записей нет)
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT opponent_hero_id, games, wins, winrate, updated_at
+        FROM hero_matchups_cache
+        WHERE hero_id = ?
+        """,
+        (hero_id,),
+    )
+    rows = cursor.fetchall()
+
+    last_updated: str | None = None
+    if rows:
+        cursor.execute(
+            "SELECT MAX(updated_at) FROM hero_matchups_cache WHERE hero_id = ?",
+            (hero_id,),
+        )
+        last_updated = cursor.fetchone()[0]
+
+    conn.close()
+
+    matchups = [
+        {
+            "opponent_hero_id": row[0],
+            "games": row[1],
+            "wins": row[2],
+            "winrate": row[3],
+            "updated_at": row[4],
+        }
+        for row in rows
+    ]
+    return matchups, last_updated
+
+
+def replace_hero_matchups_in_cache(
+    hero_id: int, matchups: list[dict], updated_at: str
+) -> None:
+    """Атомарно заменяет матчапы героя в кэше.
+
+    Удаляет все старые строки hero_id и вставляет новые в одной транзакции.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM hero_matchups_cache WHERE hero_id = ?", (hero_id,)
+        )
+        cursor.executemany(
+            """
+            INSERT INTO hero_matchups_cache
+                (hero_id, opponent_hero_id, games, wins, winrate, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    hero_id,
+                    m["opponent_hero_id"],
+                    m["games"],
+                    m["wins"],
+                    m["winrate"],
+                    updated_at,
+                )
+                for m in matchups
+            ],
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

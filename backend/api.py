@@ -14,7 +14,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.orm.attributes import flag_modified
 
 
-from backend.db import get_user_id_by_token, init_tokens_table
+from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table
+from backend.hero_matchups_service import get_hero_matchups_cached
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -78,6 +79,7 @@ def get_db() -> Generator[Session, None, None]:
 # Создаём таблицы при старте приложения
 Base.metadata.create_all(bind=engine)
 init_tokens_table()
+init_hero_matchups_cache_table()
 # --- DB setup end ---
 
 
@@ -510,5 +512,28 @@ async def get_result(token: str, db: Session = Depends(get_db)):
         return GetResultResponse(result=None)
 
 # ========== Hero Matchups ==========
-# TODO: OpenDota API integration — реализовать /api/hero_matchups через opendota_client
+
+@app.get("/api/hero_matchups")
+async def api_hero_matchups(hero_id: int):
+    """Возвращает матчапы героя из кэша (обновляет при необходимости).
+
+    Формат ответа:
+    {
+      "hero_id": 1,
+      "matchups": [
+        {"opponent_hero_id": 2, "games": 123, "wins": 45, "winrate": 0.3659, "updated_at": "..."},
+        ...
+      ]
+    }
+    """
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    try:
+        matchups = await get_hero_matchups_cached(hero_id)
+    except Exception as e:
+        print(f"[MATCHUPS] Failed for hero_id={hero_id}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch hero matchups")
+
+    return {"hero_id": hero_id, "matchups": matchups}
 
