@@ -234,13 +234,13 @@ def _parse_match_details(match: dict) -> dict | None:
     avg_rank_tier = match.get("avg_rank_tier")
     bucket = _rank_bucket_for_tier(avg_rank_tier)
 
-    # Diagnostic: log every match where the details endpoint returned no rank.
-    # /matches/{id} often omits avg_rank_tier even when /publicMatches had it.
-    # Condition kept narrow (None only) so it doesn't fire for ranked matches.
+    # Diagnostic: details endpoint often omits avg_rank_tier even when
+    # /publicMatches had it. Logged at DEBUG to avoid INFO spam;
+    # the fallback result is logged at INFO in fetch_and_process_matches.
     if avg_rank_tier is None:
-        logger.info(
-            "[diag] parse_match_details: match=%s avg_rank_tier_raw=%r → bucket=%s",
-            match_id, avg_rank_tier, bucket,
+        logger.debug(
+            "[diag] parse_match_details: match=%s avg_rank_tier=None (pre-fallback) → bucket=%s",
+            match_id, bucket,
         )
 
     return {
@@ -292,6 +292,8 @@ async def fetch_and_process_matches() -> None:
     skip_incomplete = 0
     # Diagnostic flag: log raw details only for the first non-skipped match per cycle.
     _details_diag_done = False
+    # Fallback diag: log avg_rank_tier substitution only once per cycle.
+    _fallback_diag_done = False
 
     for raw in raw_matches[:MAX_MATCHES_PER_CYCLE]:
         basic = _parse_public_match(raw)
@@ -335,6 +337,20 @@ async def fetch_and_process_matches() -> None:
         if parsed is None:
             skip_incomplete += 1
             continue
+
+        # Fallback: /matches/{id} often omits avg_rank_tier; use publicMatches value.
+        if parsed["avg_rank_tier"] is None:
+            fallback = basic.get("avg_rank_tier")
+            if fallback is not None:
+                parsed["avg_rank_tier"] = fallback
+                parsed["rank_bucket"] = _rank_bucket_for_tier(fallback)
+                if not _fallback_diag_done:
+                    _fallback_diag_done = True
+                    logger.info(
+                        "[diag] applied avg_rank_tier fallback for match %s: "
+                        "publicMatches=%r → bucket=%s",
+                        match_id, fallback, parsed["rank_bucket"],
+                    )
 
         try:
             # Diagnostic point 3: log exactly what reaches the DB layer.
