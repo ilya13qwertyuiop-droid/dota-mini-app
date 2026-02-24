@@ -221,6 +221,8 @@ async def fetch_and_process_matches() -> None:
             parsed = _parse_match_details(details)
         else:
             # Use data directly from publicMatches (no extra requests)
+            logger.info(f"DEBUG sample match: {raw}")
+            break
             parsed = _parse_public_match(raw)
 
         if parsed is None:
