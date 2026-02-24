@@ -54,6 +54,7 @@ def init_stats_tables() -> None:
             duration      INTEGER,
             patch         TEXT,
             avg_rank_tier INTEGER,
+            rank_bucket   TEXT,
             radiant_win   INTEGER NOT NULL,
             radiant_heroes TEXT NOT NULL,
             dire_heroes    TEXT NOT NULL
@@ -83,6 +84,17 @@ def init_stats_tables() -> None:
     """)
 
     conn.commit()
+
+    # Migration: add rank_bucket to existing DBs that predate this column.
+    # SQLite does not support ALTER TABLE ... ADD COLUMN IF NOT EXISTS before 3.37,
+    # so we attempt the ALTER and silently ignore "duplicate column" errors.
+    try:
+        conn.execute("ALTER TABLE matches ADD COLUMN rank_bucket TEXT")
+        conn.commit()
+        logger.info("[stats_db] Migration applied: added rank_bucket column to matches")
+    except sqlite3.OperationalError:
+        pass  # column already exists — nothing to do
+
     conn.close()
     logger.info("[stats_db] Tables ready (matches, hero_matchups, hero_synergy, hero_stats)")
 
@@ -106,6 +118,7 @@ def save_match_and_update_aggregates(
     duration: Optional[int],
     patch: Optional[str],
     avg_rank_tier: Optional[int],
+    rank_bucket: Optional[str],
     radiant_win: bool,
     radiant_heroes: list[int],
     dire_heroes: list[int],
@@ -127,12 +140,12 @@ def save_match_and_update_aggregates(
         cursor.execute(
             """
             INSERT OR IGNORE INTO matches
-                (match_id, start_time, duration, patch, avg_rank_tier,
+                (match_id, start_time, duration, patch, avg_rank_tier, rank_bucket,
                  radiant_win, radiant_heroes, dire_heroes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                match_id, start_time, duration, patch, avg_rank_tier,
+                match_id, start_time, duration, patch, avg_rank_tier, rank_bucket,
                 int(radiant_win),
                 json.dumps(radiant_heroes),
                 json.dumps(dire_heroes),

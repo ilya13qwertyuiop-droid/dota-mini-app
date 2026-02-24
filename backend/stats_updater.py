@@ -121,6 +121,36 @@ _rate_limiter = RateLimiter(MAX_REQUESTS_PER_MINUTE)
 
 
 # ---------------------------------------------------------------------------
+# Rank bucket mapping
+# ---------------------------------------------------------------------------
+
+def _rank_bucket_for_tier(avg_rank_tier: int | None) -> str:
+    """
+    Maps OpenDota avg_rank_tier (major * 10 + minor, e.g. 55 = Legend V)
+    to a coarse named bucket for rank-stratified analysis.
+
+    Boundaries:
+      None / 0    → "unknown"
+      1  – 20     → "low"       (Herald)
+      21 – 35     → "mid"       (Guardian + Crusader)
+      36 – 50     → "high"      (Archon)
+      51 – 60     → "very_high" (Legend)
+      61+         → "immortal"  (Ancient + Divine + Immortal)
+    """
+    if not avg_rank_tier:
+        return "unknown"
+    if avg_rank_tier <= 20:
+        return "low"
+    if avg_rank_tier <= 35:
+        return "mid"
+    if avg_rank_tier <= 50:
+        return "high"
+    if avg_rank_tier <= 60:
+        return "very_high"
+    return "immortal"
+
+
+# ---------------------------------------------------------------------------
 # Match parsing helpers
 # ---------------------------------------------------------------------------
 
@@ -201,12 +231,14 @@ def _parse_match_details(match: dict) -> dict | None:
         return None
 
     patch_val = match.get("patch")
+    avg_rank_tier = match.get("avg_rank_tier")
     return {
         "match_id": match_id,
         "start_time": match.get("start_time") or 0,
         "duration": match.get("duration"),
         "patch": str(patch_val) if patch_val is not None else None,
-        "avg_rank_tier": match.get("avg_rank_tier"),
+        "avg_rank_tier": avg_rank_tier,
+        "rank_bucket": _rank_bucket_for_tier(avg_rank_tier),
         "radiant_win": bool(match.get("radiant_win", False)),
         "radiant_heroes": radiant_heroes,
         "dire_heroes": dire_heroes,
@@ -277,6 +309,11 @@ async def fetch_and_process_matches() -> None:
         try:
             save_match_and_update_aggregates(**parsed)
             new_count += 1
+            if new_count == 1:
+                logger.info(
+                    "[updater] rank example: match=%d avg_rank_tier=%s → bucket=%s",
+                    parsed["match_id"], parsed.get("avg_rank_tier"), parsed.get("rank_bucket"),
+                )
         except Exception as exc:
             logger.error("[updater] Failed to save match %d: %s", match_id, exc)
 
@@ -341,6 +378,8 @@ async def main() -> None:
     logger.info("  DAYS_TO_KEEP                 = %d", DAYS_TO_KEEP)
     logger.info("  CLEANUP_INTERVAL_HOURS       = %d", CLEANUP_INTERVAL_HOURS)
     logger.info("  FETCH_MATCH_DETAILS          = %s", FETCH_MATCH_DETAILS)
+    logger.info("  [config] rank buckets        = "
+                "0→unknown | 1-20→low | 21-35→mid | 36-50→high | 51-60→very_high | 61+→immortal")
     logger.info("=" * 60)
 
     # Ensure tables exist (safe to call multiple times)
