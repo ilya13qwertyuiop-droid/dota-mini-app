@@ -518,6 +518,12 @@
             startHeroQuiz();
         }
 
+        function goToMatchups() {
+            switchPage('database');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.querySelectorAll('.nav-item')[2].classList.add('active');
+        }
+
         function initQuiz() {
             currentQuestion = 0;
             scores = { pos1: 0, pos2: 0, pos3: 0, pos4: 0, pos5: 0 };
