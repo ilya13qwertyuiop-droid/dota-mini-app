@@ -260,7 +260,7 @@ window.dotaHeroIds = {
   'Primal Beast': 137,
   'Muerta': 138,
   'Kez': 145,
-  // 'Largo': 0, // TODO: уточнить hero_id после выхода в OpenDota
+  'Largo': 155,
 };
 
 // Обратный маппинг: hero_id -> отображаемое имя
