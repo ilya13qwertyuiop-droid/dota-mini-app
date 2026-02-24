@@ -1592,6 +1592,8 @@ function showMatchupsLoading() {
         var el = document.getElementById(id);
         if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
     });
+    var wrEl = document.getElementById('matchup-hero-winrate');
+    if (wrEl) wrEl.textContent = '';
 }
 
 function showMatchupsError(msg) {
@@ -1644,7 +1646,7 @@ function renderMatchupList(containerId, items, type) {
 }
 
 async function loadHeroMatchups(heroId) {
-    var LIMIT = 20;
+    var LIMIT = 5;
 
     async function fetchCounters(minGames) {
         console.log('Loading counters from /api/hero/' + heroId + '/counters?min_games=' + minGames);
@@ -1676,6 +1678,18 @@ async function loadHeroMatchups(heroId) {
                     'counters.length =', data.counters && data.counters.length);
         console.log('[matchups] API sample victims[0] =', data.victims && data.victims[0]);
         console.log('[matchups] API sample counters[0] =', data.counters && data.counters[0]);
+
+        var wrEl = document.getElementById('matchup-hero-winrate');
+        if (wrEl) {
+            if (data.base_winrate != null) {
+                var wrPct = Math.round(data.base_winrate * 100);
+                var gamesStr = data.data_games != null ? ' по ' + data.data_games.toLocaleString('ru-RU') + ' играм' : '';
+                wrEl.textContent = 'Базовый винрейт: ' + wrPct + '%' + gamesStr;
+            } else {
+                wrEl.textContent = '';
+            }
+        }
+
         renderMatchupList('strongAgainstList', data.victims, 'strong');
         renderMatchupList('weakAgainstList', data.counters, 'weak');
     } catch (err) {
