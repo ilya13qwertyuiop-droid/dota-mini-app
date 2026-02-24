@@ -13,9 +13,12 @@ Environment variables (all optional, sensible defaults):
     DAYS_TO_KEEP              — matches older than this are deleted (default: 90)
     CLEANUP_INTERVAL_HOURS    — how often to run cleanup job (default: 24)
     MAX_MATCHES_PER_CYCLE     — max new matches processed per poll cycle (default: 50)
-    FETCH_MATCH_DETAILS       — set to "1" to fetch full match details instead of
-                                 using publicMatches data directly (much more API
-                                 usage; default: "0")
+    FETCH_MATCH_DETAILS       — MUST be "1" to collect hero data.
+                                 publicMatches does not include real hero IDs
+                                 (radiant_team/dire_team are zeroed in the API response).
+                                 When set to "1": for each new match_id found in
+                                 publicMatches, fetches /matches/{id} to get players
+                                 and hero_id values. Default: "0" (no data collected).
 """
 
 from __future__ import annotations
@@ -102,63 +105,78 @@ _rate_limiter = RateLimiter(MAX_REQUESTS_PER_MINUTE)
 
 def _parse_public_match(match: dict) -> dict | None:
     """
-    Parses a publicMatches entry into the fields needed for save_match_and_update_aggregates.
-    Returns None if the match is incomplete (missing heroes, etc.).
+    Extracts basic metadata from a publicMatches entry.
+
+    NOTE: radiant_team/dire_team from publicMatches are not used — the API
+    returns zeroed lists ([0,0,0,0,0]) for those fields. Hero data is only
+    available via get_match_details().
+
+    Returns a dict with {match_id, start_time, radiant_win, avg_rank_tier},
+    or None if match_id is missing.
     """
     match_id = match.get("match_id")
     if not match_id:
         return None
-
-    radiant_str = match.get("radiant_team") or ""
-    dire_str = match.get("dire_team") or ""
-
-    if not radiant_str or not dire_str:
-        return None
-
-    try:
-        radiant_heroes = [int(h) for h in radiant_str.split(",") if h.strip()]
-        dire_heroes = [int(h) for h in dire_str.split(",") if h.strip()]
-    except ValueError:
-        return None
-
-    # Require full 5v5
-    if len(radiant_heroes) != 5 or len(dire_heroes) != 5:
-        return None
-
     return {
         "match_id": match_id,
         "start_time": match.get("start_time") or 0,
-        "duration": match.get("duration"),
-        "patch": None,  # not available in publicMatches
-        "avg_rank_tier": match.get("avg_rank_tier"),
         "radiant_win": bool(match.get("radiant_win", False)),
-        "radiant_heroes": radiant_heroes,
-        "dire_heroes": dire_heroes,
+        "avg_rank_tier": match.get("avg_rank_tier"),
     }
 
 
 def _parse_match_details(match: dict) -> dict | None:
     """
-    Parses a full match details response.
-    Returns None if hero data is incomplete.
+    Extracts hero data and match result from a full /matches/{match_id} response.
+
+    Hero assignment uses player_slot:
+      player_slot < 128  → Radiant
+      player_slot >= 128 → Dire
+
+    Returns None (with a warning log) when:
+      - total player count != 10
+      - any player has hero_id == 0 or None
+      - the radiant/dire split doesn't produce exactly 5+5
     """
     match_id = match.get("match_id")
     if not match_id:
         return None
 
     players = match.get("players") or []
+
+    if len(players) != 10:
+        logger.warning(
+            "[updater] match %d: expected 10 players, got %d — skipping",
+            match_id, len(players),
+        )
+        return None
+
+    missing_hero = sum(1 for p in players if not p.get("hero_id"))
+    if missing_hero:
+        logger.warning(
+            "[updater] match %d: %d player(s) have hero_id=0/None — skipping",
+            match_id, missing_hero,
+        )
+        return None
+
+    # Use player_slot to assign sides; skip players whose slot is absent
     radiant_heroes = [
         p["hero_id"]
         for p in players
-        if p.get("hero_id") and (p.get("player_slot", 0) < 128)
+        if p.get("player_slot") is not None and p["player_slot"] < 128
     ]
     dire_heroes = [
         p["hero_id"]
         for p in players
-        if p.get("hero_id") and (p.get("player_slot", 128) >= 128)
+        if p.get("player_slot") is not None and p["player_slot"] >= 128
     ]
 
     if len(radiant_heroes) != 5 or len(dire_heroes) != 5:
+        logger.warning(
+            "[updater] match %d: unexpected team split radiant=%d dire=%d "
+            "(player_slot missing or out of range) — skipping",
+            match_id, len(radiant_heroes), len(dire_heroes),
+        )
         return None
 
     patch_val = match.get("patch")
@@ -181,10 +199,11 @@ def _parse_match_details(match: dict) -> dict | None:
 async def fetch_and_process_matches() -> None:
     """
     One polling cycle:
-      1. Fetch recent public matches from OpenDota (1 request).
-      2. Filter to matches not yet in our DB.
-      3. Either process publicMatches data directly (default, efficient),
-         or fetch full match details per match (if FETCH_MATCH_DETAILS=1).
+      1. Fetch recent public match IDs from /publicMatches (1 request).
+      2. If FETCH_MATCH_DETAILS is disabled: log a warning and return — hero data
+         is not available from publicMatches alone.
+      3. If FETCH_MATCH_DETAILS is enabled: for each new match_id, call
+         /matches/{id} (rate-limited) to get hero and result data, then save.
     """
     await _rate_limiter.acquire()
     try:
@@ -195,36 +214,41 @@ async def fetch_and_process_matches() -> None:
 
     logger.info("[updater] publicMatches returned %d entries", len(raw_matches))
 
+    if not FETCH_MATCH_DETAILS:
+        logger.warning(
+            "[updater] FETCH_MATCH_DETAILS is disabled. "
+            "publicMatches does not provide hero data "
+            "(radiant_team/dire_team fields are zeroed by the API). "
+            "Set FETCH_MATCH_DETAILS=1 to enable hero statistics collection."
+        )
+        return
+
     new_count = 0
     skip_existing = 0
     skip_incomplete = 0
 
     for raw in raw_matches[:MAX_MATCHES_PER_CYCLE]:
-        match_id = raw.get("match_id")
-        if not match_id:
+        basic = _parse_public_match(raw)
+        if basic is None:
             continue
+
+        match_id = basic["match_id"]
 
         if match_exists(match_id):
             skip_existing += 1
             continue
 
-        if FETCH_MATCH_DETAILS:
-            # Fetch full details (1 extra request per match)
-            await _rate_limiter.acquire()
-            try:
-                details = await get_match_details(match_id)
-            except Exception as exc:
-                logger.warning(
-                    "[updater] Failed to fetch details for match %d: %s", match_id, exc
-                )
-                continue
-            parsed = _parse_match_details(details)
-        else:
-            # Use data directly from publicMatches (no extra requests)
-            logger.info(f"DEBUG sample match: {raw}")
-            break
-            parsed = _parse_public_match(raw)
+        # Hero data is only available via the full match details endpoint
+        await _rate_limiter.acquire()
+        try:
+            details = await get_match_details(match_id)
+        except Exception as exc:
+            logger.warning(
+                "[updater] HTTP error fetching details for match %d: %s", match_id, exc
+            )
+            continue
 
+        parsed = _parse_match_details(details)
         if parsed is None:
             skip_incomplete += 1
             continue
