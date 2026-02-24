@@ -1665,15 +1665,29 @@ async function loadHeroMatchups(heroId) {
     try {
         var data;
         try {
-            data = await fetchCounters(50);
+            data = await fetchCounters(10);
         } catch (err) {
             if (err.status === 503) {
-                console.warn('[matchups] No data for min_games=50, trying 5');
+                console.warn('[matchups] No data for min_games=10, trying 5');
                 data = await fetchCounters(5);
             } else {
                 throw err;
             }
         }
+
+        // Fallback for sparse results: if fewer than 4 rows total survived the
+        // min_games filter (can happen when a hero has very few matches in the DB),
+        // retry with a lower threshold so we show something meaningful.
+        var totalRows = ((data.counters || []).length) + ((data.victims || []).length);
+        if (totalRows < 4) {
+            console.warn('[matchups] Sparse result (' + totalRows + ' rows at min_games=10), retrying with min_games=5');
+            try {
+                data = await fetchCounters(5);
+            } catch (retryErr) {
+                console.warn('[matchups] Sparse-retry failed, keeping previous data:', retryErr);
+            }
+        }
+
         console.log('[matchups] API response victims.length =', data.victims && data.victims.length,
                     'counters.length =', data.counters && data.counters.length);
         console.log('[matchups] API sample victims[0] =', data.victims && data.victims[0]);
