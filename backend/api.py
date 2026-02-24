@@ -7,7 +7,7 @@ from typing import Generator
 logger = logging.getLogger(__name__)
 
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -20,6 +20,12 @@ from sqlalchemy.orm.attributes import flag_modified
 from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
+from backend.stats_db import (
+    init_stats_tables,
+    get_hero_matchup_rows,
+    get_hero_base_winrate_from_db,
+    get_hero_total_games,
+)
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -84,6 +90,7 @@ def get_db() -> Generator[Session, None, None]:
 Base.metadata.create_all(bind=engine)
 init_tokens_table()
 init_hero_matchups_cache_table()
+init_stats_tables()  # stats layer: matches, hero_matchups, hero_synergy, hero_stats
 # --- DB setup end ---
 
 
@@ -527,6 +534,9 @@ async def api_hero_matchups(hero_id: int):
       "strong_against": [{"opponent_hero_id": 18, "games": 560, "wins": 350, "winrate": 0.625, "updated_at": "..."}],
       "weak_against":   [{"opponent_hero_id": 33, "games": 530, "wins": 100, "winrate": 0.1886, "updated_at": "..."}]
     }
+
+    TODO: Consider migrating callers to /api/hero/{hero_id}/counters, which uses
+    our own match data instead of OpenDota aggregates and produces more reliable results.
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
@@ -549,5 +559,94 @@ async def api_hero_matchups(hero_id: int):
         "hero_id": hero_id,
         "strong_against": groups["strong_against"],
         "weak_against": groups["weak_against"],
+    }
+
+
+# ========== Custom Stats: counters from our own match data ==========
+
+@app.get("/api/hero/{hero_id}/counters")
+async def api_hero_counters(
+    hero_id: int,
+    limit: int = Query(default=20, ge=1, le=200, description="Max entries in counters/victims lists"),
+    min_games: int = Query(default=50, ge=1, description="Minimum games for a pair to be included"),
+):
+    """Returns hero counters and victims computed from our own match database.
+
+    Unlike /api/hero_matchups (which proxies OpenDota aggregates), this endpoint
+    uses matches collected by stats_updater.py and stored locally.
+
+    Response format:
+    {
+      "hero_id": 1,
+      "base_winrate": 0.51,
+      "data_games": 15000,        // total games this hero appears in our DB
+      "counters": [               // heroes that beat this hero (advantage < 0)
+        { "hero_id": 99, "games": 320, "wr_vs": 0.40, "advantage": -0.11 },
+        ...                       // sorted ascending by advantage (worst first)
+      ],
+      "victims": [                // heroes this hero beats (advantage > 0)
+        { "hero_id": 53, "games": 280, "wr_vs": 0.62, "advantage": 0.11 },
+        ...                       // sorted descending by advantage (best first)
+      ]
+    }
+
+    If the stats DB is empty (updater hasn't run yet), returns 503.
+    """
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    rows = get_hero_matchup_rows(hero_id, min_games=min_games)
+
+    if not rows:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No matchup data for this hero (min_games threshold not met or "
+                "stats DB is empty — run stats_updater.py to populate it)."
+            ),
+        )
+
+    base_wr = get_hero_base_winrate_from_db(hero_id)
+    if base_wr is None:
+        # Fallback: use neutral 0.5 so advantage is still meaningful
+        base_wr = 0.5
+        logger.warning("[counters] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
+
+    enriched = [
+        {
+            "hero_id": row["hero_id"],
+            "games": row["games"],
+            "wr_vs": row["wr_vs"],
+            "advantage": round(row["wr_vs"] - base_wr, 4),
+        }
+        for row in rows
+    ]
+
+    # counters: advantage < 0 (they beat us), sorted worst-first (ascending)
+    counters = sorted(
+        [e for e in enriched if e["advantage"] < 0],
+        key=lambda x: x["advantage"],
+    )[:limit]
+
+    # victims: advantage >= 0 (we beat them), sorted best-first (descending)
+    victims = sorted(
+        [e for e in enriched if e["advantage"] >= 0],
+        key=lambda x: x["advantage"],
+        reverse=True,
+    )[:limit]
+
+    data_games = get_hero_total_games(hero_id)
+
+    logger.info(
+        "[counters] hero_id=%s base_wr=%.4f data_games=%d counters=%d victims=%d",
+        hero_id, base_wr, data_games, len(counters), len(victims),
+    )
+
+    return {
+        "hero_id": hero_id,
+        "base_winrate": base_wr,
+        "data_games": data_games,
+        "counters": counters,
+        "victims": victims,
     }
 
