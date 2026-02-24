@@ -1588,13 +1588,14 @@ const matchupPage = {
             return;
         }
         loadHeroMatchups(heroId);
+        loadHeroSynergy(heroId);
     }
 };
 
 // ---------- Matchups: загрузка и рендер ----------
 
 function showMatchupsLoading() {
-    ['strongAgainstList', 'weakAgainstList'].forEach(function (id) {
+    ['strongAgainstList', 'weakAgainstList', 'bestAllyList', 'worstAllyList'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
     });
@@ -1606,6 +1607,14 @@ function showMatchupsLoading() {
 function showMatchupsError(msg) {
     var text = msg || 'Не удалось загрузить матчапы. Попробуй позже.';
     ['strongAgainstList', 'weakAgainstList'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + text + '</p>';
+    });
+}
+
+function showSynergyError(msg) {
+    var text = msg || 'Недостаточно матчей для оценки синергии.';
+    ['bestAllyList', 'worstAllyList'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + text + '</p>';
     });
@@ -1763,6 +1772,55 @@ async function loadHeroMatchups(heroId) {
     }
 }
 
+async function loadHeroSynergy(heroId) {
+    var LIMIT = 5;
+
+    async function fetchSynergy(minGames) {
+        console.log('[synergy] fetching /api/hero/' + heroId + '/synergy?min_games=' + minGames);
+        var response = await fetch('/api/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
+        if (!response.ok) {
+            var error = new Error('HTTP ' + response.status);
+            error.status = response.status;
+            throw error;
+        }
+        return response.json();
+    }
+
+    try {
+        var data;
+        try {
+            data = await fetchSynergy(10);
+        } catch (err) {
+            if (err.status === 503) {
+                console.warn('[synergy] No data for min_games=10, trying 5');
+                data = await fetchSynergy(5);
+            } else {
+                throw err;
+            }
+        }
+
+        // Fallback for sparse results
+        var totalRows = ((data.best_allies || []).length) + ((data.worst_allies || []).length);
+        if (totalRows < 4) {
+            console.warn('[synergy] Sparse result (' + totalRows + ' rows), retrying with min_games=5');
+            try {
+                data = await fetchSynergy(5);
+            } catch (retryErr) {
+                console.warn('[synergy] Sparse-retry failed, keeping previous data:', retryErr);
+            }
+        }
+
+        console.log('[synergy] best_allies=', (data.best_allies || []).length,
+                    'worst_allies=', (data.worst_allies || []).length);
+
+        renderMatchupList('bestAllyList',  data.best_allies,  'strong', data.base_winrate);
+        renderMatchupList('worstAllyList', data.worst_allies, 'weak',   data.base_winrate);
+    } catch (err) {
+        console.error('[synergy] loadHeroSynergy error:', err);
+        showSynergyError();
+    }
+}
+
 // Привязка событий для поиска и подсказок
 (function () {
     // Событие ввода текста — через addEventListener, чтобы работало и на desktop
@@ -1796,24 +1854,30 @@ document.addEventListener('click', function (e) {
     }
 });
 
-// ---------- Переключатель вкладок матчапов ----------
+// ---------- Переключатель вкладок матчапов (4 вкладки) ----------
 function switchMatchupTab(tab) {
-    var paneStrong = document.getElementById('matchup-pane-strong');
-    var paneWeak   = document.getElementById('matchup-pane-weak');
-    var btnStrong  = document.getElementById('matchup-tab-btn-strong');
-    var btnWeak    = document.getElementById('matchup-tab-btn-weak');
-    if (!paneStrong || !paneWeak) return;
-
-    if (tab === 'strong') {
-        paneStrong.style.display = '';
-        paneWeak.style.display   = 'none';
-        if (btnStrong) btnStrong.classList.add('active');
-        if (btnWeak)   btnWeak.classList.remove('active');
-    } else {
-        paneStrong.style.display = 'none';
-        paneWeak.style.display   = '';
-        if (btnStrong) btnStrong.classList.remove('active');
-        if (btnWeak)   btnWeak.classList.add('active');
+    var tabs = ['strong', 'weak', 'best_ally', 'worst_ally'];
+    var paneIds = {
+        'strong':     'matchup-pane-strong',
+        'weak':       'matchup-pane-weak',
+        'best_ally':  'matchup-pane-best-ally',
+        'worst_ally': 'matchup-pane-worst-ally',
+    };
+    var btnIds = {
+        'strong':     'matchup-tab-btn-strong',
+        'weak':       'matchup-tab-btn-weak',
+        'best_ally':  'matchup-tab-btn-best-ally',
+        'worst_ally': 'matchup-tab-btn-worst-ally',
+    };
+    for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
+        var pane = document.getElementById(paneIds[t]);
+        var btn  = document.getElementById(btnIds[t]);
+        if (pane) pane.style.display = (t === tab) ? '' : 'none';
+        if (btn) {
+            if (t === tab) btn.classList.add('active');
+            else           btn.classList.remove('active');
+        }
     }
 }
 

@@ -23,6 +23,7 @@ from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
     init_stats_tables,
     get_hero_matchup_rows,
+    get_hero_synergy_rows,
     get_hero_base_winrate_from_db,
     get_hero_total_games,
 )
@@ -648,5 +649,92 @@ async def api_hero_counters(
         "data_games": data_games,
         "counters": counters,
         "victims": victims,
+    }
+
+
+# ========== Custom Stats: ally synergy from our own match data ==========
+
+@app.get("/api/hero/{hero_id}/synergy")
+async def api_hero_synergy(
+    hero_id: int,
+    limit: int = Query(default=20, ge=1, le=200, description="Max entries in best/worst allies lists"),
+    min_games: int = Query(default=50, ge=1, description="Minimum shared games for a pair to be included"),
+):
+    """Returns best and worst allies for a hero computed from our own match database.
+
+    Response format:
+    {
+      "hero_id": 1,
+      "base_winrate": 0.51,
+      "data_games": 15000,
+      "best_allies": [
+        { "hero_id": 42, "games": 280, "wins": 199, "wr_vs": 0.71, "delta": 0.20 },
+        ...   // sorted descending by delta
+      ],
+      "worst_allies": [
+        { "hero_id": 17, "games": 260, "wins": 113, "wr_vs": 0.43, "delta": -0.08 },
+        ...   // sorted ascending by delta (worst first)
+      ]
+    }
+
+    delta = wr_vs - base_winrate (in fraction, e.g. 0.12 means +12 pp).
+    If the stats DB is empty, returns 503.
+    """
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    rows = get_hero_synergy_rows(hero_id, min_games=min_games)
+
+    if not rows:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No synergy data for this hero (min_games threshold not met or "
+                "stats DB is empty — run stats_updater.py to populate it)."
+            ),
+        )
+
+    base_wr = get_hero_base_winrate_from_db(hero_id)
+    if base_wr is None:
+        base_wr = 0.5
+        logger.warning("[synergy] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
+
+    enriched = [
+        {
+            "hero_id": row["hero_id"],
+            "games": row["games"],
+            "wins": row["wins"],
+            "wr_vs": row["wr_vs"],
+            "delta": round(row["wr_vs"] - base_wr, 4),
+        }
+        for row in rows
+    ]
+
+    # best_allies: delta >= 0, sorted best-first (descending)
+    best_allies = sorted(
+        [e for e in enriched if e["delta"] >= 0],
+        key=lambda x: x["delta"],
+        reverse=True,
+    )[:limit]
+
+    # worst_allies: delta < 0, sorted worst-first (ascending)
+    worst_allies = sorted(
+        [e for e in enriched if e["delta"] < 0],
+        key=lambda x: x["delta"],
+    )[:limit]
+
+    data_games = get_hero_total_games(hero_id)
+
+    logger.info(
+        "[synergy] hero_id=%s base_wr=%.4f data_games=%d best=%d worst=%d",
+        hero_id, base_wr, data_games, len(best_allies), len(worst_allies),
+    )
+
+    return {
+        "hero_id": hero_id,
+        "base_winrate": base_wr,
+        "data_games": data_games,
+        "best_allies": best_allies,
+        "worst_allies": worst_allies,
     }
 
