@@ -1644,12 +1644,34 @@ function renderMatchupList(containerId, items, type) {
 }
 
 async function loadHeroMatchups(heroId) {
-    console.log("Loading counters from /api/hero/" + heroId + "/counters");
+    var LIMIT = 20;
+
+    async function fetchCounters(minGames) {
+        console.log('Loading counters from /api/hero/' + heroId + '/counters?min_games=' + minGames);
+        var response = await fetch('/api/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
+        if (!response.ok) {
+            var text = await response.text().catch(function () { return ''; });
+            var error = new Error('HTTP ' + response.status);
+            error.status = response.status;
+            error.body = text;
+            throw error;
+        }
+        return response.json();
+    }
+
     showMatchupsLoading();
     try {
-        var response = await fetch('/api/hero/' + heroId + '/counters?limit=20&min_games=50');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        var data = await response.json();
+        var data;
+        try {
+            data = await fetchCounters(50);
+        } catch (err) {
+            if (err.status === 503) {
+                console.warn('[matchups] No data for min_games=50, trying 5');
+                data = await fetchCounters(5);
+            } else {
+                throw err;
+            }
+        }
         console.log('[matchups] API response victims.length =', data.victims && data.victims.length,
                     'counters.length =', data.counters && data.counters.length);
         console.log('[matchups] API sample victims[0] =', data.victims && data.victims[0]);
