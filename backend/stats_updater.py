@@ -232,13 +232,24 @@ def _parse_match_details(match: dict) -> dict | None:
 
     patch_val = match.get("patch")
     avg_rank_tier = match.get("avg_rank_tier")
+    bucket = _rank_bucket_for_tier(avg_rank_tier)
+
+    # Diagnostic: log every match where the details endpoint returned no rank.
+    # /matches/{id} often omits avg_rank_tier even when /publicMatches had it.
+    # Condition kept narrow (None only) so it doesn't fire for ranked matches.
+    if avg_rank_tier is None:
+        logger.info(
+            "[diag] parse_match_details: match=%s avg_rank_tier_raw=%r → bucket=%s",
+            match_id, avg_rank_tier, bucket,
+        )
+
     return {
         "match_id": match_id,
         "start_time": match.get("start_time") or 0,
         "duration": match.get("duration"),
         "patch": str(patch_val) if patch_val is not None else None,
         "avg_rank_tier": avg_rank_tier,
-        "rank_bucket": _rank_bucket_for_tier(avg_rank_tier),
+        "rank_bucket": bucket,
         "radiant_win": bool(match.get("radiant_win", False)),
         "radiant_heroes": radiant_heroes,
         "dire_heroes": dire_heroes,
@@ -279,6 +290,8 @@ async def fetch_and_process_matches() -> None:
     new_count = 0
     skip_existing = 0
     skip_incomplete = 0
+    # Diagnostic flag: log raw details only for the first non-skipped match per cycle.
+    _details_diag_done = False
 
     for raw in raw_matches[:MAX_MATCHES_PER_CYCLE]:
         basic = _parse_public_match(raw)
@@ -301,12 +314,38 @@ async def fetch_and_process_matches() -> None:
             )
             continue
 
+        # Diagnostic point 1: compare avg_rank_tier from publicMatches vs /matches/{id}.
+        # Fires once per cycle (first non-existing match fetched).
+        # This reveals whether the details endpoint actually returns avg_rank_tier.
+        if not _details_diag_done:
+            _details_diag_done = True
+            logger.info(
+                "[diag] raw OpenDota match %s: avg_rank_tier=%r  keys=%s",
+                match_id,
+                details.get("avg_rank_tier"),
+                sorted(details.keys()),
+            )
+            logger.info(
+                "[diag] avg_rank_tier source compare: publicMatches=%r  /matches/{id}=%r",
+                basic.get("avg_rank_tier"),
+                details.get("avg_rank_tier"),
+            )
+
         parsed = _parse_match_details(details)
         if parsed is None:
             skip_incomplete += 1
             continue
 
         try:
+            # Diagnostic point 3: log exactly what reaches the DB layer.
+            # Fires once per cycle (first successfully parsed match about to be saved).
+            if new_count == 0:
+                logger.info(
+                    "[diag] saving match %s: avg_rank_tier=%r  rank_bucket=%r",
+                    parsed["match_id"],
+                    parsed.get("avg_rank_tier"),
+                    parsed.get("rank_bucket"),
+                )
             save_match_and_update_aggregates(**parsed)
             new_count += 1
             if new_count == 1:
