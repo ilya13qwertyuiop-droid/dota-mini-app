@@ -1390,6 +1390,7 @@ margin-top: 14px;
 /* ---- Переключатель вкладок ---- */
 .matchup-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 12px;
@@ -1398,7 +1399,7 @@ margin-top: 14px;
 }
 
 .matchup-tab {
-  flex: 1;
+  flex: 1 1 calc(50% - 3px);
   padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: 9px;
@@ -1410,6 +1411,7 @@ margin-top: 14px;
   transition: all 0.18s ease;
   font-family: inherit;
   white-space: nowrap;
+  text-align: center;
 }
 
 .matchup-tab.active {

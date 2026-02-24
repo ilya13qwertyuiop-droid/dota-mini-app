@@ -287,6 +287,41 @@ def get_hero_total_games(hero_id: int) -> int:
     return row["games"] if row else 0
 
 
+def get_hero_synergy_rows(hero_id: int, min_games: int = 50) -> list[dict]:
+    """
+    Returns all ally synergy rows for a hero.
+
+    Because both heroes are always on the same team, `wins` in hero_synergy
+    is the count of wins for the shared team — it equals wins for either hero.
+    So wr_with = wins / games regardless of canonical position.
+    """
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT hero_a, hero_b, games, wins FROM hero_synergy"
+        " WHERE (hero_a = ? OR hero_b = ?) AND games >= ?",
+        (hero_id, hero_id, min_games),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        hero_a, hero_b, games, wins = row["hero_a"], row["hero_b"], row["games"], row["wins"]
+        ally_id = hero_b if hero_a == hero_id else hero_a
+        result.append(
+            {
+                "hero_id": ally_id,
+                "games": games,
+                "wins": wins,
+                # wr_vs keeps naming consistent with get_hero_matchup_rows
+                # so the frontend renderMatchupList() can reuse the same field
+                "wr_vs": round(wins / games, 4) if games > 0 else 0.0,
+            }
+        )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Cleanup & maintenance
 # ---------------------------------------------------------------------------

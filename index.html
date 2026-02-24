@@ -358,6 +358,8 @@
           <div class="matchup-tabs">
             <button class="matchup-tab active" id="matchup-tab-btn-strong" onclick="switchMatchupTab('strong')">✅ Кого контрит</button>
             <button class="matchup-tab" id="matchup-tab-btn-weak" onclick="switchMatchupTab('weak')">❌ Кто контрит его</button>
+            <button class="matchup-tab" id="matchup-tab-btn-best-ally" onclick="switchMatchupTab('best_ally')">🤝 Лучшие союзники</button>
+            <button class="matchup-tab" id="matchup-tab-btn-worst-ally" onclick="switchMatchupTab('worst_ally')">💀 Плохие союзники</button>
           </div>
 
           <!-- Вкладка: кого контрит -->
@@ -371,6 +373,20 @@
           <div class="matchup-tab-pane matchup-block" id="matchup-pane-weak" style="display:none;">
             <div id="weakAgainstList">
               <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
+            </div>
+          </div>
+
+          <!-- Вкладка: лучшие союзники -->
+          <div class="matchup-tab-pane matchup-block" id="matchup-pane-best-ally" style="display:none;">
+            <div id="bestAllyList">
+              <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
+            </div>
+          </div>
+
+          <!-- Вкладка: плохие союзники -->
+          <div class="matchup-tab-pane matchup-block" id="matchup-pane-worst-ally" style="display:none;">
+            <div id="worstAllyList">
+              <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
             </div>
           </div>
 
