@@ -350,25 +350,27 @@
             </div>
           </div>
 
-          <div class="matchup-block">
-            <div class="matchup-block-title">
-              <span>✅</span> Кого он контрит
-            </div>
-            <div class="matchup-block-body" id="strongAgainstList">
+          <!-- Переключатель вкладок -->
+          <div class="matchup-tabs">
+            <button class="matchup-tab active" id="matchup-tab-btn-strong" onclick="switchMatchupTab('strong')">✅ Кого контрит</button>
+            <button class="matchup-tab" id="matchup-tab-btn-weak" onclick="switchMatchupTab('weak')">❌ Кто контрит его</button>
+          </div>
+
+          <!-- Вкладка: кого контрит -->
+          <div class="matchup-tab-pane matchup-block" id="matchup-pane-strong">
+            <div id="strongAgainstList">
               <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
             </div>
           </div>
 
-          <div class="matchup-block">
-            <div class="matchup-block-title">
-              <span>❌</span> Кто контрит его
-            </div>
-            <div class="matchup-block-body" id="weakAgainstList">
+          <!-- Вкладка: кто контрит его -->
+          <div class="matchup-tab-pane matchup-block" id="matchup-pane-weak" style="display:none;">
+            <div id="weakAgainstList">
               <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
             </div>
           </div>
 
-          <button class="btn-back" onclick="matchupPage.showSearch()">Назад</button>
+          <button class="btn-back" onclick="matchupPage.showSearch()">← Назад</button>
         </div>
 
       </div>

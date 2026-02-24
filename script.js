@@ -1594,6 +1594,7 @@ function showMatchupsLoading() {
     });
     var wrEl = document.getElementById('matchup-hero-winrate');
     if (wrEl) wrEl.textContent = '';
+    switchMatchupTab('strong');
 }
 
 function showMatchupsError(msg) {
@@ -1604,7 +1605,7 @@ function showMatchupsError(msg) {
     });
 }
 
-function renderMatchupList(containerId, items, type) {
+function renderMatchupList(containerId, items, type, baseWr) {
     var container = document.getElementById(containerId);
     if (!container) return;
 
@@ -1613,7 +1614,8 @@ function renderMatchupList(containerId, items, type) {
         return;
     }
 
-    var rendered = [];
+    // Обогащаем каждую запись дельтой относительно базового винрейта
+    var enriched = [];
     for (var i = 0; i < items.length; i++) {
         var entry = items[i];
         var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.hero_id];
@@ -1621,28 +1623,71 @@ function renderMatchupList(containerId, items, type) {
             console.warn('[matchups] skip opponent: no name mapping for id =', entry.hero_id);
             continue;
         }
-        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
-        var winratePercent = Math.round(entry.wr_vs * 100);
+        var base = (baseWr != null) ? baseWr : 0.5;
+        var delta = entry.wr_vs - base; // дробное значение, например 0.12
+        enriched.push({ entry: entry, heroName: heroName, delta: delta });
+    }
+
+    if (enriched.length === 0) {
+        container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
+        return;
+    }
+
+    // Сортировка: «кого контрит» — по убыванию delta; «кто контрит» — по возрастанию
+    if (type === 'strong') {
+        enriched.sort(function (a, b) { return b.delta - a.delta; });
+    } else {
+        enriched.sort(function (a, b) { return a.delta - b.delta; });
+    }
+
+    // Масштаб прогресс-бара: по максимальному |delta| в списке (минимум 0.10)
+    var maxAbsDelta = 0.10;
+    for (var j = 0; j < enriched.length; j++) {
+        if (Math.abs(enriched[j].delta) > maxAbsDelta) {
+            maxAbsDelta = Math.abs(enriched[j].delta);
+        }
+    }
+
+    var rendered = [];
+    for (var k = 0; k < enriched.length; k++) {
+        var item = enriched[k];
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(item.heroName) : '';
+        var deltaPct = item.delta * 100;
+        var absDeltaPct = Math.abs(deltaPct);
+        var barWidth = Math.min(Math.round((absDeltaPct / (maxAbsDelta * 100)) * 100), 100);
+
+        var sign = '';
+        var cssClass = 'neutral';
+        if (deltaPct > 2) {
+            sign = '+';
+            cssClass = 'positive';
+        } else if (deltaPct < -2) {
+            cssClass = 'negative';
+        }
+
+        var deltaStr = sign + Math.round(deltaPct) + '%';
+        var gamesStr = item.entry.games + '\u00a0игр';
 
         rendered.push(
-            '<div class="matchup-item ' + type + '">' +
-            '<div class="matchup-item-hero">' +
-                '<img src="' + iconUrl + '" alt="" class="matchup-item-icon" onerror="this.style.display=\'none\'">' +
-                '<span class="matchup-item-name">' + heroName + '</span>' +
-            '</div>' +
-            '<div class="matchup-bar-wrapper">' +
-                '<div class="matchup-bar-fill" style="width:' + winratePercent + '%"></div>' +
-                '<div class="matchup-bar-label">' + winratePercent + '% (' + entry.games + ' игр)</div>' +
-            '</div>' +
+            '<div class="matchup-item ' + cssClass + '">' +
+                '<div class="matchup-item-left">' +
+                    '<img src="' + iconUrl + '" alt="" class="matchup-item-icon" onerror="this.style.display=\'none\'">' +
+                    '<span class="matchup-item-name">' + item.heroName + '</span>' +
+                '</div>' +
+                '<div class="matchup-item-right">' +
+                    '<div class="matchup-item-stat">' +
+                        '<span class="matchup-item-delta">' + deltaStr + '</span>' +
+                        '<span class="matchup-item-games">\u00b7\u00a0' + gamesStr + '</span>' +
+                    '</div>' +
+                    '<div class="matchup-item-bar-wrap">' +
+                        '<div class="matchup-item-bar-fill" style="width:' + barWidth + '%"></div>' +
+                    '</div>' +
+                '</div>' +
             '</div>'
         );
     }
 
-    if (rendered.length === 0) {
-        container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
-    } else {
-        container.innerHTML = rendered.join('');
-    }
+    container.innerHTML = rendered.join('');
 }
 
 async function loadHeroMatchups(heroId) {
@@ -1704,8 +1749,8 @@ async function loadHeroMatchups(heroId) {
             }
         }
 
-        renderMatchupList('strongAgainstList', data.victims, 'strong');
-        renderMatchupList('weakAgainstList', data.counters, 'weak');
+        renderMatchupList('strongAgainstList', data.victims, 'strong', data.base_winrate);
+        renderMatchupList('weakAgainstList', data.counters, 'weak', data.base_winrate);
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -1744,4 +1789,25 @@ document.addEventListener('click', function (e) {
         }
     }
 });
+
+// ---------- Переключатель вкладок матчапов ----------
+function switchMatchupTab(tab) {
+    var paneStrong = document.getElementById('matchup-pane-strong');
+    var paneWeak   = document.getElementById('matchup-pane-weak');
+    var btnStrong  = document.getElementById('matchup-tab-btn-strong');
+    var btnWeak    = document.getElementById('matchup-tab-btn-weak');
+    if (!paneStrong || !paneWeak) return;
+
+    if (tab === 'strong') {
+        paneStrong.style.display = '';
+        paneWeak.style.display   = 'none';
+        if (btnStrong) btnStrong.classList.add('active');
+        if (btnWeak)   btnWeak.classList.remove('active');
+    } else {
+        paneStrong.style.display = 'none';
+        paneWeak.style.display   = '';
+        if (btnStrong) btnStrong.classList.remove('active');
+        if (btnWeak)   btnWeak.classList.add('active');
+    }
+}
 
