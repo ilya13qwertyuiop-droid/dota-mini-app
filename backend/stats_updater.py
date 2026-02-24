@@ -19,6 +19,13 @@ Environment variables (all optional, sensible defaults):
                                  When set to "1": for each new match_id found in
                                  publicMatches, fetches /matches/{id} to get players
                                  and hero_id values. Default: "0" (no data collected).
+    STATS_BOOTSTRAP_MODE      — set to "1" or "true" to enable aggressive settings
+                                 for rapid initial DB population (default: "0").
+                                 Overrides POLL_INTERVAL_MINUTES → 5,
+                                 MAX_MATCHES_PER_CYCLE → 100,
+                                 MAX_REQUESTS_PER_MINUTE → 200.
+                                 Peak API rate: ~200 req/min during the burst window
+                                 (~30 s), then idle — well under the 3000 req/min limit.
 """
 
 from __future__ import annotations
@@ -64,6 +71,20 @@ DAYS_TO_KEEP: int = int(os.getenv("DAYS_TO_KEEP", "90"))
 CLEANUP_INTERVAL_HOURS: int = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 MAX_MATCHES_PER_CYCLE: int = int(os.getenv("MAX_MATCHES_PER_CYCLE", "50"))
 FETCH_MATCH_DETAILS: bool = os.getenv("FETCH_MATCH_DETAILS", "0") == "1"
+
+# ---------------------------------------------------------------------------
+# Bootstrap mode — overrides for rapid initial DB population
+# ---------------------------------------------------------------------------
+
+_bootstrap_raw = os.getenv("STATS_BOOTSTRAP_MODE", "0").strip().lower()
+STATS_BOOTSTRAP_MODE: bool = _bootstrap_raw in ("1", "true", "yes")
+
+if STATS_BOOTSTRAP_MODE:
+    # Aggressive values: 101 API calls × (60 / 200) s ≈ 30 s burst per cycle,
+    # then ~270 s idle. Peak rate: 200 req/min — far below the 3000 req/min limit.
+    POLL_INTERVAL_MINUTES = 5
+    MAX_MATCHES_PER_CYCLE = 100
+    MAX_REQUESTS_PER_MINUTE = 200
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -312,13 +333,14 @@ async def run_cleanup() -> None:
 async def main() -> None:
     logger.info("=" * 60)
     logger.info("Stats updater starting")
-    logger.info("  POLL_INTERVAL_MINUTES   = %d", POLL_INTERVAL_MINUTES)
-    logger.info("  MAX_REQUESTS_PER_MINUTE = %d", MAX_REQUESTS_PER_MINUTE)
-    logger.info("  MAX_MATCHES             = %d", MAX_MATCHES)
-    logger.info("  DAYS_TO_KEEP            = %d", DAYS_TO_KEEP)
-    logger.info("  CLEANUP_INTERVAL_HOURS  = %d", CLEANUP_INTERVAL_HOURS)
-    logger.info("  MAX_MATCHES_PER_CYCLE   = %d", MAX_MATCHES_PER_CYCLE)
-    logger.info("  FETCH_MATCH_DETAILS     = %s", FETCH_MATCH_DETAILS)
+    logger.info("  [config] Bootstrap mode      = %s", "ON" if STATS_BOOTSTRAP_MODE else "OFF")
+    logger.info("  POLL_INTERVAL_MINUTES        = %d", POLL_INTERVAL_MINUTES)
+    logger.info("  MAX_MATCHES_PER_CYCLE        = %d", MAX_MATCHES_PER_CYCLE)
+    logger.info("  MAX_REQUESTS_PER_MINUTE      = %d", MAX_REQUESTS_PER_MINUTE)
+    logger.info("  MAX_MATCHES                  = %d", MAX_MATCHES)
+    logger.info("  DAYS_TO_KEEP                 = %d", DAYS_TO_KEEP)
+    logger.info("  CLEANUP_INTERVAL_HOURS       = %d", CLEANUP_INTERVAL_HOURS)
+    logger.info("  FETCH_MATCH_DETAILS          = %s", FETCH_MATCH_DETAILS)
     logger.info("=" * 60)
 
     # Ensure tables exist (safe to call multiple times)
