@@ -1,136 +1,124 @@
-import sqlite3
-from datetime import datetime, timedelta
+"""
+db.py — Auth tokens and hero-matchups cache.
+
+Previously used raw sqlite3.connect(). Now uses SQLAlchemy ORM via the
+shared engine/SessionLocal from database.py so it works with both SQLite
+and PostgreSQL without any code changes.
+
+Public API is unchanged — callers (bot.py, api.py, hero_matchups_service.py)
+don't need to be modified.
+"""
+
 import secrets
+import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "dota_bot.db"  # используем существующую БД
+# Support both invocation styles:
+#   - as a module from project root: `python -m backend.db`
+#   - as a script from backend/: used by bot.py which does `from db import ...`
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
-def init_tokens_table():
-    """Создаёт таблицу tokens, если её нет"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tokens (
-            token TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            expires_at TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+from backend.database import SessionLocal  # noqa: E402
+from backend.models import HeroMatchupsCache, Token  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Schema init (idempotent; kept for backward compat with api.py + bot.py)
+# ---------------------------------------------------------------------------
+
+def init_tokens_table() -> None:
+    """Ensures all tables exist. No-op if Alembic has already run."""
+    from backend.database import create_all_tables
+    create_all_tables()  # imports all models internally
+
+
+def init_hero_matchups_cache_table() -> None:
+    """Ensures all tables exist. No-op if Alembic has already run."""
+    init_tokens_table()
+
+
+# ---------------------------------------------------------------------------
+# Token management
+# ---------------------------------------------------------------------------
 
 def create_token_for_user(user_id: int) -> str:
-    """Генерирует токен и сохраняет в БД"""
-    token = secrets.token_urlsafe(16)
+    """Generates a 24-hour token for the given Telegram user_id."""
+    token_str = secrets.token_urlsafe(16)
     expires_at = datetime.utcnow() + timedelta(hours=24)
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR REPLACE INTO tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
-        (token, user_id, expires_at.isoformat())
-    )
-    conn.commit()
-    conn.close()
-    
-    print(f"[DB DEBUG] Created token for user {user_id}: {token[:10]}...")
-    return token
+
+    with SessionLocal() as session:
+        # session.merge() = upsert by PK: inserts or replaces the row.
+        # Replaces the former `INSERT OR REPLACE INTO tokens ...` (SQLite-only).
+        token_obj = Token(token=token_str, user_id=user_id, expires_at=expires_at)
+        session.merge(token_obj)
+        session.commit()
+
+    print(f"[DB] Created token for user {user_id}: {token_str[:10]}...")
+    return token_str
+
 
 def get_user_id_by_token(token: str) -> int | None:
-    """Проверяет токен и возвращает user_id"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT user_id, expires_at FROM tokens WHERE token = ?",
-        (token,)
-    )
-    row = cursor.fetchone()
-    conn.close()
-    
-    if not row:
-        print(f"[DB DEBUG] Token not found: {token[:10]}...")
-        return None
-    
-    user_id, expires_at_str = row
-    expires_at = datetime.fromisoformat(expires_at_str)
-    
-    if expires_at < datetime.utcnow():
-        print(f"[DB DEBUG] Token expired for user {user_id}")
-        delete_token(token)
-        return None
-    
-    print(f"[DB DEBUG] Token valid for user {user_id}")
-    return user_id
+    """Validates token and returns user_id, or None if missing/expired."""
+    with SessionLocal() as session:
+        token_obj = session.get(Token, token)
 
-def delete_token(token: str):
-    """Удаляет просроченный токен"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM tokens WHERE token = ?", (token,))
-    conn.commit()
-    conn.close()
+        if token_obj is None:
+            print(f"[DB] Token not found: {token[:10]}...")
+            return None
+
+        if token_obj.expires_at < datetime.utcnow():
+            print(f"[DB] Token expired for user {token_obj.user_id}")
+            session.delete(token_obj)
+            session.commit()
+            return None
+
+        print(f"[DB] Token valid for user {token_obj.user_id}")
+        return token_obj.user_id
 
 
-# ========== Hero matchups cache ==========
+def delete_token(token: str) -> None:
+    """Deletes a token (called when it's found to be expired)."""
+    with SessionLocal() as session:
+        token_obj = session.get(Token, token)
+        if token_obj:
+            session.delete(token_obj)
+            session.commit()
 
-def init_hero_matchups_cache_table():
-    """Создаёт таблицу hero_matchups_cache, если её нет."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS hero_matchups_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hero_id INTEGER NOT NULL,
-            opponent_hero_id INTEGER NOT NULL,
-            games INTEGER NOT NULL,
-            wins INTEGER NOT NULL,
-            winrate REAL NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE(hero_id, opponent_hero_id)
-        )
-    """)
-    conn.commit()
-    conn.close()
 
+# ---------------------------------------------------------------------------
+# Hero matchups cache
+# ---------------------------------------------------------------------------
 
 def get_hero_matchups_from_cache(hero_id: int) -> tuple[list[dict], str | None]:
-    """Читает матчапы героя из кэша.
+    """Reads cached matchup rows for a hero.
 
-    Возвращает:
-        - список словарей {opponent_hero_id, games, wins, winrate, updated_at}
-        - максимальный updated_at для данного hero_id (или None, если записей нет)
+    Returns:
+        - list of dicts {opponent_hero_id, games, wins, winrate, updated_at}
+        - max updated_at for this hero_id (or None if no rows)
     """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT opponent_hero_id, games, wins, winrate, updated_at
-        FROM hero_matchups_cache
-        WHERE hero_id = ?
-        """,
-        (hero_id,),
-    )
-    rows = cursor.fetchall()
-
-    last_updated: str | None = None
-    if rows:
-        cursor.execute(
-            "SELECT MAX(updated_at) FROM hero_matchups_cache WHERE hero_id = ?",
-            (hero_id,),
+    with SessionLocal() as session:
+        rows = (
+            session.query(HeroMatchupsCache)
+            .filter(HeroMatchupsCache.hero_id == hero_id)
+            .all()
         )
-        last_updated = cursor.fetchone()[0]
 
-    conn.close()
+    if not rows:
+        return [], None
 
+    last_updated = max(r.updated_at for r in rows)
     matchups = [
         {
-            "opponent_hero_id": row[0],
-            "games": row[1],
-            "wins": row[2],
-            "winrate": row[3],
-            "updated_at": row[4],
+            "opponent_hero_id": r.opponent_hero_id,
+            "games": r.games,
+            "wins": r.wins,
+            "winrate": r.winrate,
+            "updated_at": r.updated_at,
         }
-        for row in rows
+        for r in rows
     ]
     return matchups, last_updated
 
@@ -138,37 +126,21 @@ def get_hero_matchups_from_cache(hero_id: int) -> tuple[list[dict], str | None]:
 def replace_hero_matchups_in_cache(
     hero_id: int, matchups: list[dict], updated_at: str
 ) -> None:
-    """Атомарно заменяет матчапы героя в кэше.
+    """Atomically replaces all cached matchup rows for a hero."""
+    with SessionLocal() as session:
+        session.query(HeroMatchupsCache).filter(
+            HeroMatchupsCache.hero_id == hero_id
+        ).delete(synchronize_session=False)
 
-    Удаляет все старые строки hero_id и вставляет новые в одной транзакции.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM hero_matchups_cache WHERE hero_id = ?", (hero_id,)
-        )
-        cursor.executemany(
-            """
-            INSERT INTO hero_matchups_cache
-                (hero_id, opponent_hero_id, games, wins, winrate, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    hero_id,
-                    m["opponent_hero_id"],
-                    m["games"],
-                    m["wins"],
-                    m["winrate"],
-                    updated_at,
+        for m in matchups:
+            session.add(
+                HeroMatchupsCache(
+                    hero_id=hero_id,
+                    opponent_hero_id=m["opponent_hero_id"],
+                    games=m["games"],
+                    wins=m["wins"],
+                    winrate=m["winrate"],
+                    updated_at=updated_at,
                 )
-                for m in matchups
-            ],
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            )
+        session.commit()
