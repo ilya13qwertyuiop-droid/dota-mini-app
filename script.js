@@ -1594,30 +1594,46 @@ const matchupPage = {
 
 // ---------- Matchups: загрузка и рендер ----------
 
+// Кэш загруженных данных — нужен для рендера при переключении вкладок без повторных запросов
+var _countersData = null;
+var _synergyData  = null;
+var _activeCountersTab = 'strong';
+var _activeSynergyTab  = 'best';
+
 function showMatchupsLoading() {
-    ['strongAgainstList', 'weakAgainstList', 'bestAllyList', 'worstAllyList'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
-    });
+    _countersData = null;
+    _synergyData  = null;
+    _activeCountersTab = 'strong';
+    _activeSynergyTab  = 'best';
+
+    var cEl = document.getElementById('counters-list');
+    var sEl = document.getElementById('synergy-list');
+    if (cEl) cEl.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
+    if (sEl) sEl.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
+
     var wrEl = document.getElementById('matchup-hero-winrate');
     if (wrEl) wrEl.textContent = '';
-    switchMatchupTab('strong');
+
+    // Сбрасываем активные кнопки в дефолт
+    var cStrong = document.getElementById('counter-tab-btn-strong');
+    var cWeak   = document.getElementById('counter-tab-btn-weak');
+    if (cStrong) cStrong.classList.add('active');
+    if (cWeak)   cWeak.classList.remove('active');
+
+    var sBest  = document.getElementById('synergy-tab-btn-best');
+    var sWorst = document.getElementById('synergy-tab-btn-worst');
+    if (sBest)  sBest.classList.add('active');
+    if (sWorst) sWorst.classList.remove('active');
 }
 
 function showMatchupsError(msg) {
-    var text = msg || 'Не удалось загрузить матчапы. Попробуй позже.';
-    ['strongAgainstList', 'weakAgainstList'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + text + '</p>';
-    });
+    var el = document.getElementById('counters-list');
+    if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Не удалось загрузить матчапы. Попробуй позже.') + '</p>';
 }
 
 function showSynergyError(msg) {
-    var text = msg || 'Недостаточно матчей для оценки синергии.';
-    ['bestAllyList', 'worstAllyList'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + text + '</p>';
-    });
+    var el = document.getElementById('synergy-list');
+    if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Недостаточно матчей для оценки синергии.') + '</p>';
 }
 
 function renderMatchupList(containerId, items, type, baseWr) {
@@ -1764,8 +1780,10 @@ async function loadHeroMatchups(heroId) {
             }
         }
 
-        renderMatchupList('strongAgainstList', data.victims, 'strong', data.base_winrate);
-        renderMatchupList('weakAgainstList', data.counters, 'weak', data.base_winrate);
+        _countersData = data;
+        var items = _activeCountersTab === 'strong' ? data.victims : data.counters;
+        var type  = _activeCountersTab === 'strong' ? 'strong' : 'weak';
+        renderMatchupList('counters-list', items, type, data.base_winrate);
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -1813,8 +1831,10 @@ async function loadHeroSynergy(heroId) {
         console.log('[synergy] best_allies=', (data.best_allies || []).length,
                     'worst_allies=', (data.worst_allies || []).length);
 
-        renderMatchupList('bestAllyList',  data.best_allies,  'strong', data.base_winrate);
-        renderMatchupList('worstAllyList', data.worst_allies, 'weak',   data.base_winrate);
+        _synergyData = data;
+        var items = _activeSynergyTab === 'best' ? data.best_allies : data.worst_allies;
+        var type  = _activeSynergyTab === 'best' ? 'strong' : 'weak';
+        renderMatchupList('synergy-list', items, type, data.base_winrate);
     } catch (err) {
         console.error('[synergy] loadHeroSynergy error:', err);
         showSynergyError();
@@ -1854,30 +1874,35 @@ document.addEventListener('click', function (e) {
     }
 });
 
-// ---------- Переключатель вкладок матчапов (4 вкладки) ----------
-function switchMatchupTab(tab) {
-    var tabs = ['strong', 'weak', 'best_ally', 'worst_ally'];
-    var paneIds = {
-        'strong':     'matchup-pane-strong',
-        'weak':       'matchup-pane-weak',
-        'best_ally':  'matchup-pane-best-ally',
-        'worst_ally': 'matchup-pane-worst-ally',
-    };
-    var btnIds = {
-        'strong':     'matchup-tab-btn-strong',
-        'weak':       'matchup-tab-btn-weak',
-        'best_ally':  'matchup-tab-btn-best-ally',
-        'worst_ally': 'matchup-tab-btn-worst-ally',
-    };
-    for (var i = 0; i < tabs.length; i++) {
-        var t = tabs[i];
-        var pane = document.getElementById(paneIds[t]);
-        var btn  = document.getElementById(btnIds[t]);
-        if (pane) pane.style.display = (t === tab) ? '' : 'none';
-        if (btn) {
-            if (t === tab) btn.classList.add('active');
-            else           btn.classList.remove('active');
-        }
+// ---------- Переключатель вкладок: Контрпики ----------
+function switchCountersTab(tab) {
+    _activeCountersTab = tab;
+
+    var btnStrong = document.getElementById('counter-tab-btn-strong');
+    var btnWeak   = document.getElementById('counter-tab-btn-weak');
+    if (btnStrong) btnStrong.classList.toggle('active', tab === 'strong');
+    if (btnWeak)   btnWeak.classList.toggle('active',   tab === 'weak');
+
+    if (_countersData) {
+        var items = tab === 'strong' ? _countersData.victims : _countersData.counters;
+        var type  = tab === 'strong' ? 'strong' : 'weak';
+        renderMatchupList('counters-list', items, type, _countersData.base_winrate);
+    }
+}
+
+// ---------- Переключатель вкладок: Синергия ----------
+function switchSynergyTab(tab) {
+    _activeSynergyTab = tab;
+
+    var btnBest  = document.getElementById('synergy-tab-btn-best');
+    var btnWorst = document.getElementById('synergy-tab-btn-worst');
+    if (btnBest)  btnBest.classList.toggle('active',  tab === 'best');
+    if (btnWorst) btnWorst.classList.toggle('active', tab === 'worst');
+
+    if (_synergyData) {
+        var items = tab === 'best' ? _synergyData.best_allies : _synergyData.worst_allies;
+        var type  = tab === 'best' ? 'strong' : 'weak';
+        renderMatchupList('synergy-list', items, type, _synergyData.base_winrate);
     }
 }
 
