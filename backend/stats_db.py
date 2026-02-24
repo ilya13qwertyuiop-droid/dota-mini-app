@@ -1,101 +1,65 @@
 """
 stats_db.py — Database layer for the custom Dota 2 statistics collection.
 
-Tables (all in the same dota_bot.db):
+Tables (all in the same DB, configured via DATABASE_URL):
   matches        — raw match records
   hero_matchups  — hero A vs hero B (opponents), aggregated
   hero_synergy   — hero A with hero B (same team), aggregated
   hero_stats     — per-hero total games/wins across all matches
 
+Previously used raw sqlite3.connect(). Now uses SQLAlchemy Core (engine from
+database.py) so it works with both SQLite and PostgreSQL unchanged.
+
+Key SQLite→Postgres portability notes:
+  - INSERT OR IGNORE → INSERT ... ON CONFLICT (match_id) DO NOTHING
+    (supported in both PG 9.5+ and SQLite 3.24+)
+  - INSERT ... ON CONFLICT (...) DO UPDATE SET ... excluded.*
+    (identical syntax in both PG 9.5+ and SQLite 3.24+)
+  - ? placeholders → :name bindparams (SQLAlchemy text() handles the mapping)
+  - PRAGMA journal_mode/synchronous → moved to database.py engine event
+  - BEGIN IMMEDIATE → dropped; engine.begin() is sufficient for single-writer
+  - executescript() → individual conn.execute(text(...)) calls
+  - sqlite3.Row row_factory → result.mappings().all()
+
 Key convention for matchup/synergy pairs:
   hero_a < hero_b  (canonical order, no duplicates)
   In hero_matchups, `wins` = wins by hero_a (the one with the smaller ID).
-  When querying for hero X as hero_b, wr_x = (games - wins) / games.
 """
 
 import json
 import logging
-import sqlite3
 import time
-from pathlib import Path
 from typing import Optional
+
+from sqlalchemy import text
+
+from backend.database import engine
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent / "dota_bot.db"
-
 
 # ---------------------------------------------------------------------------
-# Connection helper
-# ---------------------------------------------------------------------------
-
-def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    # WAL mode: allows concurrent reads while the updater writes
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# ---------------------------------------------------------------------------
-# Schema init
+# Schema init (idempotent; kept for backward compat with stats_updater.py)
 # ---------------------------------------------------------------------------
 
 def init_stats_tables() -> None:
-    """Creates all stats tables if they don't exist yet."""
-    conn = _get_conn()
-    cursor = conn.cursor()
+    """Creates all stats tables if they don't exist yet.
 
-    cursor.executescript("""
-        CREATE TABLE IF NOT EXISTS matches (
-            match_id      INTEGER PRIMARY KEY,
-            start_time    INTEGER NOT NULL,
-            duration      INTEGER,
-            patch         TEXT,
-            avg_rank_tier INTEGER,
-            rank_bucket   TEXT,
-            radiant_win   INTEGER NOT NULL,
-            radiant_heroes TEXT NOT NULL,
-            dire_heroes    TEXT NOT NULL
-        );
+    For PostgreSQL in production use Alembic instead.
+    The CREATE TABLE IF NOT EXISTS DDL below is valid in both SQLite and PG.
+    """
+    from backend.database import create_all_tables
+    create_all_tables()  # imports all models internally and runs CREATE TABLE IF NOT EXISTS
 
-        CREATE TABLE IF NOT EXISTS hero_matchups (
-            hero_a INTEGER NOT NULL,
-            hero_b INTEGER NOT NULL,
-            games  INTEGER NOT NULL DEFAULT 0,
-            wins   INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (hero_a, hero_b)
-        );
-
-        CREATE TABLE IF NOT EXISTS hero_synergy (
-            hero_a INTEGER NOT NULL,
-            hero_b INTEGER NOT NULL,
-            games  INTEGER NOT NULL DEFAULT 0,
-            wins   INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (hero_a, hero_b)
-        );
-
-        CREATE TABLE IF NOT EXISTS hero_stats (
-            hero_id INTEGER PRIMARY KEY,
-            games   INTEGER NOT NULL DEFAULT 0,
-            wins    INTEGER NOT NULL DEFAULT 0
-        );
-    """)
-
-    conn.commit()
-
-    # Migration: add rank_bucket to existing DBs that predate this column.
-    # SQLite does not support ALTER TABLE ... ADD COLUMN IF NOT EXISTS before 3.37,
-    # so we attempt the ALTER and silently ignore "duplicate column" errors.
+    # Migration: add rank_bucket column to DBs that predate this column.
+    # We attempt the ALTER and silently ignore "duplicate column" errors.
     try:
-        conn.execute("ALTER TABLE matches ADD COLUMN rank_bucket TEXT")
-        conn.commit()
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE matches ADD COLUMN rank_bucket VARCHAR(16)"))
         logger.info("[stats_db] Migration applied: added rank_bucket column to matches")
-    except sqlite3.OperationalError:
+    except Exception:
         pass  # column already exists — nothing to do
 
-    conn.close()
     logger.info("[stats_db] Tables ready (matches, hero_matchups, hero_synergy, hero_stats)")
 
 
@@ -104,12 +68,12 @@ def init_stats_tables() -> None:
 # ---------------------------------------------------------------------------
 
 def match_exists(match_id: int) -> bool:
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM matches WHERE match_id = ?", (match_id,))
-    result = cursor.fetchone() is not None
-    conn.close()
-    return result
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM matches WHERE match_id = :id"),
+            {"id": match_id},
+        )
+        return result.fetchone() is not None
 
 
 def save_match_and_update_aggregates(
@@ -123,82 +87,83 @@ def save_match_and_update_aggregates(
     radiant_heroes: list[int],
     dire_heroes: list[int],
 ) -> None:
-    """
-    Atomically saves one match and updates all aggregate tables.
+    """Atomically saves one match and updates all aggregate tables.
 
-    Idempotency: the caller is responsible for checking match_exists() first,
-    OR let the INSERT fail on UNIQUE constraint (match_id is PK).
-    To guarantee idempotency without a pre-check, we use INSERT OR IGNORE and
-    only apply aggregate updates when a row is actually inserted.
+    Idempotent: uses INSERT ... ON CONFLICT (match_id) DO NOTHING and skips
+    aggregate updates when the row already existed (rowcount == 0).
+    This syntax is identical in PostgreSQL 9.5+ and SQLite 3.24+.
     """
-    conn = _get_conn()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        cursor = conn.cursor()
-
-        # Insert match; silently skip if already present (idempotent)
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO matches
-                (match_id, start_time, duration, patch, avg_rank_tier, rank_bucket,
-                 radiant_win, radiant_heroes, dire_heroes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                match_id, start_time, duration, patch, avg_rank_tier, rank_bucket,
-                int(radiant_win),
-                json.dumps(radiant_heroes),
-                json.dumps(dire_heroes),
-            ),
+    with engine.begin() as conn:
+        # ----- Insert match (idempotent) -----
+        result = conn.execute(
+            text("""
+                INSERT INTO matches
+                    (match_id, start_time, duration, patch, avg_rank_tier, rank_bucket,
+                     radiant_win, radiant_heroes, dire_heroes)
+                VALUES
+                    (:match_id, :start_time, :duration, :patch, :avg_rank_tier, :rank_bucket,
+                     :radiant_win, :radiant_heroes, :dire_heroes)
+                ON CONFLICT (match_id) DO NOTHING
+            """),
+            {
+                "match_id": match_id,
+                "start_time": start_time,
+                "duration": duration,
+                "patch": patch,
+                "avg_rank_tier": avg_rank_tier,
+                "rank_bucket": rank_bucket,
+                "radiant_win": int(radiant_win),
+                "radiant_heroes": json.dumps(radiant_heroes),
+                "dire_heroes": json.dumps(dire_heroes),
+            },
         )
 
-        if cursor.rowcount == 0:
-            # Match was already in DB — skip aggregate updates to keep counts correct
-            conn.rollback()
+        if result.rowcount == 0:
+            # Match already in DB — skip aggregate updates to keep counts correct
             return
 
-        # ---- hero_stats ----
+        # ----- hero_stats -----
         for h in radiant_heroes:
-            cursor.execute(
-                "INSERT INTO hero_stats (hero_id, games, wins) VALUES (?, 1, ?)"
-                " ON CONFLICT(hero_id) DO UPDATE SET"
-                "   games = games + 1,"
-                "   wins  = wins  + excluded.wins",
-                (h, int(radiant_win)),
+            conn.execute(
+                text("""
+                    INSERT INTO hero_stats (hero_id, games, wins) VALUES (:h, 1, :w)
+                    ON CONFLICT (hero_id) DO UPDATE SET
+                        games = hero_stats.games + 1,
+                        wins  = hero_stats.wins  + excluded.wins
+                """),
+                {"h": h, "w": int(radiant_win)},
             )
         for h in dire_heroes:
-            cursor.execute(
-                "INSERT INTO hero_stats (hero_id, games, wins) VALUES (?, 1, ?)"
-                " ON CONFLICT(hero_id) DO UPDATE SET"
-                "   games = games + 1,"
-                "   wins  = wins  + excluded.wins",
-                (h, int(not radiant_win)),
+            conn.execute(
+                text("""
+                    INSERT INTO hero_stats (hero_id, games, wins) VALUES (:h, 1, :w)
+                    ON CONFLICT (hero_id) DO UPDATE SET
+                        games = hero_stats.games + 1,
+                        wins  = hero_stats.wins  + excluded.wins
+                """),
+                {"h": h, "w": int(not radiant_win)},
             )
 
-        # ---- hero_matchups ----
-        # For each (radiant_hero, dire_hero) pair:
-        #   canonical pair: a = min(r, d), b = max(r, d)
-        #   wins = wins for hero_a
-        #   a_wins logic: if radiant won AND r is hero_a → a_wins=1
-        #                 if dire won   AND d is hero_a → a_wins=1
-        #   shorthand: a_wins = int((r < d) == radiant_win)
+        # ----- hero_matchups -----
         for r_hero in radiant_heroes:
             for d_hero in dire_heroes:
                 if r_hero == d_hero:
-                    continue  # shouldn't happen, but be safe
+                    continue
                 a = min(r_hero, d_hero)
                 b = max(r_hero, d_hero)
                 a_wins = int((r_hero < d_hero) == radiant_win)
-                cursor.execute(
-                    "INSERT INTO hero_matchups (hero_a, hero_b, games, wins) VALUES (?, ?, 1, ?)"
-                    " ON CONFLICT(hero_a, hero_b) DO UPDATE SET"
-                    "   games = games + 1,"
-                    "   wins  = wins  + excluded.wins",
-                    (a, b, a_wins),
+                conn.execute(
+                    text("""
+                        INSERT INTO hero_matchups (hero_a, hero_b, games, wins)
+                        VALUES (:a, :b, 1, :w)
+                        ON CONFLICT (hero_a, hero_b) DO UPDATE SET
+                            games = hero_matchups.games + 1,
+                            wins  = hero_matchups.wins  + excluded.wins
+                    """),
+                    {"a": a, "b": b, "w": a_wins},
                 )
 
-        # ---- hero_synergy ----
-        # All C(5,2)=10 pairs within Radiant and within Dire
+        # ----- hero_synergy -----
         for heroes, team_won in [
             (radiant_heroes, radiant_win),
             (dire_heroes, not radiant_win),
@@ -208,40 +173,33 @@ def save_match_and_update_aggregates(
                 for j in range(i + 1, n):
                     a = min(heroes[i], heroes[j])
                     b = max(heroes[i], heroes[j])
-                    cursor.execute(
-                        "INSERT INTO hero_synergy (hero_a, hero_b, games, wins) VALUES (?, ?, 1, ?)"
-                        " ON CONFLICT(hero_a, hero_b) DO UPDATE SET"
-                        "   games = games + 1,"
-                        "   wins  = wins  + excluded.wins",
-                        (a, b, int(team_won)),
+                    conn.execute(
+                        text("""
+                            INSERT INTO hero_synergy (hero_a, hero_b, games, wins)
+                            VALUES (:a, :b, 1, :w)
+                            ON CONFLICT (hero_a, hero_b) DO UPDATE SET
+                                games = hero_synergy.games + 1,
+                                wins  = hero_synergy.wins  + excluded.wins
+                        """),
+                        {"a": a, "b": b, "w": int(team_won)},
                     )
-
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        # engine.begin() auto-commits here
 
 
 # ---------------------------------------------------------------------------
-# Reads for the API endpoint
+# Reads for the API endpoints
 # ---------------------------------------------------------------------------
 
 def get_hero_matchup_rows(hero_id: int, min_games: int = 50) -> list[dict]:
-    """
-    Returns all opponent matchup rows for a hero.
-    wins_for_hero = row.wins if hero_id==hero_a, else row.games - row.wins.
-    """
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT hero_a, hero_b, games, wins FROM hero_matchups"
-        " WHERE (hero_a = ? OR hero_b = ?) AND games >= ?",
-        (hero_id, hero_id, min_games),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    """Returns all opponent matchup rows for a hero (with win rate from hero's perspective)."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT hero_a, hero_b, games, wins FROM hero_matchups"
+                " WHERE (hero_a = :id OR hero_b = :id) AND games >= :min"
+            ),
+            {"id": hero_id, "min": min_games},
+        ).mappings().all()
 
     result = []
     for row in rows:
@@ -265,13 +223,12 @@ def get_hero_matchup_rows(hero_id: int, min_games: int = 50) -> list[dict]:
 
 def get_hero_base_winrate_from_db(hero_id: int) -> Optional[float]:
     """Returns hero's overall winrate from hero_stats (computed from our match data)."""
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT games, wins FROM hero_stats WHERE hero_id = ?", (hero_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT games, wins FROM hero_stats WHERE hero_id = :id"),
+            {"id": hero_id},
+        ).mappings().fetchone()
+
     if not row or row["games"] == 0:
         return None
     return round(row["wins"] / row["games"], 4)
@@ -279,31 +236,24 @@ def get_hero_base_winrate_from_db(hero_id: int) -> Optional[float]:
 
 def get_hero_total_games(hero_id: int) -> int:
     """Returns total number of games for a hero from hero_stats."""
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT games FROM hero_stats WHERE hero_id = ?", (hero_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT games FROM hero_stats WHERE hero_id = :id"),
+            {"id": hero_id},
+        ).mappings().fetchone()
     return row["games"] if row else 0
 
 
 def get_hero_synergy_rows(hero_id: int, min_games: int = 50) -> list[dict]:
-    """
-    Returns all ally synergy rows for a hero.
-
-    Because both heroes are always on the same team, `wins` in hero_synergy
-    is the count of wins for the shared team — it equals wins for either hero.
-    So wr_with = wins / games regardless of canonical position.
-    """
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT hero_a, hero_b, games, wins FROM hero_synergy"
-        " WHERE (hero_a = ? OR hero_b = ?) AND games >= ?",
-        (hero_id, hero_id, min_games),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    """Returns all ally synergy rows for a hero."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT hero_a, hero_b, games, wins FROM hero_synergy"
+                " WHERE (hero_a = :id OR hero_b = :id) AND games >= :min"
+            ),
+            {"id": hero_id, "min": min_games},
+        ).mappings().all()
 
     result = []
     for row in rows:
@@ -314,8 +264,6 @@ def get_hero_synergy_rows(hero_id: int, min_games: int = 50) -> list[dict]:
                 "hero_id": ally_id,
                 "games": games,
                 "wins": wins,
-                # wr_vs keeps naming consistent with get_hero_matchup_rows
-                # so the frontend renderMatchupList() can reuse the same field
                 "wr_vs": round(wins / games, 4) if games > 0 else 0.0,
             }
         )
@@ -327,72 +275,59 @@ def get_hero_synergy_rows(hero_id: int, min_games: int = 50) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def get_matches_count() -> int:
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM matches")
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT COUNT(*) FROM matches")).scalar() or 0
 
 
 def get_old_match_ids(older_than_days: int) -> list[int]:
     """Returns match_ids with start_time older than `older_than_days` days."""
     cutoff = int(time.time()) - older_than_days * 86400
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT match_id FROM matches WHERE start_time < ? ORDER BY start_time ASC",
-        (cutoff,),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT match_id FROM matches"
+                " WHERE start_time < :cutoff ORDER BY start_time ASC"
+            ),
+            {"cutoff": cutoff},
+        ).fetchall()
     return [r[0] for r in rows]
 
 
 def get_oldest_match_ids(count: int) -> list[int]:
     """Returns the `count` oldest match_ids (for max-cap enforcement)."""
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT match_id FROM matches ORDER BY start_time ASC LIMIT ?", (count,)
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT match_id FROM matches ORDER BY start_time ASC LIMIT :n"),
+            {"n": count},
+        ).fetchall()
     return [r[0] for r in rows]
 
 
 def delete_matches_and_recalculate(match_ids: list[int]) -> None:
-    """
-    Deletes the specified matches then fully recalculates all aggregates
-    from the remaining matches.
+    """Deletes the specified matches then fully recalculates all aggregates.
 
-    Recalculation approach (accumulate in Python dicts → bulk INSERT) is
-    faster than per-row upserts when many rows are deleted at once.
+    Recalculation: accumulate in Python dicts → bulk INSERT (faster than
+    per-row upserts when many rows are deleted at once).
     """
     if not match_ids:
         return
 
-    conn = _get_conn()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        cursor = conn.cursor()
-
+    with engine.begin() as conn:
         # Delete the unwanted matches
-        cursor.executemany(
-            "DELETE FROM matches WHERE match_id = ?",
-            [(mid,) for mid in match_ids],
+        conn.execute(
+            text("DELETE FROM matches WHERE match_id = :id"),
+            [{"id": mid} for mid in match_ids],
         )
 
         # Wipe all aggregates
-        cursor.execute("DELETE FROM hero_matchups")
-        cursor.execute("DELETE FROM hero_synergy")
-        cursor.execute("DELETE FROM hero_stats")
+        conn.execute(text("DELETE FROM hero_matchups"))
+        conn.execute(text("DELETE FROM hero_synergy"))
+        conn.execute(text("DELETE FROM hero_stats"))
 
         # Load all remaining matches
-        cursor.execute(
-            "SELECT radiant_win, radiant_heroes, dire_heroes FROM matches"
-        )
-        remaining = cursor.fetchall()
+        remaining = conn.execute(
+            text("SELECT radiant_win, radiant_heroes, dire_heroes FROM matches")
+        ).mappings().all()
 
         # Accumulate in Python dicts (much faster than per-row upserts)
         matchups: dict[tuple[int, int], list[int]] = {}
@@ -404,7 +339,6 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
             r_heroes: list[int] = json.loads(row["radiant_heroes"])
             d_heroes: list[int] = json.loads(row["dire_heroes"])
 
-            # hero_stats
             for h in r_heroes:
                 if h not in stats:
                     stats[h] = [0, 0]
@@ -416,7 +350,6 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
                 stats[h][0] += 1
                 stats[h][1] += int(not radiant_win)
 
-            # hero_matchups
             for r in r_heroes:
                 for d in d_heroes:
                     if r == d:
@@ -429,7 +362,6 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
                     matchups[key][0] += 1
                     matchups[key][1] += a_wins
 
-            # hero_synergy
             for heroes, won in [
                 (r_heroes, radiant_win),
                 (d_heroes, not radiant_win),
@@ -445,30 +377,36 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
                         synergy[key][1] += int(won)
 
         # Bulk insert recalculated aggregates
-        cursor.executemany(
-            "INSERT INTO hero_matchups (hero_a, hero_b, games, wins) VALUES (?, ?, ?, ?)",
-            [(a, b, v[0], v[1]) for (a, b), v in matchups.items()],
-        )
-        cursor.executemany(
-            "INSERT INTO hero_synergy (hero_a, hero_b, games, wins) VALUES (?, ?, ?, ?)",
-            [(a, b, v[0], v[1]) for (a, b), v in synergy.items()],
-        )
-        cursor.executemany(
-            "INSERT INTO hero_stats (hero_id, games, wins) VALUES (?, ?, ?)",
-            [(h, v[0], v[1]) for h, v in stats.items()],
-        )
+        if matchups:
+            conn.execute(
+                text(
+                    "INSERT INTO hero_matchups (hero_a, hero_b, games, wins)"
+                    " VALUES (:a, :b, :g, :w)"
+                ),
+                [{"a": a, "b": b, "g": v[0], "w": v[1]} for (a, b), v in matchups.items()],
+            )
+        if synergy:
+            conn.execute(
+                text(
+                    "INSERT INTO hero_synergy (hero_a, hero_b, games, wins)"
+                    " VALUES (:a, :b, :g, :w)"
+                ),
+                [{"a": a, "b": b, "g": v[0], "w": v[1]} for (a, b), v in synergy.items()],
+            )
+        if stats:
+            conn.execute(
+                text(
+                    "INSERT INTO hero_stats (hero_id, games, wins) VALUES (:h, :g, :w)"
+                ),
+                [{"h": h, "g": v[0], "w": v[1]} for h, v in stats.items()],
+            )
+        # engine.begin() auto-commits here
 
-        conn.commit()
-        logger.info(
-            "[stats_db] Cleanup done: deleted %d matches, remaining=%d,"
-            " matchup_pairs=%d, synergy_pairs=%d",
-            len(match_ids),
-            len(remaining),
-            len(matchups),
-            len(synergy),
-        )
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    logger.info(
+        "[stats_db] Cleanup done: deleted %d matches, remaining=%d,"
+        " matchup_pairs=%d, synergy_pairs=%d",
+        len(match_ids),
+        len(remaining),
+        len(matchups),
+        len(synergy),
+    )

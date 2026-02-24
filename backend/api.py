@@ -2,7 +2,6 @@ import logging
 import os
 import httpx
 from datetime import datetime, timezone
-from typing import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 
-from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime, ForeignKey
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 
+# --- Shared DB layer (единая точка подключения) ---
+from backend.database import get_db, create_all_tables
+from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult
 from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
@@ -39,60 +40,10 @@ if not CHECK_CHAT_ID:
     raise RuntimeError("CHECK_CHAT_ID is not set")
 
 
-# --- DB setup start ---
-# Путь к БД SQLite
-DATABASE_URL = "sqlite:///./backend/dota_bot.db"
-
-
-# Создаём engine и session
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-# Декларативная база для моделей
-Base = declarative_base()
-
-
-
-# Модель UserProfile
-class DBUserProfile(Base):
-    __tablename__ = "user_profiles"
-
-
-    user_id = Column(Integer, primary_key=True, index=True)
-    favorite_heroes = Column(JSON, default=list)  # список героев
-    settings = Column(JSON, default=dict)  # произвольные настройки
-
-
-
-# Модель QuizResult
-class DBQuizResult(Base):
-    __tablename__ = "quiz_results"
-
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("user_profiles.user_id"), index=True)
-    result = Column(JSON, nullable=False)  # результат квиза
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-
-
-# Функция для получения сессии БД (dependency injection для FastAPI)
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-
-# Создаём таблицы при старте приложения
-Base.metadata.create_all(bind=engine)
-init_tokens_table()
-init_hero_matchups_cache_table()
-init_stats_tables()  # stats layer: matches, hero_matchups, hero_synergy, hero_stats
-# --- DB setup end ---
+# --- DB init (idempotent; Alembic is the authoritative source for PostgreSQL) ---
+create_all_tables()       # creates all tables if they don't exist (SQLite convenience)
+init_stats_tables()       # migration: adds rank_bucket column if missing
+# --- DB init end ---
 
 
 app = FastAPI(title="Dota Mini App Backend")
