@@ -1614,13 +1614,13 @@ function renderMatchupList(containerId, items, type) {
     var rendered = [];
     for (var i = 0; i < items.length; i++) {
         var entry = items[i];
-        var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.opponent_hero_id];
+        var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.hero_id];
         if (!heroName) {
-            console.warn('[matchups] skip opponent: no name mapping for id =', entry.opponent_hero_id);
+            console.warn('[matchups] skip opponent: no name mapping for id =', entry.hero_id);
             continue;
         }
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
-        var winratePercent = Math.round(entry.winrate * 100);
+        var winratePercent = Math.round(entry.wr_vs * 100);
 
         rendered.push(
             '<div class="matchup-item ' + type + '">' +
@@ -1644,18 +1644,18 @@ function renderMatchupList(containerId, items, type) {
 }
 
 async function loadHeroMatchups(heroId) {
-    console.log('[matchups] loading matchups for heroId =', heroId);
+    console.log("Loading counters from /api/hero/" + heroId + "/counters");
     showMatchupsLoading();
     try {
-        var response = await fetch('/api/hero_matchups?hero_id=' + heroId);
+        var response = await fetch('/api/hero/' + heroId + '/counters?limit=20&min_games=50');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         var data = await response.json();
-        console.log('[matchups] API response strong_against.length =', data.strong_against && data.strong_against.length,
-                    'weak_against.length =', data.weak_against && data.weak_against.length);
-        console.log('[matchups] API sample strong_against[0] =', data.strong_against && data.strong_against[0]);
-        console.log('[matchups] API sample weak_against[0] =', data.weak_against && data.weak_against[0]);
-        renderMatchupList('strongAgainstList', data.strong_against, 'strong');
-        renderMatchupList('weakAgainstList', data.weak_against, 'weak');
+        console.log('[matchups] API response victims.length =', data.victims && data.victims.length,
+                    'counters.length =', data.counters && data.counters.length);
+        console.log('[matchups] API sample victims[0] =', data.victims && data.victims[0]);
+        console.log('[matchups] API sample counters[0] =', data.counters && data.counters[0]);
+        renderMatchupList('strongAgainstList', data.victims, 'strong');
+        renderMatchupList('weakAgainstList', data.counters, 'weak');
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
