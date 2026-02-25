@@ -1,8 +1,15 @@
 import os
 import traceback
+from io import BytesIO
 from pathlib import Path
 import secrets
 from datetime import datetime, timedelta
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    _PIL_OK = True
+except ImportError:
+    _PIL_OK = False
 
 import httpx
 from telegram import (
@@ -274,6 +281,117 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# -------- генерация карточки для /hero_quiz --------
+
+def _load_font(size: int, bold: bool = False):
+    """Пытается загрузить TTF-шрифт нужного размера; fallback — встроенный PIL."""
+    candidates = (
+        [
+            "C:/Windows/Fonts/arialbd.ttf",
+            "C:/Windows/Fonts/verdanab.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+        if bold
+        else [
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/verdana.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
+    )
+    for path in candidates:
+        if Path(path).exists():
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    # Pillow ≥ 10 поддерживает size=; старые версии — нет
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def render_hero_quiz_card(position_name: str, heroes: list[dict]) -> BytesIO:
+    """Рисует карточку с топ-героями и возвращает PNG-изображение в памяти.
+
+    Параметры:
+        position_name — строка вроде "Pos 1 — Керри"
+        heroes        — список dict {"name": str, "matchPercent": int|None}
+    """
+    W, H = 800, 480
+
+    # ── палитра ──────────────────────────────────────────────────────────────
+    BG     = (18,  24,  38)   # тёмно-синий фон
+    GOLD   = (200, 169, 110)  # золото (акцент)
+    WHITE  = (255, 255, 255)
+    DIM    = (160, 168, 184)  # приглушённый серый
+    BAR_BG = (45,  52,  72)   # фон пустой полоски
+
+    img  = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(img)
+
+    # ── шрифты ───────────────────────────────────────────────────────────────
+    f_title = _load_font(36, bold=True)
+    f_sub   = _load_font(22)
+    f_hero  = _load_font(26, bold=True)
+    f_pct   = _load_font(22)
+
+    MX = 48   # горизонтальный отступ
+
+    # ── заголовок ────────────────────────────────────────────────────────────
+    y = 40
+    draw.text((MX, y), "Рекомендованные герои", font=f_title, fill=WHITE)
+    y += 52
+    draw.text((MX, y), f"Позиция: {position_name}", font=f_sub, fill=DIM)
+    y += 38
+    draw.line([(MX, y), (W - MX, y)], fill=GOLD, width=1)
+    y += 20
+
+    # ── строки героев ─────────────────────────────────────────────────────────
+    ROW_H  = 58     # высота одной строки
+    NUM_W  = 38     # ширина под номер
+    NAME_W = 310    # ширина под имя
+    BAR_X  = MX + NUM_W + NAME_W + 16   # начало полоски прогресса
+    BAR_W  = W - BAR_X - MX - 56        # длина полоски
+    BAR_H  = 14
+
+    for i, hero in enumerate(heroes[:5]):
+        name = hero.get("name", "?")
+        pct  = hero.get("matchPercent")
+
+        cy = y + i * ROW_H + ROW_H // 2   # вертикальный центр строки
+
+        # номер
+        draw.text((MX, cy - 12), f"{i + 1}.", font=f_pct, fill=DIM)
+        # имя
+        draw.text((MX + NUM_W, cy - 14), name, font=f_hero, fill=WHITE)
+
+        if pct is not None:
+            ratio  = min(max(int(pct), 0), 100) / 100
+            filled = int(BAR_W * ratio)
+
+            # пустая полоска
+            draw.rectangle(
+                [BAR_X, cy - BAR_H // 2, BAR_X + BAR_W, cy + BAR_H // 2],
+                fill=BAR_BG,
+            )
+            # заполненная часть
+            if filled > 0:
+                draw.rectangle(
+                    [BAR_X, cy - BAR_H // 2, BAR_X + filled, cy + BAR_H // 2],
+                    fill=GOLD,
+                )
+            # процент справа
+            draw.text((BAR_X + BAR_W + 8, cy - 11), f"{pct}%", font=f_pct, fill=WHITE)
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
+
 async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает рекомендованных героев из последнего квиза по героям."""
     user_id = update.effective_user.id
@@ -307,18 +425,28 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        top = heroes[:5]
+
+        # ── попытка отправить карточку-изображение ────────────────────────────
+        if _PIL_OK:
+            try:
+                buf = render_hero_quiz_card(pos_label, top)
+                await update.message.reply_photo(photo=buf)
+                return
+            except Exception:
+                traceback.print_exc()
+                # продолжаем — ниже отправим текстовый вариант
+
+        # ── текстовый fallback (PIL недоступен или упал) ──────────────────────
         lines = [
             "🧙 <b>Рекомендованные герои</b>",
             f"Позиция: <b>{pos_label}</b>",
             "",
         ]
-        for i, hero in enumerate(heroes[:5], start=1):
+        for i, hero in enumerate(top, start=1):
             name = hero.get("name", "?")
-            pct = hero.get("matchPercent")
-            if pct is not None:
-                lines.append(f"{i}) {name} — совпадение {pct}%")
-            else:
-                lines.append(f"{i}) {name}")
+            pct  = hero.get("matchPercent")
+            lines.append(f"{i}) {name} — совпадение {pct}%" if pct is not None else f"{i}) {name}")
 
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
