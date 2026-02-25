@@ -1487,24 +1487,26 @@ switchPage = function (pageName, event) {
 
 // ========== МАТЧАПЫ ==========
 
-// Собираем единый массив всех героев из всех позиций (без дублей)
+// Собираем единый массив всех героев из window.dotaHeroIds —
+// единственного авторитетного источника для матчапов.
+// Дедупликация по hero_id исключает дубли вроде
+// 'Outworld Destroyer' / 'Outworld Devourer' (оба id=76).
+//
+// Примеры поиска после фикса:
+//   "ember"     → Ember Spirit        (id 106)
+//   "spi"       → Ember Spirit, Earth Spirit, Storm Spirit, Void Spirit
+//   "out"       → Outworld Destroyer  (id 76)
+//   "destroyer" → Outworld Destroyer
 const allMatchupHeroes = (function () {
-    const seen = new Set();
+    if (!window.dotaHeroIds) return [];
+    const seenIds = new Set();
     const result = [];
-    const sources = [
-        window.heroCarryData.heroes,
-        window.heroMidData.heroes,
-        window.heroOfflaneData.heroes,
-        window.heroPos4Data.heroes,
-        window.heroPos5Data.heroes
-    ];
-    sources.forEach(function (heroList) {
-        heroList.forEach(function (hero) {
-            if (!seen.has(hero.name)) {
-                seen.add(hero.name);
-                result.push(hero.name);
-            }
-        });
+    Object.keys(window.dotaHeroIds).forEach(function (name) {
+        const id = window.dotaHeroIds[name];
+        if (!seenIds.has(id)) {
+            seenIds.add(id);
+            result.push(name);
+        }
     });
     result.sort();
     return result;
