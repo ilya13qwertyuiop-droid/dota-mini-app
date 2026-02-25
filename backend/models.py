@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+# DateTime(timezone=True) → TIMESTAMPTZ on PostgreSQL
 from sqlalchemy.orm import relationship
 from sqlalchemy import JSON
 
@@ -147,3 +148,22 @@ class HeroStat(Base):
     hero_id = Column(Integer, primary_key=True)
     games = Column(Integer, nullable=False, default=0)
     wins = Column(Integer, nullable=False, default=0)
+
+
+# ---------------------------------------------------------------------------
+# Feedback (from mini app and bot)
+# ---------------------------------------------------------------------------
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=True, index=True)
+    rating = Column(Integer, nullable=True)
+    tags = Column(JSON, nullable=True)
+    message = Column(Text, nullable=False)
+    source = Column(String(32), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )

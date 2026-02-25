@@ -18,7 +18,7 @@ from sqlalchemy.orm.attributes import flag_modified
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables
 from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult
-from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table
+from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
@@ -689,3 +689,34 @@ async def api_hero_synergy(
         "worst_allies": worst_allies,
     }
 
+
+# ========== Feedback ==========
+
+class FeedbackRequest(BaseModel):
+    token: str
+    rating: int | None = None
+    tags: list[str] = []
+    message: str
+
+
+@app.post("/api/feedback")
+async def submit_feedback(data: FeedbackRequest):
+    """Сохраняет отзыв пользователя из мини‑аппа."""
+    user_id = get_user_id_by_token(data.token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if data.rating is not None and data.rating not in (1, 2, 3, 4):
+        raise HTTPException(status_code=422, detail="rating must be 1, 2, 3 or 4")
+
+    if not data.message.strip():
+        raise HTTPException(status_code=422, detail="message must not be empty")
+
+    save_feedback(
+        user_id=user_id,
+        rating=data.rating,
+        tags=data.tags,
+        message=data.message.strip(),
+        source="mini_app",
+    )
+    return {"success": True}

@@ -1908,3 +1908,167 @@ function switchSynergyTab(tab) {
     }
 }
 
+
+// ========== ФИДБЕК ==========
+
+// Состояние страницы фидбека
+var _feedbackRating = null;
+var _feedbackTags   = new Set();
+var _prevPageBeforeFeedback = 'home';
+
+function goToFeedback() {
+    // Запоминаем, откуда пришли, чтобы вернуться
+    var activePage = document.querySelector('.page.active');
+    _prevPageBeforeFeedback = activePage ? activePage.id.replace('page-', '') : 'home';
+
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-feedback').classList.add('active');
+
+    // Убираем активную метку с нав-элементов
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+
+    // Сбрасываем форму
+    _resetFeedbackForm();
+}
+
+function goBackFromFeedback() {
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    var target = document.getElementById('page-' + _prevPageBeforeFeedback) ||
+                 document.getElementById('page-home');
+    target.classList.add('active');
+
+    // Восстанавливаем нав-элемент
+    var navMap = { home: 0, quiz: 1, database: 2, profile: 3 };
+    var navIdx = navMap[_prevPageBeforeFeedback];
+    if (navIdx !== undefined) {
+        var navItems = document.querySelectorAll('.nav-item');
+        if (navItems[navIdx]) navItems[navIdx].classList.add('active');
+    } else {
+        document.querySelectorAll('.nav-item')[0].classList.add('active');
+    }
+}
+
+function selectRating(value) {
+    _feedbackRating = value;
+    document.querySelectorAll('.feedback-rating-btn').forEach(function(btn) {
+        btn.classList.toggle('selected', parseInt(btn.dataset.rating) === value);
+    });
+    _clearFeedbackStatus();
+}
+
+function toggleTag(tag) {
+    var btn = document.querySelector('.feedback-tag-chip[data-tag="' + tag + '"]');
+    if (_feedbackTags.has(tag)) {
+        _feedbackTags.delete(tag);
+        if (btn) btn.classList.remove('selected');
+    } else {
+        _feedbackTags.add(tag);
+        if (btn) btn.classList.add('selected');
+    }
+}
+
+function _clearFeedbackStatus() {
+    var el = document.getElementById('feedback-status');
+    if (el) { el.textContent = ''; el.className = 'feedback-status'; }
+}
+
+function _setFeedbackStatus(text, type) {
+    var el = document.getElementById('feedback-status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'feedback-status ' + (type || '');
+}
+
+function _resetFeedbackForm() {
+    _feedbackRating = null;
+    _feedbackTags.clear();
+
+    document.querySelectorAll('.feedback-rating-btn').forEach(function(b) { b.classList.remove('selected'); });
+    document.querySelectorAll('.feedback-tag-chip').forEach(function(b) { b.classList.remove('selected'); });
+
+    var ta = document.getElementById('feedback-message');
+    if (ta) ta.value = '';
+
+    var cc = document.getElementById('feedback-char-count');
+    if (cc) cc.textContent = '0 / 500';
+
+    _clearFeedbackStatus();
+
+    var btn = document.getElementById('feedback-submit-btn');
+    if (btn) { btn.disabled = false; btn.textContent = 'Отправить'; }
+}
+
+// Счётчик символов в textarea
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        var ta = document.getElementById('feedback-message');
+        var cc = document.getElementById('feedback-char-count');
+        if (ta && cc) {
+            ta.addEventListener('input', function() {
+                cc.textContent = ta.value.length + ' / 500';
+            });
+        }
+    });
+})();
+
+async function submitFeedback() {
+    var btn = document.getElementById('feedback-submit-btn');
+    var ta  = document.getElementById('feedback-message');
+
+    if (!_feedbackRating) {
+        _setFeedbackStatus('Выбери оценку 👆', 'hint');
+        return;
+    }
+
+    var message = (ta ? ta.value : '').trim();
+    if (!message) {
+        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии 🙏', 'hint');
+        return;
+    }
+
+    if (!USER_TOKEN) {
+        _setFeedbackStatus('Не удалось отправить — токен не найден. Открой мини‑апп через бота.', 'err');
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Отправка…'; }
+    _clearFeedbackStatus();
+
+    try {
+        var resp = await fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: USER_TOKEN,
+                rating: _feedbackRating,
+                tags: Array.from(_feedbackTags),
+                message: message,
+            }),
+        });
+
+        if (resp.ok) {
+            _setFeedbackStatus('Спасибо за отзыв ❤️', 'ok');
+            _feedbackRating = null;
+            _feedbackTags.clear();
+            document.querySelectorAll('.feedback-rating-btn').forEach(function(b) { b.classList.remove('selected'); });
+            document.querySelectorAll('.feedback-tag-chip').forEach(function(b) { b.classList.remove('selected'); });
+            if (ta) ta.value = '';
+            var cc = document.getElementById('feedback-char-count');
+            if (cc) cc.textContent = '0 / 500';
+            if (btn) { btn.disabled = false; btn.textContent = 'Отправить'; }
+        } else {
+            try { await resp.json(); } catch (_) {}
+            if (resp.status === 401) {
+                _setFeedbackStatus('Сессия устарела — открой мини‑апп через бота заново.', 'err');
+            } else {
+                _setFeedbackStatus('Не удалось отправить, попробуй ещё раз позже.', 'err');
+            }
+            if (btn) { btn.disabled = false; btn.textContent = 'Отправить'; }
+        }
+    } catch (e) {
+        console.error('Feedback submit error:', e);
+        _setFeedbackStatus('Не удалось отправить, попробуй ещё раз позже.', 'err');
+        if (btn) { btn.disabled = false; btn.textContent = 'Отправить'; }
+    }
+}
+

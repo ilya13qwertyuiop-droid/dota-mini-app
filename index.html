@@ -58,6 +58,93 @@
             </div>
           </div>
         </div>
+
+        <!-- Предложить улучшения -->
+        <button class="feedback-entry-btn" onclick="goToFeedback()">
+          <span class="feedback-entry-icon">💬</span>
+          <span class="feedback-entry-text">Предложить улучшения</span>
+          <span class="feedback-entry-arrow">→</span>
+        </button>
+      </div>
+
+      <!-- Страница фидбека -->
+      <div id="page-feedback" class="page">
+        <div class="feedback-back-row">
+          <button class="btn-back" onclick="goBackFromFeedback()">Назад</button>
+        </div>
+
+        <div class="dashboard-header">
+          <h1>📖 Предложить улучшения</h1>
+          <p class="feedback-intro">
+            Я делаю этот мини‑апп для дотеров. Напиши честно, что стоит
+            улучшить — я читаю всё лично.
+          </p>
+        </div>
+
+        <!-- Блок 1: Оценка -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">⭐</span>
+            <span class="card-title">Как тебе мини‑апп?</span>
+          </div>
+          <div class="feedback-rating-row">
+            <button class="feedback-rating-btn" data-rating="4" onclick="selectRating(4)">
+              🔥 Очень нравится
+            </button>
+            <button class="feedback-rating-btn" data-rating="3" onclick="selectRating(3)">
+              🙂 Норм
+            </button>
+            <button class="feedback-rating-btn" data-rating="2" onclick="selectRating(2)">
+              😐 Так себе
+            </button>
+            <button class="feedback-rating-btn" data-rating="1" onclick="selectRating(1)">
+              👎 Не зашло
+            </button>
+          </div>
+        </div>
+
+        <!-- Блок 2: Теги -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">🎯</span>
+            <span class="card-title">Что именно оцениваешь?</span>
+          </div>
+          <div class="feedback-tags-row">
+            <button class="feedback-tag-chip" data-tag="quiz" onclick="toggleTag('quiz')">
+              Квизы
+            </button>
+            <button class="feedback-tag-chip" data-tag="matchups" onclick="toggleTag('matchups')">
+              Матчапы
+            </button>
+            <button class="feedback-tag-chip" data-tag="speed" onclick="toggleTag('speed')">
+              Скорость
+            </button>
+            <button class="feedback-tag-chip" data-tag="design" onclick="toggleTag('design')">
+              Дизайн
+            </button>
+          </div>
+        </div>
+
+        <!-- Блок 3: Комментарий -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">✏️</span>
+            <span class="card-title">Твой комментарий</span>
+          </div>
+          <textarea
+            id="feedback-message"
+            class="feedback-textarea"
+            maxlength="500"
+            placeholder="Что понравилось, что бесит, чего не хватает…"
+          ></textarea>
+          <div id="feedback-char-count" class="feedback-char-count">0 / 500</div>
+        </div>
+
+        <div id="feedback-status" class="feedback-status"></div>
+
+        <button id="feedback-submit-btn" class="feedback-submit-btn" onclick="submitFeedback()">
+          Отправить
+        </button>
       </div>
 
       <!-- Страница квизов -->
