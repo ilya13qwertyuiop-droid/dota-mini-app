@@ -26,7 +26,7 @@ from telegram import (
     ReplyKeyboardRemove,
 )
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from db import init_tokens_table, create_token_for_user, get_user_id_by_token, get_last_quiz_result
+from db import init_tokens_table, create_token_for_user, get_user_id_by_token, get_last_quiz_result, save_feedback
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
 # db.py при импорте добавляет корень проекта в sys.path, поэтому эти импорты
@@ -1202,6 +1202,61 @@ async def _handle_synergy_hero(
         )
 
 
+# -------- /feedback --------
+
+async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Принимает отзыв о мини‑аппе прямо через бота."""
+    user_id = update.effective_user.id
+
+    if not await is_subscriber(context.bot, user_id):
+        await update.message.reply_text(
+            "Чтобы пользоваться ботом, подпишись на канал @kasumi_tt и потом вернись сюда.\n"
+            "После подписки нажми /start или повтори команду."
+        )
+        return
+
+    _user_state[user_id] = "awaiting_feedback_message"
+
+    await update.message.reply_text(
+        "💬 <b>Предложить улучшения</b>\n"
+        "\n"
+        "Напиши одним сообщением, что тебе понравилось / не понравилось "
+        "в мини‑аппе, и какие фичи хочешь видеть дальше.\n"
+        "\n"
+        "Я читаю все отзывы лично.",
+        parse_mode="HTML",
+    )
+
+
+async def _handle_feedback_message(
+    update: Update,
+    _context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+) -> None:
+    user_id = update.effective_user.id
+    try:
+        save_feedback(
+            user_id=user_id,
+            rating=None,
+            tags=["bot"],
+            message=text,
+            source="bot",
+        )
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text(
+            "Не удалось сохранить отзыв. Попробуй позже."
+        )
+        return
+
+    await update.message.reply_text(
+        "✅ <b>Спасибо за отзыв!</b>\n"
+        "\n"
+        "Я читаю всё, что вы пишете, и буду дальше докручивать мини‑апп.",
+        parse_mode="HTML",
+    )
+
+
 # -------- обработчик текстовых сообщений (диспетчер состояний) --------
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1224,6 +1279,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await _handle_counters_hero(update, context, text)
     elif state == "awaiting_synergy_hero":
         await _handle_synergy_hero(update, context, text)
+    elif state == "awaiting_feedback_message":
+        await _handle_feedback_message(update, context, text)
 
 
 # -------- /help --------
@@ -1240,6 +1297,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/hero_quiz — Рекомендованные герои из последнего квиза\n"
         "/counters — Контрпики для любого героя\n"
         "/synergy — Синергии союзников для любого героя\n"
+        "/feedback — Предложить улучшения мини‑аппа\n"
         "/help — Показать это сообщение",
         parse_mode="HTML",
     )
@@ -1260,6 +1318,7 @@ def main():
     application.add_handler(CommandHandler("hero_quiz",  hero_quiz_command))
     application.add_handler(CommandHandler("counters",   counters_command))
     application.add_handler(CommandHandler("synergy",    synergy_command))
+    application.add_handler(CommandHandler("feedback",   feedback_command))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(

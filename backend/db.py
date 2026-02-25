@@ -22,7 +22,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import HeroMatchupsCache, QuizResult, Token  # noqa: E402
+from backend.models import Feedback, HeroMatchupsCache, QuizResult, Token  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +143,31 @@ def get_last_quiz_result(user_id: int) -> tuple[dict, datetime] | None:
     if row is None:
         return None
     return (row.result, row.updated_at)
+
+
+# ---------------------------------------------------------------------------
+# Feedback
+# ---------------------------------------------------------------------------
+
+def save_feedback(
+    user_id: int | None,
+    rating: int | None,
+    tags: list[str],
+    message: str,
+    source: str,
+) -> None:
+    """Saves a feedback entry to the feedback table."""
+    with SessionLocal() as session:
+        fb = Feedback(
+            user_id=user_id,
+            rating=rating,
+            tags=tags,
+            message=message,
+            source=source,
+        )
+        session.add(fb)
+        session.commit()
+    print(f"[DB] Feedback saved: user_id={user_id} source={source} rating={rating}")
 
 
 def replace_hero_matchups_in_cache(
