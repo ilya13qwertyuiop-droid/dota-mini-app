@@ -48,12 +48,13 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
 API_BASE_URL = "https://dotaquiz.blog"
-# Базовый URL статики с иконками героев.
-# Подставь реальный путь: картинка должна лежать по адресу
-#   <HERO_IMAGE_BASE_URL>/<hero_name_to_filename(name)>
-# Пример: "https://dotaquiz.blog/hero-images/"
-# Пустая строка → иконки не загружаются, рисуются серые placeholder'ы.
-HERO_IMAGE_BASE_URL: str = os.environ.get("HERO_IMAGE_BASE_URL", "")
+# CDN для иконок героев — тот же, что использует фронтенд (hero-images.js).
+# Переопределяется через .env: HERO_IMAGE_BASE_URL=https://your-cdn/heroes
+# Дефолт указывает на официальный Dota 2 CDN Valve.
+HERO_IMAGE_BASE_URL: str = os.environ.get(
+    "HERO_IMAGE_BASE_URL",
+    "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes",
+)
 
 async def is_subscriber(bot: Bot, user_id: int) -> bool:
     """Проверяет подписку пользователя на канал CHECK_CHAT_ID.
@@ -321,17 +322,49 @@ def _load_font(size: int, bold: bool = False):
         return ImageFont.load_default()
 
 
-def hero_name_to_filename(name: str) -> str:
-    """Преобразует имя героя в имя PNG-файла (те же правила, что в hero-images.js).
+# Перевод отображаемых имён героев в CDN-слаги.
+# Скопировано из window.dotaHeroImages в hero-images.js — герои с нестандартными
+# слагами (Anti-Mage→antimage, Shadow Fiend→nevermore и т.д.).
+_HERO_SLUG_OVERRIDES: dict[str, str] = {
+    "Anti-Mage":          "antimage",
+    "Nature's Prophet":   "furion",
+    "Shadow Fiend":       "nevermore",
+    "Necrophos":          "necrolyte",
+    "Wraith King":        "skeleton_king",
+    "Clockwerk":          "rattletrap",
+    "Lifestealer":        "life_stealer",
+    "Doom":               "doom_bringer",
+    "Outworld Destroyer": "obsidian_destroyer",
+    "Outworld Devourer":  "obsidian_destroyer",
+    "Treant Protector":   "treant",
+    "Io":                 "wisp",
+    "Magnus":             "magnataur",
+    "Timbersaw":          "shredder",
+    "Underlord":          "abyssal_underlord",
+    "Windranger":         "windrunner",
+    "Zeus":               "zuus",
+    "Queen of Pain":      "queenofpain",
+    "Vengeful Spirit":    "vengefulspirit",
+}
 
-    "Templar Assassin" → "templar_assassin.png"
-    "Nature's Prophet" → "natures_prophet.png"
-    "Anti-Mage"        → "anti-mage.png"
+
+def hero_name_to_filename(name: str) -> str:
+    """Конвертирует имя героя в PNG-файл для CDN (аналог логики в hero-images.js).
+
+    Сначала ищет в _HERO_SLUG_OVERRIDES (герои с нестандартными слагами).
+    Fallback: lower-case + убрать апострофы + пробелы → подчёркивания.
+
+    "Anti-Mage"        → "antimage.png"         (override)
+    "Outworld Destroyer"→ "obsidian_destroyer.png" (override)
+    "Templar Assassin" → "templar_assassin.png"  (fallback)
+    "Crystal Maiden"   → "crystal_maiden.png"    (fallback)
     """
-    slug = name.strip().lower()
-    slug = re.sub(r"['\u2019]", "", slug)       # убираем апострофы
-    slug = re.sub(r"\s+", "_", slug)            # пробелы → _
-    slug = re.sub(r"[^a-z0-9_\-]", "", slug)   # только безопасные символы
+    slug = _HERO_SLUG_OVERRIDES.get(name)
+    if slug is None:
+        slug = name.strip().lower()
+        slug = re.sub(r"['\u2019]", "", slug)       # убираем апострофы
+        slug = re.sub(r"\s+", "_", slug)            # пробелы → _
+        slug = re.sub(r"[^a-z0-9_\-]", "", slug)   # только безопасные символы
     return slug + ".png"
 
 
@@ -366,69 +399,77 @@ def render_hero_quiz_card(
     heroes: list[dict],
     icons: list | None = None,
 ) -> BytesIO:
-    """Рисует карточку с топ-героями и возвращает PNG-изображение в памяти.
+    """Рисует карточку с топ-героями в стиле мини-апа и возвращает PNG в памяти.
 
-    position_name — строка вроде "Pos 1 — Керри"
-    heroes        — list[{"name": str, "matchPercent": int|None}]
-    icons         — list[PIL.Image | None], по одной на каждый элемент heroes
-                    (None → серый placeholder; если не передано — все None)
+    Палитра точно соответствует styles.css:
+      --bg-main #050509 · --glass-bg rgb(15,15,20) · --text-main #f5f5f7
+      --text-muted #9b9ba1 · .match-fill gradient #ff9f1c→#ffd75a
+      .hero-card--gold/silver/bronze border colors
     """
-    n  = min(len(heroes), 5)
-    MX = 44           # горизонтальный отступ
+    n = min(len(heroes), 5)
 
-    HEADER_H = 138    # высота блока заголовка
-    ROW_H    = 108    # высота одной строки героя
-    BOTTOM   = 32     # нижний отступ
+    # ── размеры ──────────────────────────────────────────────────────────────
+    W         = 800
+    OUTER_PAD = 28    # отступ холста до карточки (px)
+    INNER_PAD = 14    # внутренний padding карточки (CSS: 16–18px)
+    CARD_H    = 82    # высота карточки героя
+    CARD_GAP  = 10    # зазор между карточками
+    ROW_H     = CARD_H + CARD_GAP
+    ICON_W    = 120   # ширина иконки (panoramic 16:9, как в Dota 2 CDN)
+    ICON_H    = 68    # высота иконки
+    BORDER_R  = 14    # border-radius карточки (CSS: 16px)
+    BAR_H     = 4     # высота полоски совпадения (CSS .match-bar: height 4px)
+    HEADER_H  = 130   # высота блока заголовка
 
-    W = 800
-    H = HEADER_H + n * ROW_H + BOTTOM
+    H = HEADER_H + n * ROW_H + 30
 
-    # ── палитра ──────────────────────────────────────────────────────────────
-    C_BG_TOP   = (14,  20,  34)    # верх градиента
-    C_BG_BOT   = (22,  30,  50)    # низ градиента
-    C_GOLD     = (200, 169, 110)   # золото (акцент)
-    C_WHITE    = (255, 255, 255)
-    C_ROW_EVEN = (28,  36,  58)    # фон чётных строк
-    C_ROW_ODD  = (22,  30,  48)    # фон нечётных строк
-    C_BAR_BG   = (48,  58,  82)    # пустая часть полоски
-    C_ICON_BG  = (36,  46,  70)    # placeholder иконки
-    C_PCT      = (220, 195, 145)   # цвет текста процента
+    # ── палитра (точные hex-значения из styles.css) ───────────────────────────
+    C_BG      = (5,   5,   9)    # --bg-main: #050509
+    C_CARD    = (15,  15,  20)   # --glass-bg: rgba(15,15,20,0.9) → solid
+    C_BORDER  = (35,  35,  46)   # --glass-border: rgba(255,255,255,0.06) на тёмном
+    C_TEXT    = (245, 245, 247)  # --text-main: #f5f5f7
+    C_MUTED   = (155, 155, 161)  # --text-muted: #9b9ba1
+    C_GOLD_A  = (255, 159,  28)  # #ff9f1c — старт .match-fill gradient
+    C_GOLD_B  = (255, 215,  90)  # #ffd75a — финиш .match-fill gradient
+    C_BAR_BG  = (30,  30,  40)   # .match-bar background: rgba(30,30,40,1)
+    C_ICON_BG = (22,  25,  38)   # placeholder иконки
 
-    img  = Image.new("RGB", (W, H), C_BG_TOP)
+    # Ранговые бордеры (CSS .hero-card--gold / --silver / --bronze)
+    _RANK_BORDER: list = [
+        (255, 215,  90),   # gold   #ffd75a
+        (210, 218, 255),   # silver
+        (224, 169, 109),   # bronze #e0a96d
+        None,
+        None,
+    ]
+
+    img  = Image.new("RGB", (W, H), C_BG)
     draw = ImageDraw.Draw(img)
 
-    # ── градиент фона (построчно) ─────────────────────────────────────────────
+    # ── фон: мягкий вертикальный градиент #050509 → #050510 ──────────────────
     for sy in range(H):
-        t = sy / H
-        r = int(C_BG_TOP[0] + (C_BG_BOT[0] - C_BG_TOP[0]) * t)
-        g = int(C_BG_TOP[1] + (C_BG_BOT[1] - C_BG_TOP[1]) * t)
-        b = int(C_BG_TOP[2] + (C_BG_BOT[2] - C_BG_TOP[2]) * t)
-        draw.line([(0, sy), (W, sy)], fill=(r, g, b))
+        bv = int(9 + 7 * sy / H)   # blue: 9 → 16
+        draw.line([(0, sy), (W, sy)], fill=(5, 5, bv))
 
-    # вертикальная золотая полоса слева (4 px)
-    draw.rectangle([0, 0, 3, H], fill=C_GOLD)
+    # ── шрифты (размеры масштабированы под PNG-разрешение 800px) ─────────────
+    f_title = _load_font(28, bold=True)   # h1: font-size 22px / weight 700 в CSS
+    f_sub   = _load_font(18)              # подзаголовок, --text-muted
+    f_hero  = _load_font(22, bold=True)   # .hero-name: font-weight 600
+    f_pct   = _load_font(18)              # процент
 
-    # ── шрифты ───────────────────────────────────────────────────────────────
-    f_title = _load_font(34, bold=True)
-    f_pos   = _load_font(20)
-    f_hero  = _load_font(24, bold=True)
-    f_pct   = _load_font(20)
+    # ── заголовок ─────────────────────────────────────────────────────────────
+    draw.text((OUTER_PAD, 32), "Рекомендованные герои", font=f_title, fill=C_TEXT)
+    draw.text((OUTER_PAD, 78), f"Позиция: {position_name}", font=f_sub, fill=C_MUTED)
+    # разделительная линия (имитирует border-bottom)
+    draw.line([(OUTER_PAD, 114), (W - OUTER_PAD, 114)], fill=C_BORDER, width=1)
 
-    # ── заголовок ────────────────────────────────────────────────────────────
-    draw.text((MX, 36), "Рекомендованные герои", font=f_title, fill=C_WHITE)
-    draw.text((MX, 86), f"Позиция: {position_name}", font=f_pos,  fill=C_GOLD)
-    draw.line([(MX, 120), (W - MX, 120)], fill=C_GOLD, width=1)
+    # ── производные x-координаты ──────────────────────────────────────────────
+    TEXT_X    = OUTER_PAD + INNER_PAD + ICON_W + 12  # x начала текста/полоски
+    PCT_RIGHT = W - OUTER_PAD - INNER_PAD             # правый край для pct
+    BAR_X1    = TEXT_X
+    BAR_X2    = PCT_RIGHT - 52                        # место для "100%"
 
-    # ── строки героев ─────────────────────────────────────────────────────────
-    ICON_SIZE = 72
-    ICON_X    = MX + 12                       # x левого края иконки
-    TEXT_X    = ICON_X + ICON_SIZE + 14       # x начала текста/полоски
-    BAR_END   = W - MX - 68                   # x правого края полоски
-    BAR_W_MAX = BAR_END - TEXT_X              # максимальная ширина полоски
-    BAR_H     = 10
-    PCT_X     = BAR_END + 8                   # x текста процента
-
-    _icons = list(icons or []) + [None] * n   # гарантируем длину ≥ n
+    _icons = list(icons or []) + [None] * n  # гарантируем длину ≥ n
 
     for i in range(n):
         hero     = heroes[i]
@@ -436,25 +477,37 @@ def render_hero_quiz_card(
         name     = hero.get("name", "?")
         pct      = hero.get("matchPercent")
 
-        row_y = HEADER_H + i * ROW_H
+        card_y     = HEADER_H + i * ROW_H
+        border_col = _RANK_BORDER[i] if _RANK_BORDER[i] is not None else C_BORDER
 
-        # фон строки (чередующийся)
-        draw.rectangle(
-            [MX, row_y + 4, W - MX, row_y + ROW_H - 4],
-            fill=C_ROW_EVEN if i % 2 == 0 else C_ROW_ODD,
-        )
-        # тонкий золотой левый борт строки
-        draw.rectangle([MX, row_y + 4, MX + 3, row_y + ROW_H - 4], fill=C_GOLD)
+        # ── карточка (.hero-card: border-radius 16px, bg rgba(15,15,20)) ──────
+        try:
+            draw.rounded_rectangle(
+                [OUTER_PAD, card_y, W - OUTER_PAD, card_y + CARD_H],
+                radius=BORDER_R, fill=C_CARD, outline=border_col, width=1,
+            )
+        except AttributeError:   # Pillow < 8.2 fallback
+            draw.rectangle(
+                [OUTER_PAD, card_y, W - OUTER_PAD, card_y + CARD_H],
+                fill=C_CARD, outline=border_col,
+            )
 
-        # ── иконка ───────────────────────────────────────────────────────────
-        iy = row_y + (ROW_H - ICON_SIZE) // 2
-        draw.rectangle([ICON_X, iy, ICON_X + ICON_SIZE, iy + ICON_SIZE], fill=C_ICON_BG)
+        # ── иконка (.hero-icon: border-radius 6px из CSS) ────────────────────
+        ix = OUTER_PAD + INNER_PAD
+        iy = card_y + (CARD_H - ICON_H) // 2
+        try:
+            draw.rounded_rectangle(
+                [ix, iy, ix + ICON_W, iy + ICON_H], radius=6, fill=C_ICON_BG
+            )
+        except AttributeError:
+            draw.rectangle([ix, iy, ix + ICON_W, iy + ICON_H], fill=C_ICON_BG)
+
         if icon_img is not None:
             try:
                 thumb = icon_img.copy()
-                thumb.thumbnail((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
-                ox = ICON_X + (ICON_SIZE - thumb.width)  // 2
-                oy = iy      + (ICON_SIZE - thumb.height) // 2
+                thumb.thumbnail((ICON_W, ICON_H), Image.LANCZOS)
+                ox = ix + (ICON_W - thumb.width)  // 2
+                oy = iy + (ICON_H - thumb.height) // 2
                 if "A" in thumb.getbands():
                     img.paste(thumb, (ox, oy), thumb)
                 else:
@@ -462,21 +515,49 @@ def render_hero_quiz_card(
             except Exception as e:
                 print(f"[render] icon paste failed for '{name}': {e}")
 
-        # ── имя и полоска прогресса ───────────────────────────────────────────
-        cy = row_y + ROW_H // 2
-        draw.text((TEXT_X, cy - 22), name, font=f_hero, fill=C_WHITE)
+        # ── имя героя (.hero-name: font-weight 600, --text-main) ─────────────
+        name_y = card_y + 16
+        draw.text((TEXT_X, name_y), name, font=f_hero, fill=C_TEXT)
 
+        # ── процент совпадения (правый край, цвет #ffd75a) ────────────────────
         if pct is not None:
-            ratio  = min(max(int(pct), 0), 100) / 100
-            filled = int(BAR_W_MAX * ratio)
-            bar_y  = cy + 8
+            pct_str = f"{pct}%"
+            try:
+                bb    = draw.textbbox((0, 0), pct_str, font=f_pct)
+                pct_w = bb[2] - bb[0]
+            except AttributeError:
+                pct_w = len(pct_str) * 11
+            draw.text(
+                (PCT_RIGHT - pct_w, name_y + 2),
+                pct_str, font=f_pct, fill=C_GOLD_B,
+            )
 
-            draw.rectangle([TEXT_X, bar_y, BAR_END, bar_y + BAR_H], fill=C_BAR_BG)
-            if filled > 0:
-                draw.rectangle(
-                    [TEXT_X, bar_y, TEXT_X + filled, bar_y + BAR_H], fill=C_GOLD
+        # ── полоска совпадения (.match-bar/.match-fill) ───────────────────────
+        if pct is not None:
+            bar_y  = card_y + CARD_H - 18
+            ratio  = min(max(int(pct), 0), 100) / 100
+            filled = int((BAR_X2 - BAR_X1) * ratio)
+
+            # фон полоски (.match-bar)
+            try:
+                draw.rounded_rectangle(
+                    [BAR_X1, bar_y, BAR_X2, bar_y + BAR_H],
+                    radius=999, fill=C_BAR_BG,
                 )
-            draw.text((PCT_X, cy + 4), f"{pct}%", font=f_pct, fill=C_PCT)
+            except AttributeError:
+                draw.rectangle([BAR_X1, bar_y, BAR_X2, bar_y + BAR_H], fill=C_BAR_BG)
+
+            # заполненная часть: градиент #ff9f1c → #ffd75a (.match-fill)
+            if filled > 0:
+                for dx in range(filled):
+                    t  = dx / max(filled - 1, 1)
+                    gr = int(C_GOLD_A[0] + (C_GOLD_B[0] - C_GOLD_A[0]) * t)
+                    gg = int(C_GOLD_A[1] + (C_GOLD_B[1] - C_GOLD_A[1]) * t)
+                    gb = int(C_GOLD_A[2] + (C_GOLD_B[2] - C_GOLD_A[2]) * t)
+                    draw.line(
+                        [(BAR_X1 + dx, bar_y), (BAR_X1 + dx, bar_y + BAR_H)],
+                        fill=(gr, gg, gb),
+                    )
 
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -524,7 +605,11 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 icons   = await _fetch_hero_icons(top)
                 buf     = render_hero_quiz_card(pos_label, top, icons)
-                caption = f"Рекомендованные герои\nПозиция: {pos_label}"
+                caption = (
+                    f"Рекомендованные герои\n"
+                    f"Позиция: {pos_label}\n"
+                    f"Подборка на основе твоего последнего квиза."
+                )
                 await update.message.reply_photo(photo=buf, caption=caption)
                 return
             except Exception:
