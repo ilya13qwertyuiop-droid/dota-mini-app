@@ -26,7 +26,7 @@ from telegram import (
     ReplyKeyboardRemove,
 )
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from db import init_tokens_table, create_token_for_user, get_user_id_by_token, get_last_quiz_result, save_feedback
+from db import init_tokens_table, create_token_for_user, get_user_id_by_token, get_last_quiz_result, save_feedback, get_recent_feedback
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
 # db.py при импорте добавляет корень проекта в sys.path, поэтому эти импорты
@@ -70,6 +70,9 @@ load_env()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
+
+# Telegram user_id администраторов — имеют доступ к /admin_feedback
+ADMIN_IDS: frozenset[int] = frozenset({556944111})
 API_BASE_URL = "https://dotaquiz.blog"
 # CDN для иконок героев — тот же, что использует фронтенд (hero-images.js).
 # Переопределяется через .env: HERO_IMAGE_BASE_URL=https://your-cdn/heroes
@@ -1234,6 +1237,7 @@ async def _handle_feedback_message(
     text: str,
 ) -> None:
     user_id = update.effective_user.id
+    username: str | None = update.effective_user.username
     try:
         save_feedback(
             user_id=user_id,
@@ -1241,6 +1245,7 @@ async def _handle_feedback_message(
             tags=["bot"],
             message=text,
             source="bot",
+            username=username,
         )
     except Exception:
         traceback.print_exc()
@@ -1255,6 +1260,45 @@ async def _handle_feedback_message(
         "Я читаю всё, что вы пишете, и буду дальше докручивать мини‑апп.",
         parse_mode="HTML",
     )
+
+
+# -------- /admin_feedback (скрытая команда для администраторов) --------
+
+async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Показывает последние 20 отзывов. Доступно только администраторам."""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        return  # тихо игнорируем
+
+    try:
+        entries = get_recent_feedback(limit=20)
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Не удалось получить отзывы.")
+        return
+
+    if not entries:
+        await update.message.reply_text("Отзывов пока нет.")
+        return
+
+    lines: list[str] = ["<b>📋 Последние отзывы</b>\n"]
+    for e in entries:
+        stars = "★" * (e["rating"] or 0) + "☆" * (4 - (e["rating"] or 0)) if e["rating"] else "—"
+        uname = f'<a href="tg://user?id={e["user_id"]}">@{e["username"]}</a>' if e["username"] else (f'user {e["user_id"]}' if e["user_id"] else "аноним")
+        tags_str = " ".join(f"#{t}" for t in e["tags"]) if e["tags"] else ""
+        date_str = e["created_at"].strftime("%d.%m %H:%M") if e["created_at"] else "?"
+        source_icon = "📱" if e["source"] == "mini_app" else "🤖"
+        lines.append(
+            f"<b>#{e['id']}</b> {source_icon} {stars} · {uname} · {date_str}\n"
+            + (f"{tags_str}\n" if tags_str else "")
+            + f"{e['message']}\n"
+        )
+
+    # Telegram ограничивает сообщение ~4096 символами — режем на части
+    text = "\n".join(lines)
+    chunk_size = 4000
+    for i in range(0, len(text), chunk_size):
+        await update.message.reply_text(text[i : i + chunk_size], parse_mode="HTML", disable_web_page_preview=True)
 
 
 # -------- обработчик текстовых сообщений (диспетчер состояний) --------
@@ -1318,7 +1362,8 @@ def main():
     application.add_handler(CommandHandler("hero_quiz",  hero_quiz_command))
     application.add_handler(CommandHandler("counters",   counters_command))
     application.add_handler(CommandHandler("synergy",    synergy_command))
-    application.add_handler(CommandHandler("feedback",   feedback_command))
+    application.add_handler(CommandHandler("feedback",       feedback_command))
+    application.add_handler(CommandHandler("admin_feedback", admin_feedback_command))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(

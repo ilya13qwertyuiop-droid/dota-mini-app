@@ -159,6 +159,7 @@ class Feedback(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, nullable=True, index=True)
+    username = Column(String(64), nullable=True)
     rating = Column(Integer, nullable=True)
     tags = Column(JSON, nullable=True)
     message = Column(Text, nullable=False)

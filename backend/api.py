@@ -700,7 +700,7 @@ class FeedbackRequest(BaseModel):
 
 
 @app.post("/api/feedback")
-async def submit_feedback(data: FeedbackRequest):
+async def submit_feedback(data: FeedbackRequest, db: Session = Depends(get_db)):
     """Сохраняет отзыв пользователя из мини‑аппа."""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
@@ -712,11 +712,21 @@ async def submit_feedback(data: FeedbackRequest):
     if not data.message.strip():
         raise HTTPException(status_code=422, detail="message must not be empty")
 
+    # Пробуем достать username из сохранённого профиля
+    username: str | None = None
+    try:
+        db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
+        if db_profile and db_profile.settings:
+            username = db_profile.settings.get("username")
+    except Exception as e:
+        logger.warning("[feedback] Failed to fetch username for user %s: %s", user_id, e)
+
     save_feedback(
         user_id=user_id,
         rating=data.rating,
         tags=data.tags,
         message=data.message.strip(),
         source="mini_app",
+        username=username,
     )
     return {"success": True}
