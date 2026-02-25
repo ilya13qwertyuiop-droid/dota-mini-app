@@ -155,11 +155,13 @@ def save_feedback(
     tags: list[str],
     message: str,
     source: str,
+    username: str | None = None,
 ) -> None:
     """Saves a feedback entry to the feedback table."""
     with SessionLocal() as session:
         fb = Feedback(
             user_id=user_id,
+            username=username,
             rating=rating,
             tags=tags,
             message=message,
@@ -167,7 +169,31 @@ def save_feedback(
         )
         session.add(fb)
         session.commit()
-    print(f"[DB] Feedback saved: user_id={user_id} source={source} rating={rating}")
+    print(f"[DB] Feedback saved: user_id={user_id} username={username} source={source} rating={rating}")
+
+
+def get_recent_feedback(limit: int = 20) -> list[dict]:
+    """Returns the most recent feedback entries as plain dicts."""
+    with SessionLocal() as session:
+        rows = (
+            session.query(Feedback)
+            .order_by(Feedback.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "username": r.username,
+                "rating": r.rating,
+                "tags": r.tags or [],
+                "message": r.message,
+                "source": r.source,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ]
 
 
 def replace_hero_matchups_in_cache(
