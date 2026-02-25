@@ -77,6 +77,7 @@ def create_all_tables() -> None:
         HeroStat,
         HeroSynergy,
         Match,
+        MatchPlayer,
         QuizResult,
         Token,
         UserProfile,

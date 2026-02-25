@@ -14,6 +14,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -148,6 +149,47 @@ class HeroStat(Base):
     hero_id = Column(Integer, primary_key=True)
     games = Column(Integer, nullable=False, default=0)
     wins = Column(Integer, nullable=False, default=0)
+
+
+class MatchPlayer(Base):
+    """Per-player record for each match (populated by stats_updater when FETCH_MATCH_DETAILS=1).
+
+    Rows for matches saved before this table existed will be inserted by the
+    backfill worker (BACKFILL_ENABLED=1).  All extended stats columns are
+    nullable so that a basic row (hero_id / side) can be written without
+    immediately having the full details.
+    """
+    __tablename__ = "match_players"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # No ForeignKey constraint — delete_matches_and_recalculate handles
+    # match_players cleanup explicitly, avoiding cascade issues on SQLite.
+    match_id = Column(BigInteger, nullable=False, index=True)
+    hero_id = Column(Integer, nullable=False)
+    player_slot = Column(Integer, nullable=False)   # 0-127 radiant, 128-255 dire
+    is_radiant = Column(Integer, nullable=False)    # 0 or 1
+
+    # Extended stats — NULL for records written before this migration
+    lane = Column(SmallInteger)          # 1=safe, 2=mid, 3=off, 4=jungle
+    lane_role = Column(SmallInteger)     # OpenDota internal lane_role
+    gpm = Column(Integer)                # gold_per_min
+    xpm = Column(Integer)                # xp_per_min
+    kills = Column(Integer)
+    deaths = Column(Integer)
+    assists = Column(Integer)
+    hero_damage = Column(Integer)
+    tower_damage = Column(Integer)
+    obs_placed = Column(Integer)         # observer wards placed (NULL if not in data)
+    sen_placed = Column(Integer)         # sentry wards placed   (NULL if not in data)
+
+    # Top-3 core item IDs (cheap consumables filtered out); NULL = unknown
+    item0 = Column(Integer)
+    item1 = Column(Integer)
+    item2 = Column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint("match_id", "player_slot", name="uq_match_player"),
+    )
 
 
 # ---------------------------------------------------------------------------
