@@ -603,14 +603,23 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── попытка отправить карточку-изображение ────────────────────────────
         if _PIL_OK:
             try:
-                icons   = await _fetch_hero_icons(top)
-                buf     = render_hero_quiz_card(pos_label, top, icons)
+                icons = await _fetch_hero_icons(top)
+                buf   = render_hero_quiz_card(pos_label, top, icons)
+
+                # Извлекаем только человекочитаемую часть после «—»
+                if "—" in pos_label:
+                    position_short = pos_label.split("—", 1)[1].strip()
+                else:
+                    position_short = pos_label
+
                 caption = (
-                    f"Рекомендованные герои\n"
-                    f"Позиция: {pos_label}\n"
-                    f"Подборка на основе твоего последнего квиза."
+                    "🧙 <b>Рекомендованные герои</b>\n"
+                    "\n"
+                    f"🎯 <b>Позиция:</b> {position_short}\n"
+                    "\n"
+                    "📌 Подборка на основе твоего последнего квиза по позициям."
                 )
-                await update.message.reply_photo(photo=buf, caption=caption)
+                await update.message.reply_photo(photo=buf, caption=caption, parse_mode="HTML")
                 return
             except Exception:
                 traceback.print_exc()
