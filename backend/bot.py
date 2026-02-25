@@ -1,4 +1,6 @@
+import asyncio
 import os
+import re
 import traceback
 from io import BytesIO
 from pathlib import Path
@@ -46,6 +48,12 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
 API_BASE_URL = "https://dotaquiz.blog"
+# Базовый URL статики с иконками героев.
+# Подставь реальный путь: картинка должна лежать по адресу
+#   <HERO_IMAGE_BASE_URL>/<hero_name_to_filename(name)>
+# Пример: "https://dotaquiz.blog/hero-images/"
+# Пустая строка → иконки не загружаются, рисуются серые placeholder'ы.
+HERO_IMAGE_BASE_URL: str = os.environ.get("HERO_IMAGE_BASE_URL", "")
 
 async def is_subscriber(bot: Bot, user_id: int) -> bool:
     """Проверяет подписку пользователя на канал CHECK_CHAT_ID.
@@ -313,78 +321,162 @@ def _load_font(size: int, bold: bool = False):
         return ImageFont.load_default()
 
 
-def render_hero_quiz_card(position_name: str, heroes: list[dict]) -> BytesIO:
+def hero_name_to_filename(name: str) -> str:
+    """Преобразует имя героя в имя PNG-файла (те же правила, что в hero-images.js).
+
+    "Templar Assassin" → "templar_assassin.png"
+    "Nature's Prophet" → "natures_prophet.png"
+    "Anti-Mage"        → "anti-mage.png"
+    """
+    slug = name.strip().lower()
+    slug = re.sub(r"['\u2019]", "", slug)       # убираем апострофы
+    slug = re.sub(r"\s+", "_", slug)            # пробелы → _
+    slug = re.sub(r"[^a-z0-9_\-]", "", slug)   # только безопасные символы
+    return slug + ".png"
+
+
+async def _fetch_hero_icons(heroes: list[dict]) -> list:
+    """Параллельно скачивает иконки для каждого героя из HERO_IMAGE_BASE_URL.
+
+    Возвращает list[PIL.Image | None] — None там, где загрузка не удалась.
+    Любые сетевые/парсинговые ошибки подавляются; иконка просто пропускается.
+    """
+    if not _PIL_OK or not HERO_IMAGE_BASE_URL:
+        return [None] * len(heroes)
+
+    async def _one(client: httpx.AsyncClient, name: str):
+        try:
+            url = HERO_IMAGE_BASE_URL.rstrip("/") + "/" + hero_name_to_filename(name)
+            resp = await client.get(url, follow_redirects=True)
+            if resp.status_code == 200:
+                return Image.open(BytesIO(resp.content)).convert("RGBA")
+        except Exception as e:
+            print(f"[hero icon] fetch failed for '{name}': {e}")
+        return None
+
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        results = await asyncio.gather(
+            *[_one(client, h.get("name", "")) for h in heroes]
+        )
+    return list(results)
+
+
+def render_hero_quiz_card(
+    position_name: str,
+    heroes: list[dict],
+    icons: list | None = None,
+) -> BytesIO:
     """Рисует карточку с топ-героями и возвращает PNG-изображение в памяти.
 
-    Параметры:
-        position_name — строка вроде "Pos 1 — Керри"
-        heroes        — список dict {"name": str, "matchPercent": int|None}
+    position_name — строка вроде "Pos 1 — Керри"
+    heroes        — list[{"name": str, "matchPercent": int|None}]
+    icons         — list[PIL.Image | None], по одной на каждый элемент heroes
+                    (None → серый placeholder; если не передано — все None)
     """
-    W, H = 800, 480
+    n  = min(len(heroes), 5)
+    MX = 44           # горизонтальный отступ
+
+    HEADER_H = 138    # высота блока заголовка
+    ROW_H    = 108    # высота одной строки героя
+    BOTTOM   = 32     # нижний отступ
+
+    W = 800
+    H = HEADER_H + n * ROW_H + BOTTOM
 
     # ── палитра ──────────────────────────────────────────────────────────────
-    BG     = (18,  24,  38)   # тёмно-синий фон
-    GOLD   = (200, 169, 110)  # золото (акцент)
-    WHITE  = (255, 255, 255)
-    DIM    = (160, 168, 184)  # приглушённый серый
-    BAR_BG = (45,  52,  72)   # фон пустой полоски
+    C_BG_TOP   = (14,  20,  34)    # верх градиента
+    C_BG_BOT   = (22,  30,  50)    # низ градиента
+    C_GOLD     = (200, 169, 110)   # золото (акцент)
+    C_WHITE    = (255, 255, 255)
+    C_ROW_EVEN = (28,  36,  58)    # фон чётных строк
+    C_ROW_ODD  = (22,  30,  48)    # фон нечётных строк
+    C_BAR_BG   = (48,  58,  82)    # пустая часть полоски
+    C_ICON_BG  = (36,  46,  70)    # placeholder иконки
+    C_PCT      = (220, 195, 145)   # цвет текста процента
 
-    img  = Image.new("RGB", (W, H), BG)
+    img  = Image.new("RGB", (W, H), C_BG_TOP)
     draw = ImageDraw.Draw(img)
 
-    # ── шрифты ───────────────────────────────────────────────────────────────
-    f_title = _load_font(36, bold=True)
-    f_sub   = _load_font(22)
-    f_hero  = _load_font(26, bold=True)
-    f_pct   = _load_font(22)
+    # ── градиент фона (построчно) ─────────────────────────────────────────────
+    for sy in range(H):
+        t = sy / H
+        r = int(C_BG_TOP[0] + (C_BG_BOT[0] - C_BG_TOP[0]) * t)
+        g = int(C_BG_TOP[1] + (C_BG_BOT[1] - C_BG_TOP[1]) * t)
+        b = int(C_BG_TOP[2] + (C_BG_BOT[2] - C_BG_TOP[2]) * t)
+        draw.line([(0, sy), (W, sy)], fill=(r, g, b))
 
-    MX = 48   # горизонтальный отступ
+    # вертикальная золотая полоса слева (4 px)
+    draw.rectangle([0, 0, 3, H], fill=C_GOLD)
+
+    # ── шрифты ───────────────────────────────────────────────────────────────
+    f_title = _load_font(34, bold=True)
+    f_pos   = _load_font(20)
+    f_hero  = _load_font(24, bold=True)
+    f_pct   = _load_font(20)
 
     # ── заголовок ────────────────────────────────────────────────────────────
-    y = 40
-    draw.text((MX, y), "Рекомендованные герои", font=f_title, fill=WHITE)
-    y += 52
-    draw.text((MX, y), f"Позиция: {position_name}", font=f_sub, fill=DIM)
-    y += 38
-    draw.line([(MX, y), (W - MX, y)], fill=GOLD, width=1)
-    y += 20
+    draw.text((MX, 36), "Рекомендованные герои", font=f_title, fill=C_WHITE)
+    draw.text((MX, 86), f"Позиция: {position_name}", font=f_pos,  fill=C_GOLD)
+    draw.line([(MX, 120), (W - MX, 120)], fill=C_GOLD, width=1)
 
     # ── строки героев ─────────────────────────────────────────────────────────
-    ROW_H  = 58     # высота одной строки
-    NUM_W  = 38     # ширина под номер
-    NAME_W = 310    # ширина под имя
-    BAR_X  = MX + NUM_W + NAME_W + 16   # начало полоски прогресса
-    BAR_W  = W - BAR_X - MX - 56        # длина полоски
-    BAR_H  = 14
+    ICON_SIZE = 72
+    ICON_X    = MX + 12                       # x левого края иконки
+    TEXT_X    = ICON_X + ICON_SIZE + 14       # x начала текста/полоски
+    BAR_END   = W - MX - 68                   # x правого края полоски
+    BAR_W_MAX = BAR_END - TEXT_X              # максимальная ширина полоски
+    BAR_H     = 10
+    PCT_X     = BAR_END + 8                   # x текста процента
 
-    for i, hero in enumerate(heroes[:5]):
-        name = hero.get("name", "?")
-        pct  = hero.get("matchPercent")
+    _icons = list(icons or []) + [None] * n   # гарантируем длину ≥ n
 
-        cy = y + i * ROW_H + ROW_H // 2   # вертикальный центр строки
+    for i in range(n):
+        hero     = heroes[i]
+        icon_img = _icons[i]
+        name     = hero.get("name", "?")
+        pct      = hero.get("matchPercent")
 
-        # номер
-        draw.text((MX, cy - 12), f"{i + 1}.", font=f_pct, fill=DIM)
-        # имя
-        draw.text((MX + NUM_W, cy - 14), name, font=f_hero, fill=WHITE)
+        row_y = HEADER_H + i * ROW_H
+
+        # фон строки (чередующийся)
+        draw.rectangle(
+            [MX, row_y + 4, W - MX, row_y + ROW_H - 4],
+            fill=C_ROW_EVEN if i % 2 == 0 else C_ROW_ODD,
+        )
+        # тонкий золотой левый борт строки
+        draw.rectangle([MX, row_y + 4, MX + 3, row_y + ROW_H - 4], fill=C_GOLD)
+
+        # ── иконка ───────────────────────────────────────────────────────────
+        iy = row_y + (ROW_H - ICON_SIZE) // 2
+        draw.rectangle([ICON_X, iy, ICON_X + ICON_SIZE, iy + ICON_SIZE], fill=C_ICON_BG)
+        if icon_img is not None:
+            try:
+                thumb = icon_img.copy()
+                thumb.thumbnail((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+                ox = ICON_X + (ICON_SIZE - thumb.width)  // 2
+                oy = iy      + (ICON_SIZE - thumb.height) // 2
+                if "A" in thumb.getbands():
+                    img.paste(thumb, (ox, oy), thumb)
+                else:
+                    img.paste(thumb, (ox, oy))
+            except Exception as e:
+                print(f"[render] icon paste failed for '{name}': {e}")
+
+        # ── имя и полоска прогресса ───────────────────────────────────────────
+        cy = row_y + ROW_H // 2
+        draw.text((TEXT_X, cy - 22), name, font=f_hero, fill=C_WHITE)
 
         if pct is not None:
             ratio  = min(max(int(pct), 0), 100) / 100
-            filled = int(BAR_W * ratio)
+            filled = int(BAR_W_MAX * ratio)
+            bar_y  = cy + 8
 
-            # пустая полоска
-            draw.rectangle(
-                [BAR_X, cy - BAR_H // 2, BAR_X + BAR_W, cy + BAR_H // 2],
-                fill=BAR_BG,
-            )
-            # заполненная часть
+            draw.rectangle([TEXT_X, bar_y, BAR_END, bar_y + BAR_H], fill=C_BAR_BG)
             if filled > 0:
                 draw.rectangle(
-                    [BAR_X, cy - BAR_H // 2, BAR_X + filled, cy + BAR_H // 2],
-                    fill=GOLD,
+                    [TEXT_X, bar_y, TEXT_X + filled, bar_y + BAR_H], fill=C_GOLD
                 )
-            # процент справа
-            draw.text((BAR_X + BAR_W + 8, cy - 11), f"{pct}%", font=f_pct, fill=WHITE)
+            draw.text((PCT_X, cy + 4), f"{pct}%", font=f_pct, fill=C_PCT)
 
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -430,8 +522,10 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── попытка отправить карточку-изображение ────────────────────────────
         if _PIL_OK:
             try:
-                buf = render_hero_quiz_card(pos_label, top)
-                await update.message.reply_photo(photo=buf)
+                icons   = await _fetch_hero_icons(top)
+                buf     = render_hero_quiz_card(pos_label, top, icons)
+                caption = f"Рекомендованные герои\nПозиция: {pos_label}"
+                await update.message.reply_photo(photo=buf, caption=caption)
                 return
             except Exception:
                 traceback.print_exc()
