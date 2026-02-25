@@ -51,16 +51,55 @@ def init_stats_tables() -> None:
     from backend.database import create_all_tables
     create_all_tables()  # imports all models internally and runs CREATE TABLE IF NOT EXISTS
 
-    # Migration: add rank_bucket column to DBs that predate this column.
-    # We attempt the ALTER and silently ignore "duplicate column" errors.
+    # ------------------------------------------------------------------ #
+    # Idempotent column migrations (ALTER TABLE … ADD COLUMN …).          #
+    # Each ALTER is attempted inside its own transaction; the except block #
+    # silently ignores "column already exists" / "duplicate column" errors #
+    # so the function is safe to call multiple times.                      #
+    # ------------------------------------------------------------------ #
+
+    # Migration 1: add rank_bucket to matches (pre-dates 0001 migration)
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE matches ADD COLUMN rank_bucket VARCHAR(16)"))
-        logger.info("[stats_db] Migration applied: added rank_bucket column to matches")
+        logger.info("[stats_db] Migration applied: added rank_bucket to matches")
     except Exception:
-        pass  # column already exists — nothing to do
+        pass  # column already exists
 
-    logger.info("[stats_db] Tables ready (matches, hero_matchups, hero_synergy, hero_stats)")
+    # Migration 2: add extended per-player columns to match_players.
+    # Needed when the table was created before this migration (e.g. from an
+    # older code version that only had the four basic columns).
+    _mp_new_columns = [
+        ("lane",         "ALTER TABLE match_players ADD COLUMN lane SMALLINT"),
+        ("lane_role",    "ALTER TABLE match_players ADD COLUMN lane_role SMALLINT"),
+        ("gpm",          "ALTER TABLE match_players ADD COLUMN gpm INTEGER"),
+        ("xpm",          "ALTER TABLE match_players ADD COLUMN xpm INTEGER"),
+        ("kills",        "ALTER TABLE match_players ADD COLUMN kills INTEGER"),
+        ("deaths",       "ALTER TABLE match_players ADD COLUMN deaths INTEGER"),
+        ("assists",      "ALTER TABLE match_players ADD COLUMN assists INTEGER"),
+        ("hero_damage",  "ALTER TABLE match_players ADD COLUMN hero_damage INTEGER"),
+        ("tower_damage", "ALTER TABLE match_players ADD COLUMN tower_damage INTEGER"),
+        ("obs_placed",   "ALTER TABLE match_players ADD COLUMN obs_placed INTEGER"),
+        ("sen_placed",   "ALTER TABLE match_players ADD COLUMN sen_placed INTEGER"),
+        ("item0",        "ALTER TABLE match_players ADD COLUMN item0 INTEGER"),
+        ("item1",        "ALTER TABLE match_players ADD COLUMN item1 INTEGER"),
+        ("item2",        "ALTER TABLE match_players ADD COLUMN item2 INTEGER"),
+    ]
+    applied: list[str] = []
+    for col_name, ddl in _mp_new_columns:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+            applied.append(col_name)
+        except Exception:
+            pass  # column already exists
+    if applied:
+        logger.info(
+            "[stats_db] Migration applied: added to match_players: %s",
+            ", ".join(applied),
+        )
+
+    logger.info("[stats_db] Tables ready (matches, match_players, hero_matchups, hero_synergy, hero_stats)")
 
 
 # ---------------------------------------------------------------------------
@@ -86,12 +125,18 @@ def save_match_and_update_aggregates(
     radiant_win: bool,
     radiant_heroes: list[int],
     dire_heroes: list[int],
+    players: Optional[list[dict]] = None,
 ) -> None:
     """Atomically saves one match and updates all aggregate tables.
 
     Idempotent: uses INSERT ... ON CONFLICT (match_id) DO NOTHING and skips
     aggregate updates when the row already existed (rowcount == 0).
     This syntax is identical in PostgreSQL 9.5+ and SQLite 3.24+.
+
+    players — optional list of per-player dicts (from _parse_match_details).
+      Each dict must contain: hero_id, player_slot, is_radiant and any subset
+      of the extended stats fields.  Rows are inserted with ON CONFLICT DO
+      NOTHING so re-running on an already-saved match is safe.
     """
     with engine.begin() as conn:
         # ----- Insert match (idempotent) -----
@@ -121,6 +166,30 @@ def save_match_and_update_aggregates(
         if result.rowcount == 0:
             # Match already in DB — skip aggregate updates to keep counts correct
             return
+
+        # ----- Insert per-player records (if provided) -----
+        if players:
+            for p in players:
+                conn.execute(
+                    text("""
+                        INSERT INTO match_players
+                            (match_id, hero_id, player_slot, is_radiant,
+                             lane, lane_role, gpm, xpm,
+                             kills, deaths, assists,
+                             hero_damage, tower_damage,
+                             obs_placed, sen_placed,
+                             item0, item1, item2)
+                        VALUES
+                            (:match_id, :hero_id, :player_slot, :is_radiant,
+                             :lane, :lane_role, :gpm, :xpm,
+                             :kills, :deaths, :assists,
+                             :hero_damage, :tower_damage,
+                             :obs_placed, :sen_placed,
+                             :item0, :item1, :item2)
+                        ON CONFLICT (match_id, player_slot) DO NOTHING
+                    """),
+                    {**p, "match_id": match_id},
+                )
 
         # ----- hero_stats -----
         for h in radiant_heroes:
@@ -313,6 +382,12 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
         return
 
     with engine.begin() as conn:
+        # Delete player records first (explicit, not relying on FK cascade so
+        # this works on SQLite regardless of PRAGMA foreign_keys setting).
+        conn.execute(
+            text("DELETE FROM match_players WHERE match_id = :id"),
+            [{"id": mid} for mid in match_ids],
+        )
         # Delete the unwanted matches
         conn.execute(
             text("DELETE FROM matches WHERE match_id = :id"),
@@ -410,3 +485,75 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
         len(matchups),
         len(synergy),
     )
+
+
+# ---------------------------------------------------------------------------
+# Backfill helpers — match_players for pre-existing matches
+# ---------------------------------------------------------------------------
+
+def get_match_ids_needing_backfill(limit: int) -> list[int]:
+    """Returns up to `limit` match_ids that have no rows in match_players yet.
+
+    These are matches saved before the match_players table existed (or before
+    the current code version).  Ordered by match_id ascending so progress is
+    monotonically forward.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT m.match_id FROM matches m
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM match_players mp WHERE mp.match_id = m.match_id
+                )
+                ORDER BY m.match_id
+                LIMIT :lim
+            """),
+            {"lim": limit},
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def count_matches_needing_backfill() -> int:
+    """Returns count of matches that have no match_players rows."""
+    with engine.connect() as conn:
+        return conn.execute(
+            text("""
+                SELECT COUNT(*) FROM matches m
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM match_players mp WHERE mp.match_id = m.match_id
+                )
+            """)
+        ).scalar() or 0
+
+
+def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
+    """Replaces match_players rows for a single match (backfill path).
+
+    Deletes any existing (possibly partial) rows then inserts fresh ones so
+    the operation is idempotent even if the backfill worker is restarted.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            text("DELETE FROM match_players WHERE match_id = :mid"),
+            {"mid": match_id},
+        )
+        for p in players:
+            conn.execute(
+                text("""
+                    INSERT INTO match_players
+                        (match_id, hero_id, player_slot, is_radiant,
+                         lane, lane_role, gpm, xpm,
+                         kills, deaths, assists,
+                         hero_damage, tower_damage,
+                         obs_placed, sen_placed,
+                         item0, item1, item2)
+                    VALUES
+                        (:match_id, :hero_id, :player_slot, :is_radiant,
+                         :lane, :lane_role, :gpm, :xpm,
+                         :kills, :deaths, :assists,
+                         :hero_damage, :tower_damage,
+                         :obs_placed, :sen_placed,
+                         :item0, :item1, :item2)
+                """),
+                {**p, "match_id": match_id},
+            )

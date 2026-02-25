@@ -58,6 +58,9 @@ from backend.stats_db import (
     get_old_match_ids,
     get_oldest_match_ids,
     delete_matches_and_recalculate,
+    get_match_ids_needing_backfill,
+    update_match_players_backfill,
+    count_matches_needing_backfill,
 )
 
 # ---------------------------------------------------------------------------
@@ -85,6 +88,22 @@ if STATS_BOOTSTRAP_MODE:
     POLL_INTERVAL_MINUTES = 5
     MAX_MATCHES_PER_CYCLE = 100
     MAX_REQUESTS_PER_MINUTE = 200
+
+# ---------------------------------------------------------------------------
+# Backfill mode — gradually fill match_players for pre-existing matches
+# ---------------------------------------------------------------------------
+
+# Set BACKFILL_ENABLED=1 to start backfilling.  Disable once all ~20k
+# existing matches have been updated (count_matches_needing_backfill() == 0).
+BACKFILL_ENABLED: bool = os.getenv("BACKFILL_ENABLED", "0") == "1"
+
+# How many matches to process per main-loop cycle (not per minute).
+# 150 × 0.7 s ≈ 105 s of extra work per cycle — well within the rate limit.
+BACKFILL_MAX_MATCHES_PER_RUN: int = int(os.getenv("BACKFILL_MAX_MATCHES_PER_RUN", "150"))
+
+# Additional sleep between backfill API calls on top of the shared rate limiter.
+# Keeps the backfill from monopolising the request budget.
+BACKFILL_SLEEP_BETWEEN_CALLS: float = float(os.getenv("BACKFILL_SLEEP_BETWEEN_CALLS", "0.7"))
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -151,8 +170,64 @@ def _rank_bucket_for_tier(avg_rank_tier: int | None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Item filtering
+# ---------------------------------------------------------------------------
+
+# Item IDs that are cheap consumables / starting items and should NOT count
+# as a hero's "core" build.  Based on OpenDota numeric item IDs.
+_JUNK_ITEM_IDS: frozenset[int] = frozenset({
+    0,    # empty slot
+    44,   # clarity potion
+    45,   # tango
+    46,   # healing salve
+    42,   # observer ward
+    43,   # sentry ward
+    185,  # smoke of deceit
+    145,  # town portal scroll
+    244,  # wind lace
+    46,   # healing salve (duplicate guard)
+})
+
+
+# ---------------------------------------------------------------------------
 # Match parsing helpers
 # ---------------------------------------------------------------------------
+
+def _extract_player_stats(player: dict) -> dict:
+    """Extracts per-player stats from a full /matches/{id} player record.
+
+    Picks up to 3 "core" items from slots item_0..item_5 by filtering out
+    cheap consumables defined in _JUNK_ITEM_IDS.  Missing or 0-valued slots
+    are also skipped.  The result is padded with None up to 3 entries.
+    """
+    raw_items = [player.get(f"item_{i}", 0) or 0 for i in range(6)]
+    core_items: list[int | None] = [
+        iid for iid in raw_items if iid and iid not in _JUNK_ITEM_IDS
+    ][:3]
+    while len(core_items) < 3:
+        core_items.append(None)
+
+    slot = player.get("player_slot", 128)
+    return {
+        "hero_id":      player.get("hero_id"),
+        "player_slot":  slot,
+        "is_radiant":   1 if slot < 128 else 0,
+        "lane":         player.get("lane"),
+        "lane_role":    player.get("lane_role"),
+        "gpm":          player.get("gold_per_min"),
+        "xpm":          player.get("xp_per_min"),
+        "kills":        player.get("kills"),
+        "deaths":       player.get("deaths"),
+        "assists":      player.get("assists"),
+        "hero_damage":  player.get("hero_damage"),
+        "tower_damage": player.get("tower_damage"),
+        "obs_placed":   player.get("obs_placed"),
+        "sen_placed":   player.get("sen_placed"),
+        "item0":        core_items[0],
+        "item1":        core_items[1],
+        "item2":        core_items[2],
+    }
+
 
 def _parse_public_match(match: dict) -> dict | None:
     """
@@ -243,6 +318,9 @@ def _parse_match_details(match: dict) -> dict | None:
             match_id, bucket,
         )
 
+    # Per-player extended stats (used by match_players table)
+    player_records = [_extract_player_stats(p) for p in players]
+
     return {
         "match_id": match_id,
         "start_time": match.get("start_time") or 0,
@@ -253,7 +331,82 @@ def _parse_match_details(match: dict) -> dict | None:
         "radiant_win": bool(match.get("radiant_win", False)),
         "radiant_heroes": radiant_heroes,
         "dire_heroes": dire_heroes,
+        "players": player_records,
     }
+
+
+# ---------------------------------------------------------------------------
+# Backfill worker — fill match_players for pre-existing matches
+# ---------------------------------------------------------------------------
+
+async def backfill_match_player_stats(limit_matches: int | None = None) -> None:
+    """Fetches /matches/{id} for matches that have no match_players rows yet
+    and writes per-player stats to the DB.
+
+    Called once per main-loop cycle when BACKFILL_ENABLED=1.  Uses the same
+    shared rate limiter as the normal polling path so it never creates a
+    second, uncontrolled request stream.
+
+    An extra BACKFILL_SLEEP_BETWEEN_CALLS delay (default 0.7 s) is inserted
+    after each API call to leave headroom for the normal poller.
+    """
+    if not FETCH_MATCH_DETAILS:
+        logger.warning(
+            "[backfill] FETCH_MATCH_DETAILS is disabled — cannot fetch player "
+            "details; skipping backfill"
+        )
+        return
+
+    limit = limit_matches if limit_matches is not None else BACKFILL_MAX_MATCHES_PER_RUN
+    match_ids = get_match_ids_needing_backfill(limit)
+
+    if not match_ids:
+        remaining = count_matches_needing_backfill()
+        if remaining == 0:
+            logger.info("[backfill] All matches have player stats — nothing to backfill")
+        return
+
+    remaining_before = count_matches_needing_backfill()
+    logger.info(
+        "[backfill] Starting batch: %d matches in this run | ~%d remaining total",
+        len(match_ids), remaining_before,
+    )
+
+    updated = 0
+    failed = 0
+
+    for match_id in match_ids:
+        await _rate_limiter.acquire()
+        try:
+            details = await get_match_details(match_id)
+        except Exception as exc:
+            logger.warning("[backfill] HTTP error for match %d: %s", match_id, exc)
+            failed += 1
+            continue
+
+        parsed = _parse_match_details(details)
+        if parsed is None or not parsed.get("players"):
+            logger.debug("[backfill] match %d: skipped (incomplete/invalid details)", match_id)
+            failed += 1
+            continue
+
+        try:
+            update_match_players_backfill(match_id, parsed["players"])
+            updated += 1
+        except Exception as exc:
+            logger.error("[backfill] DB error for match %d: %s", match_id, exc)
+            failed += 1
+            continue
+
+        # Extra breathing room so backfill doesn't crowd out the normal poller
+        if BACKFILL_SLEEP_BETWEEN_CALLS > 0:
+            await asyncio.sleep(BACKFILL_SLEEP_BETWEEN_CALLS)
+
+    remaining_after = count_matches_needing_backfill()
+    logger.info(
+        "[backfill] Batch done: +%d updated | %d failed | ~%d still remaining",
+        updated, failed, remaining_after,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -425,16 +578,22 @@ async def run_cleanup() -> None:
 async def main() -> None:
     logger.info("=" * 60)
     logger.info("Stats updater starting")
-    logger.info("  [config] Bootstrap mode      = %s", "ON" if STATS_BOOTSTRAP_MODE else "OFF")
-    logger.info("  POLL_INTERVAL_MINUTES        = %d", POLL_INTERVAL_MINUTES)
-    logger.info("  MAX_MATCHES_PER_CYCLE        = %d", MAX_MATCHES_PER_CYCLE)
-    logger.info("  MAX_REQUESTS_PER_MINUTE      = %d", MAX_REQUESTS_PER_MINUTE)
-    logger.info("  MAX_MATCHES                  = %d", MAX_MATCHES)
-    logger.info("  DAYS_TO_KEEP                 = %d", DAYS_TO_KEEP)
-    logger.info("  CLEANUP_INTERVAL_HOURS       = %d", CLEANUP_INTERVAL_HOURS)
-    logger.info("  FETCH_MATCH_DETAILS          = %s", FETCH_MATCH_DETAILS)
-    logger.info("  [config] rank buckets        = "
+    logger.info("  [config] Bootstrap mode        = %s", "ON" if STATS_BOOTSTRAP_MODE else "OFF")
+    logger.info("  POLL_INTERVAL_MINUTES          = %d", POLL_INTERVAL_MINUTES)
+    logger.info("  MAX_MATCHES_PER_CYCLE          = %d", MAX_MATCHES_PER_CYCLE)
+    logger.info("  MAX_REQUESTS_PER_MINUTE        = %d", MAX_REQUESTS_PER_MINUTE)
+    logger.info("  MAX_MATCHES                    = %d", MAX_MATCHES)
+    logger.info("  DAYS_TO_KEEP                   = %d", DAYS_TO_KEEP)
+    logger.info("  CLEANUP_INTERVAL_HOURS         = %d", CLEANUP_INTERVAL_HOURS)
+    logger.info("  FETCH_MATCH_DETAILS            = %s", FETCH_MATCH_DETAILS)
+    logger.info("  [config] rank buckets          = "
                 "0→unknown | 1-20→low | 21-35→mid | 36-50→high | 51-60→very_high | 61+→immortal")
+    logger.info("  [backfill] BACKFILL_ENABLED    = %s", "ON" if BACKFILL_ENABLED else "OFF")
+    if BACKFILL_ENABLED:
+        logger.info(
+            "  [backfill] MAX_PER_RUN=%d  SLEEP_BETWEEN=%.1fs",
+            BACKFILL_MAX_MATCHES_PER_RUN, BACKFILL_SLEEP_BETWEEN_CALLS,
+        )
     logger.info("=" * 60)
 
     # Ensure tables exist (safe to call multiple times)
@@ -459,6 +618,13 @@ async def main() -> None:
             await fetch_and_process_matches()
         except Exception as exc:
             logger.error("[updater] Unhandled error in fetch cycle: %s", exc, exc_info=True)
+
+        # --- Backfill match_players for pre-existing matches (optional) ---
+        if BACKFILL_ENABLED:
+            try:
+                await backfill_match_player_stats(BACKFILL_MAX_MATCHES_PER_RUN)
+            except Exception as exc:
+                logger.error("[backfill] Unhandled error: %s", exc, exc_info=True)
 
         # --- Sleep until next cycle ---
         elapsed = time.monotonic() - loop_start
