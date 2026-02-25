@@ -22,7 +22,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import HeroMatchupsCache, Token  # noqa: E402
+from backend.models import HeroMatchupsCache, QuizResult, Token  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +121,28 @@ def get_hero_matchups_from_cache(hero_id: int) -> tuple[list[dict], str | None]:
         for r in rows
     ]
     return matchups, last_updated
+
+
+# ---------------------------------------------------------------------------
+# Quiz results
+# ---------------------------------------------------------------------------
+
+def get_last_quiz_result(user_id: int) -> tuple[dict, datetime] | None:
+    """Returns (result_dict, updated_at) for the user's most recent quiz, or None.
+
+    result_dict is already a Python dict (SQLAlchemy deserialises JSON columns).
+    updated_at is a datetime (may be None if the row was saved without a timestamp).
+    """
+    with SessionLocal() as session:
+        row = (
+            session.query(QuizResult)
+            .filter(QuizResult.user_id == user_id)
+            .order_by(QuizResult.updated_at.desc())
+            .first()
+        )
+    if row is None:
+        return None
+    return (row.result, row.updated_at)
 
 
 def replace_hero_matchups_in_cache(
