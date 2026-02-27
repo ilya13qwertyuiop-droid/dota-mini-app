@@ -339,6 +339,7 @@ def save_match_and_update_aggregates(
 
         # ----- Insert 10-minute timeline snapshots (if provided) -----
         if players_timeline:
+            tl_count = 0
             for row in players_timeline:
                 conn.execute(
                     text("""
@@ -352,6 +353,17 @@ def save_match_and_update_aggregates(
                     """),
                     {**row, "match_id": match_id},
                 )
+                tl_count += 1
+            logger.info(
+                "[TIMELINE] saved %d rows for match %s",
+                tl_count, match_id,
+            )
+        else:
+            logger.info(
+                "[TIMELINE] 0 rows for match %s "
+                "(replay arrays lh_t/gold_t/xp_t absent in OpenDota response)",
+                match_id,
+            )
 
         # ----- hero_stats -----
         for h in radiant_heroes:

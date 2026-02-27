@@ -295,18 +295,31 @@ def _extract_player_timeline(player: dict, duration_sec: int) -> list[dict]:
     Потенциальные временные ряды (отдельная структура, не scalar stats):
     эта функция намеренно отделена от _extract_player_stats.
     """
-    lh_t      = player.get("lh_t")       or []
-    dn_t      = player.get("dn_t")       or []
-    gold_t    = player.get("gold_t")     or []
-    xp_t      = player.get("xp_t")       or []
-    nw_t      = player.get("net_worth_t") or []
+    lh_t   = player.get("lh_t")        or []
+    dn_t   = player.get("dn_t")        or []
+    gold_t = player.get("gold_t")      or []
+    xp_t   = player.get("xp_t")        or []
+    nw_t   = player.get("net_worth_t") or []
 
     slot = player.get("player_slot", 128)
 
-    # Maximum minute we can meaningfully report
-    match_minutes = duration_sec // 60
-    max_data_len  = max(len(lh_t), len(dn_t), len(gold_t), len(xp_t), len(nw_t), 1)
-    max_minute    = min(match_minutes, max_data_len - 1)
+    # If OpenDota hasn't parsed the replay yet, all arrays are absent.
+    # Log a debug message so this silence is visible in journalctl.
+    max_data_len = max(len(lh_t), len(dn_t), len(gold_t), len(xp_t), len(nw_t), 0)
+    if max_data_len == 0:
+        logger.debug(
+            "[timeline] slot=%d: lh_t/gold_t/xp_t arrays absent (replay not parsed yet)",
+            slot,
+        )
+        return []
+
+    # Maximum minute we can meaningfully report.
+    # When duration_sec is 0 (API returned None → caller used 0 as fallback),
+    # trust the array lengths instead of clamping to 0.
+    if duration_sec > 0:
+        max_minute = min(duration_sec // 60, max_data_len - 1)
+    else:
+        max_minute = max_data_len - 1
     # Round down to the nearest multiple of 10
     max_minute_10 = (max_minute // 10) * 10
 
