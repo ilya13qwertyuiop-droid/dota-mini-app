@@ -145,3 +145,47 @@ async def get_match_details(match_id: int) -> dict:
     return r.json()
 
 
+async def get_explorer_match_ids(
+    game_mode: int = 22,
+    lobby_type: int = 7,
+    limit: int = 100,
+) -> list[int]:
+    """GET /api/explorer — SQL query returning recent ranked match IDs.
+
+    Runs a SQL query against OpenDota's public_matches table via the Explorer
+    endpoint.  Returns up to `limit` most-recent match_ids matching the given
+    (game_mode, lobby_type) pair.
+
+    Response shape: {"rows": [{"match_id": <int>}, ...], "rowCount": <int>}
+
+    Raises RuntimeError on network or API errors.
+    """
+    sql = (
+        f"SELECT match_id FROM public_matches "
+        f"WHERE game_mode = {game_mode} AND lobby_type = {lobby_type} "
+        f"ORDER BY start_time DESC "
+        f"LIMIT {limit}"
+    )
+    url = f"{_BASE_URL}/explorer"
+    params = _build_params()
+    params["sql"] = sql
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, params=params, timeout=30.0)
+    except httpx.RequestError as e:
+        logger.error("OpenDota network error (get_explorer_match_ids): %s", e)
+        raise RuntimeError(f"OpenDota network error: {e}") from e
+
+    if r.status_code != 200:
+        logger.error(
+            "OpenDota get_explorer_match_ids returned HTTP %s: %s",
+            r.status_code, r.text[:200],
+        )
+        raise RuntimeError(f"OpenDota API returned HTTP {r.status_code}")
+
+    data = r.json()
+    rows = data.get("rows") or []
+    return [int(row["match_id"]) for row in rows if row.get("match_id") is not None]
+
+
