@@ -344,7 +344,8 @@ def _parse_match_details(match: dict) -> dict | None:
         "patch": str(patch_val) if patch_val is not None else None,
         "avg_rank_tier": avg_rank_tier,
         "rank_bucket": bucket,
-        "game_mode": match.get("game_mode"),   # e.g. 1=AllPick, 22=Ranked, 23=Turbo
+        "game_mode": match.get("game_mode"),    # e.g. 1=AllPick, 22=Ranked, 23=Turbo
+        "lobby_type": match.get("lobby_type"), # e.g. 0=public, 7=ranked
         "radiant_win": bool(match.get("radiant_win", False)),
         "radiant_heroes": radiant_heroes,
         "dire_heroes": dire_heroes,
@@ -534,15 +535,10 @@ async def fetch_and_process_matches() -> None:
                     )
 
         try:
-            # Diagnostic point 3: log exactly what reaches the DB layer.
-            # Fires once per cycle (first successfully parsed match about to be saved).
-            if new_count == 0:
-                logger.info(
-                    "[diag] saving match %s: avg_rank_tier=%r  rank_bucket=%r",
-                    parsed["match_id"],
-                    parsed.get("avg_rank_tier"),
-                    parsed.get("rank_bucket"),
-                )
+            logger.info(
+                "[diag] saving match %s with game_mode=%s, lobby_type=%s",
+                parsed.get("match_id"), parsed.get("game_mode"), parsed.get("lobby_type"),
+            )
             save_match_and_update_aggregates(**parsed)
             new_count += 1
             if new_count == 1:
