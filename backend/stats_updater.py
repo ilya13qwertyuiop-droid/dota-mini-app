@@ -26,6 +26,15 @@ Environment variables (all optional, sensible defaults):
                                  MAX_REQUESTS_PER_MINUTE → 200.
                                  Peak API rate: ~200 req/min during the burst window
                                  (~30 s), then idle — well under the 3000 req/min limit.
+
+Game-mode filter (hardcoded, see ALLOWED_GAME_MODES below):
+    Only All Pick (game_mode=1) and Ranked All Pick (game_mode=22) are saved.
+    All other modes (Turbo=23, Ability Draft=18, etc.) are silently skipped.
+
+Backfill of legacy matches:
+    ENABLE_BACKFILL_OLD_MATCHES is hardcoded to False.
+    The backfill functions are preserved in this file but not called.
+    To run a one-off legacy backfill, set the flag to True and restart.
 """
 
 from __future__ import annotations
@@ -90,20 +99,27 @@ if STATS_BOOTSTRAP_MODE:
     MAX_REQUESTS_PER_MINUTE = 200
 
 # ---------------------------------------------------------------------------
-# Backfill mode — gradually fill match_players for pre-existing matches
+# Game-mode allow-list
 # ---------------------------------------------------------------------------
 
-# Set BACKFILL_ENABLED=1 to start backfilling.  Disable once all ~20k
-# existing matches have been updated (count_matches_needing_backfill() == 0).
-BACKFILL_ENABLED: bool = os.getenv("BACKFILL_ENABLED", "0") == "1"
+# OpenDota game_mode values for the modes we want to ingest.
+#   1  = All Pick (unranked public)
+#   22 = Ranked All Pick
+# Everything else (Turbo=23, Ability Draft=18, CM=2, bots, etc.) is dropped.
+ALLOWED_GAME_MODES: frozenset[int] = frozenset({1, 22})
 
-# How many matches to process per main-loop cycle (not per minute).
-# 150 × 0.7 s ≈ 105 s of extra work per cycle — well within the rate limit.
-BACKFILL_MAX_MATCHES_PER_RUN: int = int(os.getenv("BACKFILL_MAX_MATCHES_PER_RUN", "150"))
+# ---------------------------------------------------------------------------
+# Backfill of legacy matches — DISABLED
+# ---------------------------------------------------------------------------
 
-# Additional sleep between backfill API calls on top of the shared rate limiter.
-# Keeps the backfill from monopolising the request budget.
-BACKFILL_SLEEP_BETWEEN_CALLS: float = float(os.getenv("BACKFILL_SLEEP_BETWEEN_CALLS", "0.7"))
+# Set to True only for a one-off manual run to backfill pre-existing matches.
+# Under normal operation this must stay False so the worker never issues
+# extra API calls to /matches/{id} for already-saved match rows.
+ENABLE_BACKFILL_OLD_MATCHES: bool = False
+
+# Parameters used when backfill is manually re-enabled (kept for reference).
+BACKFILL_MAX_MATCHES_PER_RUN: int = 150
+BACKFILL_SLEEP_BETWEEN_CALLS: float = 0.7
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -328,6 +344,7 @@ def _parse_match_details(match: dict) -> dict | None:
         "patch": str(patch_val) if patch_val is not None else None,
         "avg_rank_tier": avg_rank_tier,
         "rank_bucket": bucket,
+        "game_mode": match.get("game_mode"),   # e.g. 1=AllPick, 22=Ranked, 23=Turbo
         "radiant_win": bool(match.get("radiant_win", False)),
         "radiant_heroes": radiant_heroes,
         "dire_heroes": dire_heroes,
@@ -443,6 +460,7 @@ async def fetch_and_process_matches() -> None:
     new_count = 0
     skip_existing = 0
     skip_incomplete = 0
+    skip_game_mode = 0
     # Diagnostic flag: log raw details only for the first non-skipped match per cycle.
     _details_diag_done = False
     # Fallback diag: log avg_rank_tier substitution only once per cycle.
@@ -491,6 +509,16 @@ async def fetch_and_process_matches() -> None:
             skip_incomplete += 1
             continue
 
+        # --- Game-mode filter: only All Pick (1) and Ranked All Pick (22) ---
+        game_mode = parsed.get("game_mode")
+        if game_mode not in ALLOWED_GAME_MODES:
+            logger.debug(
+                "[updater] match %d: skipped (game_mode=%s not in allowed set %s)",
+                match_id, game_mode, ALLOWED_GAME_MODES,
+            )
+            skip_game_mode += 1
+            continue
+
         # Fallback: /matches/{id} often omits avg_rank_tier; use publicMatches value.
         if parsed["avg_rank_tier"] is None:
             fallback = basic.get("avg_rank_tier")
@@ -526,8 +554,8 @@ async def fetch_and_process_matches() -> None:
             logger.error("[updater] Failed to save match %d: %s", match_id, exc)
 
     logger.info(
-        "[updater] Cycle done: +%d new | %d already existed | %d incomplete",
-        new_count, skip_existing, skip_incomplete,
+        "[updater] Cycle done: +%d new | %d existed | %d incomplete | %d wrong game_mode",
+        new_count, skip_existing, skip_incomplete, skip_game_mode,
     )
 
 
@@ -588,12 +616,10 @@ async def main() -> None:
     logger.info("  FETCH_MATCH_DETAILS            = %s", FETCH_MATCH_DETAILS)
     logger.info("  [config] rank buckets          = "
                 "0→unknown | 1-20→low | 21-35→mid | 36-50→high | 51-60→very_high | 61+→immortal")
-    logger.info("  [backfill] BACKFILL_ENABLED    = %s", "ON" if BACKFILL_ENABLED else "OFF")
-    if BACKFILL_ENABLED:
-        logger.info(
-            "  [backfill] MAX_PER_RUN=%d  SLEEP_BETWEEN=%.1fs",
-            BACKFILL_MAX_MATCHES_PER_RUN, BACKFILL_SLEEP_BETWEEN_CALLS,
-        )
+    logger.info(
+        "  [backfill] ENABLE_BACKFILL_OLD_MATCHES = %s",
+        "ON" if ENABLE_BACKFILL_OLD_MATCHES else "OFF (disabled)",
+    )
     logger.info("=" * 60)
 
     # Ensure tables exist (safe to call multiple times)
@@ -619,8 +645,10 @@ async def main() -> None:
         except Exception as exc:
             logger.error("[updater] Unhandled error in fetch cycle: %s", exc, exc_info=True)
 
-        # --- Backfill match_players for pre-existing matches (optional) ---
-        if BACKFILL_ENABLED:
+        # --- Backfill match_players for pre-existing matches ---
+        # Disabled by default. Set ENABLE_BACKFILL_OLD_MATCHES = True above
+        # for a one-off manual run, then set it back to False.
+        if ENABLE_BACKFILL_OLD_MATCHES:
             try:
                 await backfill_match_player_stats(BACKFILL_MAX_MATCHES_PER_RUN)
             except Exception as exc:
