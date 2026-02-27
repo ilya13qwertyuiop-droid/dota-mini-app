@@ -178,9 +178,9 @@ def get_stats_mode() -> str:
 
     normal — use pre-computed aggregate tables (hero_stats, hero_matchups,
              hero_synergy); fast, covers all ingested matches.
-    strict — compute on-the-fly from match_players rows where lane IS NOT NULL
-             AND matches.game_mode IS NOT NULL; slower, covers only fully
-             parsed matches with complete per-player lane data.
+    strict — compute on-the-fly from match_players rows filtered to ranked
+             matches (game_mode = 22, lobby_type = 7) with duration >= 20 min;
+             slower, but restricted to quality-rated ranked games only.
 
     Returns 'normal' if the setting is not yet written (safe default).
     """
@@ -496,8 +496,8 @@ def get_hero_matchup_rows(hero_id: int, min_games: int = 50, strict: bool = Fals
     """Returns all opponent matchup rows for a hero (win rate from hero's perspective).
 
     strict=False (default): reads from the pre-computed hero_matchups aggregate table.
-    strict=True: computes on-the-fly from match_players rows that have lane IS NOT NULL
-        and matches.game_mode IS NOT NULL (only fully parsed matches with lane data).
+    strict=True: computes on-the-fly from match_players, filtering to ranked matches
+        only (game_mode = 22, lobby_type = 7) with minimum duration.
         Result format is identical so callers need no changes.
     """
     if strict:
@@ -509,8 +509,8 @@ def get_hero_matchup_rows(hero_id: int, min_games: int = 50, strict: bool = Fals
                         FROM match_players mp
                         JOIN matches m ON m.match_id = mp.match_id
                         WHERE mp.hero_id = :id
-                          AND mp.lane IS NOT NULL
-                          AND m.game_mode IS NOT NULL
+                          AND m.game_mode = 22
+                          AND m.lobby_type = 7
                           AND (m.duration IS NULL OR m.duration >= :min_dur)
                     ),
                     opponents AS (
@@ -582,7 +582,7 @@ def get_hero_base_winrate_from_db(hero_id: int, strict: bool = False) -> Optiona
     """Returns hero's overall winrate from our match data.
 
     strict=False: reads from hero_stats aggregate table (fast).
-    strict=True: counts from match_players WHERE lane IS NOT NULL (fully parsed matches only).
+    strict=True: counts from match_players for ranked matches only (game_mode=22, lobby_type=7).
     """
     if strict:
         with engine.connect() as conn:
@@ -596,8 +596,8 @@ def get_hero_base_winrate_from_db(hero_id: int, strict: bool = False) -> Optiona
                     FROM match_players mp
                     JOIN matches m ON m.match_id = mp.match_id
                     WHERE mp.hero_id = :id
-                      AND mp.lane IS NOT NULL
-                      AND m.game_mode IS NOT NULL
+                      AND m.game_mode = 22
+                      AND m.lobby_type = 7
                       AND (m.duration IS NULL OR m.duration >= :min_dur)
                 """),
                 {"id": hero_id, "min_dur": MIN_MATCH_DURATION_SECONDS},
@@ -622,7 +622,7 @@ def get_hero_total_games(hero_id: int, strict: bool = False) -> int:
     """Returns total games for a hero.
 
     strict=False: from hero_stats aggregate.
-    strict=True: counts match_players rows with lane IS NOT NULL.
+    strict=True: counts match_players rows for ranked matches only (game_mode=22, lobby_type=7).
     """
     if strict:
         with engine.connect() as conn:
@@ -631,8 +631,8 @@ def get_hero_total_games(hero_id: int, strict: bool = False) -> int:
                     SELECT COUNT(*) FROM match_players mp
                     JOIN matches m ON m.match_id = mp.match_id
                     WHERE mp.hero_id = :id
-                      AND mp.lane IS NOT NULL
-                      AND m.game_mode IS NOT NULL
+                      AND m.game_mode = 22
+                      AND m.lobby_type = 7
                       AND (m.duration IS NULL OR m.duration >= :min_dur)
                 """),
                 {"id": hero_id, "min_dur": MIN_MATCH_DURATION_SECONDS},
@@ -652,7 +652,8 @@ def get_hero_synergy_rows(hero_id: int, min_games: int = 50, strict: bool = Fals
     """Returns all ally synergy rows for a hero.
 
     strict=False: reads from the pre-computed hero_synergy aggregate table.
-    strict=True: computes on-the-fly from match_players (lane IS NOT NULL matches only).
+    strict=True: computes on-the-fly from match_players, filtering to ranked matches
+        only (game_mode = 22, lobby_type = 7) with minimum duration.
         Result format is identical so callers need no changes.
     """
     if strict:
@@ -664,8 +665,8 @@ def get_hero_synergy_rows(hero_id: int, min_games: int = 50, strict: bool = Fals
                         FROM match_players mp
                         JOIN matches m ON m.match_id = mp.match_id
                         WHERE mp.hero_id = :id
-                          AND mp.lane IS NOT NULL
-                          AND m.game_mode IS NOT NULL
+                          AND m.game_mode = 22
+                          AND m.lobby_type = 7
                           AND (m.duration IS NULL OR m.duration >= :min_dur)
                     ),
                     allies AS (
