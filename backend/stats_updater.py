@@ -27,9 +27,11 @@ Environment variables (all optional, sensible defaults):
                                  Peak API rate: ~200 req/min during the burst window
                                  (~30 s), then idle — well under the 3000 req/min limit.
 
-Game-mode filter (hardcoded, see ALLOWED_GAME_MODES below):
-    Only All Pick (game_mode=1) and Ranked All Pick (game_mode=22) are saved.
-    All other modes (Turbo=23, Ability Draft=18, etc.) are silently skipped.
+Game-mode filter (see ALLOWED_GAME_MODE_PAIRS in backend/config.py):
+    Only matches whose (game_mode, lobby_type) pair is in the allow-list are
+    written to the DB.  Default: {(22, 7)} = Ranked All Pick only.
+    Matches with NULL game_mode or lobby_type, or any other pair (Turbo=23,
+    unranked AP=(1,0), Ability Draft=18, etc.) are dropped before any DB write.
 
 Backfill of legacy matches:
     ENABLE_BACKFILL_OLD_MATCHES is hardcoded to False.
@@ -58,6 +60,7 @@ try:
 except ImportError:
     pass
 
+from backend.config import ALLOWED_GAME_MODE_PAIRS
 from backend.opendota_client import get_public_matches, get_match_details
 from backend.stats_db import (
     init_stats_tables,
@@ -99,14 +102,12 @@ if STATS_BOOTSTRAP_MODE:
     MAX_REQUESTS_PER_MINUTE = 200
 
 # ---------------------------------------------------------------------------
-# Game-mode allow-list
+# Game-mode allow-list (imported from config.py)
 # ---------------------------------------------------------------------------
-
-# OpenDota game_mode values for the modes we want to ingest.
-#   1  = All Pick (unranked public)
-#   22 = Ranked All Pick
-# Everything else (Turbo=23, Ability Draft=18, CM=2, bots, etc.) is dropped.
-ALLOWED_GAME_MODES: frozenset[int] = frozenset({1, 22})
+# ALLOWED_GAME_MODE_PAIRS is imported from backend.config.
+# Currently: {(22, 7)} — Ranked All Pick only.
+# Both game_mode AND lobby_type must be non-NULL and in the set for a match
+# to be written to the DB.  Edit config.py to add/remove modes.
 
 # ---------------------------------------------------------------------------
 # Backfill of legacy matches — DISABLED
@@ -510,12 +511,24 @@ async def fetch_and_process_matches() -> None:
             skip_incomplete += 1
             continue
 
-        # --- Game-mode filter: only All Pick (1) and Ranked All Pick (22) ---
+        # --- Game-mode / lobby-type filter ---
+        # Both fields must be present and the pair must be in ALLOWED_GAME_MODE_PAIRS.
+        # Matches with either field NULL (e.g. Turbo, custom lobbies) are dropped here,
+        # before any DB write, so they never appear in the `matches` table.
         game_mode = parsed.get("game_mode")
-        if game_mode not in ALLOWED_GAME_MODES:
+        lobby_type = parsed.get("lobby_type")
+        if game_mode is None or lobby_type is None:
             logger.debug(
-                "[updater] match %d: skipped (game_mode=%s not in allowed set %s)",
-                match_id, game_mode, ALLOWED_GAME_MODES,
+                "[updater] match %d: skipped (game_mode=%s or lobby_type=%s is None)",
+                match_id, game_mode, lobby_type,
+            )
+            skip_game_mode += 1
+            continue
+        if (game_mode, lobby_type) not in ALLOWED_GAME_MODE_PAIRS:
+            logger.debug(
+                "[updater] match %d: skipped (game_mode=%s, lobby_type=%s) "
+                "not in allowed pairs %s",
+                match_id, game_mode, lobby_type, ALLOWED_GAME_MODE_PAIRS,
             )
             skip_game_mode += 1
             continue
@@ -610,6 +623,7 @@ async def main() -> None:
     logger.info("  DAYS_TO_KEEP                   = %d", DAYS_TO_KEEP)
     logger.info("  CLEANUP_INTERVAL_HOURS         = %d", CLEANUP_INTERVAL_HOURS)
     logger.info("  FETCH_MATCH_DETAILS            = %s", FETCH_MATCH_DETAILS)
+    logger.info("  [config] allowed mode pairs    = %s", sorted(ALLOWED_GAME_MODE_PAIRS))
     logger.info("  [config] rank buckets          = "
                 "0→unknown | 1-20→low | 21-35→mid | 36-50→high | 51-60→very_high | 61+→immortal")
     logger.info(
