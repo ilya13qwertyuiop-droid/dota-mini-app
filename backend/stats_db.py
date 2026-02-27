@@ -194,7 +194,28 @@ def save_match_and_update_aggregates(
             },
         )
 
-        if result.rowcount == 0:
+        is_new = result.rowcount == 1
+
+        # Patch game_mode / lobby_type for rows that already existed before these
+        # columns were added (ON CONFLICT DO NOTHING leaves them NULL).
+        # The WHERE clause avoids a needless write for freshly inserted rows.
+        conn.execute(
+            text("""
+                UPDATE matches
+                SET    game_mode  = :game_mode,
+                       lobby_type = :lobby_type
+                WHERE  match_id   = :match_id
+                  AND  (game_mode IS NULL OR lobby_type IS NULL)
+            """),
+            {"match_id": match_id, "game_mode": game_mode, "lobby_type": lobby_type},
+        )
+
+        logger.info(
+            "[diag] matches upsert done for %s: game_mode=%s, lobby_type=%s  (new_row=%s)",
+            match_id, game_mode, lobby_type, is_new,
+        )
+
+        if not is_new:
             # Match already in DB — skip aggregate updates to keep counts correct
             return
 
