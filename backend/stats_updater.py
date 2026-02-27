@@ -19,6 +19,14 @@ Environment variables (all optional, sensible defaults):
                                  When set to "1": for each new match_id found in
                                  publicMatches, fetches /matches/{id} to get players
                                  and hero_id values. Default: "0" (no data collected).
+    USE_EXPLORER              — set to "1" to enable the OpenDota Explorer polling loop.
+                                 Queries /api/explorer with SQL against public_matches to
+                                 get recent ranked match IDs, then fetches /matches/{id}
+                                 for each new one.  Runs as a background asyncio task
+                                 parallel to the publicMatches loop.
+                                 Default: "0" (disabled).
+    EXPLORER_INTERVAL_SECONDS — how often the explorer loop polls, in seconds.
+                                 Default: 300 (5 minutes).
     STATS_BOOTSTRAP_MODE      — set to "1" or "true" to enable aggressive settings
                                  for rapid initial DB population (default: "0").
                                  Overrides POLL_INTERVAL_MINUTES → 5,
@@ -61,7 +69,7 @@ except ImportError:
     pass
 
 from backend.config import ALLOWED_GAME_MODE_PAIRS
-from backend.opendota_client import get_public_matches, get_match_details
+from backend.opendota_client import get_public_matches, get_match_details, get_explorer_match_ids
 from backend.stats_db import (
     init_stats_tables,
     match_exists,
@@ -86,6 +94,10 @@ DAYS_TO_KEEP: int = int(os.getenv("DAYS_TO_KEEP", "90"))
 CLEANUP_INTERVAL_HOURS: int = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 MAX_MATCHES_PER_CYCLE: int = int(os.getenv("MAX_MATCHES_PER_CYCLE", "50"))
 FETCH_MATCH_DETAILS: bool = os.getenv("FETCH_MATCH_DETAILS", "0") == "1"
+
+# Explorer polling loop (alternative to publicMatches path)
+USE_EXPLORER: bool = os.getenv("USE_EXPLORER", "0") == "1"
+EXPLORER_INTERVAL_SECONDS: int = int(os.getenv("EXPLORER_INTERVAL_SECONDS", "300"))
 
 # ---------------------------------------------------------------------------
 # Bootstrap mode — overrides for rapid initial DB population
@@ -355,6 +367,72 @@ def _parse_match_details(match: dict) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Single-match processing — shared by publicMatches and explorer paths
+# ---------------------------------------------------------------------------
+
+async def process_single_match(
+    match_id: int,
+    fallback_avg_rank_tier: int | None = None,
+    source: str = "unknown",
+) -> bool:
+    """Fetches /matches/{id}, parses, filters, and saves one match.
+
+    Used by both fetch_and_process_matches (publicMatches path) and
+    explorer_loop (explorer path) so the logic is never duplicated.
+
+    The caller is responsible for calling match_exists() beforehand and
+    skipping already-known IDs — this function assumes the match is new.
+
+    fallback_avg_rank_tier — avg_rank_tier from the outer API response
+      (publicMatches entry); used when /matches/{id} omits the field.
+    source — label for log messages: "publicMatches" or "explorer".
+
+    Returns True if the match was saved, False otherwise (reason is logged).
+    """
+    await _rate_limiter.acquire()
+    try:
+        details = await get_match_details(match_id)
+    except Exception as exc:
+        logger.warning("[%s] HTTP error for match %d: %s", source, match_id, exc)
+        return False
+
+    parsed = _parse_match_details(details)
+    if parsed is None:
+        return False  # reason already logged by _parse_match_details
+
+    game_mode = parsed.get("game_mode")
+    lobby_type = parsed.get("lobby_type")
+    if game_mode is None or lobby_type is None:
+        logger.info(
+            "[%s] match %d: skipped (game_mode=%s or lobby_type=%s is None)",
+            source, match_id, game_mode, lobby_type,
+        )
+        return False
+    if (game_mode, lobby_type) not in ALLOWED_GAME_MODE_PAIRS:
+        logger.info(
+            "[%s] match %d: skipped (game_mode=%s, lobby_type=%s) not in allowed pairs",
+            source, match_id, game_mode, lobby_type,
+        )
+        return False
+
+    # /matches/{id} often omits avg_rank_tier; fall back to outer source value.
+    if parsed["avg_rank_tier"] is None and fallback_avg_rank_tier is not None:
+        parsed["avg_rank_tier"] = fallback_avg_rank_tier
+        parsed["rank_bucket"] = _rank_bucket_for_tier(fallback_avg_rank_tier)
+
+    try:
+        save_match_and_update_aggregates(**parsed)
+        logger.info(
+            "[%s] saved match %d (game_mode=%d, lobby_type=%d, rank=%s)",
+            source, match_id, game_mode, lobby_type, parsed.get("rank_bucket", "unknown"),
+        )
+        return True
+    except Exception as exc:
+        logger.error("[%s] DB error saving match %d: %s", source, match_id, exc)
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Backfill worker — fill match_players for pre-existing matches
 # ---------------------------------------------------------------------------
 
@@ -434,39 +512,31 @@ async def backfill_match_player_stats(limit_matches: int | None = None) -> None:
 
 async def fetch_and_process_matches() -> None:
     """
-    One polling cycle:
+    One polling cycle via /publicMatches:
       1. Fetch recent public match IDs from /publicMatches (1 request).
-      2. If FETCH_MATCH_DETAILS is disabled: log a warning and return — hero data
-         is not available from publicMatches alone.
-      3. If FETCH_MATCH_DETAILS is enabled: for each new match_id, call
-         /matches/{id} (rate-limited) to get hero and result data, then save.
+      2. If FETCH_MATCH_DETAILS is disabled: log a warning and return.
+      3. For each new match_id, delegate to process_single_match() which
+         handles the /matches/{id} call, filtering, and DB write.
     """
+    if not FETCH_MATCH_DETAILS:
+        logger.warning(
+            "[publicMatches] FETCH_MATCH_DETAILS=0 — path disabled. "
+            "Set FETCH_MATCH_DETAILS=1 to enable."
+        )
+        return
+
     await _rate_limiter.acquire()
     try:
         raw_matches = await get_public_matches()
     except Exception as exc:
-        logger.error("[updater] Failed to fetch public matches: %s", exc)
+        logger.error("[publicMatches] Failed to fetch: %s", exc)
         return
 
-    logger.info("[updater] publicMatches returned %d entries", len(raw_matches))
+    logger.info("[publicMatches] returned %d entries", len(raw_matches))
 
-    if not FETCH_MATCH_DETAILS:
-        logger.warning(
-            "[updater] FETCH_MATCH_DETAILS is disabled. "
-            "publicMatches does not provide hero data "
-            "(radiant_team/dire_team fields are zeroed by the API). "
-            "Set FETCH_MATCH_DETAILS=1 to enable hero statistics collection."
-        )
-        return
-
-    new_count = 0
+    saved = 0
     skip_existing = 0
-    skip_incomplete = 0
-    skip_game_mode = 0
-    # Diagnostic flag: log raw details only for the first non-skipped match per cycle.
-    _details_diag_done = False
-    # Fallback diag: log avg_rank_tier substitution only once per cycle.
-    _fallback_diag_done = False
+    skip_other = 0
 
     for raw in raw_matches[:MAX_MATCHES_PER_CYCLE]:
         basic = _parse_public_match(raw)
@@ -479,93 +549,100 @@ async def fetch_and_process_matches() -> None:
             skip_existing += 1
             continue
 
-        # Hero data is only available via the full match details endpoint
-        await _rate_limiter.acquire()
-        try:
-            details = await get_match_details(match_id)
-        except Exception as exc:
-            logger.warning(
-                "[updater] HTTP error fetching details for match %d: %s", match_id, exc
-            )
-            continue
-
-        # Diagnostic point 1: compare avg_rank_tier from publicMatches vs /matches/{id}.
-        # Fires once per cycle (first non-existing match fetched).
-        # This reveals whether the details endpoint actually returns avg_rank_tier.
-        if not _details_diag_done:
-            _details_diag_done = True
-            logger.info(
-                "[diag] raw OpenDota match %s: avg_rank_tier=%r  keys=%s",
-                match_id,
-                details.get("avg_rank_tier"),
-                sorted(details.keys()),
-            )
-            logger.info(
-                "[diag] avg_rank_tier source compare: publicMatches=%r  /matches/{id}=%r",
-                basic.get("avg_rank_tier"),
-                details.get("avg_rank_tier"),
-            )
-
-        parsed = _parse_match_details(details)
-        if parsed is None:
-            skip_incomplete += 1
-            continue
-
-        # --- Game-mode / lobby-type filter ---
-        # Both fields must be present and the pair must be in ALLOWED_GAME_MODE_PAIRS.
-        # Matches with either field NULL (e.g. Turbo, custom lobbies) are dropped here,
-        # before any DB write, so they never appear in the `matches` table.
-        game_mode = parsed.get("game_mode")
-        lobby_type = parsed.get("lobby_type")
-        if game_mode is None or lobby_type is None:
-            logger.info(
-                "[updater] match %d: skipped (game_mode=%s or lobby_type=%s is None)",
-                match_id, game_mode, lobby_type,
-            )
-            skip_game_mode += 1
-            continue
-        if (game_mode, lobby_type) not in ALLOWED_GAME_MODE_PAIRS:
-            logger.info(
-                "[updater] match %d: skipped (game_mode=%s, lobby_type=%s) "
-                "not in allowed pairs",
-                match_id, game_mode, lobby_type,
-            )
-            skip_game_mode += 1
-            continue
-
-        # Fallback: /matches/{id} often omits avg_rank_tier; use publicMatches value.
-        if parsed["avg_rank_tier"] is None:
-            fallback = basic.get("avg_rank_tier")
-            if fallback is not None:
-                parsed["avg_rank_tier"] = fallback
-                parsed["rank_bucket"] = _rank_bucket_for_tier(fallback)
-                if not _fallback_diag_done:
-                    _fallback_diag_done = True
-                    logger.info(
-                        "[diag] applied avg_rank_tier fallback for match %s: "
-                        "publicMatches=%r → bucket=%s",
-                        match_id, fallback, parsed["rank_bucket"],
-                    )
-
-        try:
-            logger.info(
-                "[diag] saving match %s with game_mode=%s, lobby_type=%s",
-                parsed.get("match_id"), parsed.get("game_mode"), parsed.get("lobby_type"),
-            )
-            save_match_and_update_aggregates(**parsed)
-            new_count += 1
-            if new_count == 1:
-                logger.info(
-                    "[updater] rank example: match=%d avg_rank_tier=%s → bucket=%s",
-                    parsed["match_id"], parsed.get("avg_rank_tier"), parsed.get("rank_bucket"),
-                )
-        except Exception as exc:
-            logger.error("[updater] Failed to save match %d: %s", match_id, exc)
+        ok = await process_single_match(
+            match_id,
+            fallback_avg_rank_tier=basic.get("avg_rank_tier"),
+            source="publicMatches",
+        )
+        if ok:
+            saved += 1
+        else:
+            skip_other += 1
 
     logger.info(
-        "[updater] Cycle done: +%d new | %d existed | %d incomplete | %d wrong game_mode",
-        new_count, skip_existing, skip_incomplete, skip_game_mode,
+        "[publicMatches] cycle done: +%d saved | %d existed | %d skipped",
+        saved, skip_existing, skip_other,
     )
+
+
+# ---------------------------------------------------------------------------
+# Explorer loop — alternative match ingestion via /api/explorer SQL
+# ---------------------------------------------------------------------------
+
+async def explorer_loop() -> None:
+    """Background task: polls OpenDota Explorer for ranked match IDs.
+
+    Runs independently of the publicMatches loop as an asyncio.Task started
+    in main().  Both paths share the same _rate_limiter so their combined
+    /matches/{id} call rate never exceeds MAX_REQUESTS_PER_MINUTE.
+
+    Flow per cycle:
+      1. For each (game_mode, lobby_type) pair in ALLOWED_GAME_MODE_PAIRS:
+         call GET /api/explorer?sql=SELECT match_id … LIMIT 100.
+      2. For each returned match_id that is not yet in the DB:
+         call process_single_match() — same pipeline as publicMatches path.
+      3. Sleep EXPLORER_INTERVAL_SECONDS before next cycle.
+
+    Enabled by USE_EXPLORER=1.
+    """
+    if not USE_EXPLORER:
+        logger.info("[explorer] USE_EXPLORER=0 — loop disabled")
+        return
+
+    logger.info(
+        "[explorer] starting (interval=%ds, pairs=%s)",
+        EXPLORER_INTERVAL_SECONDS, sorted(ALLOWED_GAME_MODE_PAIRS),
+    )
+
+    while True:
+        cycle_start = time.monotonic()
+        try:
+            all_ids: list[int] = []
+
+            for gm, lt in sorted(ALLOWED_GAME_MODE_PAIRS):
+                await _rate_limiter.acquire()
+                try:
+                    ids = await get_explorer_match_ids(game_mode=gm, lobby_type=lt)
+                    logger.info(
+                        "[explorer] SQL (game_mode=%d, lobby_type=%d) → %d match IDs",
+                        gm, lt, len(ids),
+                    )
+                    all_ids.extend(ids)
+                except Exception as exc:
+                    logger.error(
+                        "[explorer] API error (game_mode=%d, lobby_type=%d): %s",
+                        gm, lt, exc,
+                    )
+
+            logger.info("[explorer] %d total match IDs to process", len(all_ids))
+
+            saved = 0
+            skip_existing = 0
+            skip_other = 0
+
+            for match_id in all_ids:
+                if match_exists(match_id):
+                    skip_existing += 1
+                    continue
+
+                ok = await process_single_match(match_id, source="explorer")
+                if ok:
+                    saved += 1
+                else:
+                    skip_other += 1
+
+            elapsed = time.monotonic() - cycle_start
+            logger.info(
+                "[explorer] cycle done (%.1fs): +%d saved | %d existed | %d skipped",
+                elapsed, saved, skip_existing, skip_other,
+            )
+
+        except Exception as exc:
+            logger.error("[explorer] Unhandled error in cycle: %s", exc, exc_info=True)
+
+        sleep_sec = max(0.0, EXPLORER_INTERVAL_SECONDS - (time.monotonic() - cycle_start))
+        logger.info("[explorer] sleeping %.0fs until next cycle...", sleep_sec)
+        await asyncio.sleep(sleep_sec)
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +700,8 @@ async def main() -> None:
     logger.info("  DAYS_TO_KEEP                   = %d", DAYS_TO_KEEP)
     logger.info("  CLEANUP_INTERVAL_HOURS         = %d", CLEANUP_INTERVAL_HOURS)
     logger.info("  FETCH_MATCH_DETAILS            = %s", FETCH_MATCH_DETAILS)
+    logger.info("  USE_EXPLORER                   = %s", USE_EXPLORER)
+    logger.info("  EXPLORER_INTERVAL_SECONDS      = %d", EXPLORER_INTERVAL_SECONDS)
     logger.info("  [config] allowed mode pairs    = %s", sorted(ALLOWED_GAME_MODE_PAIRS))
     logger.info("  [config] rank buckets          = "
                 "0→unknown | 1-20→low | 21-35→mid | 36-50→high | 51-60→very_high | 61+→immortal")
@@ -635,6 +714,10 @@ async def main() -> None:
     # Ensure tables exist (safe to call multiple times)
     init_stats_tables()
     logger.info("[updater] DB tables ready. Current match count: %d", get_matches_count())
+
+    # Start explorer loop as independent background task (runs alongside main loop).
+    # It exits immediately if USE_EXPLORER=0 so the task is always safe to create.
+    asyncio.create_task(explorer_loop(), name="explorer_loop")
 
     last_cleanup_time: float = 0.0
 
