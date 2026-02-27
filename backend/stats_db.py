@@ -100,7 +100,31 @@ def init_stats_tables() -> None:
             ", ".join(applied),
         )
 
-    # Migration 3: add game_mode to matches.
+    # Migration 3: add extended per-player stats columns (second batch).
+    _mp_new_columns_v2 = [
+        ("last_hits",    "ALTER TABLE match_players ADD COLUMN last_hits INTEGER"),
+        ("denies",       "ALTER TABLE match_players ADD COLUMN denies INTEGER"),
+        ("hero_healing", "ALTER TABLE match_players ADD COLUMN hero_healing INTEGER"),
+        ("net_worth",    "ALTER TABLE match_players ADD COLUMN net_worth INTEGER"),
+        ("item3",        "ALTER TABLE match_players ADD COLUMN item3 INTEGER"),
+        ("item4",        "ALTER TABLE match_players ADD COLUMN item4 INTEGER"),
+        ("item5",        "ALTER TABLE match_players ADD COLUMN item5 INTEGER"),
+    ]
+    applied_v2: list[str] = []
+    for col_name, ddl in _mp_new_columns_v2:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+            applied_v2.append(col_name)
+        except Exception:
+            pass  # column already exists
+    if applied_v2:
+        logger.info(
+            "[stats_db] Migration applied: added to match_players: %s",
+            ", ".join(applied_v2),
+        )
+
+    # Migration 4: add game_mode to matches.
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE matches ADD COLUMN game_mode SMALLINT"))
@@ -108,7 +132,7 @@ def init_stats_tables() -> None:
     except Exception:
         pass  # column already exists
 
-    # Migration 4: add lobby_type to matches.
+    # Migration 5: add lobby_type to matches.
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE matches ADD COLUMN lobby_type SMALLINT"))
@@ -242,14 +266,18 @@ def save_match_and_update_aggregates(
                              kills, deaths, assists,
                              hero_damage, tower_damage,
                              obs_placed, sen_placed,
-                             item0, item1, item2)
+                             item0, item1, item2,
+                             last_hits, denies, hero_healing, net_worth,
+                             item3, item4, item5)
                         VALUES
                             (:match_id, :hero_id, :player_slot, :is_radiant,
                              :lane, :lane_role, :gpm, :xpm,
                              :kills, :deaths, :assists,
                              :hero_damage, :tower_damage,
                              :obs_placed, :sen_placed,
-                             :item0, :item1, :item2)
+                             :item0, :item1, :item2,
+                             :last_hits, :denies, :hero_healing, :net_worth,
+                             :item3, :item4, :item5)
                         ON CONFLICT (match_id, player_slot) DO NOTHING
                     """),
                     {**p, "match_id": match_id},
@@ -720,14 +748,18 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
                          kills, deaths, assists,
                          hero_damage, tower_damage,
                          obs_placed, sen_placed,
-                         item0, item1, item2)
+                         item0, item1, item2,
+                         last_hits, denies, hero_healing, net_worth,
+                         item3, item4, item5)
                     VALUES
                         (:match_id, :hero_id, :player_slot, :is_radiant,
                          :lane, :lane_role, :gpm, :xpm,
                          :kills, :deaths, :assists,
                          :hero_damage, :tower_damage,
                          :obs_placed, :sen_placed,
-                         :item0, :item1, :item2)
+                         :item0, :item1, :item2,
+                         :last_hits, :denies, :hero_healing, :net_worth,
+                         :item3, :item4, :item5)
                 """),
                 {**p, "match_id": match_id},
             )

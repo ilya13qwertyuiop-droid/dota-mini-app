@@ -225,36 +225,58 @@ _JUNK_ITEM_IDS: frozenset[int] = frozenset({
 def _extract_player_stats(player: dict) -> dict:
     """Extracts per-player stats from a full /matches/{id} player record.
 
-    Picks up to 3 "core" items from slots item_0..item_5 by filtering out
+    Picks up to 6 "core" items from slots item_0..item_5 by filtering out
     cheap consumables defined in _JUNK_ITEM_IDS.  Missing or 0-valued slots
-    are also skipped.  The result is padded with None up to 3 entries.
+    are also skipped.  The result is padded with None up to 6 entries.
+
+    "Одиночные" поля игрока (scalar stats):
+      economy  — gpm, xpm, last_hits, denies, net_worth
+      combat   — kills, deaths, assists, hero_damage, tower_damage, hero_healing
+      support  — obs_placed, sen_placed
+      items    — item0..item5 (core build, junk filtered)
+
+    Потенциальные временные ряды (lh_t, dn_t, gold_t, xp_t, net_worth_t)
+    намеренно не включены сюда — они выносятся в отдельную структуру/таблицу.
     """
     raw_items = [player.get(f"item_{i}", 0) or 0 for i in range(6)]
     core_items: list[int | None] = [
         iid for iid in raw_items if iid and iid not in _JUNK_ITEM_IDS
-    ][:3]
-    while len(core_items) < 3:
+    ][:6]
+    while len(core_items) < 6:
         core_items.append(None)
 
     slot = player.get("player_slot", 128)
     return {
+        # --- identity ---
         "hero_id":      player.get("hero_id"),
         "player_slot":  slot,
         "is_radiant":   1 if slot < 128 else 0,
+        # --- lane / role ---
         "lane":         player.get("lane"),
         "lane_role":    player.get("lane_role"),
+        # --- economy ---
         "gpm":          player.get("gold_per_min"),
         "xpm":          player.get("xp_per_min"),
+        "last_hits":    player.get("last_hits"),
+        "denies":       player.get("denies"),
+        "net_worth":    player.get("net_worth"),
+        # --- combat ---
         "kills":        player.get("kills"),
         "deaths":       player.get("deaths"),
         "assists":      player.get("assists"),
         "hero_damage":  player.get("hero_damage"),
         "tower_damage": player.get("tower_damage"),
+        "hero_healing": player.get("hero_healing"),
+        # --- support ---
         "obs_placed":   player.get("obs_placed"),
         "sen_placed":   player.get("sen_placed"),
+        # --- items (core build, junk filtered) ---
         "item0":        core_items[0],
         "item1":        core_items[1],
         "item2":        core_items[2],
+        "item3":        core_items[3],
+        "item4":        core_items[4],
+        "item5":        core_items[5],
     }
 
 
