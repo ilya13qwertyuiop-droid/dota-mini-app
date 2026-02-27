@@ -157,7 +157,66 @@ def init_stats_tables() -> None:
             )
         """))
 
-    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, hero_matchups, hero_synergy, hero_stats)")
+    # Migration 7: create app_settings (key-value store for runtime flags).
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key   VARCHAR(64) PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """))
+
+    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, hero_matchups, hero_synergy, hero_stats, app_settings)")
+
+
+# ---------------------------------------------------------------------------
+# Runtime settings helpers
+# ---------------------------------------------------------------------------
+
+def get_stats_mode() -> str:
+    """Returns the current stats mode: 'normal' or 'strict'.
+
+    normal — use pre-computed aggregate tables (hero_stats, hero_matchups,
+             hero_synergy); fast, covers all ingested matches.
+    strict — compute on-the-fly from match_players rows where lane IS NOT NULL
+             AND matches.game_mode IS NOT NULL; slower, covers only fully
+             parsed matches with complete per-player lane data.
+
+    Returns 'normal' if the setting is not yet written (safe default).
+    """
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT value FROM app_settings WHERE key = 'stats_mode'")
+            ).fetchone()
+        return row[0] if row else "normal"
+    except Exception:
+        return "normal"  # table may not exist on first boot
+
+
+def set_stats_mode(mode: str) -> None:
+    """Persists the stats mode ('normal' or 'strict') to app_settings.
+
+    Creates the app_settings table if it does not yet exist, so this
+    function is safe to call even before init_stats_tables() has run.
+    """
+    if mode not in ("normal", "strict"):
+        raise ValueError(f"Invalid stats mode: {mode!r}. Must be 'normal' or 'strict'.")
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key   VARCHAR(64) PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """))
+        conn.execute(
+            text("""
+                INSERT INTO app_settings (key, value) VALUES (:k, :v)
+                ON CONFLICT (key) DO UPDATE SET value = excluded.value
+            """),
+            {"k": "stats_mode", "v": mode},
+        )
+    logger.info("[stats_db] stats_mode set to %r", mode)
 
 
 # ---------------------------------------------------------------------------
@@ -433,8 +492,63 @@ def save_match_and_update_aggregates(
 # Reads for the API endpoints
 # ---------------------------------------------------------------------------
 
-def get_hero_matchup_rows(hero_id: int, min_games: int = 50) -> list[dict]:
-    """Returns all opponent matchup rows for a hero (with win rate from hero's perspective)."""
+def get_hero_matchup_rows(hero_id: int, min_games: int = 50, strict: bool = False) -> list[dict]:
+    """Returns all opponent matchup rows for a hero (win rate from hero's perspective).
+
+    strict=False (default): reads from the pre-computed hero_matchups aggregate table.
+    strict=True: computes on-the-fly from match_players rows that have lane IS NOT NULL
+        and matches.game_mode IS NOT NULL (only fully parsed matches with lane data).
+        Result format is identical so callers need no changes.
+    """
+    if strict:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("""
+                    WITH hero_matches AS (
+                        SELECT mp.match_id, mp.is_radiant
+                        FROM match_players mp
+                        JOIN matches m ON m.match_id = mp.match_id
+                        WHERE mp.hero_id = :id
+                          AND mp.lane IS NOT NULL
+                          AND m.game_mode IS NOT NULL
+                          AND (m.duration IS NULL OR m.duration >= :min_dur)
+                    ),
+                    opponents AS (
+                        SELECT
+                            hm.match_id,
+                            mp2.hero_id          AS opp_hero_id,
+                            m.radiant_win,
+                            hm.is_radiant        AS my_radiant
+                        FROM hero_matches hm
+                        JOIN match_players mp2
+                             ON mp2.match_id = hm.match_id
+                            AND mp2.is_radiant != hm.is_radiant
+                        JOIN matches m ON m.match_id = hm.match_id
+                    )
+                    SELECT
+                        opp_hero_id,
+                        COUNT(*) AS games,
+                        SUM(CASE WHEN (my_radiant = 1 AND radiant_win = 1)
+                                   OR (my_radiant = 0 AND radiant_win = 0)
+                                 THEN 1 ELSE 0 END) AS hero_wins
+                    FROM opponents
+                    GROUP BY opp_hero_id
+                    HAVING COUNT(*) >= :min_games
+                """),
+                {"id": hero_id, "min_dur": MIN_MATCH_DURATION_SECONDS, "min_games": min_games},
+            ).mappings().all()
+
+        return [
+            {
+                "hero_id": row["opp_hero_id"],
+                "games":   row["games"],
+                "wins":    row["hero_wins"],
+                "wr_vs":   round(row["hero_wins"] / row["games"], 4) if row["games"] > 0 else 0.0,
+            }
+            for row in rows
+        ]
+
+    # --- normal mode: fast pre-computed aggregate ---
     with engine.connect() as conn:
         rows = conn.execute(
             text(
@@ -464,8 +578,35 @@ def get_hero_matchup_rows(hero_id: int, min_games: int = 50) -> list[dict]:
     return result
 
 
-def get_hero_base_winrate_from_db(hero_id: int) -> Optional[float]:
-    """Returns hero's overall winrate from hero_stats (computed from our match data)."""
+def get_hero_base_winrate_from_db(hero_id: int, strict: bool = False) -> Optional[float]:
+    """Returns hero's overall winrate from our match data.
+
+    strict=False: reads from hero_stats aggregate table (fast).
+    strict=True: counts from match_players WHERE lane IS NOT NULL (fully parsed matches only).
+    """
+    if strict:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT
+                        COUNT(*) AS games,
+                        SUM(CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                   OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                 THEN 1 ELSE 0 END) AS wins
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :id
+                      AND mp.lane IS NOT NULL
+                      AND m.game_mode IS NOT NULL
+                      AND (m.duration IS NULL OR m.duration >= :min_dur)
+                """),
+                {"id": hero_id, "min_dur": MIN_MATCH_DURATION_SECONDS},
+            ).mappings().fetchone()
+        if not row or not row["games"]:
+            return None
+        return round(row["wins"] / row["games"], 4)
+
+    # --- normal mode ---
     with engine.connect() as conn:
         row = conn.execute(
             text("SELECT games, wins FROM hero_stats WHERE hero_id = :id"),
@@ -477,8 +618,28 @@ def get_hero_base_winrate_from_db(hero_id: int) -> Optional[float]:
     return round(row["wins"] / row["games"], 4)
 
 
-def get_hero_total_games(hero_id: int) -> int:
-    """Returns total number of games for a hero from hero_stats."""
+def get_hero_total_games(hero_id: int, strict: bool = False) -> int:
+    """Returns total games for a hero.
+
+    strict=False: from hero_stats aggregate.
+    strict=True: counts match_players rows with lane IS NOT NULL.
+    """
+    if strict:
+        with engine.connect() as conn:
+            val = conn.execute(
+                text("""
+                    SELECT COUNT(*) FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :id
+                      AND mp.lane IS NOT NULL
+                      AND m.game_mode IS NOT NULL
+                      AND (m.duration IS NULL OR m.duration >= :min_dur)
+                """),
+                {"id": hero_id, "min_dur": MIN_MATCH_DURATION_SECONDS},
+            ).scalar()
+        return val or 0
+
+    # --- normal mode ---
     with engine.connect() as conn:
         row = conn.execute(
             text("SELECT games FROM hero_stats WHERE hero_id = :id"),
@@ -487,8 +648,63 @@ def get_hero_total_games(hero_id: int) -> int:
     return row["games"] if row else 0
 
 
-def get_hero_synergy_rows(hero_id: int, min_games: int = 50) -> list[dict]:
-    """Returns all ally synergy rows for a hero."""
+def get_hero_synergy_rows(hero_id: int, min_games: int = 50, strict: bool = False) -> list[dict]:
+    """Returns all ally synergy rows for a hero.
+
+    strict=False: reads from the pre-computed hero_synergy aggregate table.
+    strict=True: computes on-the-fly from match_players (lane IS NOT NULL matches only).
+        Result format is identical so callers need no changes.
+    """
+    if strict:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("""
+                    WITH hero_matches AS (
+                        SELECT mp.match_id, mp.is_radiant
+                        FROM match_players mp
+                        JOIN matches m ON m.match_id = mp.match_id
+                        WHERE mp.hero_id = :id
+                          AND mp.lane IS NOT NULL
+                          AND m.game_mode IS NOT NULL
+                          AND (m.duration IS NULL OR m.duration >= :min_dur)
+                    ),
+                    allies AS (
+                        SELECT
+                            hm.match_id,
+                            mp2.hero_id     AS ally_hero_id,
+                            m.radiant_win,
+                            hm.is_radiant   AS my_radiant
+                        FROM hero_matches hm
+                        JOIN match_players mp2
+                             ON mp2.match_id = hm.match_id
+                            AND mp2.is_radiant = hm.is_radiant
+                            AND mp2.hero_id != :id
+                        JOIN matches m ON m.match_id = hm.match_id
+                    )
+                    SELECT
+                        ally_hero_id,
+                        COUNT(*) AS games,
+                        SUM(CASE WHEN (my_radiant = 1 AND radiant_win = 1)
+                                   OR (my_radiant = 0 AND radiant_win = 0)
+                                 THEN 1 ELSE 0 END) AS wins
+                    FROM allies
+                    GROUP BY ally_hero_id
+                    HAVING COUNT(*) >= :min_games
+                """),
+                {"id": hero_id, "min_dur": MIN_MATCH_DURATION_SECONDS, "min_games": min_games},
+            ).mappings().all()
+
+        return [
+            {
+                "hero_id": row["ally_hero_id"],
+                "games":   row["games"],
+                "wins":    row["wins"],
+                "wr_vs":   round(row["wins"] / row["games"], 4) if row["games"] > 0 else 0.0,
+            }
+            for row in rows
+        ]
+
+    # --- normal mode: fast pre-computed aggregate ---
     with engine.connect() as conn:
         rows = conn.execute(
             text(

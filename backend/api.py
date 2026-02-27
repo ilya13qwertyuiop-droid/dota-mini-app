@@ -27,6 +27,7 @@ from backend.stats_db import (
     get_hero_synergy_rows,
     get_hero_base_winrate_from_db,
     get_hero_total_games,
+    get_stats_mode,
 )
 
 
@@ -547,7 +548,8 @@ async def api_hero_counters(
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
 
-    rows = get_hero_matchup_rows(hero_id, min_games=min_games)
+    strict = get_stats_mode() == "strict"
+    rows = get_hero_matchup_rows(hero_id, min_games=min_games, strict=strict)
 
     if not rows:
         raise HTTPException(
@@ -558,7 +560,7 @@ async def api_hero_counters(
             ),
         )
 
-    base_wr = get_hero_base_winrate_from_db(hero_id)
+    base_wr = get_hero_base_winrate_from_db(hero_id, strict=strict)
     if base_wr is None:
         # Fallback: use neutral 0.5 so advantage is still meaningful
         base_wr = 0.5
@@ -587,11 +589,11 @@ async def api_hero_counters(
         reverse=True,
     )[:limit]
 
-    data_games = get_hero_total_games(hero_id)
+    data_games = get_hero_total_games(hero_id, strict=strict)
 
     logger.info(
-        "[counters] hero_id=%s base_wr=%.4f data_games=%d counters=%d victims=%d",
-        hero_id, base_wr, data_games, len(counters), len(victims),
+        "[counters] hero_id=%s base_wr=%.4f data_games=%d counters=%d victims=%d (strict=%s)",
+        hero_id, base_wr, data_games, len(counters), len(victims), strict,
     )
 
     return {
@@ -600,6 +602,7 @@ async def api_hero_counters(
         "data_games": data_games,
         "counters": counters,
         "victims": victims,
+        "strict_mode": strict,
     }
 
 
@@ -634,7 +637,8 @@ async def api_hero_synergy(
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
 
-    rows = get_hero_synergy_rows(hero_id, min_games=min_games)
+    strict = get_stats_mode() == "strict"
+    rows = get_hero_synergy_rows(hero_id, min_games=min_games, strict=strict)
 
     if not rows:
         raise HTTPException(
@@ -645,7 +649,7 @@ async def api_hero_synergy(
             ),
         )
 
-    base_wr = get_hero_base_winrate_from_db(hero_id)
+    base_wr = get_hero_base_winrate_from_db(hero_id, strict=strict)
     if base_wr is None:
         base_wr = 0.5
         logger.warning("[synergy] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
@@ -674,11 +678,11 @@ async def api_hero_synergy(
         key=lambda x: x["delta"],
     )[:limit]
 
-    data_games = get_hero_total_games(hero_id)
+    data_games = get_hero_total_games(hero_id, strict=strict)
 
     logger.info(
-        "[synergy] hero_id=%s base_wr=%.4f data_games=%d best=%d worst=%d",
-        hero_id, base_wr, data_games, len(best_allies), len(worst_allies),
+        "[synergy] hero_id=%s base_wr=%.4f data_games=%d best=%d worst=%d (strict=%s)",
+        hero_id, base_wr, data_games, len(best_allies), len(worst_allies), strict,
     )
 
     return {
@@ -687,6 +691,7 @@ async def api_hero_synergy(
         "data_games": data_games,
         "best_allies": best_allies,
         "worst_allies": worst_allies,
+        "strict_mode": strict,
     }
 
 

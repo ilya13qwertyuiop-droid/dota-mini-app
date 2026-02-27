@@ -36,6 +36,8 @@ try:
         get_hero_matchup_rows,
         get_hero_base_winrate_from_db,
         get_hero_synergy_rows,
+        get_stats_mode,
+        set_stats_mode,
     )
     _LOCAL_STATS_OK = True
 except ImportError as _local_import_err:
@@ -1262,6 +1264,47 @@ async def _handle_feedback_message(
     )
 
 
+# -------- /stats_mode (скрытая команда для администраторов) --------
+
+async def stats_mode_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Переключает режим статистики (normal ↔ strict). Только для администраторов."""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        return  # тихо игнорируем
+
+    if not _LOCAL_STATS_OK:
+        await update.message.reply_text("stats_db недоступен — переключение невозможно.")
+        return
+
+    try:
+        current = get_stats_mode()
+        new_mode = "strict" if current == "normal" else "normal"
+        set_stats_mode(new_mode)
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Не удалось переключить режим статистики.")
+        return
+
+    if new_mode == "strict":
+        msg = (
+            "🔒 <b>Строгий режим включён</b>\n\n"
+            "Статистика (контрпики, синергии, винрейт) считается только "
+            "по матчам с заполненными <code>game_mode</code> и <code>lane</code> "
+            "в таблице <code>match_players</code>.\n\n"
+            "Данных меньше, но они качественнее."
+        )
+    else:
+        msg = (
+            "🔓 <b>Обычный режим включён</b>\n\n"
+            "Статистика считается по всем спаршенным матчам "
+            "(агрегатные таблицы <code>hero_stats</code> / "
+            "<code>hero_matchups</code> / <code>hero_synergy</code>).\n\n"
+            "Максимальное покрытие данных."
+        )
+
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
 # -------- /admin_feedback (скрытая команда для администраторов) --------
 
 async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
@@ -1364,6 +1407,7 @@ def main():
     application.add_handler(CommandHandler("synergy",    synergy_command))
     application.add_handler(CommandHandler("feedback",       feedback_command))
     application.add_handler(CommandHandler("admin_feedback", admin_feedback_command))
+    application.add_handler(CommandHandler("stats_mode",     stats_mode_command))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(
