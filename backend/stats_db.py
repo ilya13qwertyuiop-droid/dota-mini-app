@@ -33,7 +33,7 @@ from typing import Optional
 
 from sqlalchemy import text
 
-from backend.config import MIN_MATCH_DURATION_SECONDS
+from backend.config import ALLOWED_GAME_MODE_PAIRS, MIN_MATCH_DURATION_SECONDS
 from backend.database import engine
 
 logger = logging.getLogger(__name__)
@@ -164,6 +164,18 @@ def save_match_and_update_aggregates(
       of the extended stats fields.  Rows are inserted with ON CONFLICT DO
       NOTHING so re-running on an already-saved match is safe.
     """
+    # --- Hard gate: never write a match with missing or disallowed game_mode/lobby_type ---
+    # This is the last line of defence: even if a caller skips its own filter
+    # (e.g. an old worker process that hasn't been restarted after a deploy),
+    # nothing leaks into the DB.
+    if game_mode is None or lobby_type is None or (game_mode, lobby_type) not in ALLOWED_GAME_MODE_PAIRS:
+        logger.error(
+            "[stats_db] BLOCKED write: match %s has game_mode=%s, lobby_type=%s "
+            "— not in ALLOWED_GAME_MODE_PAIRS %s. Match will NOT be saved.",
+            match_id, game_mode, lobby_type, ALLOWED_GAME_MODE_PAIRS,
+        )
+        return
+
     logger.info(
         "[diag] inserting/updating match %s with game_mode=%s, lobby_type=%s",
         match_id, game_mode, lobby_type,
@@ -196,20 +208,6 @@ def save_match_and_update_aggregates(
         )
 
         is_new = result.rowcount == 1
-
-        # Patch game_mode / lobby_type for rows that already existed before these
-        # columns were added (ON CONFLICT DO NOTHING leaves them NULL).
-        # The WHERE clause avoids a needless write for freshly inserted rows.
-        conn.execute(
-            text("""
-                UPDATE matches
-                SET    game_mode  = :game_mode,
-                       lobby_type = :lobby_type
-                WHERE  match_id   = :match_id
-                  AND  (game_mode IS NULL OR lobby_type IS NULL)
-            """),
-            {"match_id": match_id, "game_mode": game_mode, "lobby_type": lobby_type},
-        )
 
         logger.info(
             "[diag] matches upsert done for %s: game_mode=%s, lobby_type=%s  (new_row=%s)",

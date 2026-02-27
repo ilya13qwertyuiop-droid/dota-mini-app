@@ -518,17 +518,17 @@ async def fetch_and_process_matches() -> None:
         game_mode = parsed.get("game_mode")
         lobby_type = parsed.get("lobby_type")
         if game_mode is None or lobby_type is None:
-            logger.debug(
+            logger.info(
                 "[updater] match %d: skipped (game_mode=%s or lobby_type=%s is None)",
                 match_id, game_mode, lobby_type,
             )
             skip_game_mode += 1
             continue
         if (game_mode, lobby_type) not in ALLOWED_GAME_MODE_PAIRS:
-            logger.debug(
+            logger.info(
                 "[updater] match %d: skipped (game_mode=%s, lobby_type=%s) "
-                "not in allowed pairs %s",
-                match_id, game_mode, lobby_type, ALLOWED_GAME_MODE_PAIRS,
+                "not in allowed pairs",
+                match_id, game_mode, lobby_type,
             )
             skip_game_mode += 1
             continue
