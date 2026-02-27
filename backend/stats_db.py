@@ -140,7 +140,55 @@ def init_stats_tables() -> None:
     except Exception:
         pass  # column already exists
 
-    logger.info("[stats_db] Tables ready (matches, match_players, hero_matchups, hero_synergy, hero_stats)")
+    # Migration 6: create match_player_timeline (10-minute snapshots per player).
+    # Uses CREATE TABLE IF NOT EXISTS so it is fully idempotent — no try/except needed.
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS match_player_timeline (
+                match_id    BIGINT  NOT NULL,
+                player_slot INTEGER NOT NULL,
+                minute      INTEGER NOT NULL,
+                lh          INTEGER,
+                dn          INTEGER,
+                gpm         INTEGER,
+                xpm         INTEGER,
+                net_worth   INTEGER,
+                PRIMARY KEY (match_id, player_slot, minute)
+            )
+        """))
+
+    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, hero_matchups, hero_synergy, hero_stats)")
+
+
+# ---------------------------------------------------------------------------
+# Timeline helpers
+# ---------------------------------------------------------------------------
+
+def save_match_player_timeline(match_id: int, players_timeline: list[dict]) -> None:
+    """Inserts per-10-minute snapshot rows for a single match.
+
+    Each element of players_timeline is a dict with keys:
+      player_slot, minute, lh, dn, gpm, xpm, net_worth
+
+    ON CONFLICT DO NOTHING makes the operation idempotent — re-running on
+    an already-saved match is safe.
+    """
+    if not players_timeline:
+        return
+    with engine.begin() as conn:
+        for row in players_timeline:
+            conn.execute(
+                text("""
+                    INSERT INTO match_player_timeline
+                        (match_id, player_slot, minute,
+                         lh, dn, gpm, xpm, net_worth)
+                    VALUES
+                        (:match_id, :player_slot, :minute,
+                         :lh, :dn, :gpm, :xpm, :net_worth)
+                    ON CONFLICT (match_id, player_slot, minute) DO NOTHING
+                """),
+                {**row, "match_id": match_id},
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +217,7 @@ def save_match_and_update_aggregates(
     game_mode: Optional[int] = None,
     lobby_type: Optional[int] = None,
     players: Optional[list[dict]] = None,
+    players_timeline: Optional[list[dict]] = None,
 ) -> None:
     """Atomically saves one match and updates all aggregate tables.
 
@@ -187,6 +236,11 @@ def save_match_and_update_aggregates(
       Each dict must contain: hero_id, player_slot, is_radiant and any subset
       of the extended stats fields.  Rows are inserted with ON CONFLICT DO
       NOTHING so re-running on an already-saved match is safe.
+
+    players_timeline — optional list of per-10-minute snapshot dicts
+      (from _extract_player_timeline).  Each dict contains: player_slot,
+      minute, lh, dn, gpm, xpm, net_worth.  Saved to match_player_timeline
+      only when the match passes the duration filter (≥ 20 min).
     """
     # --- Hard gate: never write a match with missing or disallowed game_mode/lobby_type ---
     # This is the last line of defence: even if a caller skips its own filter
@@ -243,9 +297,9 @@ def save_match_and_update_aggregates(
             return
 
         # ----- Duration filter -----
-        # Matches shorter than MIN_MATCH_DURATION_SECONDS (15 min) are stored
+        # Matches shorter than MIN_MATCH_DURATION_SECONDS (20 min) are stored
         # in the matches table but excluded from all derivative tables
-        # (match_players, hero_stats, hero_matchups, hero_synergy).
+        # (match_players, match_player_timeline, hero_stats, hero_matchups, hero_synergy).
         # duration=None means the API didn't return it — treated as passing.
         if duration is not None and duration < MIN_MATCH_DURATION_SECONDS:
             logger.debug(
@@ -281,6 +335,22 @@ def save_match_and_update_aggregates(
                         ON CONFLICT (match_id, player_slot) DO NOTHING
                     """),
                     {**p, "match_id": match_id},
+                )
+
+        # ----- Insert 10-minute timeline snapshots (if provided) -----
+        if players_timeline:
+            for row in players_timeline:
+                conn.execute(
+                    text("""
+                        INSERT INTO match_player_timeline
+                            (match_id, player_slot, minute,
+                             lh, dn, gpm, xpm, net_worth)
+                        VALUES
+                            (:match_id, :player_slot, :minute,
+                             :lh, :dn, :gpm, :xpm, :net_worth)
+                        ON CONFLICT (match_id, player_slot, minute) DO NOTHING
+                    """),
+                    {**row, "match_id": match_id},
                 )
 
         # ----- hero_stats -----
