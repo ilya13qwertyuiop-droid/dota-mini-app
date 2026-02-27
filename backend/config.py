@@ -30,9 +30,11 @@ ALLOWED_GAME_MODE_PAIRS: frozenset[tuple[int, int]] = frozenset({
 # match_players) additionally respect the duration limit below.
 # ---------------------------------------------------------------------------
 
-# Matches shorter than 15 minutes are considered analytically irrelevant:
+# Matches shorter than 20 minutes are considered analytically irrelevant:
 # they typically represent early mass-disconnects, server crashes, or
 # one-sided stomps where heroes never reached their power-spikes.
 # Such matches skew win-rate and synergy data and are excluded from all
 # hero analytics derived from our own match database.
-MIN_MATCH_DURATION_SECONDS: int = 900  # 15 minutes
+# A 20-minute floor also guarantees at least two 10-minute timeline
+# snapshots (minute 10 and minute 20) for every accepted match.
+MIN_MATCH_DURATION_SECONDS: int = 1200  # 20 minutes

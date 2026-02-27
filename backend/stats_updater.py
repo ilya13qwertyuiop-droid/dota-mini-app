@@ -280,6 +280,56 @@ def _extract_player_stats(player: dict) -> dict:
     }
 
 
+def _extract_player_timeline(player: dict, duration_sec: int) -> list[dict]:
+    """Builds per-10-minute snapshot rows from OpenDota time-series arrays.
+
+    OpenDota returns cumulative arrays indexed by minute:
+      lh_t[m]   — total last hits at minute m
+      dn_t[m]   — total denies at minute m
+      gold_t[m] — cumulative gold at minute m  → used to compute GPM
+      xp_t[m]   — cumulative XP at minute m   → used to compute XPM
+
+    We sample every 10th minute up to min(match_duration_minutes, array_len-1)
+    and compute instantaneous GPM/XPM as cumulative_value / minute.
+
+    Потенциальные временные ряды (отдельная структура, не scalar stats):
+    эта функция намеренно отделена от _extract_player_stats.
+    """
+    lh_t      = player.get("lh_t")       or []
+    dn_t      = player.get("dn_t")       or []
+    gold_t    = player.get("gold_t")     or []
+    xp_t      = player.get("xp_t")       or []
+    nw_t      = player.get("net_worth_t") or []
+
+    slot = player.get("player_slot", 128)
+
+    # Maximum minute we can meaningfully report
+    match_minutes = duration_sec // 60
+    max_data_len  = max(len(lh_t), len(dn_t), len(gold_t), len(xp_t), len(nw_t), 1)
+    max_minute    = min(match_minutes, max_data_len - 1)
+    # Round down to the nearest multiple of 10
+    max_minute_10 = (max_minute // 10) * 10
+
+    rows: list[dict] = []
+    for m in range(10, max_minute_10 + 1, 10):
+        lh  = lh_t[m]   if m < len(lh_t)   else None
+        dn  = dn_t[m]   if m < len(dn_t)   else None
+        # GPM/XPM = cumulative value / elapsed minutes (instantaneous rate)
+        gpm = round(gold_t[m] / m) if m < len(gold_t) and gold_t[m] is not None else None
+        xpm = round(xp_t[m]   / m) if m < len(xp_t)  and xp_t[m]  is not None else None
+        nw  = nw_t[m]   if m < len(nw_t)   else None
+        rows.append({
+            "player_slot": slot,
+            "minute":      m,
+            "lh":          lh,
+            "dn":          dn,
+            "gpm":         gpm,
+            "xpm":         xpm,
+            "net_worth":   nw,
+        })
+    return rows
+
+
 def _parse_public_match(match: dict) -> dict | None:
     """
     Extracts basic metadata from a publicMatches entry.
@@ -372,6 +422,14 @@ def _parse_match_details(match: dict) -> dict | None:
     # Per-player extended stats (used by match_players table)
     player_records = [_extract_player_stats(p) for p in players]
 
+    # Per-player 10-minute timeline snapshots (used by match_player_timeline table).
+    # duration may be None for very fresh matches; fall back to 0 so
+    # _extract_player_timeline returns an empty list rather than crashing.
+    duration_sec = match.get("duration") or 0
+    players_timeline: list[dict] = []
+    for p in players:
+        players_timeline.extend(_extract_player_timeline(p, duration_sec))
+
     return {
         "match_id": match_id,
         "start_time": match.get("start_time") or 0,
@@ -385,6 +443,7 @@ def _parse_match_details(match: dict) -> dict | None:
         "radiant_heroes": radiant_heroes,
         "dire_heroes": dire_heroes,
         "players": player_records,
+        "players_timeline": players_timeline,
     }
 
 
