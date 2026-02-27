@@ -107,6 +107,14 @@ def init_stats_tables() -> None:
     except Exception:
         pass  # column already exists
 
+    # Migration 4: add lobby_type to matches.
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE matches ADD COLUMN lobby_type SMALLINT"))
+        logger.info("[stats_db] Migration applied: added lobby_type to matches")
+    except Exception:
+        pass  # column already exists
+
     logger.info("[stats_db] Tables ready (matches, match_players, hero_matchups, hero_synergy, hero_stats)")
 
 
@@ -134,6 +142,7 @@ def save_match_and_update_aggregates(
     radiant_heroes: list[int],
     dire_heroes: list[int],
     game_mode: Optional[int] = None,
+    lobby_type: Optional[int] = None,
     players: Optional[list[dict]] = None,
 ) -> None:
     """Atomically saves one match and updates all aggregate tables.
@@ -146,21 +155,28 @@ def save_match_and_update_aggregates(
       The caller (fetch_and_process_matches) has already filtered out
       disallowed modes; this value is stored as-is for reference.
 
+    lobby_type — OpenDota lobby_type code (0=public, 7=ranked, etc.).
+      Stored as-is for diagnostic purposes.
+
     players — optional list of per-player dicts (from _parse_match_details).
       Each dict must contain: hero_id, player_slot, is_radiant and any subset
       of the extended stats fields.  Rows are inserted with ON CONFLICT DO
       NOTHING so re-running on an already-saved match is safe.
     """
+    logger.info(
+        "[diag] inserting/updating match %s with game_mode=%s, lobby_type=%s",
+        match_id, game_mode, lobby_type,
+    )
     with engine.begin() as conn:
         # ----- Insert match (idempotent) -----
         result = conn.execute(
             text("""
                 INSERT INTO matches
                     (match_id, start_time, duration, patch, avg_rank_tier, rank_bucket,
-                     game_mode, radiant_win, radiant_heroes, dire_heroes)
+                     game_mode, lobby_type, radiant_win, radiant_heroes, dire_heroes)
                 VALUES
                     (:match_id, :start_time, :duration, :patch, :avg_rank_tier, :rank_bucket,
-                     :game_mode, :radiant_win, :radiant_heroes, :dire_heroes)
+                     :game_mode, :lobby_type, :radiant_win, :radiant_heroes, :dire_heroes)
                 ON CONFLICT (match_id) DO NOTHING
             """),
             {
@@ -171,6 +187,7 @@ def save_match_and_update_aggregates(
                 "avg_rank_tier": avg_rank_tier,
                 "rank_bucket": rank_bucket,
                 "game_mode": game_mode,
+                "lobby_type": lobby_type,
                 "radiant_win": int(radiant_win),
                 "radiant_heroes": json.dumps(radiant_heroes),
                 "dire_heroes": json.dumps(dire_heroes),

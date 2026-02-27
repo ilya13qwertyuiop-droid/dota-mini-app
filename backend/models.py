@@ -111,6 +111,8 @@ class Match(Base):
     rank_bucket = Column(String(16))
     # OpenDota game_mode codes: 1=All Pick, 22=Ranked All Pick, 23=Turbo, etc.
     game_mode = Column(SmallInteger)
+    # OpenDota lobby_type codes: 0=public, 7=ranked, etc.
+    lobby_type = Column(SmallInteger)
     radiant_win = Column(Integer, nullable=False)   # 0 or 1
     # Hero lists stored as JSON strings (json.dumps / json.loads in stats_db.py)
     radiant_heroes = Column(Text, nullable=False)
