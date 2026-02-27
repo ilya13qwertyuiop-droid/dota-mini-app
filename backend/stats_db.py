@@ -33,6 +33,7 @@ from typing import Optional
 
 from sqlalchemy import text
 
+from backend.config import MIN_MATCH_DURATION_SECONDS
 from backend.database import engine
 
 logger = logging.getLogger(__name__)
@@ -217,6 +218,19 @@ def save_match_and_update_aggregates(
 
         if not is_new:
             # Match already in DB — skip aggregate updates to keep counts correct
+            return
+
+        # ----- Duration filter -----
+        # Matches shorter than MIN_MATCH_DURATION_SECONDS (15 min) are stored
+        # in the matches table but excluded from all derivative tables
+        # (match_players, hero_stats, hero_matchups, hero_synergy).
+        # duration=None means the API didn't return it — treated as passing.
+        if duration is not None and duration < MIN_MATCH_DURATION_SECONDS:
+            logger.debug(
+                "[stats_db] match %s: duration=%ds < %ds — "
+                "skipped from hero_stats / hero_matchups / hero_synergy",
+                match_id, duration, MIN_MATCH_DURATION_SECONDS,
+            )
             return
 
         # ----- Insert per-player records (if provided) -----
@@ -451,9 +465,14 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
         conn.execute(text("DELETE FROM hero_synergy"))
         conn.execute(text("DELETE FROM hero_stats"))
 
-        # Load all remaining matches
+        # Load all remaining matches; apply the same duration filter used at
+        # ingest time so rebuilt aggregates are consistent with live ingestion.
         remaining = conn.execute(
-            text("SELECT radiant_win, radiant_heroes, dire_heroes FROM matches")
+            text(
+                "SELECT radiant_win, radiant_heroes, dire_heroes FROM matches"
+                " WHERE duration IS NULL OR duration >= :min_dur"
+            ),
+            {"min_dur": MIN_MATCH_DURATION_SECONDS},
         ).mappings().all()
 
         # Accumulate in Python dicts (much faster than per-row upserts)
