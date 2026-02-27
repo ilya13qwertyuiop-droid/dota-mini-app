@@ -559,6 +559,111 @@ def delete_matches_and_recalculate(match_ids: list[int]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Stand-alone aggregate rebuild (admin / one-off use)
+# ---------------------------------------------------------------------------
+
+def recalculate_all_aggregates() -> None:
+    """Wipes hero_stats, hero_matchups, hero_synergy and rebuilds from scratch.
+
+    No matches are deleted.  The same duration filter that guards ingestion
+    (MIN_MATCH_DURATION_SECONDS) is applied here, so the resulting aggregates
+    are consistent with what future ingestion would produce.
+
+    Typical use: run after changing MIN_MATCH_DURATION_SECONDS or after a
+    bulk import / data-quality fix.  See backend/admin_recalc.py.
+    """
+    logger.info(
+        "[stats_db] recalculate_all_aggregates: starting"
+        " (min_duration=%ds)", MIN_MATCH_DURATION_SECONDS,
+    )
+
+    with engine.begin() as conn:
+        # Wipe all aggregates atomically together with the rebuild
+        conn.execute(text("DELETE FROM hero_matchups"))
+        conn.execute(text("DELETE FROM hero_synergy"))
+        conn.execute(text("DELETE FROM hero_stats"))
+
+        remaining = conn.execute(
+            text(
+                "SELECT radiant_win, radiant_heroes, dire_heroes FROM matches"
+                " WHERE duration IS NULL OR duration >= :min_dur"
+            ),
+            {"min_dur": MIN_MATCH_DURATION_SECONDS},
+        ).mappings().all()
+
+        matchups: dict[tuple[int, int], list[int]] = {}
+        synergy: dict[tuple[int, int], list[int]] = {}
+        stats: dict[int, list[int]] = {}
+
+        for row in remaining:
+            radiant_win = bool(row["radiant_win"])
+            r_heroes: list[int] = json.loads(row["radiant_heroes"])
+            d_heroes: list[int] = json.loads(row["dire_heroes"])
+
+            for h in r_heroes:
+                if h not in stats:
+                    stats[h] = [0, 0]
+                stats[h][0] += 1
+                stats[h][1] += int(radiant_win)
+            for h in d_heroes:
+                if h not in stats:
+                    stats[h] = [0, 0]
+                stats[h][0] += 1
+                stats[h][1] += int(not radiant_win)
+
+            for r in r_heroes:
+                for d in d_heroes:
+                    if r == d:
+                        continue
+                    a, b = min(r, d), max(r, d)
+                    a_wins = int((r < d) == radiant_win)
+                    key = (a, b)
+                    if key not in matchups:
+                        matchups[key] = [0, 0]
+                    matchups[key][0] += 1
+                    matchups[key][1] += a_wins
+
+            for heroes, won in [
+                (r_heroes, radiant_win),
+                (d_heroes, not radiant_win),
+            ]:
+                n = len(heroes)
+                for i in range(n):
+                    for j in range(i + 1, n):
+                        a, b = min(heroes[i], heroes[j]), max(heroes[i], heroes[j])
+                        key = (a, b)
+                        if key not in synergy:
+                            synergy[key] = [0, 0]
+                        synergy[key][0] += 1
+                        synergy[key][1] += int(won)
+
+        if matchups:
+            conn.execute(
+                text("INSERT INTO hero_matchups (hero_a, hero_b, games, wins)"
+                     " VALUES (:a, :b, :g, :w)"),
+                [{"a": a, "b": b, "g": v[0], "w": v[1]} for (a, b), v in matchups.items()],
+            )
+        if synergy:
+            conn.execute(
+                text("INSERT INTO hero_synergy (hero_a, hero_b, games, wins)"
+                     " VALUES (:a, :b, :g, :w)"),
+                [{"a": a, "b": b, "g": v[0], "w": v[1]} for (a, b), v in synergy.items()],
+            )
+        if stats:
+            conn.execute(
+                text("INSERT INTO hero_stats (hero_id, games, wins) VALUES (:h, :g, :w)"),
+                [{"h": h, "g": v[0], "w": v[1]} for h, v in stats.items()],
+            )
+        # engine.begin() auto-commits here
+
+    logger.info(
+        "[stats_db] recalculate_all_aggregates: done"
+        " — matches_used=%d, matchup_pairs=%d, synergy_pairs=%d, heroes=%d",
+        len(remaining), len(matchups), len(synergy), len(stats),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Backfill helpers — match_players for pre-existing matches
 # ---------------------------------------------------------------------------
 
