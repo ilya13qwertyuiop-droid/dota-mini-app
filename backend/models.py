@@ -50,6 +50,12 @@ class UserProfile(Base):
     # JSON: stored as json/jsonb on PostgreSQL, as TEXT on SQLite
     favorite_heroes = Column(JSON, nullable=False, default=list)
     settings = Column(JSON, nullable=False, default=dict)
+    # Timestamp of first profile creation; NULL for rows predating this column
+    created_at = Column(
+        DateTime,
+        nullable=True,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
     quiz_results = relationship(
         "QuizResult", back_populates="user", cascade="all, delete-orphan"

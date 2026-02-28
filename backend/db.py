@@ -11,7 +11,7 @@ don't need to be modified.
 
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import Feedback, HeroMatchupsCache, QuizResult, Token  # noqa: E402
+from backend.models import Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -215,3 +215,39 @@ def replace_hero_matchups_in_cache(
                 )
             )
         session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Admin statistics
+# ---------------------------------------------------------------------------
+
+def count_new_users_today() -> int:
+    """Counts user_profiles created today (UTC). Rows with NULL created_at are excluded."""
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Strip timezone for comparison — SQLite stores datetimes as naive strings
+    today_start_naive = today_start.replace(tzinfo=None)
+    with SessionLocal() as session:
+        return (
+            session.query(UserProfile)
+            .filter(UserProfile.created_at >= today_start_naive)
+            .count()
+        )
+
+
+def count_active_users_30d() -> int:
+    """Counts distinct user_ids with any quiz_result updated in the last 30 days."""
+    from sqlalchemy import func
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    with SessionLocal() as session:
+        return (
+            session.query(func.count(func.distinct(QuizResult.user_id)))
+            .filter(QuizResult.updated_at >= thirty_days_ago)
+            .scalar()
+            or 0
+        )
+
+
+def count_matches_with_game_mode() -> int:
+    """Counts matches rows where game_mode IS NOT NULL."""
+    with SessionLocal() as session:
+        return session.query(Match).filter(Match.game_mode.isnot(None)).count()

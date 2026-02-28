@@ -27,7 +27,16 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from db import init_tokens_table, create_token_for_user, get_last_quiz_result, save_feedback, get_recent_feedback
+from db import (
+    init_tokens_table,
+    create_token_for_user,
+    get_last_quiz_result,
+    save_feedback,
+    get_recent_feedback,
+    count_new_users_today,
+    count_active_users_30d,
+    count_matches_with_game_mode,
+)
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
 # db.py при импорте добавляет корень проекта в sys.path, поэтому эти импорты
@@ -1338,6 +1347,44 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
         await update.message.reply_text(text[i : i + chunk_size], parse_mode="HTML", disable_web_page_preview=True)
 
 
+# -------- /admin_users (скрытая команда для администраторов) --------
+
+async def admin_users_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Показывает статистику по пользователям. Только для администраторов."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    try:
+        new_today = count_new_users_today()
+        active_30d = count_active_users_30d()
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Не удалось получить статистику пользователей.")
+        return
+
+    await update.message.reply_text(
+        f"👤 Новых пользователей сегодня: {new_today}\n"
+        f"📅 Уникальных пользователей за 30 дней: {active_30d}"
+    )
+
+
+# -------- /admin_matches (скрытая команда для администраторов) --------
+
+async def admin_matches_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Показывает количество матчей с заполненным game_mode. Только для администраторов."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    try:
+        count = count_matches_with_game_mode()
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Не удалось получить статистику матчей.")
+        return
+
+    await update.message.reply_text(f"🧩 Матчей с заполненным game_mode: {count}")
+
+
 # -------- обработчик текстовых сообщений (диспетчер состояний) --------
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1401,6 +1448,8 @@ def main():
     application.add_handler(CommandHandler("synergy",    synergy_command))
     application.add_handler(CommandHandler("feedback",       feedback_command))
     application.add_handler(CommandHandler("admin_feedback", admin_feedback_command))
+    application.add_handler(CommandHandler("admin_users",    admin_users_command))
+    application.add_handler(CommandHandler("admin_matches",  admin_matches_command))
     application.add_handler(CommandHandler("stats_mode",     stats_mode_command))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
