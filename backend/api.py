@@ -152,15 +152,10 @@ async def check_subscription(data: CheckRequest):
 @app.post("/api/save_telegram_data")
 async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
     """Сохраняет данные пользователя из Telegram (имя, username, фото)"""
-    print(f"[API DEBUG] save_telegram_data: token={data.token[:10]}...")
-    
     user_id = get_user_id_by_token(data.token)
     if not user_id:
-        print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    print(f"[API DEBUG] Token valid, user_id={user_id}")
-    
+
     # Обновляем профиль
     db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
     if not db_profile:
@@ -170,36 +165,28 @@ async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_d
             settings={}
         )
         db.add(db_profile)
-    
+
     # Сохраняем данные Telegram в settings
     if not db_profile.settings:
         db_profile.settings = {}
-    
+
     db_profile.settings["username"] = data.username
     db_profile.settings["first_name"] = data.first_name
     db_profile.settings["last_name"] = data.last_name
     db_profile.settings["photo_url"] = data.photo_url
-    flag_modified(db_profile, "settings")  # ✅ Помечаем JSON-поле как измененное
+    flag_modified(db_profile, "settings")
 
     db.commit()
-
-    print(f"[API DEBUG] Telegram data saved for user {user_id}")
-    print(f"[API DEBUG] photo_url: {data.photo_url}")  # ✅ Логируем аватар для отладки
     return {"success": True}
 
 
 @app.get("/api/profile_full", response_model=UserStats)
 async def get_profile_full(token: str, db: Session = Depends(get_db)):
     """Получает полный профиль пользователя с историей квизов"""
-    print(f"[API DEBUG] get_profile_full: token={token[:10]}...")
-    
     # 1. Проверяем токен
     user_id = get_user_id_by_token(token)
     if not user_id:
-        print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    print(f"[API DEBUG] Token valid, user_id={user_id}")
     
     # 2. Получаем профиль из БД
     db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
@@ -244,7 +231,6 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
                 # Старый формат — просто один объект с type в корне
                 if "type" in res:
                     combined_result = res
-                    print(f"[API DEBUG] Legacy format detected in quiz_history for user {user_id}")
 
             if combined_result:
                 quiz_history.append({
@@ -252,12 +238,9 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
                     "result": combined_result
                 })
 
-    
     # 5. Извлекаем данные Telegram из settings
     settings = db_profile.settings or {}
-    
-    print(f"[API DEBUG] Profile loaded: {len(quiz_results)} quizzes found")
-    
+
     return UserStats(
         user_id=user_id,
         username=settings.get("username"),
@@ -335,14 +318,9 @@ async def save_profile(profile: Profile, db: Session = Depends(get_db)):
 @app.post("/api/save_result", response_model=SaveResultResponse)
 async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     """Сохраняет результат квиза (позиции и герои в одном JSON)"""
-    print(f"[API DEBUG] save_result: token={data.token[:10]}...")
-
     user_id = get_user_id_by_token(data.token)
     if not user_id:
-        print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    print(f"[API DEBUG] Token valid, user_id={user_id}")
 
     # Профиль для FK
     db_user_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
@@ -371,44 +349,30 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
 
     # Обновляем только нужную часть в НОВОМ формате
     if result_type == "position_quiz":
-        # Сохраняем position_quiz
         combined_result["position_quiz"] = data.result
-
         # Чистим legacy верхнеуровневые ключи
         for legacy_key in ["type", "position", "posShort", "positionIndex", "date", "isPure", "extraPos"]:
             combined_result.pop(legacy_key, None)
 
-        print(f"[API DEBUG] Saved position_quiz in new format")
-
     elif result_type == "hero_quiz":
-        # Сохраняем hero_quiz по позициям (0-4)
         hero_position_index = data.result.get("heroPositionIndex")
         if hero_position_index is not None:
-            # Инициализируем словарь если его нет
             if "hero_quiz_by_position" not in combined_result:
                 combined_result["hero_quiz_by_position"] = {}
-
-            # Сохраняем результат для конкретной позиции
             combined_result["hero_quiz_by_position"][str(hero_position_index)] = data.result
-            print(f"[API DEBUG] Saved hero_quiz for position {hero_position_index} in new format")
-
             # Чистим legacy hero_quiz (если был)
             combined_result.pop("hero_quiz", None)
         else:
-            # Нет heroPositionIndex - неожиданная ситуация
-            print(f"[API DEBUG] WARNING: hero_quiz without heroPositionIndex, skipping save")
+            logger.warning("[save_result] hero_quiz without heroPositionIndex for user %s", user_id)
     else:
-        # Неизвестный тип - не трогаем данные
-        print(f"[API DEBUG] Unknown or missing result.type: {result_type}, skip update")
+        # Неизвестный тип — не трогаем данные
+        logger.warning("[save_result] unknown result.type=%r for user %s", result_type, user_id)
         return SaveResultResponse(success=True)
-    
-    print(f"[API DEBUG] BEFORE COMMIT combined_result for user {user_id}: {combined_result}")
 
     if db_quiz_result:
         db_quiz_result.result = combined_result
         db_quiz_result.updated_at = datetime.now(timezone.utc)
-        flag_modified(db_quiz_result, "result")  # ✅ КРИТИЧНО: помечаем JSON-поле как измененное
-        print(f"[API DEBUG] AFTER ASSIGN db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
+        flag_modified(db_quiz_result, "result")
     else:
         db_quiz_result = DBQuizResult(
             user_id=user_id,
@@ -416,12 +380,10 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
             updated_at=datetime.now(timezone.utc)
         )
         db.add(db_quiz_result)
-        print(f"[API DEBUG] AFTER CREATE db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
 
     # Обновляем favorite_heroes для профиля, если это геройский квиз
     try:
         if result_type == "hero_quiz":
-            # Берём topHeroes из нового формата
             top_heroes = data.result.get("topHeroes") or []
             hero_names = [
                 h.get("name") if isinstance(h, dict) else h
@@ -430,21 +392,12 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
             ]
             if hero_names:
                 db_user_profile.favorite_heroes = hero_names
-                flag_modified(db_user_profile, "favorite_heroes")  # ✅ Помечаем JSON-поле как измененное
-                print(f"[API DEBUG] favorite_heroes updated for user {user_id}: {hero_names}")
+                flag_modified(db_user_profile, "favorite_heroes")
     except Exception as e:
-        print(f"[API DEBUG] Failed to update favorite_heroes for user {user_id}: {e}")
+        logger.warning("[save_result] failed to update favorite_heroes for user %s: %s", user_id, e)
 
     db.commit()
     db.refresh(db_quiz_result)
-
-    print(f"[API DEBUG] Quiz result saved for user {user_id}")
-    print(f"[API DEBUG] AFTER COMMIT & REFRESH db_quiz_result.result for user {user_id}: {db_quiz_result.result}")
-
-    # Дополнительная проверка: читаем данные напрямую из БД
-    verification_query = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
-    if verification_query:
-        print(f"[API DEBUG] VERIFICATION READ from DB for user {user_id}: {verification_query.result}")
 
     return SaveResultResponse(success=True)
 
@@ -452,28 +405,14 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
 @app.get("/api/get_result", response_model=GetResultResponse)
 async def get_result(token: str, db: Session = Depends(get_db)):
     """Получает результат квиза по токену"""
-    print(f"[API DEBUG] get_result: token={token[:10]}...")
-    
-    # 1. по токену достаём user_id
     user_id = get_user_id_by_token(token)
     if not user_id:
-        print("[API DEBUG] Token validation FAILED")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    print(f"[API DEBUG] Token valid, user_id={user_id}")
 
-
-    # 2. Ищем результат квиза в БД по user_id
     db_quiz_result = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
-
-
-    # 3. Возвращаем результат (или None, если записи нет)
     if db_quiz_result:
-        print(f"[API DEBUG] Quiz result found for user {user_id}")
         return GetResultResponse(result=db_quiz_result.result)
-    else:
-        print(f"[API DEBUG] No quiz result found for user {user_id}")
-        return GetResultResponse(result=None)
+    return GetResultResponse(result=None)
 
 # ========== Hero Matchups ==========
 
@@ -497,7 +436,7 @@ async def api_hero_matchups(hero_id: int):
     try:
         matchups = await get_hero_matchups_cached(hero_id)
     except Exception as e:
-        print(f"[MATCHUPS] Failed for hero_id={hero_id}: {e}")
+        logger.warning("[matchups] Failed for hero_id=%s: %s", hero_id, e)
         raise HTTPException(status_code=502, detail="Failed to fetch hero matchups")
 
     base_wr = await get_hero_base_winrate(hero_id)

@@ -9,10 +9,12 @@ Public API is unchanged — callers (bot.py, api.py, hero_matchups_service.py)
 don't need to be modified.
 """
 
-import secrets
+import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Support both invocation styles:
 #   - as a module from project root: `python -m backend.db`
@@ -46,6 +48,7 @@ def init_hero_matchups_cache_table() -> None:
 
 def create_token_for_user(user_id: int) -> str:
     """Generates a 24-hour token for the given Telegram user_id."""
+    import secrets
     token_str = secrets.token_urlsafe(16)
     expires_at = datetime.utcnow() + timedelta(hours=24)
 
@@ -56,7 +59,6 @@ def create_token_for_user(user_id: int) -> str:
         session.merge(token_obj)
         session.commit()
 
-    print(f"[DB] Created token for user {user_id}: {token_str[:10]}...")
     return token_str
 
 
@@ -66,16 +68,13 @@ def get_user_id_by_token(token: str) -> int | None:
         token_obj = session.get(Token, token)
 
         if token_obj is None:
-            print(f"[DB] Token not found: {token[:10]}...")
             return None
 
         if token_obj.expires_at < datetime.utcnow():
-            print(f"[DB] Token expired for user {token_obj.user_id}")
             session.delete(token_obj)
             session.commit()
             return None
 
-        print(f"[DB] Token valid for user {token_obj.user_id}")
         return token_obj.user_id
 
 
@@ -169,7 +168,6 @@ def save_feedback(
         )
         session.add(fb)
         session.commit()
-    print(f"[DB] Feedback saved: user_id={user_id} username={username} source={source} rating={rating}")
 
 
 def get_recent_feedback(limit: int = 20) -> list[dict]:
