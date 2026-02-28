@@ -1,12 +1,14 @@
 import asyncio
+import logging
 import os
 import re
 import traceback
 from io import BytesIO
 from pathlib import Path
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -23,10 +25,9 @@ from telegram import (
     WebAppInfo,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardRemove,
 )
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from db import init_tokens_table, create_token_for_user, get_user_id_by_token, get_last_quiz_result, save_feedback, get_recent_feedback
+from db import init_tokens_table, create_token_for_user, get_last_quiz_result, save_feedback, get_recent_feedback
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
 # db.py при импорте добавляет корень проекта в sys.path, поэтому эти импорты
@@ -41,7 +42,7 @@ try:
     )
     _LOCAL_STATS_OK = True
 except ImportError as _local_import_err:
-    print(f"[bot] stats_db не загружен: {_local_import_err}")
+    logger.warning("[bot] stats_db не загружен: %s", _local_import_err)
     _LOCAL_STATS_OK = False
 
 try:
@@ -49,7 +50,7 @@ try:
     from hero_stats_service import get_hero_base_winrate as _get_od_base_winrate
     _OD_SERVICES_OK = True
 except ImportError as _od_import_err:
-    print(f"[bot] OpenDota-сервисы не загружены: {_od_import_err}")
+    logger.warning("[bot] OpenDota-сервисы не загружены: %s", _od_import_err)
     _OD_SERVICES_OK = False
 
 
@@ -94,11 +95,9 @@ async def is_subscriber(bot: Bot, user_id: int) -> bool:
         return False
     try:
         member = await bot.get_chat_member(chat_id=CHECK_CHAT_ID, user_id=user_id)
-        status = member.status
-        print(f"[is_subscriber] user={user_id} status={status}")
-        return status in ("member", "administrator", "creator")
+        return member.status in ("member", "administrator", "creator")
     except Exception as e:
-        print(f"[is_subscriber] error for user {user_id}: {e}")
+        logger.warning("[is_subscriber] error for user %s: %s", user_id, e)
         return False
 
 
@@ -112,7 +111,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raise RuntimeError("CHECK_CHAT_ID не найден. Проверь файл .env")
 
     user_id = update.effective_user.id
-    print("DEBUG start called for user", user_id)
 
     # Сохраняем данные пользователя в backend для профиля
     try:
@@ -126,8 +124,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 file = await context.bot.get_file(file_id)
                 photo_url = file.file_path
         except Exception as e:
-            print("Failed to fetch user photo:", e)
-            photo_url = None
+            logger.warning("Failed to fetch user photo for %s: %s", user_id, e)
 
         payload = {
             "token": None,  # заполним позже
@@ -137,7 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "photo_url": photo_url,
         }
     except Exception as e:
-        print("Failed to build Telegram user payload:", e)
+        logger.warning("Failed to build Telegram user payload for %s: %s", user_id, e)
         payload = None
 
     subscribed = await is_subscriber(context.bot, user_id)
@@ -151,23 +148,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
             reply_markup=kb,
         )
-        try:
-            await update.message.reply_reply_markup(reply_markup=ReplyKeyboardRemove())
-        except Exception as e:
-            print("Failed to remove old keyboard:", e)
         return
 
     token = create_token_for_user(user_id)
-    mini_app_url_with_token = f"{MINI_APP_URL}?token={token}&tgWebAppDebug=1"
+    mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
     if payload is not None:
         payload["token"] = token
         try:
             async with httpx.AsyncClient(timeout=5) as client:
                 r = await client.post(f"{API_BASE_URL}/api/save_telegram_data", json=payload)
-            print("SAVE_TG_DATA status:", r.status_code, "resp:", r.text)
+            if r.status_code != 200:
+                logger.warning("save_telegram_data returned %s for user %s", r.status_code, user_id)
         except Exception as e:
-            print("Failed to call save_telegram_data:", e)
+            logger.warning("Failed to call save_telegram_data for user %s: %s", user_id, e)
 
     keyboard = [
         [
@@ -368,7 +362,7 @@ async def _fetch_hero_icons(heroes: list[dict]) -> list:
             if resp.status_code == 200:
                 return Image.open(BytesIO(resp.content)).convert("RGBA")
         except Exception as e:
-            print(f"[hero icon] fetch failed for '{name}': {e}")
+            logger.debug("[hero icon] fetch failed for '%s': %s", name, e)
         return None
 
     async with httpx.AsyncClient(timeout=3.0) as client:
@@ -481,7 +475,7 @@ def render_hero_quiz_card(
                 else:
                     img.paste(thumb, (ox, oy))
             except Exception as e:
-                print(f"[render] icon paste failed for '{name}': {e}")
+                logger.debug("[render] icon paste failed for '%s': %s", name, e)
 
         name_y = card_y + 16
         draw.text((TEXT_X, name_y), name, font=f_hero, fill=C_TEXT)
@@ -803,7 +797,7 @@ def _render_two_section_card(
                 else:
                     img.paste(thumb, (ox, oy))
             except Exception as e:
-                print(f"[render2sec] icon paste failed: {e}")
+                logger.debug("[render2sec] icon paste failed: %s", e)
 
         name_y = y + 12
         draw.text((TEXT_X, name_y), hero["name"], font=f_hero, fill=C_TEXT)
@@ -1032,7 +1026,7 @@ async def _handle_counters_hero(
                      "wr_pct": round(e["wr_vs"] * 100, 1)}
                     for e in counters_list
                 ]
-                print(f"[counters] local DB: hero={hero_name} strong={len(strong)} weak={len(weak)}")
+                logger.info("[counters] local DB: hero=%s strong=%d weak=%d", hero_name, len(strong), len(weak))
 
         # ── 2. OpenDota (fallback, если локальных данных нет) ─────────────
         if not strong and not weak and _OD_SERVICES_OK:
@@ -1053,9 +1047,9 @@ async def _handle_counters_hero(
                          "wr_pct": round(e["winrate"] * 100, 1)}
                         for e in groups["weak_against"][:5]
                     ]
-                    print(f"[counters] OpenDota: hero={hero_name} strong={len(strong)} weak={len(weak)}")
+                    logger.info("[counters] OpenDota: hero=%s strong=%d weak=%d", hero_name, len(strong), len(weak))
             except Exception as od_err:
-                print(f"[counters] OpenDota fallback error for {hero_name}: {od_err}")
+                logger.warning("[counters] OpenDota fallback error for %s: %s", hero_name, od_err)
 
         if not strong and not weak:
             await update.message.reply_text(
@@ -1157,7 +1151,7 @@ async def _handle_synergy_hero(
                         key=lambda x: x["delta"],
                     )[:5]
                 ]
-                print(f"[synergy] local DB: hero={hero_name} best={len(best)} worst={len(worst)}")
+                logger.info("[synergy] local DB: hero=%s best=%d worst=%d", hero_name, len(best), len(worst))
 
         if not best and not worst:
             await update.message.reply_text(
