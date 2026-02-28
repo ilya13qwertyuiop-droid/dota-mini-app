@@ -83,3 +83,12 @@ def create_all_tables() -> None:
         UserProfile,
     )
     Base.metadata.create_all(bind=engine)
+
+    # Idempotent inline migrations — same pattern as init_stats_tables() in stats_db.py.
+    # These run on every startup so the schema stays in sync even if Alembic hasn't been
+    # applied yet (e.g. SQLite dev database created via create_all before migrations existed).
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE user_profiles ADD COLUMN created_at TIMESTAMP"))
+        except Exception:
+            pass  # column already exists
