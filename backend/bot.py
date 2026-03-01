@@ -1540,7 +1540,7 @@ def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не найден. Проверь файл .env")
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).concurrent_updates(True).build()
 
     application.add_handler(CommandHandler("start",      timed_handler("/start")(start)))
     application.add_handler(CommandHandler("help",       timed_handler("/help")(help_command)))
@@ -1564,7 +1564,6 @@ def main():
     print("✅ Бот запущен! Открой Telegram и напиши боту /start")
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
-        concurrent_updates=True,
     )
 
 
