@@ -1495,23 +1495,25 @@ margin-top: 14px;
 /* ========== STATS WARNING ========== */
 
 .stats-warning {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: linear-gradient(135deg, #ff9800, #f57c00);
-  color: #fff;
-  padding: 11px 14px;
-  border-radius: 10px;
-  margin: 0 0 16px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.45;
-  box-shadow: 0 2px 10px rgba(255, 152, 0, 0.35);
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  background: #f57c00 !important;
+  color: #fff !important;
+  padding: 11px 14px !important;
+  border-radius: 10px !important;
+  margin: 0 0 16px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+  border: none !important;
+  box-shadow: 0 2px 10px rgba(255, 152, 0, 0.35) !important;
 }
 
 .stats-warning span:first-child {
-  font-size: 18px;
-  flex-shrink: 0;
+  font-size: 18px !important;
+  flex-shrink: 0 !important;
+  line-height: 1 !important;
 }
 
 /* ========== DONATE ========== */
