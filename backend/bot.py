@@ -250,9 +250,13 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
+        )
         await update.message.reply_text(
-            "Чтобы пользоваться ботом, подпишись на канал @kasumi_tt и потом вернись сюда.\n"
-            "После подписки нажми /start или повтори команду."
+            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
+            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            reply_markup=kb,
         )
         return
 
@@ -536,9 +540,13 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
+        )
         await update.message.reply_text(
-            "Чтобы пользоваться ботом, подпишись на канал @kasumi_tt и потом вернись сюда.\n"
-            "После подписки нажми /start или повтори команду."
+            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
+            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            reply_markup=kb,
         )
         return
 
@@ -928,9 +936,13 @@ async def counters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
+        )
         await update.message.reply_text(
-            "Чтобы пользоваться ботом, подпишись на канал @kasumi_tt и потом вернись сюда.\n"
-            "После подписки нажми /start или повтори команду."
+            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
+            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            reply_markup=kb,
         )
         return
 
@@ -958,9 +970,13 @@ async def synergy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
+        )
         await update.message.reply_text(
-            "Чтобы пользоваться ботом, подпишись на канал @kasumi_tt и потом вернись сюда.\n"
-            "После подписки нажми /start или повтори команду."
+            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
+            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            reply_markup=kb,
         )
         return
 
@@ -1217,9 +1233,13 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
+        )
         await update.message.reply_text(
-            "Чтобы пользоваться ботом, подпишись на канал @kasumi_tt и потом вернись сюда.\n"
-            "После подписки нажми /start или повтори команду."
+            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
+            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            reply_markup=kb,
         )
         return
 
