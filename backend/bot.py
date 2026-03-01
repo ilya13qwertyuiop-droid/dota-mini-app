@@ -188,6 +188,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Нажми на кнопку ниже, чтобы начать опрос 👇",
         reply_markup=reply_markup,
     )
+    await update.message.reply_text("⚠️ Mini App не грузится? Попробуй зайти с VPN!")
 
 
 # -------- вспомогательные функции для разбора результатов квиза --------
