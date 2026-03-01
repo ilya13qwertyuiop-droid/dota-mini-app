@@ -151,30 +151,42 @@ HERO_IMAGE_BASE_URL: str = os.environ.get(
 )
 
 # TTL-кэш подписки: user_id -> (is_subscribed, monotonic_timestamp)
-# Telegram getChatMember стоит ~100–300 мс, вызывается на каждую команду.
-# TTL 5 минут: пользователь, подписавшийся на канал, "увидит" это максимум через 5 мин.
+# Два разных TTL по смыслу:
+#   True  → 300 с: подписан, дёргать Telegram каждые 5 мин достаточно.
+#   False →  30 с: не подписан; даём шанс воспользоваться ботом через ~30 с
+#                  после того, как пользователь реально подпишется на канал.
 _subscriber_cache: dict[int, tuple[bool, float]] = {}
-_SUBSCRIBER_TTL = 300.0  # секунды
+_SUBSCRIBER_TTL_TRUE  = 300.0   # 5 мин — кэш "подписан"
+_SUBSCRIBER_TTL_FALSE =  5.0   # 5 сек — кэш "не подписан"
 
 
 async def is_subscriber(bot: Bot, user_id: int) -> bool:
     """Проверяет подписку пользователя на канал CHECK_CHAT_ID.
 
-    Результат кэшируется на _SUBSCRIBER_TTL секунд, чтобы не вызывать
-    getChatMember при каждой команде. Cache miss → один Telegram API запрос.
+    True  → кэшируется на 5 мин (не нагружаем Telegram для активных юзеров).
+    False → кэшируется на 30 сек (подписавшийся не ждёт дольше ~30 с).
+    Cache miss / expiry → один вызов getChatMember.
     """
     if not CHECK_CHAT_ID:
         return False
     now = time.monotonic()
     entry = _subscriber_cache.get(user_id)
-    if entry is not None and now - entry[1] < _SUBSCRIBER_TTL:
-        return entry[0]
+    if entry is not None:
+        cached_result, cached_ts = entry
+        ttl = _SUBSCRIBER_TTL_TRUE if cached_result else _SUBSCRIBER_TTL_FALSE
+        if now - cached_ts < ttl:
+            logger.debug(
+                "[is_subscriber] CACHE_HIT user=%s subscribed=%s age=%.0fs ttl=%.0fs",
+                user_id, cached_result, now - cached_ts, ttl,
+            )
+            return cached_result
     try:
         member = await bot.get_chat_member(chat_id=CHECK_CHAT_ID, user_id=user_id)
         result = member.status in ("member", "administrator", "creator")
     except Exception as e:
-        logger.warning("[is_subscriber] error for user %s: %s", user_id, e)
+        logger.warning("[is_subscriber] TELEGRAM_ERROR user=%s %s", user_id, e)
         return False
+    logger.debug("[is_subscriber] TELEGRAM user=%s subscribed=%s", user_id, result)
     _subscriber_cache[user_id] = (result, now)
     return result
 
