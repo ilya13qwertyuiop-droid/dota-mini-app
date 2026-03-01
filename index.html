@@ -45,19 +45,12 @@
           </div>
         </div>
 
-        <!-- Совет дня -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon">💡</span>
-            <span class="card-title">Совет дня</span>
-          </div>
-          <div class="tip-card">
-            <div class="card-content" id="dailyTip">
-              Роумеры должны контролировать руны каждые 2 минуты! Это даёт
-              преимущество команде в опыте и ресурсах.
-            </div>
-          </div>
-        </div>
+        <!-- Поддержать автора -->
+        <button class="feedback-entry-btn donate-entry-btn" onclick="goToDonate()">
+          <span class="feedback-entry-icon">❤️</span>
+          <span class="feedback-entry-text">Поддержать автора</span>
+          <span class="feedback-entry-arrow">→</span>
+        </button>
 
         <!-- Предложить улучшения -->
         <button class="feedback-entry-btn" onclick="goToFeedback()">
@@ -146,6 +139,30 @@
         <div class="feedback-back-row">
           <button class="btn-back" onclick="goBackFromFeedback()">Назад</button>
         </div>
+      </div>
+
+      <!-- Страница доната -->
+      <div id="page-donate" class="page">
+        <div class="dashboard-header">
+          <h1>❤️ Поддержать автора</h1>
+        </div>
+
+        <div class="card donate-card">
+          <p class="donate-text">
+            Этот бот живёт на серверах и использует платные API.<br>
+            Если он оказался полезным — ты можешь добровольно помочь покрыть
+            часть расходов. Любая поддержка очень помогает развитию проекта
+            и мотивации делать новые фичи.
+          </p>
+
+          <button class="donate-da-btn" onclick="openDonationAlerts()">
+            Поддержать через Donation Alerts
+          </button>
+        </div>
+
+        <button class="btn-back donate-back-btn" onclick="goBackFromDonate()">
+          ← Назад
+        </button>
       </div>
 
       <!-- Страница квизов -->
@@ -262,8 +279,6 @@
 
               <!-- доп. бейдж -->
               <div class="position-extra-badge" id="positionSecondaryBadge"></div>
-
-              <div class="stats" id="stats"></div>
 
               <button class="btn-outline" onclick="togglePositionDetails(event)">
                 Показать детали

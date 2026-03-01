@@ -252,109 +252,6 @@
             return { mainPos: sorted[0][0], extraPos: sorted[1][0] };
         }
 
-        const positionStats = {
-            "pos1_pos2": [
-                { label: "Фарм", value: 95 },
-                { label: "Мидгейм", value: 85 },
-                { label: "Темп", value: 75 }
-            ],
-            "pos1_pos3": [
-                { label: "Фарм", value: 90 },
-                { label: "Фронт", value: 80 },
-                { label: "Живучесть", value: 85 }
-            ],
-            "pos1_pos4": [
-                { label: "Фарм", value: 85 },
-                { label: "Роум", value: 70 },
-                { label: "Агрессия", value: 75 }
-            ],
-            "pos1_pos5": [
-                { label: "Фарм", value: 90 },
-                { label: "Командность", value: 80 },
-                { label: "Утилита", value: 70 }
-            ],
-            "pos2_pos1": [
-                { label: "Линия", value: 85 },
-                { label: "Лейт", value: 80 },
-                { label: "Скалирование", value: 90 }
-            ],
-            "pos2_pos3": [
-                { label: "Инициация", value: 85 },
-                { label: "Фронт", value: 80 },
-                { label: "Контроль", value: 90 }
-            ],
-            "pos2_pos4": [
-                { label: "Роум", value: 90 },
-                { label: "Мидгейм", value: 95 },
-                { label: "Активность", value: 85 }
-            ],
-            "pos2_pos5": [
-                { label: "Темп", value: 85 },
-                { label: "Командность", value: 90 },
-                { label: "Контроль карты", value: 75 }
-            ],
-            "pos3_pos1": [
-                { label: "Фронт", value: 85 },
-                { label: "Лейт", value: 80 },
-                { label: "Давление", value: 75 }
-            ],
-            "pos3_pos2": [
-                { label: "Линия", value: 90 },
-                { label: "Агрессия", value: 95 },
-                { label: "Прессинг", value: 85 }
-            ],
-            "pos3_pos4": [
-                { label: "Роум", value: 80 },
-                { label: "Пространство", value: 85 },
-                { label: "Инициация", value: 90 }
-            ],
-            "pos3_pos5": [
-                { label: "Фронт", value: 90 },
-                { label: "Командность", value: 85 },
-                { label: "Контроль", value: 80 }
-            ],
-            "pos4_pos1": [
-                { label: "Роум", value: 85 },
-                { label: "Фарм", value: 70 },
-                { label: "Скалирование", value: 75 }
-            ],
-            "pos4_pos2": [
-                { label: "Роум", value: 95 },
-                { label: "Агрессия", value: 90 },
-                { label: "Ганки", value: 85 }
-            ],
-            "pos4_pos3": [
-                { label: "Фронт", value: 85 },
-                { label: "Контроль", value: 90 },
-                { label: "Танк", value: 80 }
-            ],
-            "pos4_pos5": [
-                { label: "Вижен", value: 95 },
-                { label: "Сейв", value: 90 },
-                { label: "Командность", value: 95 }
-            ],
-            "pos5_pos1": [
-                { label: "Вижен", value: 90 },
-                { label: "Фарм", value: 65 },
-                { label: "Лейт", value: 70 }
-            ],
-            "pos5_pos2": [
-                { label: "Вижен", value: 95 },
-                { label: "Роум", value: 85 },
-                { label: "Темп", value: 80 }
-            ],
-            "pos5_pos3": [
-                { label: "Фронт", value: 85 },
-                { label: "Танк", value: 90 },
-                { label: "Сейв", value: 85 }
-            ],
-            "pos5_pos4": [
-                { label: "Вижен", value: 95 },
-                { label: "Роум", value: 90 },
-                { label: "Контроль", value: 85 }
-            ]
-        };
-
         const positionDescriptions = {
             "pos1_pure": "Ты — классический керри, который играет вокруг собственного фарма и силы героев в лейте. Тебе комфортно, когда игра идёт через стабильный прирост нетворса, контроль линии и аккуратный выбор моментов для драки.\n\nТы не спешишь ломать игру в мидгейме: твоя задача — выйти к сильным слотам и решить матч за счёт правильного позиционирования и урона в ключевых файтах. Если команда создаёт тебе пространство, ты уверенно забираешь игру в свои руки.",
             "pos2_pure": "Ты — классический мидер, который строит игру вокруг своей линии и активности по карте. Для тебя важно выиграть мид, зафиксировать преимущества по уровню и темпу, а затем подключаться к дракам в самые важные моменты.\n\nТы любишь героев с ярко выраженным пиком силы в ранней и средней стадии: быстро получаешь уровни, делаешь первые ключевые фраги и задаёшь ритм всей команде. От твоих решений зависит, кто будет контролировать карту и важные объекты.",
@@ -659,31 +556,6 @@
                 secondaryLabel.style.display = '';
                 secondaryBadge.style.display = '';
                 secondaryBadge.textContent = positionShortNames[extraPos];
-            }
-
-            // прогресс‑бары
-            const statsData = positionStats[statsKey];
-            const statsContainer = document.getElementById('stats');
-            statsContainer.innerHTML = '';
-            if (statsData) {
-                statsData.forEach(stat => {
-                    const statItem = document.createElement('div');
-                    statItem.className = 'stat-item';
-                    statItem.innerHTML = `
-                        <div class="stat-label">
-                            <span>${stat.label}</span>
-                            <span class="stat-value">${stat.value}</span>
-                        </div>
-                        <div class="stat-bar">
-                            <div class="stat-bar-fill" style="width: 0%"></div>
-                        </div>`;
-                    statsContainer.appendChild(statItem);
-                });
-                setTimeout(() => {
-                    document.querySelectorAll('.stat-bar-fill').forEach((bar, index) => {
-                        bar.style.width = statsData[index].value + '%';
-                    });
-                }, 100);
             }
 
             // описание
@@ -2069,6 +1941,30 @@ async function submitFeedback() {
         console.error('Feedback submit error:', e);
         _setFeedbackStatus('Не удалось отправить, попробуй ещё раз позже.', 'err');
         if (btn) { btn.disabled = false; btn.textContent = 'Отправить'; }
+    }
+}
+
+// ========== DONATE ==========
+
+function goToDonate() {
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-donate').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+}
+
+function goBackFromDonate() {
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-home').classList.add('active');
+    document.querySelectorAll('.nav-item')[0].classList.add('active');
+}
+
+function openDonationAlerts() {
+    var tg = window.Telegram && window.Telegram.WebApp;
+    var url = 'https://www.donationalerts.com/r/kasumi_dota';
+    if (tg && typeof tg.openLink === 'function') {
+        tg.openLink(url);
+    } else {
+        window.open(url, '_blank');
     }
 }
 
