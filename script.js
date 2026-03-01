@@ -1,10 +1,3 @@
-        document.addEventListener('DOMContentLoaded', () => {
-            const debugPre = document.createElement('pre');
-            debugPre.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-size:10px;max-width:400px;overflow:auto;z-index:9999;border:1px solid #0f0;';
-            debugPre.textContent = JSON.stringify(debugInfo, null, 2);
-            document.body.appendChild(debugPre);
-        });
-        // --- DEBUG INFO END ---
 
         const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
