@@ -1506,6 +1506,9 @@ margin-top: 14px;
 
 .donate-card {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .donate-text {
@@ -1513,25 +1516,29 @@ margin-top: 14px;
   color: var(--text-muted);
   line-height: 1.7;
   margin: 0 0 20px;
+  width: 100%;
 }
 
 .donate-da-btn {
-  display: block;
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #3a7bd5, #00d2ff);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  letter-spacing: 0.02em;
+  display: block !important;
+  width: auto !important;
+  max-width: 280px !important;
+  margin: 0 auto !important;
+  padding: 14px 24px !important;
+  border: none !important;
+  border-radius: 12px !important;
+  background: #0088cc !important;
+  color: #fff !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  letter-spacing: 0.02em !important;
+  text-align: center !important;
   transition: opacity 0.2s, transform 0.15s;
 }
 
 .donate-da-btn:active {
-  opacity: 0.85;
+  opacity: 0.85 !important;
   transform: scale(0.98);
 }
 
