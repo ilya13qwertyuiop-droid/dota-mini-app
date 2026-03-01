@@ -33,7 +33,16 @@ _connect_args: dict = {}
 if _is_sqlite:
     _connect_args["check_same_thread"] = False
 
-engine = create_engine(DATABASE_URL, connect_args=_connect_args)
+_engine_kwargs: dict = {"connect_args": _connect_args}
+if not _is_sqlite:
+    # PostgreSQL: keep a warm connection pool; never let idle connections sit > 30 min.
+    # pool_pre_ping validates each connection before use (detects stale TCP sockets).
+    _engine_kwargs["pool_size"] = 10        # persistent connections
+    _engine_kwargs["max_overflow"] = 20     # burst headroom (total max = 30)
+    _engine_kwargs["pool_pre_ping"] = True  # re-connect on stale sockets
+    _engine_kwargs["pool_recycle"] = 1800   # recycle connections every 30 min
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 
 # SQLite-specific: WAL mode + relaxed fsync for better read/write concurrency.
 # These PRAGMAs are global (file-level), so setting them once at connect is enough.
