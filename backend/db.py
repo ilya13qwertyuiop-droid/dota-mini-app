@@ -194,6 +194,32 @@ def get_recent_feedback(limit: int = 20) -> list[dict]:
         ]
 
 
+def upsert_user_profile_settings(user_id: int, settings_patch: dict) -> None:
+    """Creates or updates user_profiles.settings fields (shallow merge).
+
+    Used by bot.py /start to persist Telegram profile data without making a
+    self-HTTP call to the API server. Equivalent to POST /api/save_telegram_data,
+    but runs in-process with a direct DB write.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    with SessionLocal() as session:
+        profile = session.get(UserProfile, user_id)
+        if profile is None:
+            profile = UserProfile(
+                user_id=user_id,
+                favorite_heroes=[],
+                settings=settings_patch,
+            )
+            session.add(profile)
+        else:
+            current = dict(profile.settings or {})
+            current.update(settings_patch)
+            profile.settings = current
+            flag_modified(profile, "settings")
+        session.commit()
+
+
 def replace_hero_matchups_in_cache(
     hero_id: int, matchups: list[dict], updated_at: str
 ) -> None:

@@ -91,6 +91,7 @@ from db import (
     count_new_users_today,
     count_active_users_30d,
     count_matches_with_game_mode,
+    upsert_user_profile_settings,
 )
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
@@ -149,20 +150,33 @@ HERO_IMAGE_BASE_URL: str = os.environ.get(
     "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes",
 )
 
+# TTL-кэш подписки: user_id -> (is_subscribed, monotonic_timestamp)
+# Telegram getChatMember стоит ~100–300 мс, вызывается на каждую команду.
+# TTL 5 минут: пользователь, подписавшийся на канал, "увидит" это максимум через 5 мин.
+_subscriber_cache: dict[int, tuple[bool, float]] = {}
+_SUBSCRIBER_TTL = 300.0  # секунды
+
+
 async def is_subscriber(bot: Bot, user_id: int) -> bool:
     """Проверяет подписку пользователя на канал CHECK_CHAT_ID.
 
-    Использует нативный метод bot.get_chat_member вместо сырых HTTP-запросов.
-    При любой ошибке Telegram API возвращает False и не падает.
+    Результат кэшируется на _SUBSCRIBER_TTL секунд, чтобы не вызывать
+    getChatMember при каждой команде. Cache miss → один Telegram API запрос.
     """
     if not CHECK_CHAT_ID:
         return False
+    now = time.monotonic()
+    entry = _subscriber_cache.get(user_id)
+    if entry is not None and now - entry[1] < _SUBSCRIBER_TTL:
+        return entry[0]
     try:
         member = await bot.get_chat_member(chat_id=CHECK_CHAT_ID, user_id=user_id)
-        return member.status in ("member", "administrator", "creator")
+        result = member.status in ("member", "administrator", "creator")
     except Exception as e:
         logger.warning("[is_subscriber] error for user %s: %s", user_id, e)
         return False
+    _subscriber_cache[user_id] = (result, now)
+    return result
 
 
 # -------- handlers --------
@@ -176,30 +190,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    # Сохраняем данные пользователя в backend для профиля
+    user = update.effective_user
+
+    # Получаем фото профиля (два Telegram API вызова; ошибка не критична)
+    photo_url = None
     try:
-        user = update.effective_user
-
-        photo_url = None
-        try:
-            photos = await context.bot.get_user_profile_photos(user.id, limit=1)
-            if photos.total_count > 0:
-                file_id = photos.photos[0][0].file_id
-                file = await context.bot.get_file(file_id)
-                photo_url = file.file_path
-        except Exception as e:
-            logger.warning("Failed to fetch user photo for %s: %s", user_id, e)
-
-        payload = {
-            "token": None,  # заполним позже
-            "first_name": user.first_name,
-            "last_name": getattr(user, "last_name", None),
-            "username": user.username,
-            "photo_url": photo_url,
-        }
+        photos = await context.bot.get_user_profile_photos(user.id, limit=1)
+        if photos.total_count > 0:
+            file_id = photos.photos[0][0].file_id
+            file = await context.bot.get_file(file_id)
+            photo_url = file.file_path
     except Exception as e:
-        logger.warning("Failed to build Telegram user payload for %s: %s", user_id, e)
-        payload = None
+        logger.warning("Failed to fetch user photo for %s: %s", user_id, e)
 
     subscribed = await is_subscriber(context.bot, user_id)
 
@@ -217,15 +219,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = create_token_for_user(user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
-    if payload is not None:
-        payload["token"] = token
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.post(f"{API_BASE_URL}/api/save_telegram_data", json=payload)
-            if r.status_code != 200:
-                logger.warning("save_telegram_data returned %s for user %s", r.status_code, user_id)
-        except Exception as e:
-            logger.warning("Failed to call save_telegram_data for user %s: %s", user_id, e)
+    # Пишем данные профиля напрямую в БД — без HTTP-запроса к самому себе.
+    try:
+        upsert_user_profile_settings(user_id, {
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": getattr(user, "last_name", None),
+            "photo_url": photo_url,
+        })
+    except Exception as e:
+        logger.warning("Failed to upsert profile settings for user %s: %s", user_id, e)
 
     keyboard = [
         [

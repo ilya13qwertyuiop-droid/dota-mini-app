@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
@@ -74,6 +75,7 @@ class QuizResult(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+        index=True,  # count_active_users_30d() range-scan; get_last_quiz_result() ORDER BY
     )
 
     user = relationship("UserProfile", back_populates="quiz_results")
@@ -136,9 +138,9 @@ class HeroMatchup(Base):
     wins = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
-        # hero_a is covered by the composite PK (leftmost column).
-        # Add explicit index on hero_b for the OR-queries in get_hero_matchup_rows().
-        {},  # placeholder; index is created in Alembic migration
+        # hero_a is the leftmost PK column — already indexed.
+        # hero_b needs its own index for the OR-queries in get_hero_matchup_rows().
+        Index("ix_hero_matchups_hero_b", "hero_b"),
     )
 
 
@@ -150,6 +152,11 @@ class HeroSynergy(Base):
     hero_b = Column(Integer, primary_key=True, nullable=False)
     games = Column(Integer, nullable=False, default=0)
     wins = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        # hero_a covered by composite PK; hero_b needs explicit index for OR-queries.
+        Index("ix_hero_synergy_hero_b", "hero_b"),
+    )
 
 
 class HeroStat(Base):
