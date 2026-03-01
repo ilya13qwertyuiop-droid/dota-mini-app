@@ -1,14 +1,69 @@
 import asyncio
+import functools
 import logging
 import os
 import re
+import time
 import traceback
+from collections import deque
 from io import BytesIO
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# RPS counter — кольцевой буфер меток времени за последние 60 секунд
+# ---------------------------------------------------------------------------
+_rps_window: deque[float] = deque()  # timestamps запросов
+
+
+def _record_request() -> float:
+    """Записывает факт запроса и возвращает текущий RPS (за последние 60 с)."""
+    now = time.monotonic()
+    _rps_window.append(now)
+    cutoff = now - 60.0
+    while _rps_window and _rps_window[0] < cutoff:
+        _rps_window.popleft()
+    return len(_rps_window) / 60.0
+
+
+def timed_handler(cmd: str):
+    """Декоратор для хендлеров: логирует BEGIN/OK/ERROR с user_id, duration, RPS."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            uid: int | str = "?"
+            try:
+                if update.effective_user:
+                    uid = update.effective_user.id
+            except Exception:
+                pass
+            t0 = time.monotonic()
+            rps = _record_request()
+            logger.info(
+                "[%s] user=%s %s BEGIN rps=%.1f",
+                datetime.now().strftime("%H:%M:%S.%f")[:-3], uid, cmd, rps,
+            )
+            try:
+                result = await fn(update, context)
+                logger.info(
+                    "[%s] user=%s %s OK %.0fms",
+                    datetime.now().strftime("%H:%M:%S.%f")[:-3], uid, cmd,
+                    (time.monotonic() - t0) * 1000,
+                )
+                return result
+            except Exception as exc:
+                logger.error(
+                    "[%s] user=%s %s ERROR %.0fms: %s",
+                    datetime.now().strftime("%H:%M:%S.%f")[:-3], uid, cmd,
+                    (time.monotonic() - t0) * 1000, exc, exc_info=True,
+                )
+                raise
+        return wrapper
+    return decorator
+
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -1452,7 +1507,33 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# -------- error handler --------
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный обработчик ошибок: пишет traceback в лог с user_id."""
+    user_id = "?"
+    try:
+        if isinstance(update, Update) and update.effective_user:
+            user_id = update.effective_user.id
+    except Exception:
+        pass
+
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    logger.error(
+        "[%s] ERROR user=%s %s",
+        ts,
+        user_id,
+        context.error,
+        exc_info=context.error,
+    )
+
+
 def main():
+    logging.basicConfig(
+        format="%(asctime)s.%(msecs)03d %(levelname)-8s %(name)s %(message)s",
+        datefmt="%H:%M:%S",
+        level=logging.INFO,
+    )
     init_tokens_table()
     print("🤖 Бот запускается...")
 
@@ -1461,25 +1542,30 @@ def main():
 
     application = Application.builder().token(BOT_TOKEN).build()
 
-    application.add_handler(CommandHandler("start",      start))
-    application.add_handler(CommandHandler("help",       help_command))
-    application.add_handler(CommandHandler("last_quiz",  last_quiz_command))
-    application.add_handler(CommandHandler("hero_quiz",  hero_quiz_command))
-    application.add_handler(CommandHandler("counters",   counters_command))
-    application.add_handler(CommandHandler("synergy",    synergy_command))
-    application.add_handler(CommandHandler("feedback",       feedback_command))
-    application.add_handler(CommandHandler("admin_feedback", admin_feedback_command))
-    application.add_handler(CommandHandler("admin_users",    admin_users_command))
-    application.add_handler(CommandHandler("admin_matches",  admin_matches_command))
-    application.add_handler(CommandHandler("stats_mode",     stats_mode_command))
+    application.add_handler(CommandHandler("start",      timed_handler("/start")(start)))
+    application.add_handler(CommandHandler("help",       timed_handler("/help")(help_command)))
+    application.add_handler(CommandHandler("last_quiz",  timed_handler("/last_quiz")(last_quiz_command)))
+    application.add_handler(CommandHandler("hero_quiz",  timed_handler("/hero_quiz")(hero_quiz_command)))
+    application.add_handler(CommandHandler("counters",   timed_handler("/counters")(counters_command)))
+    application.add_handler(CommandHandler("synergy",    timed_handler("/synergy")(synergy_command)))
+    application.add_handler(CommandHandler("feedback",       timed_handler("/feedback")(feedback_command)))
+    application.add_handler(CommandHandler("admin_feedback", timed_handler("/admin_feedback")(admin_feedback_command)))
+    application.add_handler(CommandHandler("admin_users",    timed_handler("/admin_users")(admin_users_command)))
+    application.add_handler(CommandHandler("admin_matches",  timed_handler("/admin_matches")(admin_matches_command)))
+    application.add_handler(CommandHandler("stats_mode",     timed_handler("/stats_mode")(stats_mode_command)))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, timed_handler("text")(handle_text_message))
     )
 
+    application.add_error_handler(error_handler)
+
     print("✅ Бот запущен! Открой Telegram и напиши боту /start")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        concurrent_updates=True,
+    )
 
 
 if __name__ == "__main__":
