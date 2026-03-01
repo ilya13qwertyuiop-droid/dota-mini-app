@@ -1,12 +1,13 @@
 import logging
 import os
+import time
 import httpx
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -59,6 +60,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Логирует каждый HTTP-запрос: метод, путь, статус, время выполнения."""
+    t0 = time.monotonic()
+    response = await call_next(request)
+    ms = (time.monotonic() - t0) * 1000
+    logger.info(
+        "[%s] %s %s %d %.0fms",
+        datetime.now().strftime("%H:%M:%S.%f")[:-3],
+        request.method,
+        request.url.path,
+        response.status_code,
+        ms,
+    )
+    return response
 
 
 
