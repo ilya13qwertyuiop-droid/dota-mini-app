@@ -203,12 +203,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    token = create_token_for_user(user_id)
+    token = await asyncio.to_thread(create_token_for_user, user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
     # Пишем данные профиля напрямую в БД — без HTTP-запроса к самому себе.
     try:
-        upsert_user_profile_settings(user_id, {
+        await asyncio.to_thread(upsert_user_profile_settings, user_id, {
             "username": user.username,
             "first_name": user.first_name,
             "last_name": getattr(user, "last_name", None),
@@ -306,7 +306,7 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    row = get_last_quiz_result(user_id)
+    row = await asyncio.to_thread(get_last_quiz_result, user_id)
     if row is None:
         await update.message.reply_text(
             "У тебя пока нет сохранённых результатов квиза. "
@@ -596,7 +596,7 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    row = get_last_quiz_result(user_id)
+    row = await asyncio.to_thread(get_last_quiz_result, user_id)
     if row is None:
         await update.message.reply_text(
             "У тебя пока нет сохранённых результатов квиза. "
@@ -623,7 +623,7 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if _PIL_OK:
             try:
                 icons = await _fetch_hero_icons(top)
-                buf   = render_hero_quiz_card(pos_label, top, icons)
+                buf   = await asyncio.to_thread(render_hero_quiz_card, pos_label, top, icons)
 
                 if "—" in pos_label:
                     position_short = pos_label.split("—", 1)[1].strip()
@@ -1071,9 +1071,9 @@ async def _handle_counters_hero(
     try:
         # ── 1. Локальные данные (stats_db) ────────────────────────────────
         if _LOCAL_STATS_OK:
-            local_rows = get_hero_matchup_rows(hero_id, min_games=50)
+            local_rows = await asyncio.to_thread(get_hero_matchup_rows, hero_id, min_games=50)
             if local_rows:
-                base_wr = get_hero_base_winrate_from_db(hero_id) or 0.5
+                base_wr = await asyncio.to_thread(get_hero_base_winrate_from_db, hero_id) or 0.5
                 enriched = [
                     {**r, "adv": round(r["wr_vs"] - base_wr, 4)}
                     for r in local_rows
@@ -1144,7 +1144,7 @@ async def _handle_counters_hero(
                 )
                 icons_strong = icons_all[:len(strong)]
                 icons_weak   = icons_all[len(strong):]
-                buf = render_counters_card(hero_name, strong, weak, icons_strong, icons_weak)
+                buf = await asyncio.to_thread(render_counters_card, hero_name, strong, weak, icons_strong, icons_weak)
                 await update.message.reply_photo(photo=buf, caption=caption, parse_mode="HTML")
                 return
             except Exception:
@@ -1198,9 +1198,9 @@ async def _handle_synergy_hero(
 
     try:
         if _LOCAL_STATS_OK:
-            syn_rows = get_hero_synergy_rows(hero_id, min_games=50)
+            syn_rows = await asyncio.to_thread(get_hero_synergy_rows, hero_id, min_games=50)
             if syn_rows:
-                base_wr = get_hero_base_winrate_from_db(hero_id) or 0.5
+                base_wr = await asyncio.to_thread(get_hero_base_winrate_from_db, hero_id) or 0.5
                 enriched = [
                     {**r, "delta": round(r["wr_vs"] - base_wr, 4)}
                     for r in syn_rows
@@ -1247,7 +1247,7 @@ async def _handle_synergy_hero(
                 )
                 icons_best  = icons_all[:len(best)]
                 icons_worst = icons_all[len(best):]
-                buf = render_synergy_card(hero_name, best, worst, icons_best, icons_worst)
+                buf = await asyncio.to_thread(render_synergy_card, hero_name, best, worst, icons_best, icons_worst)
                 await update.message.reply_photo(photo=buf, caption=caption, parse_mode="HTML")
                 return
             except Exception:
@@ -1310,7 +1310,8 @@ async def _handle_feedback_message(
     user_id = update.effective_user.id
     username: str | None = update.effective_user.username
     try:
-        save_feedback(
+        await asyncio.to_thread(
+            save_feedback,
             user_id=user_id,
             rating=None,
             tags=["bot"],
@@ -1383,7 +1384,7 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
         return  # тихо игнорируем
 
     try:
-        entries = get_recent_feedback(limit=20)
+        entries = await asyncio.to_thread(get_recent_feedback, limit=20)
     except Exception:
         traceback.print_exc()
         await update.message.reply_text("Не удалось получить отзывы.")
