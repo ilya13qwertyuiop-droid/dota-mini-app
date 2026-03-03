@@ -26,7 +26,10 @@ Environment variables (all optional, sensible defaults):
                                  parallel to the publicMatches loop.
                                  Default: "0" (disabled).
     EXPLORER_INTERVAL_SECONDS — how often the explorer loop polls, in seconds.
-                                 Default: 300 (5 minutes).
+                                 Default: 1800 (30 minutes).
+    EXPLORER_MAX_IDS_PER_QUERY — max match IDs returned by one Explorer SQL
+                                 query (LIMIT clause).  Default: 100.
+                                 Reduce to 20–30 for a lighter request budget.
     STATS_BOOTSTRAP_MODE      — set to "1" or "true" to enable aggressive settings
                                  for rapid initial DB population (default: "0").
                                  Overrides POLL_INTERVAL_MINUTES → 5,
@@ -68,8 +71,8 @@ try:
 except ImportError:
     pass
 
-from backend.config import ALLOWED_GAME_MODE_PAIRS
-from backend.opendota_client import get_public_matches, get_match_details, get_explorer_match_ids
+from backend.config import ALLOWED_GAME_MODE_PAIRS, MIN_MATCH_DURATION_SECONDS
+from backend.opendota_client import get_public_matches, get_match_details, get_explorer_match_rows
 from backend.stats_db import (
     init_stats_tables,
     match_exists,
@@ -97,7 +100,8 @@ FETCH_MATCH_DETAILS: bool = os.getenv("FETCH_MATCH_DETAILS", "0") == "1"
 
 # Explorer polling loop (alternative to publicMatches path)
 USE_EXPLORER: bool = os.getenv("USE_EXPLORER", "0") == "1"
-EXPLORER_INTERVAL_SECONDS: int = int(os.getenv("EXPLORER_INTERVAL_SECONDS", "300"))
+EXPLORER_INTERVAL_SECONDS: int = int(os.getenv("EXPLORER_INTERVAL_SECONDS", "1800"))
+EXPLORER_MAX_IDS_PER_QUERY: int = int(os.getenv("EXPLORER_MAX_IDS_PER_QUERY", "100"))
 
 # ---------------------------------------------------------------------------
 # Bootstrap mode — overrides for rapid initial DB population
@@ -672,10 +676,20 @@ async def explorer_loop() -> None:
 
     Flow per cycle:
       1. For each (game_mode, lobby_type) pair in ALLOWED_GAME_MODE_PAIRS:
-         call GET /api/explorer?sql=SELECT match_id … LIMIT 100.
-      2. For each returned match_id that is not yet in the DB:
-         call process_single_match() — same pipeline as publicMatches path.
-      3. Sleep EXPLORER_INTERVAL_SECONDS before next cycle.
+         call GET /api/explorer with SQL returning match_id, duration,
+         avg_rank_tier.  On the first run: ORDER BY match_id DESC (newest
+         first) to initialise the pointer.  On subsequent runs:
+         WHERE match_id > last_seen ORDER BY match_id ASC (incremental).
+      2. Update the per-pair "last seen match_id" pointer so the next cycle
+         only fetches matches that appeared after this one.
+      3. Skip rows whose duration is already known to be < MIN_MATCH_DURATION_SECONDS
+         without issuing a /matches/{id} request.
+      4. For each remaining new match_id, call process_single_match().
+      5. Sleep EXPLORER_INTERVAL_SECONDS before next cycle.
+
+    API request budget per cycle:
+      1 Explorer request per (game_mode, lobby_type) pair
+      + up to EXPLORER_MAX_IDS_PER_QUERY /matches/{id} requests for new IDs only.
 
     Enabled by USE_EXPLORER=1.
     """
@@ -684,42 +698,74 @@ async def explorer_loop() -> None:
         return
 
     logger.info(
-        "[explorer] starting (interval=%ds, pairs=%s)",
-        EXPLORER_INTERVAL_SECONDS, sorted(ALLOWED_GAME_MODE_PAIRS),
+        "[explorer] starting (interval=%ds, max_ids_per_query=%d, pairs=%s)",
+        EXPLORER_INTERVAL_SECONDS, EXPLORER_MAX_IDS_PER_QUERY,
+        sorted(ALLOWED_GAME_MODE_PAIRS),
     )
+
+    # Per-pair pointer: only fetch match IDs newer than this on the next cycle.
+    # Initialised to None so the first run uses ORDER BY DESC (recent matches).
+    _last_match_id: dict[tuple[int, int], int] = {}
 
     while True:
         cycle_start = time.monotonic()
         try:
-            all_ids: list[int] = []
+            all_rows: list[dict] = []
 
             for gm, lt in sorted(ALLOWED_GAME_MODE_PAIRS):
                 await _rate_limiter.acquire()
                 try:
-                    ids = await get_explorer_match_ids(game_mode=gm, lobby_type=lt)
-                    logger.info(
-                        "[explorer] SQL (game_mode=%d, lobby_type=%d) → %d match IDs",
-                        gm, lt, len(ids),
+                    rows = await get_explorer_match_rows(
+                        game_mode=gm,
+                        lobby_type=lt,
+                        limit=EXPLORER_MAX_IDS_PER_QUERY,
+                        min_match_id=_last_match_id.get((gm, lt)),
                     )
-                    all_ids.extend(ids)
+                    logger.info(
+                        "[explorer] SQL (game_mode=%d, lobby_type=%d, min_id=%s) → %d rows",
+                        gm, lt, _last_match_id.get((gm, lt)), len(rows),
+                    )
+                    # Advance the pointer to the highest match_id seen this batch.
+                    if rows:
+                        new_max = max(r["match_id"] for r in rows)
+                        _last_match_id[(gm, lt)] = new_max
+                    all_rows.extend(rows)
                 except Exception as exc:
                     logger.error(
                         "[explorer] API error (game_mode=%d, lobby_type=%d): %s",
                         gm, lt, exc,
                     )
 
-            logger.info("[explorer] %d total match IDs to process", len(all_ids))
+            logger.info("[explorer] %d total rows to evaluate", len(all_rows))
 
             saved = 0
             skip_existing = 0
+            skip_short = 0
             skip_other = 0
 
-            for match_id in all_ids:
+            for row in all_rows:
+                match_id = row["match_id"]
+
+                # Skip short matches early — no /matches/{id} call needed.
+                duration = row.get("duration")
+                if duration is not None and duration < MIN_MATCH_DURATION_SECONDS:
+                    logger.debug(
+                        "[explorer] match %d: skipped before detail fetch "
+                        "(duration=%d < %d)",
+                        match_id, duration, MIN_MATCH_DURATION_SECONDS,
+                    )
+                    skip_short += 1
+                    continue
+
                 if match_exists(match_id):
                     skip_existing += 1
                     continue
 
-                ok = await process_single_match(match_id, source="explorer")
+                ok = await process_single_match(
+                    match_id,
+                    fallback_avg_rank_tier=row.get("avg_rank_tier"),
+                    source="explorer",
+                )
                 if ok:
                     saved += 1
                 else:
@@ -727,8 +773,9 @@ async def explorer_loop() -> None:
 
             elapsed = time.monotonic() - cycle_start
             logger.info(
-                "[explorer] cycle done (%.1fs): +%d saved | %d existed | %d skipped",
-                elapsed, saved, skip_existing, skip_other,
+                "[explorer] cycle done (%.1fs): +%d saved | %d existed | "
+                "%d short | %d skipped",
+                elapsed, saved, skip_existing, skip_short, skip_other,
             )
 
         except Exception as exc:
@@ -796,6 +843,7 @@ async def main() -> None:
     logger.info("  FETCH_MATCH_DETAILS            = %s", FETCH_MATCH_DETAILS)
     logger.info("  USE_EXPLORER                   = %s", USE_EXPLORER)
     logger.info("  EXPLORER_INTERVAL_SECONDS      = %d", EXPLORER_INTERVAL_SECONDS)
+    logger.info("  EXPLORER_MAX_IDS_PER_QUERY     = %d", EXPLORER_MAX_IDS_PER_QUERY)
     logger.info("  [config] allowed mode pairs    = %s", sorted(ALLOWED_GAME_MODE_PAIRS))
     logger.info("  [config] rank buckets          = "
                 "0→unknown | 1-20→low | 21-35→mid | 36-50→high | 51-60→very_high | 61+→immortal")

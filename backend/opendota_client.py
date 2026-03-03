@@ -145,25 +145,45 @@ async def get_match_details(match_id: int) -> dict:
     return r.json()
 
 
-async def get_explorer_match_ids(
+async def get_explorer_match_rows(
     game_mode: int = 22,
     lobby_type: int = 7,
     limit: int = 100,
-) -> list[int]:
-    """GET /api/explorer — SQL query returning recent ranked match IDs.
+    min_match_id: int | None = None,
+) -> list[dict]:
+    """GET /api/explorer — SQL query returning recent ranked match rows.
 
-    Runs a SQL query against OpenDota's public_matches table via the Explorer
-    endpoint.  Returns up to `limit` most-recent match_ids matching the given
-    (game_mode, lobby_type) pair.
+    Queries OpenDota's public_matches table and returns up to `limit` rows
+    matching the given (game_mode, lobby_type) pair.
 
-    Response shape: {"rows": [{"match_id": <int>}, ...], "rowCount": <int>}
+    When min_match_id is given: only rows with match_id > min_match_id are
+    returned, ordered ASC — use this for incremental polling so each cycle
+    only fetches IDs newer than the last seen one.
 
+    When min_match_id is None (first run): returns the `limit` most-recent
+    rows ordered DESC so the pointer starts at the current frontier.
+
+    Each returned dict has keys: match_id (int), duration (int|None),
+    avg_rank_tier (int|None).
+
+    Response shape: {"rows": [{"match_id": …, "duration": …, …}], "rowCount": …}
     Raises RuntimeError on network or API errors.
     """
+    conditions = [
+        f"game_mode = {game_mode}",
+        f"lobby_type = {lobby_type}",
+    ]
+    if min_match_id:
+        conditions.append(f"match_id > {min_match_id}")
+        order = "ASC"
+    else:
+        order = "DESC"
+
+    where = " AND ".join(conditions)
     sql = (
-        f"SELECT match_id FROM public_matches "
-        f"WHERE game_mode = {game_mode} AND lobby_type = {lobby_type} "
-        f"ORDER BY start_time DESC "
+        f"SELECT match_id, duration, avg_rank_tier FROM public_matches "
+        f"WHERE {where} "
+        f"ORDER BY match_id {order} "
         f"LIMIT {limit}"
     )
     url = f"{_BASE_URL}/explorer"
@@ -174,18 +194,26 @@ async def get_explorer_match_ids(
         async with httpx.AsyncClient() as client:
             r = await client.get(url, params=params, timeout=30.0)
     except httpx.RequestError as e:
-        logger.error("OpenDota network error (get_explorer_match_ids): %s", e)
+        logger.error("OpenDota network error (get_explorer_match_rows): %s", e)
         raise RuntimeError(f"OpenDota network error: {e}") from e
 
     if r.status_code != 200:
         logger.error(
-            "OpenDota get_explorer_match_ids returned HTTP %s: %s",
+            "OpenDota get_explorer_match_rows returned HTTP %s: %s",
             r.status_code, r.text[:200],
         )
         raise RuntimeError(f"OpenDota API returned HTTP {r.status_code}")
 
     data = r.json()
     rows = data.get("rows") or []
-    return [int(row["match_id"]) for row in rows if row.get("match_id") is not None]
+    return [
+        {
+            "match_id":      int(row["match_id"]),
+            "duration":      row.get("duration"),
+            "avg_rank_tier": row.get("avg_rank_tier"),
+        }
+        for row in rows
+        if row.get("match_id") is not None
+    ]
 
 
