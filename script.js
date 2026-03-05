@@ -293,7 +293,7 @@
             }
 
             try {
-                const response = await fetch('/api/save_result', {
+                const response = await fetch(`${window.API_BASE_URL}/save_result`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1059,7 +1059,7 @@ async function initProfile() {
     }
 
     try {
-        const response = await fetch(`/api/profile_full?token=${USER_TOKEN}`);
+        const response = await fetch(`${window.API_BASE_URL}/profile_full?token=${USER_TOKEN}`);
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
         }
@@ -1074,7 +1074,7 @@ async function initProfile() {
             if (!profile.first_name && user.first_name) {
                 console.log('[PROFILE] Отправляем данные Telegram на backend (fallback)');
                 try {
-                    await fetch('/api/save_telegram_data', {
+                    await fetch(`${window.API_BASE_URL}/save_telegram_data`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1592,8 +1592,8 @@ async function loadHeroMatchups(heroId) {
     var LIMIT = 5;
 
     async function fetchCounters(minGames) {
-        console.log('Loading counters from /api/hero/' + heroId + '/counters?min_games=' + minGames);
-        var response = await fetch('/api/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
+        console.log('Loading counters from ' + window.API_BASE_URL + '/hero/' + heroId + '/counters?min_games=' + minGames);
+        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var text = await response.text().catch(function () { return ''; });
             var error = new Error('HTTP ' + response.status);
@@ -1661,8 +1661,8 @@ async function loadHeroSynergy(heroId) {
     var LIMIT = 5;
 
     async function fetchSynergy(minGames) {
-        console.log('[synergy] fetching /api/hero/' + heroId + '/synergy?min_games=' + minGames);
-        var response = await fetch('/api/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
+        console.log('[synergy] fetching ' + window.API_BASE_URL + '/hero/' + heroId + '/synergy?min_games=' + minGames);
+        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var error = new Error('HTTP ' + response.status);
             error.status = response.status;
@@ -1900,7 +1900,7 @@ async function submitFeedback() {
     _clearFeedbackStatus();
 
     try {
-        var resp = await fetch('/api/feedback', {
+        var resp = await fetch(`${window.API_BASE_URL}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
