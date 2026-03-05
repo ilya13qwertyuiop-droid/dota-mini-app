@@ -74,6 +74,7 @@ except ImportError:
 import httpx
 from telegram import (
     Bot,
+    BotCommand,
     Update,
     KeyboardButton,
     ReplyKeyboardMarkup,
@@ -1502,6 +1503,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "3️⃣ Получи рекомендацию по герою и позиции\n\n"
         "<b>Команды:</b>\n"
         "/start — Начать заново\n"
+        "/news — Уведомления об обновлениях Dota 2\n"
         "/last_quiz — Последний результат квиза по позициям\n"
         "/hero_quiz — Рекомендованные герои из последнего квиза\n"
         "/counters — Контрпики для любого героя\n"
@@ -1533,6 +1535,20 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def _set_commands(application: Application) -> None:
+    """Registers the visible command menu shown when the user types / in Telegram."""
+    await application.bot.set_my_commands([
+        BotCommand("start",      "Открыть мини‑приложение"),
+        BotCommand("news",       "Уведомления об обновлениях Dota 2"),
+        BotCommand("counters",   "Контрпики для любого героя"),
+        BotCommand("synergy",    "Синергии союзников для любого героя"),
+        BotCommand("last_quiz",  "Последний результат квиза по позициям"),
+        BotCommand("hero_quiz",  "Рекомендованные герои из последнего квиза"),
+        BotCommand("feedback",   "Предложить улучшения мини‑аппа"),
+        BotCommand("help",       "Показать список команд"),
+    ])
+
+
 def main():
     logging.basicConfig(
         format="%(asctime)s.%(msecs)03d %(levelname)-8s %(name)s %(message)s",
@@ -1545,7 +1561,13 @@ def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не найден. Проверь файл .env")
 
-    application = Application.builder().token(BOT_TOKEN).concurrent_updates(True).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .concurrent_updates(True)
+        .post_init(_set_commands)
+        .build()
+    )
 
     application.add_handler(CommandHandler("start",      timed_handler("/start")(start)))
     application.add_handler(CommandHandler("help",       timed_handler("/help")(help_command)))
