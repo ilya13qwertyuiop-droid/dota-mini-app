@@ -48,7 +48,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 BOT_TOKEN: str = os.environ.get("BOT_TOKEN", "")
-NEWS_CHECK_INTERVAL_SECONDS: int = int(os.getenv("NEWS_CHECK_INTERVAL_SECONDS", "300"))
+NEWS_CHECK_INTERVAL_SECONDS: int = int(os.getenv("NEWS_CHECK_INTERVAL_SECONDS", "60"))
 NEWS_TEST_MODE: bool = os.getenv("NEWS_TEST_MODE", "0") == "1"
 NEWS_TEST_USER_ID: int | None = (
     int(os.environ["NEWS_TEST_USER_ID"])
@@ -58,8 +58,8 @@ NEWS_TEST_USER_ID: int | None = (
 
 RSS_URL = "https://steamcommunity.com/games/dota2/rss/"
 
-# Telegram hard limit is ~30 msg/sec across all chats; 0.05 s ≈ 20 msg/sec
-_SEND_DELAY = 0.05
+# Telegram hard limit is ~30 msg/sec across all chats; 0.04 s ≈ 25 msg/sec
+_SEND_DELAY = 0.04
 
 # ---------------------------------------------------------------------------
 # Logging
