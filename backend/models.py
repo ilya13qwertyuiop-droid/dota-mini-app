@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -57,6 +58,8 @@ class UserProfile(Base):
         nullable=True,
         default=lambda: datetime.now(timezone.utc),
     )
+    # Opt-in flag for Dota 2 news broadcast (toggled via /news bot command)
+    notify_news = Column(Boolean, nullable=False, default=False, server_default="0")
 
     quiz_results = relationship(
         "QuizResult", back_populates="user", cascade="all, delete-orphan"
@@ -207,6 +210,25 @@ class MatchPlayer(Base):
     __table_args__ = (
         UniqueConstraint("match_id", "player_slot", name="uq_match_player"),
     )
+
+
+# ---------------------------------------------------------------------------
+# News broadcast
+# ---------------------------------------------------------------------------
+
+class DotaNews(Base):
+    """RSS entries from the Dota 2 Steam news feed.
+
+    Each row is inserted when a new guid is seen; notified_at is set after the
+    broadcast to all notify_news=True users has been sent.
+    """
+    __tablename__ = "dota_news"
+
+    guid = Column(Text, primary_key=True)
+    title = Column(Text, nullable=False)
+    link = Column(Text, nullable=False)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    notified_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------

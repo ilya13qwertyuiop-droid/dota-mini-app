@@ -92,6 +92,7 @@ from db import (
     count_active_users_30d,
     count_matches_with_game_mode,
     upsert_user_profile_settings,
+    toggle_notify_news,
 )
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
@@ -1272,6 +1273,19 @@ async def _handle_synergy_hero(
         )
 
 
+# -------- /news --------
+
+async def news_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Переключает подписку на новости Dota 2 (notify_news toggle)."""
+    user_id = update.effective_user.id
+    new_value = await asyncio.to_thread(toggle_notify_news, user_id)
+    if new_value:
+        text = "✅ Уведомления о новостях Dota 2 включены"
+    else:
+        text = "🔕 Уведомления о новостях Dota 2 отключены"
+    await update.message.reply_text(text)
+
+
 # -------- /feedback --------
 
 async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1539,6 +1553,7 @@ def main():
     application.add_handler(CommandHandler("hero_quiz",  timed_handler("/hero_quiz")(hero_quiz_command)))
     application.add_handler(CommandHandler("counters",   timed_handler("/counters")(counters_command)))
     application.add_handler(CommandHandler("synergy",    timed_handler("/synergy")(synergy_command)))
+    application.add_handler(CommandHandler("news",            timed_handler("/news")(news_command)))
     application.add_handler(CommandHandler("feedback",       timed_handler("/feedback")(feedback_command)))
     application.add_handler(CommandHandler("admin_feedback", timed_handler("/admin_feedback")(admin_feedback_command)))
     application.add_handler(CommandHandler("admin_users",    timed_handler("/admin_users")(admin_users_command)))
