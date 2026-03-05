@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -137,7 +138,7 @@ async def _send_message(client: httpx.AsyncClient, user_id: int, text: str) -> b
     try:
         resp = await client.post(
             url,
-            json={"chat_id": user_id, "text": text, "disable_web_page_preview": False},
+            json={"chat_id": user_id, "text": text, "parse_mode": "MarkdownV2", "disable_web_page_preview": False},
             timeout=10,
         )
         if resp.status_code != 200:
@@ -150,8 +151,19 @@ async def _send_message(client: httpx.AsyncClient, user_id: int, text: str) -> b
         return False
 
 
+_MDV2_SPECIAL = re.compile(r'([_*\[\]()~`>#+\-=|{}.!\\])')
+
+
+def _escape_mdv2(text: str) -> str:
+    """Escapes all MarkdownV2 special characters in plain text."""
+    return _MDV2_SPECIAL.sub(r'\\\1', text)
+
+
 def _format_news(title: str, link: str) -> str:
-    return f"🗞 Новость Dota 2\n\n{title}\n\n🔗 {link}"
+    """Returns a MarkdownV2-formatted news message."""
+    escaped_title = _escape_mdv2(title)
+    escaped_link = _escape_mdv2(link)
+    return f"🗞 *Новость Dota 2*\n\n*{escaped_title}*\n\n🔗 [Читать]({escaped_link})"
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +240,8 @@ async def _check_and_notify(client: httpx.AsyncClient) -> None:
 
 
 async def _run_test_mode(client: httpx.AsyncClient, rss_items: list[dict]) -> None:
-    """Test mode: take the 3 most recent RSS items (saving any unseen ones first)
-    and send them only to NEWS_TEST_USER_ID.
+    """Test mode: take the most recent RSS item (saving any unseen ones first)
+    and send it only to NEWS_TEST_USER_ID.
     """
     if not NEWS_TEST_USER_ID:
         logger.error("[test] NEWS_TEST_MODE=1 but NEWS_TEST_USER_ID is not set — aborting")
@@ -243,8 +255,8 @@ async def _run_test_mode(client: httpx.AsyncClient, rss_items: list[dict]) -> No
                 item["guid"], item["title"], item["link"], item["published_at"],
             )
 
-    # Use the 3 most recent from DB (covers the case where RSS was already parsed before)
-    latest = await asyncio.to_thread(get_latest_news_guids, 3)
+    # Use the most recent item from DB (covers the case where RSS was already parsed before)
+    latest = await asyncio.to_thread(get_latest_news_guids, 1)
     logger.info("[test] sending %d item(s) to user %s", len(latest), NEWS_TEST_USER_ID)
 
     for item in latest:
