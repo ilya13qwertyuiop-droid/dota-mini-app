@@ -13,6 +13,8 @@
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- API base URL — overridden by nginx sub_filter on staging -->
+    <script>window.API_BASE_URL = "/api";</script>
   </head>
   <body>
     <div class="app-container">
