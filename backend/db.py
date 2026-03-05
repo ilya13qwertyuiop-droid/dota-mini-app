@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
+from backend.models import DotaNews, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -277,3 +277,105 @@ def count_matches_with_game_mode() -> int:
     """Counts matches rows where game_mode IS NOT NULL."""
     with SessionLocal() as session:
         return session.query(Match).filter(Match.game_mode.isnot(None)).count()
+
+
+# ---------------------------------------------------------------------------
+# News broadcast helpers
+# ---------------------------------------------------------------------------
+
+def toggle_notify_news(user_id: int) -> bool:
+    """Toggles user_profiles.notify_news for the given user and returns the new value.
+
+    Creates a minimal UserProfile row if the user has no profile yet (e.g. they
+    sent /news before /start).
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    with SessionLocal() as session:
+        profile = session.get(UserProfile, user_id)
+        if profile is None:
+            new_value = True
+            profile = UserProfile(
+                user_id=user_id,
+                favorite_heroes=[],
+                settings={},
+                notify_news=new_value,
+            )
+            session.add(profile)
+        else:
+            new_value = not bool(profile.notify_news)
+            profile.notify_news = new_value
+            flag_modified(profile, "notify_news")
+        session.commit()
+        return new_value
+
+
+def get_news_subscribers() -> list[int]:
+    """Returns list of user_ids with notify_news=True."""
+    with SessionLocal() as session:
+        rows = (
+            session.query(UserProfile.user_id)
+            .filter(UserProfile.notify_news.is_(True))
+            .all()
+        )
+        return [r.user_id for r in rows]
+
+
+def news_guid_exists(guid: str) -> bool:
+    """Returns True if this RSS guid is already in dota_news."""
+    with SessionLocal() as session:
+        return session.get(DotaNews, guid) is not None
+
+
+def save_dota_news(
+    guid: str,
+    title: str,
+    link: str,
+    published_at: "datetime | None",
+) -> None:
+    """Inserts a new dota_news row (ignores duplicates via primary key)."""
+    with SessionLocal() as session:
+        if session.get(DotaNews, guid) is not None:
+            return  # already present — skip
+        session.add(
+            DotaNews(
+                guid=guid,
+                title=title,
+                link=link,
+                published_at=published_at,
+            )
+        )
+        session.commit()
+
+
+def mark_news_notified(guid: str) -> None:
+    """Sets dota_news.notified_at = now() for the given guid."""
+    with SessionLocal() as session:
+        row = session.get(DotaNews, guid)
+        if row is not None:
+            row.notified_at = datetime.now(timezone.utc)
+            session.commit()
+
+
+def get_latest_news_guids(limit: int = 3) -> list[dict]:
+    """Returns the most recent `limit` rows from dota_news (by published_at desc).
+
+    Used in NEWS_TEST_MODE to re-broadcast recent items regardless of notified_at.
+    Returns list of dicts with keys: guid, title, link, published_at.
+    """
+    with SessionLocal() as session:
+        rows = (
+            session.query(DotaNews)
+            .order_by(DotaNews.published_at.desc().nullslast())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "guid": r.guid,
+                "title": r.title,
+                "link": r.link,
+                "published_at": r.published_at,
+            }
+            for r in rows
+        ]
