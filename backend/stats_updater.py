@@ -720,6 +720,7 @@ async def explorer_loop() -> None:
                         lobby_type=lt,
                         limit=EXPLORER_MAX_IDS_PER_QUERY,
                         min_match_id=_last_match_id.get((gm, lt)),
+                        min_duration=MIN_MATCH_DURATION_SECONDS,
                     )
                     logger.info(
                         "[explorer] SQL (game_mode=%d, lobby_type=%d, min_id=%s) → %d rows",

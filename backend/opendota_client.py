@@ -150,6 +150,7 @@ async def get_explorer_match_rows(
     lobby_type: int = 7,
     limit: int = 100,
     min_match_id: int | None = None,
+    min_duration: int = 0,
 ) -> list[dict]:
     """GET /api/explorer — SQL query returning recent ranked match rows.
 
@@ -163,6 +164,11 @@ async def get_explorer_match_rows(
     When min_match_id is None (first run): returns the `limit` most-recent
     rows ordered DESC so the pointer starts at the current frontier.
 
+    min_duration — when > 0, adds AND duration >= min_duration to the SQL
+    WHERE clause so the API skips short matches before they reach us.
+    Pass MIN_MATCH_DURATION_SECONDS from config to avoid wasting API budget
+    on get_match_details() calls for matches that would be filtered anyway.
+
     Each returned dict has keys: match_id (int), duration (int|None),
     avg_rank_tier (int|None).
 
@@ -173,6 +179,8 @@ async def get_explorer_match_rows(
         f"game_mode = {game_mode}",
         f"lobby_type = {lobby_type}",
     ]
+    if min_duration > 0:
+        conditions.append(f"duration >= {min_duration}")
     if min_match_id:
         conditions.append(f"match_id > {min_match_id}")
         order = "ASC"
