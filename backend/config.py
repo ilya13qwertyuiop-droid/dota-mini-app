@@ -38,3 +38,16 @@ ALLOWED_GAME_MODE_PAIRS: frozenset[tuple[int, int]] = frozenset({
 # A 30-minute floor also guarantees at least three 10-minute timeline
 # snapshots (minute 10, 20, and 30) for every accepted match.
 MIN_MATCH_DURATION_SECONDS: int = 1800  # 30 minutes
+
+# ---------------------------------------------------------------------------
+# Bayesian smoothing for matchup / synergy advantage scores.
+#
+# Shrinks raw advantage toward zero for low-sample pairs so they rank below
+# high-confidence pairs with similar raw numbers.
+#
+# Formula: adjusted = raw_advantage * games / (games + C)
+#
+# At C=50: a pair with 50 games retains 50% of its raw advantage,
+# a pair with 200 games retains 80%, a pair with 500 games retains 91%.
+# ---------------------------------------------------------------------------
+BAYESIAN_SMOOTHING_C: int = 50

@@ -30,6 +30,7 @@ from backend.stats_db import (
     get_hero_total_games,
     get_stats_mode,
 )
+from backend.config import BAYESIAN_SMOOTHING_C
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -523,25 +524,27 @@ async def api_hero_counters(
         base_wr = 0.5
         logger.warning("[counters] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
 
-    enriched = [
-        {
-            "hero_id": row["hero_id"],
-            "games": row["games"],
-            "wr_vs": row["wr_vs"],
-            "advantage": round(row["wr_vs"] - base_wr, 4),
-        }
-        for row in rows
-    ]
+    enriched = []
+    for row in rows:
+        raw_adv = round(row["wr_vs"] - base_wr, 4)
+        adj_adv = round(raw_adv * row["games"] / (row["games"] + BAYESIAN_SMOOTHING_C), 4)
+        enriched.append({
+            "hero_id":       row["hero_id"],
+            "games":         row["games"],
+            "wr_vs":         row["wr_vs"],
+            "advantage":     adj_adv,
+            "raw_advantage": raw_adv,
+        })
 
-    # counters: advantage < 0 (they beat us), sorted worst-first (ascending)
+    # counters: adjusted_advantage <= -0.02 (they beat us), sorted worst-first
     counters = sorted(
-        [e for e in enriched if e["advantage"] < 0],
+        [e for e in enriched if e["advantage"] <= -0.02],
         key=lambda x: x["advantage"],
     )[:limit]
 
-    # victims: advantage >= 0 (we beat them), sorted best-first (descending)
+    # victims: adjusted_advantage >= 0.02 (we beat them), sorted best-first
     victims = sorted(
-        [e for e in enriched if e["advantage"] >= 0],
+        [e for e in enriched if e["advantage"] >= 0.02],
         key=lambda x: x["advantage"],
         reverse=True,
     )[:limit]
@@ -611,27 +614,29 @@ async def api_hero_synergy(
         base_wr = 0.5
         logger.warning("[synergy] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
 
-    enriched = [
-        {
-            "hero_id": row["hero_id"],
-            "games": row["games"],
-            "wins": row["wins"],
-            "wr_vs": row["wr_vs"],
-            "delta": round(row["wr_vs"] - base_wr, 4),
-        }
-        for row in rows
-    ]
+    enriched = []
+    for row in rows:
+        raw_delta = round(row["wr_vs"] - base_wr, 4)
+        adj_delta = round(raw_delta * row["games"] / (row["games"] + BAYESIAN_SMOOTHING_C), 4)
+        enriched.append({
+            "hero_id":   row["hero_id"],
+            "games":     row["games"],
+            "wins":      row["wins"],
+            "wr_vs":     row["wr_vs"],
+            "delta":     adj_delta,
+            "raw_delta": raw_delta,
+        })
 
-    # best_allies: delta >= 0, sorted best-first (descending)
+    # best_allies: adjusted_delta >= 0.02, sorted best-first (descending)
     best_allies = sorted(
-        [e for e in enriched if e["delta"] >= 0],
+        [e for e in enriched if e["delta"] >= 0.02],
         key=lambda x: x["delta"],
         reverse=True,
     )[:limit]
 
-    # worst_allies: delta < 0, sorted worst-first (ascending)
+    # worst_allies: adjusted_delta <= -0.02, sorted worst-first (ascending)
     worst_allies = sorted(
-        [e for e in enriched if e["delta"] < 0],
+        [e for e in enriched if e["delta"] <= -0.02],
         key=lambda x: x["delta"],
     )[:limit]
 
