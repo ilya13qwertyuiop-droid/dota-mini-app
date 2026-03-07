@@ -1608,11 +1608,11 @@ async function loadHeroMatchups(heroId) {
     try {
         var data;
         try {
-            data = await fetchCounters(10);
+            data = await fetchCounters(50);
         } catch (err) {
             if (err.status === 503) {
-                console.warn('[matchups] No data for min_games=10, trying 5');
-                data = await fetchCounters(5);
+                console.warn('[matchups] No data for min_games=50, trying 20');
+                data = await fetchCounters(20);
             } else {
                 throw err;
             }
@@ -1623,9 +1623,9 @@ async function loadHeroMatchups(heroId) {
         // retry with a lower threshold so we show something meaningful.
         var totalRows = ((data.counters || []).length) + ((data.victims || []).length);
         if (totalRows < 4) {
-            console.warn('[matchups] Sparse result (' + totalRows + ' rows at min_games=10), retrying with min_games=5');
+            console.warn('[matchups] Sparse result (' + totalRows + ' rows at min_games=50), retrying with min_games=20');
             try {
-                data = await fetchCounters(5);
+                data = await fetchCounters(20);
             } catch (retryErr) {
                 console.warn('[matchups] Sparse-retry failed, keeping previous data:', retryErr);
             }
@@ -1674,11 +1674,11 @@ async function loadHeroSynergy(heroId) {
     try {
         var data;
         try {
-            data = await fetchSynergy(10);
+            data = await fetchSynergy(50);
         } catch (err) {
             if (err.status === 503) {
-                console.warn('[synergy] No data for min_games=10, trying 5');
-                data = await fetchSynergy(5);
+                console.warn('[synergy] No data for min_games=50, trying 20');
+                data = await fetchSynergy(20);
             } else {
                 throw err;
             }
@@ -1687,9 +1687,9 @@ async function loadHeroSynergy(heroId) {
         // Fallback for sparse results
         var totalRows = ((data.best_allies || []).length) + ((data.worst_allies || []).length);
         if (totalRows < 4) {
-            console.warn('[synergy] Sparse result (' + totalRows + ' rows), retrying with min_games=5');
+            console.warn('[synergy] Sparse result (' + totalRows + ' rows), retrying with min_games=20');
             try {
-                data = await fetchSynergy(5);
+                data = await fetchSynergy(20);
             } catch (retryErr) {
                 console.warn('[synergy] Sparse-retry failed, keeping previous data:', retryErr);
             }
