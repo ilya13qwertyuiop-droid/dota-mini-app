@@ -412,48 +412,67 @@ margin-bottom: 14px;
 opacity: 0.7;
 }
 
-.quiz-next-btn {
-width: 100%;
-margin-top: 6px;
-padding: 13px;
-border-radius: 18px;
-border: 1px solid rgba(58, 123, 213, 0.5);
-background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.22), rgba(10, 10, 16, 0.96));
+.quiz-nav {
+display: flex;
+align-items: center;
+justify-content: space-between;
+margin-top: 20px;
+padding-top: 16px;
+border-top: 1px solid rgba(255, 255, 255, 0.06);
+gap: 10px;
+}
+
+.quiz-nav-back {
+padding: 9px 16px;
+border-radius: 12px;
+border: 1px solid rgba(255, 255, 255, 0.12);
+background: rgba(255, 255, 255, 0.03);
+color: rgba(255, 255, 255, 0.55);
+font-size: 13px;
+font-weight: 500;
+cursor: pointer;
+transition: all 0.18s ease;
+}
+
+.quiz-nav-back:hover {
+border-color: rgba(255, 255, 255, 0.22);
+color: rgba(255, 255, 255, 0.78);
+background: rgba(255, 255, 255, 0.06);
+}
+
+.quiz-nav-back:disabled {
+opacity: 0.25;
+cursor: default;
+}
+
+.quiz-nav-next {
+padding: 9px 20px;
+border-radius: 12px;
+border: 1px solid rgba(58, 123, 213, 0.55);
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.28), rgba(10, 10, 16, 0.96));
 color: var(--text-main);
-font-size: 15px;
+font-size: 13px;
 font-weight: 600;
 cursor: pointer;
 transition: all 0.18s ease;
 }
 
-.quiz-next-btn:disabled {
-opacity: 0.3;
+.quiz-nav-next:disabled {
+opacity: 0.28;
 cursor: default;
 border-color: rgba(255, 255, 255, 0.08);
-background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.06), rgba(10, 10, 16, 0.96));
+background: rgba(10, 10, 16, 0.96);
 }
 
 @media (hover: hover) and (pointer: fine) {
-.quiz-next-btn:not(:disabled):hover {
+.quiz-nav-next:not(:disabled):hover {
 border-color: #3a7bd5;
-background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.32), rgba(15, 15, 22, 0.98));
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.42), rgba(15, 15, 22, 0.98));
 transform: translateY(-1px);
 }
 }
 
-/* Обёртка: карточка + кнопка "Назад" под ней */
-.quiz-card-with-back {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;  /* всё привязано к левому краю */
-}
-
-/* Внутренняя карточка с вопросом */
-.quiz-card-inner {
-  width: 100%;
-}
-
-/* Кнопка "Назад" под карточкой */
+/* Кнопка "Назад" (общая) */
 .btn-back {
   margin-top: 16px;         /* расстояние от низа карточки */
   background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
