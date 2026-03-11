@@ -416,60 +416,59 @@ opacity: 0.7;
 display: flex;
 align-items: center;
 justify-content: space-between;
+width: 100%;
 margin-top: 20px;
 padding-top: 16px;
 border-top: 1px solid rgba(255, 255, 255, 0.06);
-gap: 10px;
+}
+
+.quiz-nav-back,
+.quiz-nav-next {
+font-family: inherit;
+font-size: 13px;
+font-weight: 500;
+padding: 9px 18px;
+border-radius: 12px;
+cursor: pointer;
+outline: none;
+transition: all 0.18s ease;
 }
 
 .quiz-nav-back {
-padding: 9px 16px;
-border-radius: 12px;
-border: 1px solid rgba(255, 255, 255, 0.12);
-background: rgba(255, 255, 255, 0.03);
-color: rgba(255, 255, 255, 0.55);
-font-size: 13px;
-font-weight: 500;
-cursor: pointer;
-transition: all 0.18s ease;
+background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+border: 1px solid rgba(255, 255, 255, 0.16);
+color: rgba(255, 255, 255, 0.7);
 }
 
-.quiz-nav-back:hover {
-border-color: rgba(255, 255, 255, 0.22);
-color: rgba(255, 255, 255, 0.78);
-background: rgba(255, 255, 255, 0.06);
+.quiz-nav-back:not(:disabled):hover {
+border-color: rgba(255, 255, 255, 0.28);
+background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+color: var(--text-main);
 }
 
 .quiz-nav-back:disabled {
-opacity: 0.25;
-cursor: default;
+opacity: 0.3;
+cursor: not-allowed;
 }
 
 .quiz-nav-next {
-padding: 9px 20px;
-border-radius: 12px;
-border: 1px solid rgba(58, 123, 213, 0.55);
-background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.28), rgba(10, 10, 16, 0.96));
-color: var(--text-main);
-font-size: 13px;
 font-weight: 600;
-cursor: pointer;
-transition: all 0.18s ease;
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.3), rgba(10, 10, 16, 0.96));
+border: 1px solid rgba(58, 123, 213, 0.55);
+color: var(--text-main);
+}
+
+.quiz-nav-next:not(:disabled):hover {
+border-color: #3a7bd5;
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.44), rgba(15, 15, 22, 0.98));
+transform: translateY(-1px);
 }
 
 .quiz-nav-next:disabled {
-opacity: 0.28;
-cursor: default;
+opacity: 0.3;
+cursor: not-allowed;
 border-color: rgba(255, 255, 255, 0.08);
-background: rgba(10, 10, 16, 0.96);
-}
-
-@media (hover: hover) and (pointer: fine) {
-.quiz-nav-next:not(:disabled):hover {
-border-color: #3a7bd5;
-background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.42), rgba(15, 15, 22, 0.98));
-transform: translateY(-1px);
-}
+background: rgba(255, 255, 255, 0.03);
 }
 
 /* Кнопка "Назад" (общая) */
