@@ -690,8 +690,13 @@
                 const hint = document.getElementById('heroQuizHint');
                 hint.textContent = 'выбери 1 или 2 варианта';
 
+                const backBtn = document.getElementById('heroBackBtn');
+                backBtn.disabled = this.state.currentQuestionIndex === 0;
+
+                const isLast = this.state.currentQuestionIndex === this.state.currentQuestionSet.length - 1;
                 const nextBtn = document.getElementById('heroNextBtn');
                 nextBtn.disabled = true;
+                nextBtn.textContent = isLast ? 'Результат →' : 'Далее →';
 
                 const answersContainer = document.getElementById('heroAnswers');
                 answersContainer.innerHTML = '';

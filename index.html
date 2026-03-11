@@ -378,29 +378,27 @@
 
             <!-- Вопросы -->
             <div id="hero-questions" style="display: none;">
-              <div class="quiz-card-with-back">
-                <div class="quiz-card-inner">
-                  <h1>🦸 Подбор героя</h1>
-                  <p class="subtitle" id="heroQuizSubtitle">
-                    Ответь на несколько вопросов
-                  </p>
+              <div class="quiz-container">
+                <h1>🦸 Подбор героя</h1>
+                <p class="subtitle" id="heroQuizSubtitle">
+                  Ответь на несколько вопросов
+                </p>
 
-                  <div class="progress-bar">
-                    <div
-                      class="progress-fill"
-                      id="heroProgressBar"
-                    ></div>
-                  </div>
-
-                  <div class="question" id="heroQuestion"></div>
-                  <p class="quiz-hint" id="heroQuizHint">выбери 1 или 2 варианта</p>
-                  <div class="answers" id="heroAnswers"></div>
-                  <button class="quiz-next-btn" id="heroNextBtn" onclick="heroQuiz.nextQuestion()" disabled>Далее →</button>
+                <div class="progress-bar">
+                  <div
+                    class="progress-fill"
+                    id="heroProgressBar"
+                  ></div>
                 </div>
 
-                <button class="btn-back" onclick="goBackInHeroQuiz()">
-                  Назад
-                </button>
+                <div class="question" id="heroQuestion"></div>
+                <p class="quiz-hint" id="heroQuizHint">выбери 1 или 2 варианта</p>
+                <div class="answers" id="heroAnswers"></div>
+
+                <div class="quiz-nav">
+                  <button class="quiz-nav-back" id="heroBackBtn" onclick="goBackInHeroQuiz()">← Назад</button>
+                  <button class="quiz-nav-next" id="heroNextBtn" onclick="heroQuiz.nextQuestion()" disabled>Далее →</button>
+                </div>
               </div>
             </div>
 
