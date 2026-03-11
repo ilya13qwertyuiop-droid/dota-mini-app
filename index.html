@@ -325,6 +325,14 @@
                   <span class="text">Выбрать позицию вручную</span>
                 </button>
               </div>
+
+              <button
+                class="btn-back"
+                onclick="backToQuizList()"
+                style="margin-top: 20px;"
+              >
+                Назад
+              </button>
             </div>
 
             <!-- Ручной выбор позиции -->
@@ -369,7 +377,7 @@
 
               <button
                 class="btn-back"
-                onclick="backToQuizListFromHero()"
+                onclick="heroQuiz.showStartScreen()"
                 style="margin-top: 20px;"
               >
                 Назад
@@ -378,7 +386,6 @@
 
             <!-- Вопросы -->
             <div id="hero-questions" style="display: none;">
-              <div class="quiz-container">
                 <h1>🦸 Подбор героя</h1>
                 <p class="subtitle" id="heroQuizSubtitle">
                   Ответь на несколько вопросов
@@ -399,7 +406,6 @@
                   <button class="quiz-nav-back" id="heroBackBtn" onclick="goBackInHeroQuiz()">← Назад</button>
                   <button class="quiz-nav-next" id="heroNextBtn" onclick="heroQuiz.nextQuestion()" disabled>Далее →</button>
                 </div>
-              </div>
             </div>
 
             <!-- Результат -->
