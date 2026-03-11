@@ -691,7 +691,7 @@
                 hint.textContent = 'выбери 1 или 2 варианта';
 
                 const backBtn = document.getElementById('heroBackBtn');
-                backBtn.disabled = this.state.currentQuestionIndex === 0;
+                backBtn.disabled = false;
 
                 const isLast = this.state.currentQuestionIndex === this.state.currentQuestionSet.length - 1;
                 const nextBtn = document.getElementById('heroNextBtn');
