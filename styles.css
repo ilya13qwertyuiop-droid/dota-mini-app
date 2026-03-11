@@ -405,6 +405,42 @@ flex-shrink: 0;
 flex: 1;
 }
 
+.quiz-hint {
+font-size: 12px;
+color: var(--text-muted);
+margin-bottom: 14px;
+opacity: 0.7;
+}
+
+.quiz-next-btn {
+width: 100%;
+margin-top: 6px;
+padding: 13px;
+border-radius: 18px;
+border: 1px solid rgba(58, 123, 213, 0.5);
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.22), rgba(10, 10, 16, 0.96));
+color: var(--text-main);
+font-size: 15px;
+font-weight: 600;
+cursor: pointer;
+transition: all 0.18s ease;
+}
+
+.quiz-next-btn:disabled {
+opacity: 0.3;
+cursor: default;
+border-color: rgba(255, 255, 255, 0.08);
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.06), rgba(10, 10, 16, 0.96));
+}
+
+@media (hover: hover) and (pointer: fine) {
+.quiz-next-btn:not(:disabled):hover {
+border-color: #3a7bd5;
+background: radial-gradient(circle at 0 0, rgba(58, 123, 213, 0.32), rgba(15, 15, 22, 0.98));
+transform: translateY(-1px);
+}
+}
+
 /* Обёртка: карточка + кнопка "Назад" под ней */
 .quiz-card-with-back {
   display: flex;
