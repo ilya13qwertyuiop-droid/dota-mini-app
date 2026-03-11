@@ -653,6 +653,7 @@
             startQuestions() {
                 this.state.currentQuestionIndex = 0;
                 this.state.answers = [];
+                this.state.currentSelections = [];
 
 
             const questionSets = {
@@ -681,20 +682,24 @@
                 const question = this.state.currentQuestionSet[this.state.currentQuestionIndex];
                 const progress = ((this.state.currentQuestionIndex + 1) / this.state.currentQuestionSet.length) * 100;
 
+                this.state.currentSelections = [];
 
                 document.getElementById('heroProgressBar').style.width = progress + '%';
                 document.getElementById('heroQuestion').textContent = question.question;
 
+                const hint = document.getElementById('heroQuizHint');
+                hint.textContent = 'выбери 1 или 2 варианта';
+
+                const nextBtn = document.getElementById('heroNextBtn');
+                nextBtn.disabled = true;
 
                 const answersContainer = document.getElementById('heroAnswers');
                 answersContainer.innerHTML = '';
-
 
                 question.answers.forEach((answer, index) => {
                     const parts = answer.text.split(' ');
                     const emoji = parts[0];
                     const text = parts.slice(1).join(' ');
-
 
                     const button = document.createElement('button');
                     button.className = 'answer-btn';
@@ -709,41 +714,84 @@
 
 
             selectAnswer(index) {
-                const question = this.state.currentQuestionSet[this.state.currentQuestionIndex];
-                this.state.answers.push(question.answers[index]);
+                const sel = this.state.currentSelections;
+                const alreadyIdx = sel.indexOf(index);
 
+                if (alreadyIdx !== -1) {
+                    // Deselect
+                    sel.splice(alreadyIdx, 1);
+                } else {
+                    if (sel.length >= 2) return; // max 2
+                    sel.push(index);
+                }
 
+                // Update button visuals
                 const buttons = document.querySelectorAll('#heroAnswers .answer-btn');
                 buttons.forEach((btn, i) => {
-                    if (i === index) {
-                        btn.classList.add('selected');
-                    }
+                    btn.classList.toggle('selected', sel.includes(i));
                 });
 
+                // Update hint and next button
+                const hint = document.getElementById('heroQuizHint');
+                const nextBtn = document.getElementById('heroNextBtn');
 
-                setTimeout(() => {
-                    this.state.currentQuestionIndex++;
-                    if (this.state.currentQuestionIndex < this.state.currentQuestionSet.length) {
-                        this.showQuestion();
-                    } else {
-                        this.showResult();
-                    }
-                }, 300);
+                if (sel.length === 0) {
+                    hint.textContent = 'выбери 1 или 2 варианта';
+                    nextBtn.disabled = true;
+                } else if (sel.length === 2) {
+                    hint.textContent = 'выбрано максимум';
+                    nextBtn.disabled = false;
+                } else {
+                    hint.textContent = 'можно добавить ещё один вариант';
+                    nextBtn.disabled = false;
+                }
+            },
+
+
+            nextQuestion() {
+                if (this.state.currentSelections.length === 0) return;
+
+                const question = this.state.currentQuestionSet[this.state.currentQuestionIndex];
+                const selectedAnswers = this.state.currentSelections.map(i => question.answers[i]);
+                this.state.answers.push(selectedAnswers);
+
+                this.state.currentQuestionIndex++;
+                if (this.state.currentQuestionIndex < this.state.currentQuestionSet.length) {
+                    this.showQuestion();
+                } else {
+                    this.showResult();
+                }
             },
 
 
             calculateTopHeroes() {
-                // 1. Собираем выбранные теги
-                const selectedTags = [];
+                // 1. Собираем взвешенные теги из всех вопросов.
+                //    melee/ranged НЕ участвуют в скоринге — только в фильтрации (см. ниже).
+                const selectedTags = {}; // tag → суммарный вес
                 let selectedDifficulty = null;
+                let wantsMelee = false;
+                let wantsRanged = false;
 
-                this.state.answers.forEach(answer => {
-                    answer.tags.forEach(tag => {
-                        if (tag === 'easy' || tag === 'medium' || tag === 'hard') {
-                            selectedDifficulty = tag; // сложность
-                        } else {
-                            selectedTags.push(tag);   // поведенческие теги
-                        }
+                this.state.answers.forEach(questionAnswers => {
+                    const weight = questionAnswers.length === 1 ? 1.0 : 0.5;
+                    const questionTagWeights = {};
+
+                    questionAnswers.forEach(answer => {
+                        answer.tags.forEach(tag => {
+                            if (tag === 'easy' || tag === 'medium' || tag === 'hard') {
+                                selectedDifficulty = tag;
+                            } else if (tag === 'melee') {
+                                wantsMelee = true;
+                            } else if (tag === 'ranged') {
+                                wantsRanged = true;
+                            } else {
+                                questionTagWeights[tag] = Math.min(1.0, (questionTagWeights[tag] || 0) + weight);
+                            }
+                        });
+                    });
+
+                    Object.entries(questionTagWeights).forEach(([tag, w]) => {
+                        selectedTags[tag] = (selectedTags[tag] || 0) + w;
                     });
                 });
 
@@ -751,20 +799,19 @@
 
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
-
                     const heroTags = hero.tags;
 
-                    selectedTags.forEach(tag => {
-                        // Вариант 1: hero.tags — МАССИВ (керри)
+                    Object.entries(selectedTags).forEach(([tag, weight]) => {
+                        // Вариант 1: hero.tags — МАССИВ (керри, мид)
                         if (Array.isArray(heroTags)) {
                             if (heroTags.includes(tag)) {
-                                score += 1; // 1 балл за совпавший тег
+                                score += weight;
                             }
                         }
                         // Вариант 2: hero.tags — ОБЪЕКТ с весами (оффлейн, pos4/5)
                         else if (heroTags && typeof heroTags === 'object') {
                             if (heroTags[tag] !== undefined) {
-                                score += heroTags[tag]; // прибавляем вес
+                                score += heroTags[tag] * weight;
                             }
                         }
                     });
@@ -774,26 +821,24 @@
                         score += 1.5;
                     }
 
-                    // Дополнительный приоритет только для керри (melee/ranged)
-                    if (this.state.selectedPosition === 0) {
-                        const wantsMelee = selectedTags.includes('melee');
-                        const wantsRanged = selectedTags.includes('ranged');
-
-                        if (Array.isArray(heroTags)) {
-                            if (wantsMelee && heroTags.includes('melee') && !heroTags.includes('ranged')) {
-                                score += 0.75;
-                            }
-                            if (wantsRanged && heroTags.includes('ranged') && !heroTags.includes('melee')) {
-                                score += 0.75;
-                            }
-                        }
-                    }
-
                     return { ...hero, score };
                 });
 
-                // Сортируем по убыванию score и берём топ-5
                 scoredHeroes.sort((a, b) => b.score - a.score);
+
+                // 2. Фильтр по типу атаки (только для керри, pos 0).
+                //    Если выбраны оба варианта — фильтр не применяется.
+                if (this.state.selectedPosition === 0 && (wantsMelee || wantsRanged) && !(wantsMelee && wantsRanged)) {
+                    const preferred = scoredHeroes.filter(h => {
+                        const t = h.tags;
+                        if (wantsMelee) return t.includes('melee') && !t.includes('ranged');
+                        return t.includes('ranged') && !t.includes('melee');
+                    });
+                    const fallback = scoredHeroes.filter(h => !preferred.includes(h));
+                    const result = [...preferred, ...fallback];
+                    return result.slice(0, 5);
+                }
+
                 return scoredHeroes.slice(0, 5);
             },
 
@@ -807,11 +852,13 @@
 
                 // Считаем топ-теги по ответам
                 const topTags = {};
-                this.state.answers.forEach(answer => {
-                    answer.tags.forEach(tag => {
-                        if (tag !== 'easy' && tag !== 'medium' && tag !== 'hard') {
-                            topTags[tag] = (topTags[tag] || 0) + 1;
-                        }
+                this.state.answers.forEach(questionAnswers => {
+                    questionAnswers.forEach(answer => {
+                        answer.tags.forEach(tag => {
+                            if (tag !== 'easy' && tag !== 'medium' && tag !== 'hard') {
+                                topTags[tag] = (topTags[tag] || 0) + 1;
+                            }
+                        });
                     });
                 });
 
