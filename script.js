@@ -887,7 +887,7 @@
                         loading.style.transition = '';
                         this._renderResult(topHeroes);
                     }, 400);
-                }, 4000);
+                }, 5500);
             },
 
             _startHeroLoading() {
@@ -925,7 +925,7 @@
                 shuffled.forEach((heroName, i) => {
                     const size = 32 + Math.floor(Math.random() * 16); // 32–47px
                     const dur  = (12 + Math.random() * 8).toFixed(1); // 12–20s
-                    const delay = (i * 0.18).toFixed(2);
+                    const delay = (2 + i * 0.18).toFixed(2); // первые 2с — только фон и панель
 
                     const img = document.createElement('img');
                     img.className = 'hlo-icon';
@@ -933,7 +933,7 @@
                     img.style.width  = `${size}px`;
                     img.style.height = `${size}px`;
                     img.style.animation = [
-                        `hlo-icon-in 0.6s ease ${delay}s forwards`,
+                        `hlo-icon-in 0.8s ease ${delay}s forwards`,
                         `hlo-drift-${i} ${dur}s ease-in-out ${delay}s infinite`,
                     ].join(', ');
                     container.appendChild(img);
@@ -956,12 +956,12 @@
                     starsEl.appendChild(s);
                 }
 
-                // Прогресс-бар 0 → 100% за 4с
+                // Прогресс-бар 0 → 100% за 5.5с
                 const fill = document.getElementById('hloProgressFill');
                 fill.style.transition = 'none';
                 fill.style.width = '0%';
                 requestAnimationFrame(() => requestAnimationFrame(() => {
-                    fill.style.transition = 'width 4s linear';
+                    fill.style.transition = 'width 5.5s linear';
                     fill.style.width = '100%';
                 }));
             },
