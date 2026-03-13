@@ -909,7 +909,7 @@
                         const angle = (2 * Math.PI / icons.length) * i;
                         const img = document.createElement('img');
                         img.className = 'hlo-icon';
-                        img.src = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}_icon.png`;
+                        img.src = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
                         img.style.setProperty('--delay', `${i * 0.1}s`);
                         img.style.width  = `${size}px`;
                         img.style.height = `${size}px`;
