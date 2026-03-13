@@ -1855,15 +1855,6 @@ margin-top: 14px;
 }
 
 /* ── Hero Loading Screen ────────────────────────────── */
-/* Нейтрализуем .quiz-container когда активен экран загрузки */
-.quiz-container.hlo-active {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 #hero-loading {
   position: fixed;
   top: 0;
