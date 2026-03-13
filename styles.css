@@ -1908,20 +1908,25 @@ margin-top: 14px;
 }
 @keyframes hlo-icon-in {
   from { opacity: 0; }
-  to   { opacity: 0.38; }
+  to   { opacity: 0.5; }
 }
 
 .hlo-center-panel {
   position: relative;
   z-index: 2;
   text-align: center;
-  background: rgba(5, 5, 9, 0.72);
+  background: rgba(3, 3, 12, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 18px;
   padding: 28px 32px 24px;
   max-width: 320px;
+  animation: hlo-panel-in 0.6s ease forwards;
+}
+@keyframes hlo-panel-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0);    }
 }
 
 .hlo-spinner-ring {
@@ -1956,8 +1961,8 @@ margin-top: 14px;
 }
 
 .hlo-subtitle {
-  font-size: 13px;
-  color: var(--text-muted);
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
   line-height: 1.5;
 }
 
