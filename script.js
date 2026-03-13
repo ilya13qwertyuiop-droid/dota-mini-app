@@ -581,7 +581,8 @@
                 currentQuestionIndex: 0,
                 answers: [],
                 usedSavedPosition: false,
-                currentQuestionSet: []
+                currentQuestionSet: [],
+                currentShuffledAnswers: null
             },
 
         
@@ -701,7 +702,18 @@
                 const answersContainer = document.getElementById('heroAnswers');
                 answersContainer.innerHTML = '';
 
-                question.answers.forEach((answer, index) => {
+                // Для керри (position 0) перемешиваем варианты ответов (Fisher-Yates)
+                let displayAnswers = question.answers;
+                if (this.state.selectedPosition === 0) {
+                    displayAnswers = [...question.answers];
+                    for (let i = displayAnswers.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [displayAnswers[i], displayAnswers[j]] = [displayAnswers[j], displayAnswers[i]];
+                    }
+                }
+                this.state.currentShuffledAnswers = displayAnswers;
+
+                displayAnswers.forEach((answer, index) => {
                     const parts = answer.text.split(' ');
                     const emoji = parts[0];
                     const text = parts.slice(1).join(' ');
@@ -757,7 +769,8 @@
                 if (this.state.currentSelections.length === 0) return;
 
                 const question = this.state.currentQuestionSet[this.state.currentQuestionIndex];
-                const selectedAnswers = this.state.currentSelections.map(i => question.answers[i]);
+                const answers = this.state.currentShuffledAnswers || question.answers;
+                const selectedAnswers = this.state.currentSelections.map(i => answers[i]);
                 this.state.answers.push(selectedAnswers);
 
                 this.state.currentQuestionIndex++;
@@ -826,6 +839,11 @@
                         score += 1.5;
                     }
 
+                    // Тай-брейкер для керри (position 0): случайный шум ±0.01
+                    if (this.state.selectedPosition === 0) {
+                        score += Math.random() * 0.02 - 0.01;
+                    }
+
                     return { ...hero, score };
                 });
 
@@ -835,9 +853,12 @@
                 //    Если выбраны оба варианта — фильтр не применяется.
                 if (this.state.selectedPosition === 0 && (wantsMelee || wantsRanged) && !(wantsMelee && wantsRanged)) {
                     const preferred = scoredHeroes.filter(h => {
-                        const t = h.tags;
-                        if (wantsMelee) return t.includes('melee') && !t.includes('ranged');
-                        return t.includes('ranged') && !t.includes('melee');
+                        if (Array.isArray(h.tags)) {
+                            if (wantsMelee) return h.tags.includes('melee') && !h.tags.includes('ranged');
+                            return h.tags.includes('ranged') && !h.tags.includes('melee');
+                        }
+                        // новый формат (объект тегов): используем h.melee из мета-данных
+                        return wantsMelee ? h.melee === true : h.melee === false;
                     });
                     const fallback = scoredHeroes.filter(h => !preferred.includes(h));
                     const result = [...preferred, ...fallback];
