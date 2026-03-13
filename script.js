@@ -617,6 +617,7 @@
                 document.getElementById('hero-position-select').style.display = 'none';
                 document.getElementById('hero-questions').style.display = 'none';
                 document.getElementById('hero-result').style.display = 'none';
+                document.getElementById('hero-loading').style.display = 'none';
             },
 
 
@@ -871,7 +872,81 @@
             showResult() {
                 document.getElementById('hero-questions').style.display = 'none';
 
-                const topHeroes = this.calculateTopHeroes().slice(0, 6); // максимум 6
+                // Считаем немедленно, параллельно с экраном загрузки
+                const topHeroes = this.calculateTopHeroes().slice(0, 6);
+
+                this._startHeroLoading();
+
+                setTimeout(() => {
+                    const loading = document.getElementById('hero-loading');
+                    loading.style.transition = 'opacity 0.4s ease';
+                    loading.style.opacity = '0';
+                    setTimeout(() => {
+                        loading.style.display = 'none';
+                        loading.style.opacity = '';
+                        loading.style.transition = '';
+                        this._renderResult(topHeroes);
+                    }, 400);
+                }, 4000);
+            },
+
+            _startHeroLoading() {
+                const loading = document.getElementById('hero-loading');
+                loading.style.display = 'block';
+                loading.style.opacity = '1';
+
+                // Орбиты: случайная выборка slug-ов из dotaHeroImages
+                const slugs = Object.values(window.dotaHeroImages || {});
+                const shuffled = [...slugs].sort(() => Math.random() - 0.5).slice(0, 10);
+
+                [
+                    { id: 'hloRingOuter', icons: shuffled.slice(0, 5), radius: 125, size: 40 },
+                    { id: 'hloRingInner', icons: shuffled.slice(5, 10), radius: 82,  size: 32 },
+                ].forEach(({ id, icons, radius, size }) => {
+                    const ring = document.getElementById(id);
+                    ring.innerHTML = '';
+                    icons.forEach((slug, i) => {
+                        const angle = (2 * Math.PI / icons.length) * i;
+                        const img = document.createElement('img');
+                        img.className = 'hlo-icon';
+                        img.src = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}_icon.png`;
+                        img.style.setProperty('--delay', `${i * 0.1}s`);
+                        img.style.width  = `${size}px`;
+                        img.style.height = `${size}px`;
+                        img.style.top  = `calc(50% + ${Math.sin(angle) * radius}px - ${size / 2}px)`;
+                        img.style.left = `calc(50% + ${Math.cos(angle) * radius}px - ${size / 2}px)`;
+                        ring.appendChild(img);
+                    });
+                });
+
+                // Звёздное поле
+                const starsEl = document.getElementById('hloStars');
+                starsEl.innerHTML = '';
+                for (let i = 0; i < 25; i++) {
+                    const s = document.createElement('div');
+                    s.className = 'hlo-star';
+                    const sz = [2, 3, 4][Math.floor(Math.random() * 3)];
+                    s.style.cssText = `
+                        width:${sz}px; height:${sz}px;
+                        top:${Math.random() * 100}%;
+                        left:${Math.random() * 100}%;
+                        --dur:${(1.5 + Math.random() * 2).toFixed(2)}s;
+                        --delay:-${(Math.random() * 3).toFixed(2)}s;
+                    `;
+                    starsEl.appendChild(s);
+                }
+
+                // Прогресс-бар 0 → 100% за 4с
+                const fill = document.getElementById('hloProgressFill');
+                fill.style.transition = 'none';
+                fill.style.width = '0%';
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    fill.style.transition = 'width 4s linear';
+                    fill.style.width = '100%';
+                }));
+            },
+
+            _renderResult(topHeroes) {
                 const positionIndex = this.state.selectedPosition; // 0..4
                 const headerText = heroHeaderTexts[positionIndex] || "";
                 document.getElementById("heroResultPosition").textContent = headerText;
