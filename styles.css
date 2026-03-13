@@ -1865,15 +1865,17 @@ margin-top: 14px;
 }
 
 #hero-loading {
-  position: relative;
-  min-height: 480px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  margin: -28px -20px -26px;
-  border-radius: 26px;
   background:
     radial-gradient(ellipse at 50% 40%, rgba(10, 20, 60, 0.4) 0%, transparent 65%),
     #03030a;
