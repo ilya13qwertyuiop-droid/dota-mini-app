@@ -895,28 +895,52 @@
                 loading.style.display = 'block';
                 loading.style.opacity = '1';
 
-                // Орбиты: случайная выборка имён из dotaHeroImages → URL через getHeroIconUrlByName (тот же путь что в результатах)
+                // Нейтрализуем карточку .quiz-container
+                const quizCard = loading.closest('.quiz-container');
+                if (quizCard) quizCard.classList.add('hlo-active');
+
+                // Иконки — хаотичный дрейф по всему экрану
                 const heroNames = Object.keys(window.dotaHeroImages || {});
                 const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 10);
 
-                [
-                    { id: 'hloRingOuter', icons: shuffled.slice(0, 5), radius: 125, size: 40 },
-                    { id: 'hloRingInner', icons: shuffled.slice(5, 10), radius: 82,  size: 32 },
-                ].forEach(({ id, icons, radius, size }) => {
-                    const ring = document.getElementById(id);
-                    ring.innerHTML = '';
-                    icons.forEach((heroName, i) => {
-                        const angle = (2 * Math.PI / icons.length) * i;
-                        const img = document.createElement('img');
-                        img.className = 'hlo-icon';
-                        img.src = window.getHeroIconUrlByName(heroName);
-                        img.style.setProperty('--delay', `${i * 0.1}s`);
-                        img.style.width  = `${size}px`;
-                        img.style.height = `${size}px`;
-                        img.style.top  = `calc(50% + ${Math.sin(angle) * radius}px - ${size / 2}px)`;
-                        img.style.left = `calc(50% + ${Math.cos(angle) * radius}px - ${size / 2}px)`;
-                        ring.appendChild(img);
-                    });
+                const container = loading.querySelector('.hlo-orbits-wrap');
+                container.innerHTML = '';
+
+                const rand = (min, max) => (min + Math.random() * (max - min)).toFixed(1);
+
+                // Генерируем уникальные @keyframes для каждой иконки
+                let keyframesCss = '';
+                shuffled.forEach((_heroName, i) => {
+                    const animName = `hlo-drift-${i}`;
+                    const pts = [0, 25, 50, 75, 100]
+                        .map(pct => `${pct}%{top:${rand(-5, 105)}%;left:${rand(-5, 105)}%}`)
+                        .join('');
+                    keyframesCss += `@keyframes ${animName}{${pts}}`;
+                });
+
+                let styleEl = document.getElementById('hlo-dynamic-styles');
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = 'hlo-dynamic-styles';
+                    document.head.appendChild(styleEl);
+                }
+                styleEl.textContent = keyframesCss;
+
+                shuffled.forEach((heroName, i) => {
+                    const size = 32 + Math.floor(Math.random() * 16); // 32–47px
+                    const dur  = (8 + Math.random() * 8).toFixed(1);  // 8–16s
+                    const delay = (i * 0.18).toFixed(2);
+
+                    const img = document.createElement('img');
+                    img.className = 'hlo-icon';
+                    img.src = window.getHeroIconUrlByName(heroName);
+                    img.style.width  = `${size}px`;
+                    img.style.height = `${size}px`;
+                    img.style.animation = [
+                        `hlo-icon-in 0.6s ease ${delay}s forwards`,
+                        `hlo-drift-${i} ${dur}s ease-in-out ${delay}s infinite`,
+                    ].join(', ');
+                    container.appendChild(img);
                 });
 
                 // Звёздное поле
