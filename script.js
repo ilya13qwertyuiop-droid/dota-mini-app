@@ -895,9 +895,9 @@
                 loading.style.display = 'block';
                 loading.style.opacity = '1';
 
-                // Орбиты: случайная выборка slug-ов из dotaHeroImages
-                const slugs = Object.values(window.dotaHeroImages || {});
-                const shuffled = [...slugs].sort(() => Math.random() - 0.5).slice(0, 10);
+                // Орбиты: случайная выборка имён из dotaHeroImages → URL через getHeroIconUrlByName (тот же путь что в результатах)
+                const heroNames = Object.keys(window.dotaHeroImages || {});
+                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 10);
 
                 [
                     { id: 'hloRingOuter', icons: shuffled.slice(0, 5), radius: 125, size: 40 },
@@ -905,11 +905,11 @@
                 ].forEach(({ id, icons, radius, size }) => {
                     const ring = document.getElementById(id);
                     ring.innerHTML = '';
-                    icons.forEach((slug, i) => {
+                    icons.forEach((heroName, i) => {
                         const angle = (2 * Math.PI / icons.length) * i;
                         const img = document.createElement('img');
                         img.className = 'hlo-icon';
-                        img.src = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
+                        img.src = window.getHeroIconUrlByName(heroName);
                         img.style.setProperty('--delay', `${i * 0.1}s`);
                         img.style.width  = `${size}px`;
                         img.style.height = `${size}px`;
