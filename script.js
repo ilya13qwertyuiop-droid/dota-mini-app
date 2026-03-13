@@ -892,16 +892,12 @@
 
             _startHeroLoading() {
                 const loading = document.getElementById('hero-loading');
-                loading.style.display = 'block';
+                loading.style.display = 'flex';
                 loading.style.opacity = '1';
-
-                // Нейтрализуем карточку .quiz-container
-                const quizCard = loading.closest('.quiz-container');
-                if (quizCard) quizCard.classList.add('hlo-active');
 
                 // Иконки — хаотичный дрейф по всему экрану
                 const heroNames = Object.keys(window.dotaHeroImages || {});
-                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 10);
+                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 14);
 
                 const container = loading.querySelector('.hlo-orbits-wrap');
                 container.innerHTML = '';
@@ -928,7 +924,7 @@
 
                 shuffled.forEach((heroName, i) => {
                     const size = 32 + Math.floor(Math.random() * 16); // 32–47px
-                    const dur  = (8 + Math.random() * 8).toFixed(1);  // 8–16s
+                    const dur  = (12 + Math.random() * 8).toFixed(1); // 12–20s
                     const delay = (i * 0.18).toFixed(2);
 
                     const img = document.createElement('img');
