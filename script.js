@@ -859,7 +859,8 @@
                             return h.tags.includes('ranged') && !h.tags.includes('melee');
                         }
                         // новый формат (объект тегов): используем h.melee из мета-данных
-                        return wantsMelee ? h.melee === true : h.melee === false;
+                        // both: true — герой со смешанной атакой, попадает в preferred всегда
+                        return wantsMelee ? (h.melee === true || h.both === true) : (h.melee === false || h.both === true);
                     });
                     const fallback = scoredHeroes.filter(h => !preferred.includes(h));
                     const result = [...preferred, ...fallback];
@@ -984,79 +985,101 @@
                 });
 
                 const sortedTags = Object.entries(topTags).sort((a, b) => b[1] - a[1]);
-                const top3Tags = sortedTags.slice(0, 3).map(t => t[0]);
 
-                const tagNames = {
-                    aggressive: "агрессию",
-                    balanced: "баланс",
-                    versatile: "универсальность",
-                    farming: "фарм",
-                    lategame: "лейт",
-                    superlate: "лейт+",
-                    greedy: "затяжные игры",
-                    midgame: "мидгейм",
-                    tempo: "темп",
-                    mobile: "мобильность",
-                    pickoff: "пикоффы",
-                    teamfight: "командные драки",
-                    control: "контроль",
-                    burst: "бёрст урон",
-                    snowball: "сноубол",
-                    durable: "живучесть",
-                    splitpush: "сплит-пуш",
-                    map_pressure: "давление на карту",
-                    melee: "ближний бой",
-                    ranged: "дальний бой",
-                    sustained: "постоянный урон",
-                    utility: "утилита",
-
-                    // мид
-                    gank_level_rune: "ганги от уровня и рун",
-                    gank_item: "ганги от предметов",
-                    lane_pressure: "прессинг на линии",
-                    lane_mixed: "гибкую линию",
-                    lane_farm: "спокойный фарм линии",
-                    post_team_gank: "игру с командой",
-                    post_mix: "баланс фарма и драк",
-                    post_farm_push: "фарм и пуш",
-                    role_initiator: "инициацию",
-                    role_burst: "бёрст",
-                    role_control: "контроль и позиционку",
-                    difficulty_easy: "простых героев",
-                    difficulty_medium: "среднюю сложность",
-                    difficulty_hard: "сложных героев",
-
-                    // оффлейн
-                    needs_blink: "предметы",
-                    needs_tank_items: "стойкость",
-                    level_dependent: "силу от уровней",
-                    needs_farm_scaling: "фарм и скейл",
-                    long_control: "длительный контроль",
-                    burst_control: "быстрый контроль",
-                    zone_control: "зональный контроль",
-                    high_damage: "высокий урон",
-                    lane_aggressive: "агрессию на линии",
-                    lane_passive: "пассивную линию",
-                    lane_push_jungle: "быстрый фарм",
-                    lane_roam: "роум после линии",
-                    teamfight_5v5: "5v5 драки",
-                    hunt_pickoff: "поиск пикоффов",
-                    flexible: "гибкий стиль",
-
-                    // pos4/5
-                    from_level: "зависимость от уровня",
-                    from_items: "утилити‑предметы",
-                    from_control: "контроль",
-                    from_damage: "урон",
-                    from_save: "сейвы/баффы",
-                    from_initiation: "инициацию",
-                    from_counterinitiation: "контр‑инициацию",
-                    from_position: "позиционную игру"
-                };
-
-                const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
-                document.getElementById('heroResultDescription').textContent =
-                    `На основе твоих ответов мы подобрали героев с упором на: ${tagList}. Попробуй их в игре!`;
+                if (positionIndex === 0) {
+                    // Керри — «Твой стиль: ...» с carry-специфичными лейблами
+                    const tagLabels = {
+                        peak_midgame:       'силён в мид-гейме',
+                        peak_late:          'раскрывается в лейте',
+                        peak_super_lategame:'для затяжных игр',
+                        farm_fast:          'быстрый фарм',
+                        farm_based:         'фарм через предметы',
+                        snowball_based:     'сноубол',
+                        fight_diver:        'может инициировать',
+                        fight_backline:     'бьёт с задней линии',
+                        fight_brawler:      'убивает райткликом',
+                        fight_invis_flanker:'заходит с фланга',
+                        mobility_low:       'низкая мобильность',
+                        mobility_medium:    'средняя мобильность',
+                        mobility_high:      'высокая мобильность',
+                        push_bad:           'слабый пуш',
+                        push_medium:        'средний пуш',
+                        push_good:          'хороший пуш',
+                    };
+                    const tagList = sortedTags
+                        .map(([tag]) => tagLabels[tag])
+                        .filter(Boolean)
+                        .slice(0, 3)
+                        .join(', ');
+                    document.getElementById('heroResultDescription').textContent =
+                        tagList ? `Твой стиль: ${tagList}` : '';
+                } else {
+                    const top3Tags = sortedTags.slice(0, 3).map(t => t[0]);
+                    const tagNames = {
+                        aggressive: "агрессию",
+                        balanced: "баланс",
+                        versatile: "универсальность",
+                        farming: "фарм",
+                        lategame: "лейт",
+                        superlate: "лейт+",
+                        greedy: "затяжные игры",
+                        midgame: "мидгейм",
+                        tempo: "темп",
+                        mobile: "мобильность",
+                        pickoff: "пикоффы",
+                        teamfight: "командные драки",
+                        control: "контроль",
+                        burst: "бёрст урон",
+                        snowball: "сноубол",
+                        durable: "живучесть",
+                        splitpush: "сплит-пуш",
+                        map_pressure: "давление на карту",
+                        melee: "ближний бой",
+                        ranged: "дальний бой",
+                        sustained: "постоянный урон",
+                        utility: "утилита",
+                        gank_level_rune: "ганги от уровня и рун",
+                        gank_item: "ганги от предметов",
+                        lane_pressure: "прессинг на линии",
+                        lane_mixed: "гибкую линию",
+                        lane_farm: "спокойный фарм линии",
+                        post_team_gank: "игру с командой",
+                        post_mix: "баланс фарма и драк",
+                        post_farm_push: "фарм и пуш",
+                        role_initiator: "инициацию",
+                        role_burst: "бёрст",
+                        role_control: "контроль и позиционку",
+                        difficulty_easy: "простых героев",
+                        difficulty_medium: "среднюю сложность",
+                        difficulty_hard: "сложных героев",
+                        needs_blink: "предметы",
+                        needs_tank_items: "стойкость",
+                        level_dependent: "силу от уровней",
+                        needs_farm_scaling: "фарм и скейл",
+                        long_control: "длительный контроль",
+                        burst_control: "быстрый контроль",
+                        zone_control: "зональный контроль",
+                        high_damage: "высокий урон",
+                        lane_aggressive: "агрессию на линии",
+                        lane_passive: "пассивную линию",
+                        lane_push_jungle: "быстрый фарм",
+                        lane_roam: "роум после линии",
+                        teamfight_5v5: "5v5 драки",
+                        hunt_pickoff: "поиск пикоффов",
+                        flexible: "гибкий стиль",
+                        from_level: "зависимость от уровня",
+                        from_items: "утилити‑предметы",
+                        from_control: "контроль",
+                        from_damage: "урон",
+                        from_save: "сейвы/баффы",
+                        from_initiation: "инициацию",
+                        from_counterinitiation: "контр‑инициацию",
+                        from_position: "позиционную игру"
+                    };
+                    const tagList = top3Tags.map(tag => tagNames[tag] || tag).join(', ');
+                    document.getElementById('heroResultDescription').textContent =
+                        `На основе твоих ответов мы подобрали героев с упором на: ${tagList}. Попробуй их в игре!`;
+                }
 
                 const heroListContainer = document.getElementById('heroResultList');
                 heroListContainer.innerHTML = '';
