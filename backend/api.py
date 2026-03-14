@@ -272,68 +272,6 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
     )
 
 
-@app.get("/api/profile/{user_id}", response_model=Profile)
-async def get_profile(user_id: int, db: Session = Depends(get_db)):
-    """Получает базовый профиль пользователя (устаревший эндпоинт)"""
-    # 1. Ищем профиль в БД по user_id
-    db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
-
-
-    # 2. Если не найден — создаём новый с пустыми данными
-    if not db_profile:
-        db_profile = DBUserProfile(
-            user_id=user_id,
-            favorite_heroes=[],
-            settings={}
-        )
-        db.add(db_profile)
-        db.commit()
-        db.refresh(db_profile)
-
-
-    # 3. Возвращаем Pydantic модель Profile
-    return Profile(
-        user_id=db_profile.user_id,
-        favorite_heroes=db_profile.favorite_heroes or [],
-        settings=db_profile.settings or {}
-    )
-
-
-@app.post("/api/profile", response_model=Profile)
-async def save_profile(profile: Profile, db: Session = Depends(get_db)):
-    """Сохраняет базовый профиль пользователя (устаревший эндпоинт)"""
-    # 1. Ищем существующий профиль в БД
-    db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == profile.user_id).first()
-
-
-    # 2. Если не найден — создаём новый
-    if not db_profile:
-        db_profile = DBUserProfile(
-            user_id=profile.user_id,
-            favorite_heroes=profile.favorite_heroes,
-            settings=profile.settings
-        )
-        db.add(db_profile)
-    else:
-        # 3. Если найден — обновляем данные
-        db_profile.favorite_heroes = profile.favorite_heroes
-        db_profile.settings = profile.settings
-        flag_modified(db_profile, "favorite_heroes")  # ✅ Помечаем JSON-поля как измененные
-        flag_modified(db_profile, "settings")
-
-
-    # 4. Сохраняем изменения в БД
-    db.commit()
-    db.refresh(db_profile)
-
-
-    # 5. Возвращаем актуальный профиль
-    return Profile(
-        user_id=db_profile.user_id,
-        favorite_heroes=db_profile.favorite_heroes or [],
-        settings=db_profile.settings or {}
-    )
-
 @app.post("/api/save_result", response_model=SaveResultResponse)
 async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     """Сохраняет результат квиза (позиции и герои в одном JSON)"""
@@ -358,8 +296,16 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     if isinstance(data.result, dict):
         result_type = data.result.get("type")
 
-    # Достаём существующий агрегированный результат
-    db_quiz_result = db.query(DBQuizResult).filter(DBQuizResult.user_id == user_id).first()
+    # Достаём существующий агрегированный результат.
+    # with_for_update() ставит row-level lock на PostgreSQL: конкурентный запрос
+    # от того же юзера заблокируется до коммита текущей транзакции и прочитает
+    # уже обновлённые данные. На SQLite игнорируется (dev-only).
+    db_quiz_result = (
+        db.query(DBQuizResult)
+        .filter(DBQuizResult.user_id == user_id)
+        .with_for_update()
+        .first()
+    )
 
     if db_quiz_result and isinstance(db_quiz_result.result, dict):
         combined_result = dict(db_quiz_result.result)
