@@ -1180,13 +1180,19 @@
         };
 
         function goBackInHeroQuiz() {
-            // если на первом вопросе — возвращаемся к выбору позиции
+            // если на первом вопросе — возвращаемся туда, откуда пришли
             if (heroQuiz.state.currentQuestionIndex <= 0) {
                 heroQuiz.state.currentQuestionIndex = 0;
                 heroQuiz.state.answers = [];
 
                 document.getElementById('hero-questions').style.display = 'none';
-                document.getElementById('hero-position-select').style.display = 'block';
+                if (heroQuiz.state.usedSavedPosition) {
+                    // пришли через «Использовать сохранённую позицию» — стартовый экран
+                    heroQuiz.showStartScreen();
+                } else {
+                    // пришли через «Выбрать вручную» — экран выбора позиции
+                    document.getElementById('hero-position-select').style.display = 'block';
+                }
                 return;
             }
 
