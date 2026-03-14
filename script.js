@@ -357,35 +357,12 @@
             updateQuizPageResult();
         }
 
-        function backToQuizListFromHero() {
-            // скрываем все экраны hero-квиза
-            document.getElementById('hero-start').style.display = 'block';
-            document.getElementById('hero-position-select').style.display = 'none';
-            document.getElementById('hero-questions').style.display = 'none';
-            document.getElementById('hero-result').style.display = 'none';
-
-            // показываем список квизов
-            document.getElementById('quiz-list').style.display = 'block';
-            document.getElementById('quiz-content-container').style.display = 'none';
-            document.getElementById('hero-quiz-container').style.display = 'none';
-        }
-
         function updateQuizPageResult() {
             if (lastPositionResult) {
                 document.getElementById('quizPageLastResult').style.display = 'block';
                 document.getElementById('quizPagePosition').textContent = lastPositionResult.position;
                 document.getElementById('quizPageDate').textContent = `Пройден: ${lastPositionResult.date}`;
             }
-        }
-
-        function goToQuiz() {
-            switchPage('quiz');
-            document.querySelectorAll('.nav-item')[1].classList.add('active');
-            document.querySelectorAll('.nav-item')[0].classList.remove('active');
-            document.getElementById('quiz-list').style.display = 'block';
-            document.getElementById('quiz-content-container').style.display = 'none';
-            document.getElementById('hero-quiz-container').style.display = 'none';
-            updateQuizPageResult();
         }
 
         function goToPositionQuiz() {
@@ -1232,14 +1209,6 @@
                 window.open(url, '_blank'); // запасной вариант
             }
         });
-        const quickHeroBtn = document.getElementById('quick-hero-quiz');
-        if (quickHeroBtn) {
-            quickHeroBtn.addEventListener('click', function () {
-                // сразу открыть квиз по героям
-                openPage('page-quiz');      // если нужно переключиться на вкладку
-                startHeroQuiz();
-            });
-        }
 // ========== ПРОФИЛЬ ==========
 
 async function initProfile() {
