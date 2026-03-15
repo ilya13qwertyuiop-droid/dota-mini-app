@@ -170,6 +170,15 @@ def save_feedback(
         session.commit()
 
 
+def get_feedback_stats() -> dict:
+    """Returns total feedback count and average rating."""
+    from sqlalchemy import func
+    with SessionLocal() as session:
+        total = session.query(func.count(Feedback.id)).scalar() or 0
+        avg = session.query(func.avg(Feedback.rating)).scalar()
+        return {"total": total, "avg_rating": round(avg, 2) if avg is not None else None}
+
+
 def get_recent_feedback(limit: int = 20) -> list[dict]:
     """Returns the most recent feedback entries as plain dicts."""
     with SessionLocal() as session:
