@@ -89,6 +89,7 @@ from db import (
     get_last_quiz_result,
     save_feedback,
     get_recent_feedback,
+    get_feedback_stats,
     count_new_users_today,
     count_active_users_30d,
     count_matches_with_game_mode,
@@ -1399,34 +1400,55 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
         return  # тихо игнорируем
 
     try:
-        entries = await asyncio.to_thread(get_recent_feedback, limit=20)
+        stats, entries = await asyncio.gather(
+            asyncio.to_thread(get_feedback_stats),
+            asyncio.to_thread(get_recent_feedback, limit=20),
+        )
     except Exception:
         traceback.print_exc()
         await update.message.reply_text("Не удалось получить отзывы.")
         return
 
+    avg_str = f"{stats['avg_rating']:.2f} ★" if stats["avg_rating"] is not None else "—"
+    header = (
+        f"<b>📋 Отзывы</b>\n"
+        f"Всего в БД: <b>{stats['total']}</b> · Средний рейтинг: <b>{avg_str}</b>\n"
+        f"Показываю последние {len(entries)}\n"
+    )
+
     if not entries:
-        await update.message.reply_text("Отзывов пока нет.")
+        await update.message.reply_text(header + "\nОтзывов пока нет.", parse_mode="HTML")
         return
 
-    lines: list[str] = ["<b>📋 Последние отзывы</b>\n"]
-    for e in entries:
+    def build_entry(e: dict) -> str:
         stars = "★" * (e["rating"] or 0) + "☆" * (4 - (e["rating"] or 0)) if e["rating"] else "—"
-        uname = f'<a href="tg://user?id={e["user_id"]}">@{e["username"]}</a>' if e["username"] else (f'user {e["user_id"]}' if e["user_id"] else "аноним")
+        uname = (
+            f'<a href="tg://user?id={e["user_id"]}">@{e["username"]}</a>'
+            if e["username"]
+            else (f'user {e["user_id"]}' if e["user_id"] else "аноним")
+        )
         tags_str = " ".join(f"#{t}" for t in e["tags"]) if e["tags"] else ""
         date_str = e["created_at"].strftime("%d.%m %H:%M") if e["created_at"] else "?"
         source_icon = "📱" if e["source"] == "mini_app" else "🤖"
-        lines.append(
+        return (
             f"<b>#{e['id']}</b> {source_icon} {stars} · {uname} · {date_str}\n"
             + (f"{tags_str}\n" if tags_str else "")
-            + f"{e['message']}\n"
+            + f"{e['message']}"
         )
 
-    # Telegram ограничивает сообщение ~4096 символами — режем на части
-    text = "\n".join(lines)
-    chunk_size = 4000
-    for i in range(0, len(text), chunk_size):
-        await update.message.reply_text(text[i : i + chunk_size], parse_mode="HTML", disable_web_page_preview=True)
+    # Разбиваем по 10 отзывов на сообщение; первое сообщение содержит header
+    CHUNK = 10
+    for chunk_idx, start in enumerate(range(0, len(entries), CHUNK)):
+        chunk = entries[start : start + CHUNK]
+        parts: list[str] = []
+        if chunk_idx == 0:
+            parts.append(header)
+        parts.extend(build_entry(e) for e in chunk)
+        text = "\n\n".join(parts)
+        # Safety: если вдруг один отзыв огромный — обрезаем до лимита
+        if len(text) > 4096:
+            text = text[:4090] + "\n…"
+        await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 # -------- /admin_users (скрытая команда для администраторов) --------
