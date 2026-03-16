@@ -873,6 +873,15 @@ async def _run_builds_update() -> None:
         abilities_json = {}
     await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
 
+    # ── Diagnostics: verify abilities.json ────────────────────────────────
+    _sb_count = sum(1 for k in abilities_json if k.startswith("special_bonus_"))
+    _sample   = next((k for k in abilities_json if k.startswith("special_bonus_unique_")), None)
+    _sample_dname = (abilities_json.get(_sample) or {}).get("dname") if _sample else None
+    logger.info(
+        "[builds] abilities.json: total=%d keys, special_bonus_*=%d, sample=%r dname=%r",
+        len(abilities_json), _sb_count, _sample, _sample_dname,
+    )
+
     # ── Build and save shared maps ────────────────────────────────────────
     # ability_id → ability_name (reverse map for decoding DB data)
     ability_id_to_name: dict[str, str] = {}
@@ -924,13 +933,25 @@ async def _run_builds_update() -> None:
 
         hero_ab_data: dict = ha_data.get(npc_name, {}) if isinstance(ha_data, dict) else {}
 
-        # ── Facets (filter empty/placeholder entries) ─────────────────
+        # ── Facets (filter empty/placeholder/default entries) ────────
+        raw_facets = hero_ab_data.get("facets") or []
+        if npc_name == "npc_dota_hero_pudge":
+            logger.info(
+                "[builds] [Pudge] raw facets (%d): %s",
+                len(raw_facets),
+                [(f.get("facet_id"), f.get("title"), f.get("icon")) for f in raw_facets],
+            )
         facets = []
-        for f in (hero_ab_data.get("facets") or []):
+        for f in raw_facets:
+            # Must have non-empty title and icon
             if not f.get("title") or not f.get("icon"):
                 continue
+            # facet_id == 0 or missing → system/default placeholder, skip
+            fid = f.get("facet_id")
+            if not fid:
+                continue
             facets.append({
-                "facet_id":    f.get("facet_id"),
+                "facet_id":    fid,
                 "name":        f.get("name"),
                 "icon":        f.get("icon"),
                 "color":       f.get("color"),
@@ -941,6 +962,15 @@ async def _run_builds_update() -> None:
 
         # ── Talents (human-readable via abilities.json) ───────────────
         raw_talents = hero_ab_data.get("talents") or []
+        _DIAG_HEROES = {"npc_dota_hero_pudge", "npc_dota_hero_bloodseeker"}
+        if npc_name in _DIAG_HEROES:
+            for _t in raw_talents[:4]:
+                _tkey   = _t.get("name", "")
+                _tentry = abilities_json.get(_tkey) or {}
+                logger.info(
+                    "[builds] [%s] talent key=%r → dname=%r (in abilities.json=%s)",
+                    npc_name, _tkey, _tentry.get("dname"), bool(_tentry),
+                )
         talents = []
         for i in range(0, len(raw_talents), 2):
             left_e  = raw_talents[i]     if i     < len(raw_talents) else {}
@@ -1004,6 +1034,12 @@ async def builds_updater_loop() -> None:
       /force_update_builds bot command). Checked every 5 minutes while sleeping.
     """
     logger.info("[builds] builds_updater_loop started (interval=%dd)", BUILDS_UPDATE_INTERVAL_SECONDS // 86400)
+
+    # Env var override: force an immediate rebuild on startup (e.g. after deploys with fixes).
+    # Set FORCE_BUILDS_UPDATE_ON_START=1 and restart stats_updater to trigger.
+    if os.getenv("FORCE_BUILDS_UPDATE_ON_START", "0") == "1":
+        logger.info("[builds] FORCE_BUILDS_UPDATE_ON_START=1 — clearing builds_last_updated")
+        set_app_setting("builds_last_updated", "")
 
     while True:
         last_updated_str = get_app_setting("builds_last_updated")
