@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -42,7 +42,7 @@
             </button>
             <button class="action-btn" onclick="goToMatchups()">
               <span>⚔️</span>
-              <span>Матчапы</span>
+              <span>Герои</span>
             </button>
           </div>
         </div>
@@ -440,7 +440,7 @@
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
           <div class="dashboard-header">
-            <h1>⚔️ Матчапы</h1>
+            <h1>⚔️ Герои</h1>
             <p>Выбери героя и посмотри, кого он контрит и кто контрит его</p>
           </div>
 
@@ -458,6 +458,11 @@
               autocomplete="off"
             />
             <div id="matchup-suggestions" class="matchup-suggestions"></div>
+          </div>
+
+          <div id="recent-heroes-block" class="recent-heroes-block" style="display:none;">
+            <div class="recent-heroes-title">Недавние герои</div>
+            <div id="recent-heroes-list" class="recent-heroes-list"></div>
           </div>
         </div>
 
@@ -594,7 +599,7 @@
         </div>
         <div class="nav-item" onclick="switchPage('database', event)">
           <div class="nav-icon">⚔️</div>
-          <div class="nav-label">Матчапы</div>
+          <div class="nav-label">Герои</div>
         </div>
         <div class="nav-item" onclick="switchPage('profile', event)">
           <div class="nav-icon">⚙️</div>
@@ -637,6 +642,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=16"></script>
   </body>
 </html>
