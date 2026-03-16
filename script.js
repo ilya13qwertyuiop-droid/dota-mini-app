@@ -1515,7 +1515,7 @@ switchPage = function (pageName, event) {
 
 // ========== МАТЧАПЫ ==========
 
-var _heroPageActiveTab = 'matchups';
+var _heroPageActiveTab = 'build';
 
 function switchHeroPageTab(tab) {
     _heroPageActiveTab = tab;
