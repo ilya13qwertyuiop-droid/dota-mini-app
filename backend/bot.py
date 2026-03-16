@@ -1489,6 +1489,22 @@ async def admin_matches_command(update: Update, _context: ContextTypes.DEFAULT_T
     await update.message.reply_text(f"🧩 Матчей с заполненным game_mode: {count}")
 
 
+async def force_update_builds_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Принудительно запускает обновление кеша сборок. Только для администраторов."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    try:
+        from backend.stats_db import set_app_setting
+        set_app_setting("force_builds_update", "1")
+        await update.message.reply_text(
+            "✅ Флаг force_builds_update установлен.\n"
+            "Воркер обновит кеш сборок в течение нескольких минут."
+        )
+    except Exception as exc:
+        logger.error("[force_update_builds] error: %s", exc)
+        await update.message.reply_text("❌ Ошибка при установке флага обновления.")
+
+
 # -------- обработчик текстовых сообщений (диспетчер состояний) --------
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1602,7 +1618,8 @@ def main():
     application.add_handler(CommandHandler("admin_feedback", timed_handler("/admin_feedback")(admin_feedback_command)))
     application.add_handler(CommandHandler("admin_users",    timed_handler("/admin_users")(admin_users_command)))
     application.add_handler(CommandHandler("admin_matches",  timed_handler("/admin_matches")(admin_matches_command)))
-    application.add_handler(CommandHandler("stats_mode",     timed_handler("/stats_mode")(stats_mode_command)))
+    application.add_handler(CommandHandler("stats_mode",          timed_handler("/stats_mode")(stats_mode_command)))
+    application.add_handler(CommandHandler("force_update_builds", timed_handler("/force_update_builds")(force_update_builds_command)))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(

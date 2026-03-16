@@ -180,7 +180,31 @@ def init_stats_tables() -> None:
             )
         """))
 
-    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, hero_matchups, hero_synergy, hero_stats, app_settings, hero_ability_builds)")
+    # Migration 9: app_cache (large JSON blobs for OpenDota constants).
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_cache (
+                key        TEXT      NOT NULL,
+                data       TEXT      NOT NULL,
+                updated_at TIMESTAMP,
+                PRIMARY KEY (key)
+            )
+        """))
+
+    # Migration 10: hero_builds_cache (pre-built Build tab data per hero).
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS hero_builds_cache (
+                hero_id    INTEGER   NOT NULL,
+                build_data TEXT      NOT NULL,
+                updated_at TIMESTAMP,
+                PRIMARY KEY (hero_id)
+            )
+        """))
+
+    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, "
+                "hero_matchups, hero_synergy, hero_stats, app_settings, hero_ability_builds, "
+                "app_cache, hero_builds_cache)")
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +549,7 @@ def _upsert_hero_ability_builds(conn, players: list[dict], radiant_win: bool) ->
         hero_id = p.get("hero_id")
         if not hero_id:
             continue
-        ability_ids = json.dumps(raw)  # already sliced to 9 by _extract_player_stats
+        ability_ids = json.dumps(raw)  # already sliced to 18 by _extract_player_stats
         slot = p.get("player_slot", 128)
         won = int((slot < 128) == radiant_win)
         conn.execute(
@@ -539,6 +563,139 @@ def _upsert_hero_ability_builds(conn, players: list[dict], radiant_win: bool) ->
             """),
             {"hero_id": hero_id, "ability_ids": ability_ids, "wins": won, "now": now},
         )
+
+
+def get_app_setting(key: str) -> Optional[str]:
+    """Returns a value from app_settings by key, or None if not set."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT value FROM app_settings WHERE key = :k"),
+                {"k": key},
+            ).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def set_app_setting(key: str, value: str) -> None:
+    """Persists an arbitrary key-value pair to app_settings."""
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO app_settings (key, value) VALUES (:k, :v)
+                ON CONFLICT (key) DO UPDATE SET value = excluded.value
+            """),
+            {"k": key, "v": value},
+        )
+
+
+def get_app_cache_value(key: str) -> Optional[dict]:
+    """Returns a cached JSON blob from app_cache by key, or None."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT data FROM app_cache WHERE key = :k"),
+                {"k": key},
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def set_app_cache_value(key: str, data: dict) -> None:
+    """Stores a JSON blob in app_cache (upsert)."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO app_cache (key, data, updated_at) VALUES (:k, :d, :now)
+                ON CONFLICT (key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
+            """),
+            {"k": key, "d": json.dumps(data), "now": now},
+        )
+
+
+def get_hero_build_cache(hero_id: int) -> Optional[dict]:
+    """Returns pre-built Build tab data for a hero from hero_builds_cache."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT build_data FROM hero_builds_cache WHERE hero_id = :id"),
+                {"id": hero_id},
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def set_hero_build_cache(hero_id: int, data: dict) -> None:
+    """Stores pre-built Build tab data for a hero (upsert)."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO hero_builds_cache (hero_id, build_data, updated_at)
+                VALUES (:id, :d, :now)
+                ON CONFLICT (hero_id) DO UPDATE
+                    SET build_data = excluded.build_data, updated_at = excluded.updated_at
+            """),
+            {"id": hero_id, "d": json.dumps(data), "now": now},
+        )
+
+
+def get_hero_talent_builds(hero_id: int) -> dict:
+    """Returns talent pick statistics per level from hero_ability_builds.
+
+    Scans ability_ids arrays and extracts the ability_id chosen at each
+    talent level (index 9 = lvl 10, 14 = lvl 15, 19 = lvl 20, 24 = lvl 25).
+    Aggregates games/wins per ability_id at each level, returns top-2 per level
+    sorted by games descending.
+
+    Returns {level_int: [{"ability_id": int, "games": int, "wins": int, "winrate": float}]}
+    Only includes levels where data is available.
+    """
+    TALENT_INDICES: dict[int, int] = {10: 9, 15: 14, 20: 19, 25: 24}
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT ability_ids, wins, games
+                FROM hero_ability_builds
+                WHERE hero_id = :id AND games >= 5
+            """),
+            {"id": hero_id},
+        ).mappings().all()
+
+    # {level: {ability_id: {"games": int, "wins": int}}}
+    level_counts: dict[int, dict[int, dict]] = {}
+    for row in rows:
+        ids: list = json.loads(row["ability_ids"])
+        g, w = row["games"], row["wins"]
+        for level, idx in TALENT_INDICES.items():
+            if idx < len(ids):
+                aid = ids[idx]
+                if not aid:
+                    continue
+                lc = level_counts.setdefault(level, {})
+                if aid not in lc:
+                    lc[aid] = {"games": 0, "wins": 0}
+                lc[aid]["games"] += g
+                lc[aid]["wins"]  += w
+
+    result: dict[int, list] = {}
+    for level in sorted(level_counts):
+        picks = sorted(level_counts[level].items(), key=lambda kv: kv[1]["games"], reverse=True)[:2]
+        result[level] = [
+            {
+                "ability_id": aid,
+                "games":      d["games"],
+                "wins":       d["wins"],
+                "winrate":    round(d["wins"] / d["games"], 4) if d["games"] > 0 else 0.0,
+            }
+            for aid, d in picks
+        ]
+    return result
 
 
 def get_hero_ability_build(hero_id: int) -> Optional[dict]:

@@ -29,6 +29,11 @@ from backend.stats_db import (
     get_hero_base_winrate_from_db,
     get_hero_total_games,
     get_stats_mode,
+    get_hero_ability_build,
+    get_hero_core_items,
+    get_hero_talent_builds,
+    get_hero_build_cache,
+    get_app_cache_value,
 )
 from backend.config import BAYESIAN_SMOOTHING_C
 
@@ -600,6 +605,92 @@ async def api_hero_synergy(
         "best_allies": best_allies,
         "worst_allies": worst_allies,
         "strict_mode": strict,
+    }
+
+
+# ========== Hero Build ==========
+
+@app.get("/api/hero/{hero_id}/build")
+async def api_hero_build(hero_id: int):
+    """Returns all data for the Build tab: facets, ability build, talents, items.
+
+    Static data (facets, talents, start_game_items) is read from hero_builds_cache
+    pre-populated by builds_updater_loop in stats_updater.py (refreshed weekly).
+    Live data (ability_build, core_items, talent_picks) is queried from our DB.
+    """
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    # ── Static data from pre-built cache ─────────────────────────────────
+    cached = get_hero_build_cache(hero_id)
+    if cached is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Build data not yet available. "
+                "The builds_updater will populate it on first run."
+            ),
+        )
+
+    facets          = cached.get("facets", [])
+    talents         = cached.get("talents", [])
+    start_game_items = cached.get("start_game_items", [])
+
+    # ── ability_id → name map (from app_cache, built by builds_updater) ───
+    raw_map = get_app_cache_value("ability_id_to_name") or {}
+    ability_id_to_name: dict[int, str] = {int(k): v for k, v in raw_map.items()}
+
+    # ── items_by_id map (from app_cache) ──────────────────────────────────
+    raw_items = get_app_cache_value("items_by_id") or {}
+    items_by_id: dict[int, dict] = {int(k): v for k, v in raw_items.items()}
+
+    # ── Ability build (live from our DB) ─────────────────────────────────
+    ability_build: list[str] = []
+    db_build = get_hero_ability_build(hero_id)
+    if db_build and db_build.get("ability_ids"):
+        for aid in db_build["ability_ids"]:
+            aname = ability_id_to_name.get(int(aid))
+            if aname:
+                ability_build.append(aname)
+
+    # ── Core items (live from our DB) ─────────────────────────────────────
+    core_rows = get_hero_core_items(hero_id, top_n=6, min_item_id=50)
+    core_items = []
+    for row in core_rows:
+        info = items_by_id.get(row["item_id"]) or {}
+        core_items.append({
+            "id":      row["item_id"],
+            "dname":   info.get("dname") or str(row["item_id"]),
+            "img":     info.get("img"),
+            "games":   row["games"],
+            "winrate": row["winrate"],
+        })
+
+    # ── Talent picks (live from our DB) ──────────────────────────────────
+    talent_picks_raw = get_hero_talent_builds(hero_id)
+    talent_picks: dict[str, list] = {}
+    for level, picks in talent_picks_raw.items():
+        talent_picks[str(level)] = [
+            {**pick, "ability_name": ability_id_to_name.get(pick["ability_id"])}
+            for pick in picks
+        ]
+
+    logger.info(
+        "[build] hero_id=%s facets=%d talents=%d ability_build=%d "
+        "start_items=%d core_items=%d talent_picks_levels=%d",
+        hero_id, len(facets), len(talents), len(ability_build),
+        len(start_game_items), len(core_items), len(talent_picks),
+    )
+
+    return {
+        "facets":        facets,
+        "ability_build": ability_build,
+        "talents":       talents,
+        "talent_picks":  talent_picks,
+        "items": {
+            "start_game_items": start_game_items,
+            "core_items":       core_items,
+        },
     }
 
 
