@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=8" />
+    <link rel="stylesheet" href="styles.css?v=9" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -477,27 +477,44 @@
             </div>
           </div>
 
-          <!-- Блок 1: Контрпики -->
-          <div class="matchup-section">
-            <div class="matchup-section-title">Контрпики</div>
-            <div class="matchup-tabs">
-              <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')">✅ Кого контрит</button>
-              <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')">❌ Кто контрит его</button>
+          <!-- Табы верхнего уровня -->
+          <div class="hero-page-tabs">
+            <button class="hero-page-tab active" id="hero-ptab-matchups" onclick="switchHeroPageTab('matchups')">Матчапы</button>
+            <button class="hero-page-tab" id="hero-ptab-build" onclick="switchHeroPageTab('build')">Сборка</button>
+          </div>
+
+          <!-- Панель: Матчапы -->
+          <div id="hero-tab-matchups">
+            <!-- Блок 1: Контрпики -->
+            <div class="matchup-section">
+              <div class="matchup-section-title">Контрпики</div>
+              <div class="matchup-tabs">
+                <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')">✅ Кого контрит</button>
+                <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')">❌ Кто контрит его</button>
+              </div>
+              <div class="matchup-block" id="counters-list">
+                <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
+              </div>
             </div>
-            <div class="matchup-block" id="counters-list">
-              <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
+
+            <!-- Блок 2: Синергия -->
+            <div class="matchup-section">
+              <div class="matchup-section-title">Синергия с союзниками</div>
+              <div class="matchup-tabs">
+                <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')">🤝 Лучшие союзники</button>
+                <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')">💀 Худшие союзники</button>
+              </div>
+              <div class="matchup-block" id="synergy-list">
+                <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
+              </div>
             </div>
           </div>
 
-          <!-- Блок 2: Синергия -->
-          <div class="matchup-section">
-            <div class="matchup-section-title">Синергия с союзниками</div>
-            <div class="matchup-tabs">
-              <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')">🤝 Лучшие союзники</button>
-              <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')">💀 Худшие союзники</button>
-            </div>
-            <div class="matchup-block" id="synergy-list">
-              <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
+          <!-- Панель: Сборка -->
+          <div id="hero-tab-build" style="display:none;">
+            <div class="hero-tab-placeholder">
+              <div class="hero-tab-placeholder-icon">🔧</div>
+              <div class="hero-tab-placeholder-text">Скоро появится</div>
             </div>
           </div>
 
@@ -642,6 +659,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=17"></script>
+    <script src="script.js?v=18"></script>
   </body>
 </html>
