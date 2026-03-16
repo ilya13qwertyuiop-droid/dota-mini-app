@@ -281,6 +281,8 @@ def _extract_player_stats(player: dict) -> dict:
         "item3":        core_items[3],
         "item4":        core_items[4],
         "item5":        core_items[5],
+        # --- ability build (first 9 upgrades, levels 1-9) ---
+        "ability_upgrades": (player.get("ability_upgrades_arr") or [])[:9],
     }
 
 

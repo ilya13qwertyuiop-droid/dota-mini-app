@@ -29,6 +29,7 @@ Key convention for matchup/synergy pairs:
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import text
@@ -166,7 +167,20 @@ def init_stats_tables() -> None:
             )
         """))
 
-    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, hero_matchups, hero_synergy, hero_stats, app_settings)")
+    # Migration 8: create hero_ability_builds (skill build aggregates per hero).
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS hero_ability_builds (
+                hero_id     INTEGER   NOT NULL,
+                ability_ids TEXT      NOT NULL,
+                wins        INTEGER   NOT NULL DEFAULT 0,
+                games       INTEGER   NOT NULL DEFAULT 0,
+                updated_at  TIMESTAMP,
+                PRIMARY KEY (hero_id, ability_ids)
+            )
+        """))
+
+    logger.info("[stats_db] Tables ready (matches, match_players, match_player_timeline, hero_matchups, hero_synergy, hero_stats, app_settings, hero_ability_builds)")
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +499,73 @@ def save_match_and_update_aggregates(
                         """),
                         {"a": a, "b": b, "w": int(team_won)},
                     )
+
+        # ----- hero_ability_builds -----
+        if players:
+            _upsert_hero_ability_builds(conn, players, radiant_win)
+
         # engine.begin() auto-commits here
+
+
+# ---------------------------------------------------------------------------
+# Hero ability build helpers
+# ---------------------------------------------------------------------------
+
+def _upsert_hero_ability_builds(conn, players: list[dict], radiant_win: bool) -> None:
+    """Upserts hero_ability_builds rows for all players in one match.
+
+    Called inside an existing engine.begin() transaction (conn is passed in).
+    Skips players that have no ability_upgrades data.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC for SQLite compat
+    for p in players:
+        raw = p.get("ability_upgrades") or []
+        if not raw:
+            continue
+        hero_id = p.get("hero_id")
+        if not hero_id:
+            continue
+        ability_ids = json.dumps(raw)  # already sliced to 9 by _extract_player_stats
+        slot = p.get("player_slot", 128)
+        won = int((slot < 128) == radiant_win)
+        conn.execute(
+            text("""
+                INSERT INTO hero_ability_builds (hero_id, ability_ids, wins, games, updated_at)
+                VALUES (:hero_id, :ability_ids, :wins, 1, :now)
+                ON CONFLICT (hero_id, ability_ids) DO UPDATE SET
+                    wins       = hero_ability_builds.wins  + excluded.wins,
+                    games      = hero_ability_builds.games + 1,
+                    updated_at = excluded.updated_at
+            """),
+            {"hero_id": hero_id, "ability_ids": ability_ids, "wins": won, "now": now},
+        )
+
+
+def get_hero_ability_build(hero_id: int) -> Optional[dict]:
+    """Returns the most popular skill build for a hero (top-1 by games, min 10 matches).
+
+    Returns None if no build with at least 10 games exists.
+    """
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("""
+                SELECT ability_ids, wins, games
+                FROM hero_ability_builds
+                WHERE hero_id = :id AND games >= 10
+                ORDER BY games DESC
+                LIMIT 1
+            """),
+            {"id": hero_id},
+        ).mappings().fetchone()
+    if row is None:
+        return None
+    return {
+        "hero_id":     hero_id,
+        "ability_ids": json.loads(row["ability_ids"]),
+        "wins":        row["wins"],
+        "games":       row["games"],
+        "winrate":     round(row["wins"] / row["games"], 4) if row["games"] > 0 else 0.0,
+    }
 
 
 # ---------------------------------------------------------------------------
