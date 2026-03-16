@@ -1515,6 +1515,20 @@ switchPage = function (pageName, event) {
 
 // ========== МАТЧАПЫ ==========
 
+var _heroPageActiveTab = 'matchups';
+
+function switchHeroPageTab(tab) {
+    _heroPageActiveTab = tab;
+    var btnMatchups = document.getElementById('hero-ptab-matchups');
+    var btnBuild    = document.getElementById('hero-ptab-build');
+    var panelMatchups = document.getElementById('hero-tab-matchups');
+    var panelBuild    = document.getElementById('hero-tab-build');
+    if (btnMatchups)    btnMatchups.classList.toggle('active',    tab === 'matchups');
+    if (btnBuild)       btnBuild.classList.toggle('active',       tab === 'build');
+    if (panelMatchups)  panelMatchups.style.display = tab === 'matchups' ? 'block' : 'none';
+    if (panelBuild)     panelBuild.style.display    = tab === 'build'    ? 'block' : 'none';
+}
+
 // Собираем единый массив всех героев из window.dotaHeroIds —
 // единственного авторитетного источника для матчапов.
 // Дедупликация по hero_id исключает дубли вроде
@@ -1571,6 +1585,7 @@ const matchupPage = {
         if (nameEl) {
             nameEl.textContent = heroName;
         }
+        switchHeroPageTab(_heroPageActiveTab);
     },
 
     onInput: function (value) {
