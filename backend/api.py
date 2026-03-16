@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -29,6 +30,8 @@ from backend.stats_db import (
     get_hero_base_winrate_from_db,
     get_hero_total_games,
     get_stats_mode,
+    get_hero_ability_build,
+    get_hero_core_items,
 )
 from backend.config import BAYESIAN_SMOOTHING_C
 
@@ -600,6 +603,252 @@ async def api_hero_synergy(
         "best_allies": best_allies,
         "worst_allies": worst_allies,
         "strict_mode": strict,
+    }
+
+
+# ========== Hero Build ==========
+
+_CACHE_TTL = 86400.0  # 24 hours
+
+_heroes_const_cache:    dict = {"data": None, "ts": 0.0}
+_hero_abilities_cache:  dict = {"data": None, "ts": 0.0}
+_abilities_cache:       dict = {"data": None, "ts": 0.0}
+_items_const_cache:     dict = {"data": None, "ts": 0.0}
+_item_pop_cache:        dict = {}  # {hero_id: {"data": ..., "ts": float}}
+
+OPENDOTA_BASE = "https://api.opendota.com"
+CDN_BASE      = "https://cdn.cloudflare.steamstatic.com"
+
+
+async def _fetch_opendota(url: str) -> dict | list:
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+
+async def _get_heroes_const() -> dict:
+    if _heroes_const_cache["data"] and time.time() - _heroes_const_cache["ts"] < _CACHE_TTL:
+        return _heroes_const_cache["data"]
+    data = await _fetch_opendota(f"{OPENDOTA_BASE}/api/constants/heroes")
+    _heroes_const_cache["data"] = data
+    _heroes_const_cache["ts"] = time.time()
+    return data
+
+
+async def _get_hero_abilities_const() -> dict:
+    if _hero_abilities_cache["data"] and time.time() - _hero_abilities_cache["ts"] < _CACHE_TTL:
+        return _hero_abilities_cache["data"]
+    data = await _fetch_opendota(f"{OPENDOTA_BASE}/api/constants/hero_abilities")
+    _hero_abilities_cache["data"] = data
+    _hero_abilities_cache["ts"] = time.time()
+    return data
+
+
+async def _get_abilities_const() -> dict:
+    if _abilities_cache["data"] and time.time() - _abilities_cache["ts"] < _CACHE_TTL:
+        return _abilities_cache["data"]
+    data = await _fetch_opendota(f"{OPENDOTA_BASE}/api/constants/abilities")
+    _abilities_cache["data"] = data
+    _abilities_cache["ts"] = time.time()
+    return data
+
+
+async def _get_items_const() -> dict:
+    if _items_const_cache["data"] and time.time() - _items_const_cache["ts"] < _CACHE_TTL:
+        return _items_const_cache["data"]
+    data = await _fetch_opendota(f"{OPENDOTA_BASE}/api/constants/items")
+    _items_const_cache["data"] = data
+    _items_const_cache["ts"] = time.time()
+    return data
+
+
+async def _get_item_popularity(hero_id: int) -> dict:
+    cached = _item_pop_cache.get(hero_id)
+    if cached and time.time() - cached["ts"] < _CACHE_TTL:
+        return cached["data"]
+    data = await _fetch_opendota(f"{OPENDOTA_BASE}/api/heroes/{hero_id}/itemPopularity")
+    _item_pop_cache[hero_id] = {"data": data, "ts": time.time()}
+    return data
+
+
+def _item_img_url(img: str | None) -> str | None:
+    if not img:
+        return None
+    if img.startswith("http"):
+        return img
+    return CDN_BASE + img
+
+
+@app.get("/api/hero/{hero_id}/build")
+async def api_hero_build(hero_id: int):
+    """Returns all data for the Build tab: facets, ability build, talents, items.
+
+    All OpenDota constants are cached in-memory for 24 hours to avoid
+    hammering the API on every request.
+    """
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    # ── Fetch constants concurrently ──────────────────────────────────────
+    try:
+        heroes_data, ha_data, ab_data, items_data, item_pop = await asyncio.gather(
+            _get_heroes_const(),
+            _get_hero_abilities_const(),
+            _get_abilities_const(),
+            _get_items_const(),
+            _get_item_popularity(hero_id),
+            return_exceptions=True,
+        )
+    except Exception as exc:
+        logger.error("[build] gather error for hero_id=%s: %s", hero_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch OpenDota constants")
+
+    # Treat individual gather exceptions as soft failures
+    if isinstance(heroes_data, Exception):
+        logger.warning("[build] heroes constants failed: %s", heroes_data)
+        heroes_data = {}
+    if isinstance(ha_data, Exception):
+        logger.warning("[build] hero_abilities constants failed: %s", ha_data)
+        ha_data = {}
+    if isinstance(ab_data, Exception):
+        logger.warning("[build] abilities constants failed: %s", ab_data)
+        ab_data = {}
+    if isinstance(items_data, Exception):
+        logger.warning("[build] items constants failed: %s", items_data)
+        items_data = {}
+    if isinstance(item_pop, Exception):
+        logger.warning("[build] itemPopularity failed for hero_id=%s: %s", hero_id, item_pop)
+        item_pop = {}
+
+    # ── hero_id → npc name (e.g. "npc_dota_hero_antimage") ───────────────
+    npc_name: str | None = None
+    if isinstance(heroes_data, dict):
+        for _key, hdata in heroes_data.items():
+            if isinstance(hdata, dict) and hdata.get("id") == hero_id:
+                npc_name = hdata.get("name")
+                break
+
+    hero_ab_data: dict = {}
+    if npc_name and isinstance(ha_data, dict):
+        hero_ab_data = ha_data.get(npc_name, {})
+
+    # ── Facets ────────────────────────────────────────────────────────────
+    facets = []
+    for f in (hero_ab_data.get("facets") or []):
+        facets.append({
+            "facet_id":    f.get("facet_id"),
+            "name":        f.get("name"),
+            "icon":        f.get("icon"),
+            "color":       f.get("color"),
+            "gradient_id": f.get("gradient_id"),
+            "title":       f.get("title"),
+            "description": f.get("description"),
+        })
+
+    # ── Talents ───────────────────────────────────────────────────────────
+    # hero_abilities talents: list of {name, level} — 8 entries, pairs per level
+    raw_talents = hero_ab_data.get("talents") or []
+    talents = []
+    for i in range(0, len(raw_talents), 2):
+        left_entry  = raw_talents[i]     if i     < len(raw_talents) else {}
+        right_entry = raw_talents[i + 1] if i + 1 < len(raw_talents) else {}
+        level = left_entry.get("level") or right_entry.get("level")
+
+        def _talent_name(entry: dict) -> str:
+            aname = entry.get("name", "")
+            if isinstance(ab_data, dict):
+                abl = ab_data.get(aname) or {}
+                dname = abl.get("dname") or abl.get("name")
+                if dname:
+                    return dname
+            return aname
+
+        talents.append({
+            "level": level,
+            "left":  _talent_name(left_entry),
+            "right": _talent_name(right_entry),
+        })
+
+    # ── Ability build (from our DB) ───────────────────────────────────────
+    # ability_upgrades stores integer ability IDs; map to names via constants
+    ability_id_to_name: dict[int, str] = {}
+    if isinstance(ab_data, dict):
+        for aname, ainfo in ab_data.items():
+            if isinstance(ainfo, dict):
+                aid = ainfo.get("id")
+                if aid is not None:
+                    ability_id_to_name[int(aid)] = aname
+
+    ability_build: list[str] = []
+    db_build = get_hero_ability_build(hero_id)
+    if db_build and db_build.get("ability_ids"):
+        for aid in db_build["ability_ids"]:
+            aname = ability_id_to_name.get(int(aid))
+            if aname:
+                ability_build.append(aname)
+
+    # ── Items constants: build lookup by id and by name ───────────────────
+    items_by_id:   dict[int, dict] = {}
+    items_by_name: dict[str, dict] = {}
+    if isinstance(items_data, dict):
+        for ikey, iinfo in items_data.items():
+            if not isinstance(iinfo, dict):
+                continue
+            # key may be "item_blink" or "blink"; also store with "item_" prefix stripped
+            clean_key = ikey.removeprefix("item_")
+            iid = iinfo.get("id")
+            entry = {
+                "id":    iid,
+                "dname": iinfo.get("dname") or ikey,
+                "img":   _item_img_url(iinfo.get("img")),
+            }
+            if iid is not None:
+                items_by_id[int(iid)] = entry
+            items_by_name[ikey]      = entry
+            items_by_name[clean_key] = entry
+
+    # ── Start-game items (from OpenDota itemPopularity) ───────────────────
+    start_raw: dict = {}
+    if isinstance(item_pop, dict):
+        start_raw = item_pop.get("start_game_items") or {}
+
+    start_sorted = sorted(start_raw.items(), key=lambda kv: kv[1], reverse=True)[:6]
+    start_game_items = []
+    for iname, _count in start_sorted:
+        clean = iname.removeprefix("item_")
+        info  = items_by_name.get(iname) or items_by_name.get(clean)
+        if info:
+            start_game_items.append({"id": info["id"], "dname": info["dname"], "img": info["img"]})
+
+    # ── Core items (from our match DB) ────────────────────────────────────
+    core_rows = get_hero_core_items(hero_id, top_n=6, min_item_id=50)
+    core_items = []
+    for row in core_rows:
+        info = items_by_id.get(row["item_id"])
+        core_items.append({
+            "id":      row["item_id"],
+            "dname":   info["dname"] if info else str(row["item_id"]),
+            "img":     info["img"]   if info else None,
+            "games":   row["games"],
+            "winrate": row["winrate"],
+        })
+
+    logger.info(
+        "[build] hero_id=%s npc=%s facets=%d talents=%d ability_build=%d "
+        "start_items=%d core_items=%d",
+        hero_id, npc_name, len(facets), len(talents),
+        len(ability_build), len(start_game_items), len(core_items),
+    )
+
+    return {
+        "facets":        facets,
+        "ability_build": ability_build,
+        "talents":       talents,
+        "items": {
+            "start_game_items": start_game_items,
+            "core_items":       core_items,
+        },
     }
 
 
