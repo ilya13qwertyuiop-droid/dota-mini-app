@@ -57,6 +57,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Allow running as "python backend/stats_updater.py" from project root
@@ -84,6 +85,11 @@ from backend.stats_db import (
     get_match_ids_needing_backfill,
     update_match_players_backfill,
     count_matches_needing_backfill,
+    get_app_setting,
+    set_app_setting,
+    get_app_cache_value,
+    set_app_cache_value,
+    set_hero_build_cache,
 )
 
 # ---------------------------------------------------------------------------
@@ -281,8 +287,8 @@ def _extract_player_stats(player: dict) -> dict:
         "item3":        core_items[3],
         "item4":        core_items[4],
         "item5":        core_items[5],
-        # --- ability build (first 9 upgrades, levels 1-9) ---
-        "ability_upgrades": (player.get("ability_upgrades_arr") or [])[:9],
+        # --- ability build (first 18 upgrades, levels 1-18) ---
+        "ability_upgrades": (player.get("ability_upgrades_arr") or [])[:18],
     }
 
 
@@ -790,6 +796,260 @@ async def explorer_loop() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Builds updater — pre-fetches OpenDota data for all heroes into DB cache
+# ---------------------------------------------------------------------------
+
+BUILDS_UPDATE_INTERVAL_SECONDS: int = 7 * 86400   # 7 days
+BUILDS_SLEEP_BETWEEN_HEROES:    float = 1.5        # seconds between per-hero API calls
+OPENDOTA_BASE = "https://api.opendota.com"
+DOTACONSTANTS_BASE = "https://raw.githubusercontent.com/odota/dotaconstants/master/build"
+CDN_BASE = "https://cdn.cloudflare.steamstatic.com"
+
+
+async def _builds_fetch(url: str) -> dict | list:
+    """Simple HTTP GET returning parsed JSON (no rate limiter — used by builds updater only)."""
+    import httpx
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+
+def _talent_display_name(talent_key: str, abilities_json: dict) -> str:
+    """Converts a talent key (e.g. special_bonus_unique_pudge_3) to a readable name.
+
+    Priority:
+      1. dname from abilities.json (if present and has no template syntax)
+      2. Clean fallback: strip special_bonus_ prefix, title-case words
+    """
+    entry = abilities_json.get(talent_key) or {}
+    dname = entry.get("dname") or ""
+    if dname and "{" not in dname:
+        return dname
+    clean = talent_key.removeprefix("special_bonus_").replace("_", " ")
+    return clean.title()
+
+
+async def _run_builds_update() -> None:
+    """Fetches OpenDota constants + per-hero data, writes to hero_builds_cache / app_cache.
+
+    Flow:
+      1. Fetch shared constants: heroes, hero_abilities, items (OpenDota) +
+         abilities.json (GitHub dotaconstants).
+      2. Save ability_id→name map and items_by_id to app_cache.
+      3. For each hero: build facets + talents + start_game_items, save to hero_builds_cache.
+         Sleep BUILDS_SLEEP_BETWEEN_HEROES between per-hero API calls.
+      4. Record builds_last_updated timestamp in app_settings on success.
+    """
+    logger.info("[builds] Starting builds update run...")
+
+    # ── Shared constants ─────────────────────────────────────────────────
+    try:
+        heroes_data = await _builds_fetch(f"{OPENDOTA_BASE}/api/constants/heroes")
+    except Exception as exc:
+        logger.error("[builds] Failed to fetch heroes constants: %s", exc)
+        return
+    await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
+
+    try:
+        ha_data = await _builds_fetch(f"{OPENDOTA_BASE}/api/constants/hero_abilities")
+    except Exception as exc:
+        logger.error("[builds] Failed to fetch hero_abilities constants: %s", exc)
+        return
+    await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
+
+    try:
+        items_data = await _builds_fetch(f"{OPENDOTA_BASE}/api/constants/items")
+    except Exception as exc:
+        logger.error("[builds] Failed to fetch items constants: %s", exc)
+        return
+    await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
+
+    try:
+        abilities_json = await _builds_fetch(f"{DOTACONSTANTS_BASE}/abilities.json")
+    except Exception as exc:
+        logger.error("[builds] Failed to fetch abilities.json: %s", exc)
+        # Non-fatal: fall back to talent key names
+        abilities_json = {}
+    await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
+
+    # ── Build and save shared maps ────────────────────────────────────────
+    # ability_id → ability_name (reverse map for decoding DB data)
+    ability_id_to_name: dict[str, str] = {}
+    for aname, ainfo in abilities_json.items():
+        if isinstance(ainfo, dict):
+            aid = ainfo.get("id")
+            if aid is not None:
+                ability_id_to_name[str(int(aid))] = aname
+
+    # items_by_id for API endpoint to decode item IDs
+    items_by_id: dict[str, dict] = {}
+    items_by_name: dict[str, dict] = {}
+    for ikey, iinfo in (items_data if isinstance(items_data, dict) else {}).items():
+        if not isinstance(iinfo, dict):
+            continue
+        iid = iinfo.get("id")
+        img = iinfo.get("img") or ""
+        if img and not img.startswith("http"):
+            img = CDN_BASE + img
+        entry = {"id": iid, "dname": iinfo.get("dname") or ikey, "img": img or None}
+        if iid is not None:
+            items_by_id[str(int(iid))] = entry
+        clean = ikey.removeprefix("item_")
+        items_by_name[ikey]          = entry
+        items_by_name[clean]         = entry
+        items_by_name["item_" + clean] = entry
+
+    set_app_cache_value("ability_id_to_name", ability_id_to_name)
+    set_app_cache_value("items_by_id", items_by_id)
+    logger.info(
+        "[builds] Saved app_cache: ability_id_to_name=%d entries, items_by_id=%d entries",
+        len(ability_id_to_name), len(items_by_id),
+    )
+
+    # ── Per-hero data ─────────────────────────────────────────────────────
+    if not isinstance(heroes_data, dict):
+        logger.error("[builds] heroes_data is not a dict, aborting")
+        return
+
+    processed = 0
+    failed = 0
+    for _key, hero_info in heroes_data.items():
+        if not isinstance(hero_info, dict):
+            continue
+        hero_id  = hero_info.get("id")
+        npc_name = hero_info.get("name")
+        if not hero_id or not npc_name:
+            continue
+
+        hero_ab_data: dict = ha_data.get(npc_name, {}) if isinstance(ha_data, dict) else {}
+
+        # ── Facets (filter empty/placeholder entries) ─────────────────
+        facets = []
+        for f in (hero_ab_data.get("facets") or []):
+            if not f.get("title") or not f.get("icon"):
+                continue
+            facets.append({
+                "facet_id":    f.get("facet_id"),
+                "name":        f.get("name"),
+                "icon":        f.get("icon"),
+                "color":       f.get("color"),
+                "gradient_id": f.get("gradient_id"),
+                "title":       f.get("title"),
+                "description": f.get("description"),
+            })
+
+        # ── Talents (human-readable via abilities.json) ───────────────
+        raw_talents = hero_ab_data.get("talents") or []
+        talents = []
+        for i in range(0, len(raw_talents), 2):
+            left_e  = raw_talents[i]     if i     < len(raw_talents) else {}
+            right_e = raw_talents[i + 1] if i + 1 < len(raw_talents) else {}
+            level   = left_e.get("level") or right_e.get("level")
+            talents.append({
+                "level": level,
+                "left":  _talent_display_name(left_e.get("name",  ""), abilities_json),
+                "right": _talent_display_name(right_e.get("name", ""), abilities_json),
+            })
+
+        # ── Start-game items (from OpenDota itemPopularity) ───────────
+        await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
+        try:
+            item_pop = await _builds_fetch(
+                f"{OPENDOTA_BASE}/api/heroes/{hero_id}/itemPopularity"
+            )
+        except Exception as exc:
+            logger.warning("[builds] itemPopularity failed hero_id=%s: %s", hero_id, exc)
+            item_pop = {}
+            failed += 1
+
+        start_raw = (item_pop.get("start_game_items") or {}) if isinstance(item_pop, dict) else {}
+        start_sorted = sorted(start_raw.items(), key=lambda kv: kv[1], reverse=True)[:6]
+        start_game_items = []
+        for iname, _count in start_sorted:
+            info = (
+                items_by_name.get(iname)
+                or items_by_name.get(iname.removeprefix("item_"))
+            )
+            if info:
+                start_game_items.append({
+                    "id":    info["id"],
+                    "dname": info["dname"],
+                    "img":   info["img"],
+                })
+
+        set_hero_build_cache(hero_id, {
+            "facets":           facets,
+            "talents":          talents,
+            "start_game_items": start_game_items,
+            "npc_name":         npc_name,
+        })
+        processed += 1
+
+    # Mark completion
+    set_app_setting(
+        "builds_last_updated",
+        datetime.now(timezone.utc).isoformat(),
+    )
+    logger.info("[builds] Run complete: %d heroes processed, %d item-pop failures", processed, failed)
+
+
+async def builds_updater_loop() -> None:
+    """Background asyncio task: refreshes hero build cache every 7 days.
+
+    - First run: starts immediately if cache has never been populated
+      (no builds_last_updated in app_settings).
+    - Subsequent runs: sleeps until 7 days have elapsed since last update.
+    - Force trigger: set app_settings.force_builds_update = '1' (e.g. via
+      /force_update_builds bot command). Checked every 5 minutes while sleeping.
+    """
+    logger.info("[builds] builds_updater_loop started (interval=%dd)", BUILDS_UPDATE_INTERVAL_SECONDS // 86400)
+
+    while True:
+        last_updated_str = get_app_setting("builds_last_updated")
+        force            = get_app_setting("force_builds_update") == "1"
+
+        if force:
+            logger.info("[builds] Force update flag detected — starting immediately")
+            set_app_setting("force_builds_update", "0")
+        elif last_updated_str:
+            try:
+                last_dt = datetime.fromisoformat(last_updated_str)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                age_sec = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                remaining = BUILDS_UPDATE_INTERVAL_SECONDS - age_sec
+            except Exception:
+                remaining = 0.0
+
+            if remaining > 0:
+                logger.info(
+                    "[builds] Cache fresh (last updated %s ago), sleeping %.0fh until next run",
+                    last_updated_str, remaining / 3600,
+                )
+                # Sleep in 5-minute chunks, checking for force flag
+                CHECK_INTERVAL = 300.0
+                slept = 0.0
+                while slept < remaining:
+                    await asyncio.sleep(min(CHECK_INTERVAL, remaining - slept))
+                    slept += CHECK_INTERVAL
+                    if get_app_setting("force_builds_update") == "1":
+                        logger.info("[builds] Force flag detected while sleeping")
+                        set_app_setting("force_builds_update", "0")
+                        break
+                else:
+                    pass  # normal wake after full interval
+                continue  # re-check at top of loop
+        else:
+            logger.info("[builds] No previous update found — starting initial builds update")
+
+        try:
+            await _run_builds_update()
+        except Exception as exc:
+            logger.error("[builds] Unhandled error in builds update: %s", exc, exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # Cleanup logic
 # ---------------------------------------------------------------------------
 
@@ -863,6 +1123,9 @@ async def main() -> None:
     # Start explorer loop as independent background task (runs alongside main loop).
     # It exits immediately if USE_EXPLORER=0 so the task is always safe to create.
     asyncio.create_task(explorer_loop(), name="explorer_loop")
+
+    # Start builds updater — refreshes hero build cache weekly (or on force trigger).
+    asyncio.create_task(builds_updater_loop(), name="builds_updater_loop")
 
     last_cleanup_time: float = 0.0
 

@@ -172,14 +172,40 @@ class HeroStat(Base):
 
 
 class HeroAbilityBuild(Base):
-    """Per-hero skill build aggregate (first 9 ability upgrades, levels 1-9)."""
+    """Per-hero skill build aggregate (first 18 ability upgrades, levels 1-18)."""
     __tablename__ = "hero_ability_builds"
 
     hero_id = Column(Integer, primary_key=True, nullable=False)
-    # JSON array string of first 9 ability_id values in upgrade order
+    # JSON array string of first 18 ability_id values in upgrade order
     ability_ids = Column(Text, primary_key=True, nullable=False)
     wins = Column(Integer, nullable=False, default=0)
     games = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class AppCache(Base):
+    """Generic key-value store for large JSON blobs cached by builds_updater.
+
+    Separate from app_settings (small text values) — this table stores full
+    OpenDota API responses (abilities.json, items constants, etc.).
+    """
+    __tablename__ = "app_cache"
+
+    key = Column(Text, primary_key=True)
+    data = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class HeroBuildsCache(Base):
+    """Pre-built Build tab data per hero, refreshed weekly by builds_updater.
+
+    Stores facets, human-readable talents, start_game_items for each hero.
+    The API endpoint merges this with live stats (ability_build, core_items).
+    """
+    __tablename__ = "hero_builds_cache"
+
+    hero_id = Column(Integer, primary_key=True)
+    build_data = Column(JSON, nullable=False)
     updated_at = Column(DateTime, nullable=True)
 
 
