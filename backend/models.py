@@ -171,6 +171,18 @@ class HeroStat(Base):
     wins = Column(Integer, nullable=False, default=0)
 
 
+class HeroAbilityBuild(Base):
+    """Per-hero skill build aggregate (first 9 ability upgrades, levels 1-9)."""
+    __tablename__ = "hero_ability_builds"
+
+    hero_id = Column(Integer, primary_key=True, nullable=False)
+    # JSON array string of first 9 ability_id values in upgrade order
+    ability_ids = Column(Text, primary_key=True, nullable=False)
+    wins = Column(Integer, nullable=False, default=0)
+    games = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=True)
+
+
 class MatchPlayer(Base):
     """Per-player record for each match (populated by stats_updater when FETCH_MATCH_DETAILS=1).
 
