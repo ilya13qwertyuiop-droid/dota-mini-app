@@ -819,6 +819,89 @@ def get_matches_count() -> int:
         return conn.execute(text("SELECT COUNT(*) FROM matches")).scalar() or 0
 
 
+def get_hero_core_items(hero_id: int, top_n: int = 6, min_item_id: int = 50) -> list[dict]:
+    """Returns top N most popular core items for a hero, with win stats.
+
+    Scans all 6 item slots (item0-item5) in match_players, filters out items
+    with id < min_item_id (consumables / basic items), joins matches for win
+    data, and returns the most-played items ordered by games descending.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT item_id, COUNT(*) AS games, SUM(won) AS wins
+                FROM (
+                    SELECT mp.item0 AS item_id,
+                           CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                  OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                THEN 1 ELSE 0 END AS won
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :hero_id
+                      AND mp.item0 IS NOT NULL AND mp.item0 >= :min_id
+                    UNION ALL
+                    SELECT mp.item1,
+                           CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                  OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                THEN 1 ELSE 0 END
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :hero_id
+                      AND mp.item1 IS NOT NULL AND mp.item1 >= :min_id
+                    UNION ALL
+                    SELECT mp.item2,
+                           CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                  OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                THEN 1 ELSE 0 END
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :hero_id
+                      AND mp.item2 IS NOT NULL AND mp.item2 >= :min_id
+                    UNION ALL
+                    SELECT mp.item3,
+                           CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                  OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                THEN 1 ELSE 0 END
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :hero_id
+                      AND mp.item3 IS NOT NULL AND mp.item3 >= :min_id
+                    UNION ALL
+                    SELECT mp.item4,
+                           CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                  OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                THEN 1 ELSE 0 END
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :hero_id
+                      AND mp.item4 IS NOT NULL AND mp.item4 >= :min_id
+                    UNION ALL
+                    SELECT mp.item5,
+                           CASE WHEN (mp.is_radiant = 1 AND m.radiant_win = 1)
+                                  OR (mp.is_radiant = 0 AND m.radiant_win = 0)
+                                THEN 1 ELSE 0 END
+                    FROM match_players mp
+                    JOIN matches m ON m.match_id = mp.match_id
+                    WHERE mp.hero_id = :hero_id
+                      AND mp.item5 IS NOT NULL AND mp.item5 >= :min_id
+                ) AS items_union
+                GROUP BY item_id
+                ORDER BY games DESC
+                LIMIT :top_n
+            """),
+            {"hero_id": hero_id, "min_id": min_item_id, "top_n": top_n},
+        ).mappings().all()
+    return [
+        {
+            "item_id": row["item_id"],
+            "games":   row["games"],
+            "wins":    row["wins"],
+            "winrate": round(row["wins"] / row["games"], 4) if row["games"] > 0 else 0.0,
+        }
+        for row in rows
+    ]
+
+
 def get_old_match_ids(older_than_days: int) -> list[int]:
     """Returns match_ids with start_time older than `older_than_days` days."""
     cutoff = int(time.time()) - older_than_days * 86400
