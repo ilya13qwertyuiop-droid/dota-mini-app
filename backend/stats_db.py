@@ -598,8 +598,15 @@ def get_app_cache_value(key: str) -> Optional[dict]:
                 text("SELECT data FROM app_cache WHERE key = :k"),
                 {"k": key},
             ).fetchone()
-        return json.loads(row[0]) if row else None
-    except Exception:
+        if row is None:
+            return None
+        val = row[0]
+        # PostgreSQL JSON/JSONB column → already a dict/list; SQLite TEXT → string
+        if isinstance(val, (dict, list)):
+            return val
+        return json.loads(val)
+    except Exception as exc:
+        logger.warning("[stats_db] get_app_cache_value(%r) error: %s", key, exc)
         return None
 
 
@@ -624,8 +631,15 @@ def get_hero_build_cache(hero_id: int) -> Optional[dict]:
                 text("SELECT build_data FROM hero_builds_cache WHERE hero_id = :id"),
                 {"id": hero_id},
             ).fetchone()
-        return json.loads(row[0]) if row else None
-    except Exception:
+        if row is None:
+            return None
+        val = row[0]
+        # PostgreSQL JSON/JSONB column → already a dict; SQLite TEXT → string
+        if isinstance(val, (dict, list)):
+            return val
+        return json.loads(val)
+    except Exception as exc:
+        logger.warning("[stats_db] get_hero_build_cache(%r) error: %s", hero_id, exc)
         return None
 
 
