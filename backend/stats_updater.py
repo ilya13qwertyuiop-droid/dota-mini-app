@@ -55,6 +55,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -815,27 +816,47 @@ async def _builds_fetch(url: str) -> dict | list:
         return r.json()
 
 
+_TALENT_TEMPLATE_RE = re.compile(r'([+\-])?\{s:([^}]+)\}')
+
+
 def _talent_display_name(talent_key: str, abilities_json: dict) -> str:
     """Converts a talent key (e.g. special_bonus_unique_pudge_3) to a readable name.
 
     Priority:
-      1. dname from abilities.json (if present and has no template syntax)
-      2. Clean fallback: strip special_bonus_ prefix, title-case words
+      1. dname from abilities.json with no template syntax → return as-is
+      2. dname contains {s:KEY} templates → resolve from attrib list
+      3. Unresolvable templates or empty dname → clean key-based fallback
     """
     entry = abilities_json.get(talent_key) or {}
     dname = entry.get("dname") or ""
-    if dname and "{" not in dname:
+    _fallback = talent_key.removeprefix("special_bonus_").replace("_", " ").title()
+    if not dname:
+        return _fallback
+    if "{" not in dname:
         return dname
-    clean = talent_key.removeprefix("special_bonus_").replace("_", " ")
-    return clean.title()
+    # Build attrib key → value lookup for {s:KEY} substitution
+    attrib_map = {
+        a["key"]: str(a.get("value", ""))
+        for a in (entry.get("attrib") or [])
+        if isinstance(a, dict) and "key" in a
+    }
+    def _sub(m: re.Match) -> str:
+        sign, key = m.group(1) or "", m.group(2)
+        val = attrib_map.get(key)
+        return (sign + val) if val is not None else ""
+    resolved = _TALENT_TEMPLATE_RE.sub(_sub, dname).strip()
+    # Fall back if any unresolved templates remain
+    if "{" in resolved:
+        return _fallback
+    return resolved or _fallback
 
 
 async def _run_builds_update() -> None:
     """Fetches OpenDota constants + per-hero data, writes to hero_builds_cache / app_cache.
 
     Flow:
-      1. Fetch shared constants: heroes, hero_abilities, items (OpenDota) +
-         abilities.json (GitHub dotaconstants).
+      1. Fetch shared constants: heroes, hero_abilities, items, ability_ids (OpenDota) +
+         abilities.json (GitHub dotaconstants for talent dnames).
       2. Save ability_id→name map and items_by_id to app_cache.
       3. For each hero: build facets + talents + start_game_items, save to hero_builds_cache.
          Sleep BUILDS_SLEEP_BETWEEN_HEROES between per-hero API calls.
@@ -866,6 +887,13 @@ async def _run_builds_update() -> None:
     await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
 
     try:
+        ability_ids_data = await _builds_fetch(f"{OPENDOTA_BASE}/api/constants/ability_ids")
+    except Exception as exc:
+        logger.warning("[builds] Failed to fetch ability_ids constants: %s", exc)
+        ability_ids_data = {}
+    await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
+
+    try:
         abilities_json = await _builds_fetch(f"{DOTACONSTANTS_BASE}/abilities.json")
     except Exception as exc:
         logger.error("[builds] Failed to fetch abilities.json: %s", exc)
@@ -883,13 +911,26 @@ async def _run_builds_update() -> None:
     )
 
     # ── Build and save shared maps ────────────────────────────────────────
-    # ability_id → ability_name (reverse map for decoding DB data)
+    # ability_id → ability_name: primary source is the dedicated ability_ids endpoint
+    # which returns { "5003": "antimage_mana_break", ... }
     ability_id_to_name: dict[str, str] = {}
-    for aname, ainfo in abilities_json.items():
-        if isinstance(ainfo, dict):
-            aid = ainfo.get("id")
-            if aid is not None:
-                ability_id_to_name[str(int(aid))] = aname
+    if isinstance(ability_ids_data, dict):
+        for aid_str, aname in ability_ids_data.items():
+            if isinstance(aname, str):
+                try:
+                    ability_id_to_name[str(int(aid_str))] = aname
+                except (ValueError, TypeError):
+                    pass
+    # Fallback: derive from abilities.json id fields (older dotaconstants versions)
+    if not ability_id_to_name:
+        for aname, ainfo in abilities_json.items():
+            if isinstance(ainfo, dict):
+                aid = ainfo.get("id")
+                if aid is not None:
+                    ability_id_to_name[str(int(aid))] = aname
+    logger.info("[builds] ability_id_to_name: %d entries (source: %s)",
+                len(ability_id_to_name),
+                "ability_ids" if isinstance(ability_ids_data, dict) and ability_ids_data else "abilities.json")
 
     # items_by_id for API endpoint to decode item IDs
     items_by_id: dict[str, dict] = {}
