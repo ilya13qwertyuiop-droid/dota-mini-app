@@ -1985,18 +1985,22 @@ function switchSynergyTab(tab) {
         var idToName = getHeroIdToName();
         var items = list.map(function (id) {
             return idToName[id] ? { id: id, name: idToName[id] } : null;
-        }).filter(Boolean);
+        }).filter(Boolean).slice(0, 5);
 
         if (!items.length) {
             block.style.display = 'none';
             return;
         }
 
+        // Center-outward delays: index 2 first, then 1&3, then 0&4
+        var centerOutwardDelays = [0.24, 0.12, 0, 0.12, 0.24];
+
         block.style.display = 'block';
         listEl.innerHTML = items.map(function (hero, idx) {
             var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(hero.name) : '';
             var escaped = hero.name.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-            return '<div class="recent-hero-item" data-hero-name="' + escaped + '" style="--rh-delay:' + (idx * 0.07) + 's">' +
+            var delay = centerOutwardDelays[idx] !== undefined ? centerOutwardDelays[idx] : 0;
+            return '<div class="recent-hero-item" data-hero-name="' + escaped + '" style="--rh-delay:' + delay + 's">' +
                 '<div class="recent-hero-icon-wrap">' +
                   '<img src="' + iconUrl + '" alt="' + escaped + '" class="recent-hero-icon" onerror="this.style.display=\'none\'">' +
                 '</div>' +

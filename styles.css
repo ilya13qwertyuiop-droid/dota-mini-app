@@ -1998,8 +1998,8 @@ margin-top: 14px;
 
 .recent-heroes-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
+  justify-content: center;
+  gap: 12px;
 }
 
 .recent-hero-item {
@@ -2015,8 +2015,8 @@ margin-top: 14px;
 }
 
 .recent-hero-icon-wrap {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: 12px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.05);
@@ -2041,7 +2041,7 @@ margin-top: 14px;
   font-size: 10px;
   color: var(--text-muted);
   text-align: center;
-  max-width: 52px;
+  max-width: 56px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
