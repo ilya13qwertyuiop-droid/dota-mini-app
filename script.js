@@ -1553,6 +1553,7 @@ const matchupPage = {
             suggestions.innerHTML = '';
             suggestions.style.display = 'none';
         }
+        if (window.renderRecentHeroes) window.renderRecentHeroes();
     },
 
     showHero: function (heroName) {
@@ -1617,6 +1618,7 @@ const matchupPage = {
             showMatchupsError('Матчапы для этого героя пока недоступны');
             return;
         }
+        if (window.addRecentHero) window.addRecentHero(heroId);
         loadHeroMatchups(heroId);
         loadHeroSynergy(heroId);
     }
@@ -1936,6 +1938,80 @@ function switchSynergyTab(tab) {
     }
 }
 
+
+// ========== НЕДАВНИЕ ГЕРОИ ==========
+
+(function () {
+    var RECENT_KEY = 'recent_heroes';
+    var MAX_RECENT = 7;
+
+    var _heroIdToName = null;
+    function getHeroIdToName() {
+        if (_heroIdToName) return _heroIdToName;
+        _heroIdToName = {};
+        if (window.dotaHeroIds) {
+            Object.keys(window.dotaHeroIds).forEach(function (name) {
+                var id = window.dotaHeroIds[name];
+                if (!_heroIdToName[id]) _heroIdToName[id] = name;
+            });
+        }
+        return _heroIdToName;
+    }
+
+    window.addRecentHero = function (heroId) {
+        if (!heroId) return;
+        try {
+            var list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            list = list.filter(function (id) { return id !== heroId; });
+            list.unshift(heroId);
+            if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
+            localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+        } catch (e) {}
+    };
+
+    window.renderRecentHeroes = function () {
+        var block = document.getElementById('recent-heroes-block');
+        var listEl = document.getElementById('recent-heroes-list');
+        if (!block || !listEl) return;
+
+        var list = [];
+        try { list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) {}
+
+        if (!list.length) {
+            block.style.display = 'none';
+            return;
+        }
+
+        var idToName = getHeroIdToName();
+        var items = list.map(function (id) {
+            return idToName[id] ? { id: id, name: idToName[id] } : null;
+        }).filter(Boolean);
+
+        if (!items.length) {
+            block.style.display = 'none';
+            return;
+        }
+
+        block.style.display = 'block';
+        listEl.innerHTML = items.map(function (hero, idx) {
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(hero.name) : '';
+            var escaped = hero.name.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            return '<div class="recent-hero-item" data-hero-name="' + escaped + '" style="--rh-delay:' + (idx * 0.07) + 's">' +
+                '<div class="recent-hero-icon-wrap">' +
+                  '<img src="' + iconUrl + '" alt="' + escaped + '" class="recent-hero-icon" onerror="this.style.display=\'none\'">' +
+                '</div>' +
+                '<div class="recent-hero-name">' + hero.name + '</div>' +
+            '</div>';
+        }).join('');
+
+        listEl.querySelectorAll('.recent-hero-item').forEach(function (el) {
+            el.addEventListener('click', function () {
+                var name = el.dataset.heroName;
+                if (name) matchupPage.selectHero(name);
+            });
+        });
+    };
+}());
 
 // ========== ФИДБЕК ==========
 
