@@ -806,6 +806,7 @@ BUILDS_SLEEP_BETWEEN_HEROES:    float = 1.5        # seconds between per-hero AP
 OPENDOTA_BASE = "https://api.opendota.com"
 DOTACONSTANTS_BASE = "https://raw.githubusercontent.com/odota/dotaconstants/master/build"
 CDN_BASE = "https://cdn.cloudflare.steamstatic.com"
+VALVE_HERODATA_BASE = "https://www.dota2.com/datafeed"
 
 
 async def _builds_fetch(url: str) -> dict | list:
@@ -860,14 +861,18 @@ def _talent_display_name(talent_key: str, abilities_json: dict) -> str:
 
 
 async def _run_builds_update() -> None:
-    """Fetches OpenDota constants + per-hero data, writes to hero_builds_cache / app_cache.
+    """Fetches constants + per-hero data, writes to hero_builds_cache / app_cache.
 
     Flow:
       1. Fetch shared constants: heroes, hero_abilities, items, ability_ids (OpenDota) +
          abilities.json (GitHub dotaconstants for talent dnames).
       2. Save ability_id→name map and items_by_id to app_cache.
-      3. For each hero: build facets + talents + start_game_items, save to hero_builds_cache.
-         Sleep BUILDS_SLEEP_BETWEEN_HEROES between per-hero API calls.
+      3. For each hero:
+         - Facets: Valve API datafeed/herodata (Russian locale → title_loc/description_loc).
+         - Talents: OpenDota hero_abilities constants via abilities.json dnames.
+         - Start-game items: OpenDota /api/heroes/{id}/itemPopularity.
+         - Core items: pre-computed from match_players DB and decoded with items_by_id.
+         All saved to hero_builds_cache.
       4. Record builds_last_updated timestamp in app_settings on success.
     """
     logger.info("[builds] Starting builds update run...")
@@ -982,32 +987,33 @@ async def _run_builds_update() -> None:
 
         hero_ab_data: dict = ha_data.get(npc_name, {}) if isinstance(ha_data, dict) else {}
 
-        # ── Facets (filter empty/placeholder/default entries) ────────
-        raw_facets = hero_ab_data.get("facets") or []
-        if npc_name == "npc_dota_hero_pudge":
-            logger.info(
-                "[builds] [Pudge] raw facets (%d): %s",
-                len(raw_facets),
-                [(f.get("facet_id"), f.get("title"), f.get("icon")) for f in raw_facets],
-            )
+        # ── Facets (Valve API, Russian localization) ──────────────────
+        await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
         facets = []
-        for f in raw_facets:
-            # Must have non-empty title and icon
-            if not f.get("title") or not f.get("icon"):
-                continue
-            # facet_id == 0 or missing → system/default placeholder, skip
-            fid = f.get("facet_id")
-            if not fid:
-                continue
-            facets.append({
-                "facet_id":    fid,
-                "name":        f.get("name"),
-                "icon":        f.get("icon"),
-                "color":       f.get("color"),
-                "gradient_id": f.get("gradient_id"),
-                "title":       f.get("title"),
-                "description": f.get("description"),
-            })
+        try:
+            valve_resp = await _builds_fetch(
+                f"{VALVE_HERODATA_BASE}/herodata?hero_id={hero_id}&language=russian"
+            )
+            _valve_heroes = (
+                valve_resp.get("result", {}).get("data", {}).get("heroes") or []
+                if isinstance(valve_resp, dict) else []
+            )
+            _raw_facets = _valve_heroes[0].get("facets") or [] if _valve_heroes else []
+            for f in _raw_facets:
+                if not f.get("title_loc") or not f.get("icon"):
+                    continue
+                facets.append({
+                    "name":        f.get("name"),
+                    "icon":        f.get("icon"),
+                    "color":       f.get("color"),
+                    "gradient_id": f.get("gradient_id"),
+                    "title":       f.get("title_loc"),
+                    "description": f.get("description_loc") or "",
+                })
+            logger.info("[builds] hero_id=%s facets from Valve API: %d", hero_id, len(facets))
+        except Exception as exc:
+            logger.warning("[builds] Valve herodata failed hero_id=%s: %s", hero_id, exc)
+            failed += 1
 
         # ── Talents (human-readable via abilities.json) ───────────────
         raw_talents = hero_ab_data.get("talents") or []
@@ -1044,10 +1050,13 @@ async def _run_builds_update() -> None:
 
         start_raw = (item_pop.get("start_game_items") or {}) if isinstance(item_pop, dict) else {}
         start_sorted = sorted(start_raw.items(), key=lambda kv: kv[1], reverse=True)[:6]
+        logger.info("[builds] hero_id=%s start_game_items raw top=%s", hero_id,
+                    [(k, v) for k, v in start_sorted[:3]])
         start_game_items = []
         for iname, _count in start_sorted:
             info = (
                 items_by_name.get(iname)
+                or items_by_name.get("item_" + iname)
                 or items_by_name.get(iname.removeprefix("item_"))
             )
             if info:
@@ -1056,6 +1065,8 @@ async def _run_builds_update() -> None:
                     "dname": info["dname"],
                     "img":   info["img"],
                 })
+            else:
+                logger.debug("[builds] start_game_item not found in items_by_name: %r", iname)
 
         # ── Core items (from our DB, pre-decoded with items_by_id) ───────
         core_rows = get_hero_core_items(hero_id, top_n=6, min_item_id=50)
