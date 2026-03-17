@@ -987,9 +987,10 @@ async def _run_builds_update() -> None:
 
         hero_ab_data: dict = ha_data.get(npc_name, {}) if isinstance(ha_data, dict) else {}
 
-        # ── Facets (Valve API, Russian localization) ──────────────────
+        # ── Facets + Talents (Valve API, Russian localization) ────────
         await asyncio.sleep(BUILDS_SLEEP_BETWEEN_HEROES)
         facets = []
+        valve_talent_names: dict[str, str] = {}
         try:
             valve_resp = await _builds_fetch(
                 f"{VALVE_HERODATA_BASE}/herodata?hero_id={hero_id}&language=russian"
@@ -998,8 +999,10 @@ async def _run_builds_update() -> None:
                 valve_resp.get("result", {}).get("data", {}).get("heroes") or []
                 if isinstance(valve_resp, dict) else []
             )
-            _raw_facets = _valve_heroes[0].get("facets") or [] if _valve_heroes else []
-            for f in _raw_facets:
+            _valve_hero = _valve_heroes[0] if _valve_heroes else {}
+
+            # Facets
+            for f in (_valve_hero.get("facets") or []):
                 if not f.get("title_loc") or not f.get("icon"):
                     continue
                 facets.append({
@@ -1011,30 +1014,40 @@ async def _run_builds_update() -> None:
                     "description": f.get("description_loc") or "",
                 })
             logger.info("[builds] hero_id=%s facets from Valve API: %d", hero_id, len(facets))
+
+            # Talents — resolve {s:KEY} templates from special_values
+            for t in (_valve_hero.get("talents") or []):
+                tname    = t.get("name") or ""
+                name_loc = t.get("name_loc") or tname
+                sv_map   = {
+                    sv["name"]: sv.get("values_float", [None])[0]
+                    for sv in (t.get("special_values") or [])
+                    if sv.get("name")
+                }
+                def _sub(m: re.Match) -> str:
+                    val = sv_map.get(m.group(1))
+                    if val is None:
+                        return "?"
+                    return str(int(val)) if float(val) == int(val) else str(val)
+                valve_talent_names[tname] = re.sub(r"\{s:(\w+)\}", _sub, name_loc)
+
         except Exception as exc:
             logger.warning("[builds] Valve herodata failed hero_id=%s: %s", hero_id, exc)
             failed += 1
 
-        # ── Talents (human-readable via abilities.json) ───────────────
+        # ── Talents — build pairs from OpenDota level list ────────────
         raw_talents = hero_ab_data.get("talents") or []
-        _DIAG_HEROES = {"npc_dota_hero_pudge", "npc_dota_hero_bloodseeker"}
-        if npc_name in _DIAG_HEROES:
-            for _t in raw_talents[:4]:
-                _tkey   = _t.get("name", "")
-                _tentry = abilities_json.get(_tkey) or {}
-                logger.info(
-                    "[builds] [%s] talent key=%r → dname=%r (in abilities.json=%s)",
-                    npc_name, _tkey, _tentry.get("dname"), bool(_tentry),
-                )
         talents = []
         for i in range(0, len(raw_talents), 2):
             left_e  = raw_talents[i]     if i     < len(raw_talents) else {}
             right_e = raw_talents[i + 1] if i + 1 < len(raw_talents) else {}
             level   = left_e.get("level") or right_e.get("level")
+            left_key  = left_e.get("name",  "")
+            right_key = right_e.get("name", "")
             talents.append({
                 "level": level,
-                "left":  _talent_display_name(left_e.get("name",  ""), abilities_json),
-                "right": _talent_display_name(right_e.get("name", ""), abilities_json),
+                "left":  valve_talent_names.get(left_key)  or _talent_display_name(left_key,  abilities_json),
+                "right": valve_talent_names.get(right_key) or _talent_display_name(right_key, abilities_json),
             })
 
         # ── Start-game items (from OpenDota itemPopularity) ───────────
