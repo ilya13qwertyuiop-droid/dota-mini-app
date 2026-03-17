@@ -1515,6 +1515,20 @@ switchPage = function (pageName, event) {
 
 // ========== МАТЧАПЫ ==========
 
+var _heroPageActiveTab = 'build';
+
+function switchHeroPageTab(tab) {
+    _heroPageActiveTab = tab;
+    var btnMatchups = document.getElementById('hero-ptab-matchups');
+    var btnBuild    = document.getElementById('hero-ptab-build');
+    var panelMatchups = document.getElementById('hero-tab-matchups');
+    var panelBuild    = document.getElementById('hero-tab-build');
+    if (btnMatchups)    btnMatchups.classList.toggle('active',    tab === 'matchups');
+    if (btnBuild)       btnBuild.classList.toggle('active',       tab === 'build');
+    if (panelMatchups)  panelMatchups.style.display = tab === 'matchups' ? 'block' : 'none';
+    if (panelBuild)     panelBuild.style.display    = tab === 'build'    ? 'block' : 'none';
+}
+
 // Собираем единый массив всех героев из window.dotaHeroIds —
 // единственного авторитетного источника для матчапов.
 // Дедупликация по hero_id исключает дубли вроде
@@ -1553,6 +1567,7 @@ const matchupPage = {
             suggestions.innerHTML = '';
             suggestions.style.display = 'none';
         }
+        if (window.renderRecentHeroes) window.renderRecentHeroes();
     },
 
     showHero: function (heroName) {
@@ -1570,6 +1585,7 @@ const matchupPage = {
         if (nameEl) {
             nameEl.textContent = heroName;
         }
+        switchHeroPageTab(_heroPageActiveTab);
     },
 
     onInput: function (value) {
@@ -1617,10 +1633,179 @@ const matchupPage = {
             showMatchupsError('Матчапы для этого героя пока недоступны');
             return;
         }
+        if (window.addRecentHero) window.addRecentHero(heroId);
+        loadHeroBuild(heroId);
         loadHeroMatchups(heroId);
         loadHeroSynergy(heroId);
     }
 };
+
+// ---------- Build: загрузка и рендер ----------
+
+var _buildData        = null;
+var _buildHeroId      = null;
+var _activeFacetIdx   = 0;
+
+function _showBuildLoading() {
+    _buildData    = null;
+    _activeFacetIdx = 0;
+    var el = document.getElementById('build-content');
+    if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
+}
+
+function _renderFacetDesc(facets) {
+    var descEl = document.getElementById('build-facet-desc');
+    if (!descEl) return;
+    var f = facets[_activeFacetIdx];
+    if (!f) { descEl.textContent = ''; return; }
+    descEl.textContent = f.description || '';
+}
+
+function selectFacet(idx) {
+    _activeFacetIdx = idx;
+    var btns = document.querySelectorAll('.build-facet-btn');
+    btns.forEach(function (btn, i) { btn.classList.toggle('active', i === idx); });
+    if (_buildData) _renderFacetDesc(_buildData.facets);
+}
+
+function renderBuildTab(data) {
+    var el = document.getElementById('build-content');
+    if (!el) return;
+
+    var html = '';
+
+    // ── Аспекты (только если больше одного) ──────────────────────────────
+    var facets = data.facets || [];
+    if (facets.length > 1) {
+        var facetBtns = facets.map(function (f, i) {
+            var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/facets/icons/' + (f.icon || '') + '.png';
+            var colorStyle = '';
+            if (f.color) {
+                var colorMap = {
+                    'RED': 'rgba(200,60,60,0.22)', 'BLUE': 'rgba(58,123,213,0.22)',
+                    'GREEN': 'rgba(34,197,94,0.22)', 'YELLOW': 'rgba(234,179,8,0.22)',
+                    'PURPLE': 'rgba(168,85,247,0.22)', 'ORANGE': 'rgba(249,115,22,0.22)',
+                    'CYAN': 'rgba(6,182,212,0.22)', 'BROWN': 'rgba(146,64,14,0.22)',
+                    'GRAY': 'rgba(156,163,175,0.22)', 'DARK_BLUE': 'rgba(30,58,138,0.22)',
+                };
+                var bg = colorMap[f.color.toUpperCase()] || 'rgba(255,255,255,0.08)';
+                colorStyle = 'style="background:' + bg + '"';
+            }
+            var activeClass = i === 0 ? ' active' : '';
+            return '<button class="build-facet-btn' + activeClass + '" onclick="selectFacet(' + i + ')" ' + colorStyle + '>' +
+                '<img src="' + iconUrl + '" class="build-facet-icon" onerror="this.style.display=\'none\'">' +
+                '<span class="build-facet-name">' + (f.title || f.name || '') + '</span>' +
+                '</button>';
+        }).join('');
+
+        var firstDesc = (facets[0] && facets[0].description) ? facets[0].description : '';
+        html += '<div class="matchup-section">' +
+            '<div class="matchup-section-title">АСПЕКТЫ</div>' +
+            '<div class="build-facets">' + facetBtns + '</div>' +
+            '<div class="build-facet-desc" id="build-facet-desc">' + firstDesc + '</div>' +
+            '</div>';
+    }
+
+    // ── Порядок прокачки ──────────────────────────────────────────────────
+    // Filter out talents (special_bonus_*) — they appear in a separate block and
+    // would otherwise show broken icons and shift the level numbering.
+    var abilities = (data.ability_build || []).filter(function (aname) {
+        return aname.indexOf('special_bonus_') !== 0;
+    });
+    html += '<div class="matchup-section"><div class="matchup-section-title">ПОРЯДОК ПРОКАЧКИ</div>';
+    if (abilities.length > 0) {
+        var slots = abilities.map(function (aname, i) {
+            var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/' + aname + '.png';
+            return '<div class="build-ability-slot">' +
+                '<div class="build-ability-level">' + (i + 1) + '</div>' +
+                '<img src="' + iconUrl + '" class="build-ability-icon" title="' + aname + '" onerror="this.style.opacity=\'0.3\'">' +
+                '</div>';
+        }).join('');
+        html += '<div class="build-abilities">' + slots + '</div>';
+    } else {
+        html += '<p class="build-placeholder">Данные собираются, скоро появится</p>';
+    }
+    html += '</div>';
+
+    // ── Таланты ───────────────────────────────────────────────────────────
+    var talents = data.talents || [];
+    if (talents.length > 0) {
+        // Сортируем по убыванию уровня (25→20→15→10) — дерево снизу вверх
+        var sorted = talents.slice().sort(function (a, b) { return (b.level || 0) - (a.level || 0); });
+        var talentRows = sorted.map(function (t) {
+            return '<div class="build-talent-row">' +
+                '<div class="build-talent-left">' + (t.left || '') + '</div>' +
+                '<div class="build-talent-level">' + (t.level || '') + '</div>' +
+                '<div class="build-talent-right">' + (t.right || '') + '</div>' +
+                '</div>';
+        }).join('');
+        html += '<div class="matchup-section">' +
+            '<div class="matchup-section-title">ТАЛАНТЫ</div>' +
+            '<div class="build-talents">' + talentRows + '</div>' +
+            '</div>';
+    }
+
+    // ── Стартовые предметы ────────────────────────────────────────────────
+    var startItems = (data.items && data.items.start_game_items) || [];
+    if (startItems.length > 0) {
+        var startSlots = startItems.map(function (item) {
+            return '<div class="build-item-slot">' +
+                (item.img
+                    ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
+                    : '<div class="build-item-icon"></div>') +
+                '<span class="build-item-name">' + (item.dname || '') + '</span>' +
+                '</div>';
+        }).join('');
+        html += '<div class="matchup-section">' +
+            '<div class="matchup-section-title">СТАРТОВЫЕ ПРЕДМЕТЫ</div>' +
+            '<div class="build-items-row">' + startSlots + '</div>' +
+            '</div>';
+    }
+
+    // ── Основные предметы (из нашей БД) ──────────────────────────────────
+    var coreItems = (data.items && data.items.core_items) || [];
+    if (coreItems.length > 0) {
+        var coreSlots = coreItems.map(function (item) {
+            var wr = item.winrate != null ? Math.round(item.winrate * 100) + '%' : '';
+            var games = item.games ? item.games + '\u00a0игр' : '';
+            return '<div class="build-item-slot">' +
+                (item.img
+                    ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
+                    : '<div class="build-item-icon"></div>') +
+                '<span class="build-item-name">' + (item.dname || '') + '</span>' +
+                (wr ? '<span class="build-item-stat">' + wr + '</span>' : '') +
+                (games ? '<span class="build-item-games">' + games + '</span>' : '') +
+                '</div>';
+        }).join('');
+        html += '<div class="matchup-section">' +
+            '<div class="matchup-section-title">ОСНОВНЫЕ ПРЕДМЕТЫ</div>' +
+            '<div class="build-items-row">' + coreSlots + '</div>' +
+            '</div>';
+    }
+
+    if (!html) {
+        html = '<p class="matchup-placeholder-text">Данные недоступны</p>';
+    }
+
+    el.innerHTML = html;
+}
+
+async function loadHeroBuild(heroId) {
+    _buildHeroId = heroId;
+    _showBuildLoading();
+    try {
+        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/build');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        var data = await response.json();
+        if (_buildHeroId !== heroId) return;  // hero changed while loading
+        _buildData = data;
+        renderBuildTab(data);
+    } catch (err) {
+        console.error('[build] loadHeroBuild error:', err);
+        var el = document.getElementById('build-content');
+        if (el) el.innerHTML = '<p class="matchup-placeholder-text">Не удалось загрузить данные сборки</p>';
+    }
+}
 
 // ---------- Matchups: загрузка и рендер ----------
 
@@ -1936,6 +2121,84 @@ function switchSynergyTab(tab) {
     }
 }
 
+
+// ========== НЕДАВНИЕ ГЕРОИ ==========
+
+(function () {
+    var RECENT_KEY = 'recent_heroes';
+    var MAX_RECENT = 7;
+
+    var _heroIdToName = null;
+    function getHeroIdToName() {
+        if (_heroIdToName) return _heroIdToName;
+        _heroIdToName = {};
+        if (window.dotaHeroIds) {
+            Object.keys(window.dotaHeroIds).forEach(function (name) {
+                var id = window.dotaHeroIds[name];
+                if (!_heroIdToName[id]) _heroIdToName[id] = name;
+            });
+        }
+        return _heroIdToName;
+    }
+
+    window.addRecentHero = function (heroId) {
+        if (!heroId) return;
+        try {
+            var list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            list = list.filter(function (id) { return id !== heroId; });
+            list.unshift(heroId);
+            if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
+            localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+        } catch (e) {}
+    };
+
+    window.renderRecentHeroes = function () {
+        var block = document.getElementById('recent-heroes-block');
+        var listEl = document.getElementById('recent-heroes-list');
+        if (!block || !listEl) return;
+
+        var list = [];
+        try { list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) {}
+
+        if (!list.length) {
+            block.style.display = 'none';
+            return;
+        }
+
+        var idToName = getHeroIdToName();
+        var items = list.map(function (id) {
+            return idToName[id] ? { id: id, name: idToName[id] } : null;
+        }).filter(Boolean).slice(0, 5);
+
+        if (!items.length) {
+            block.style.display = 'none';
+            return;
+        }
+
+        // Center-outward delays: index 2 first, then 1&3, then 0&4
+        var centerOutwardDelays = [0.24, 0.12, 0, 0.12, 0.24];
+
+        block.style.display = 'block';
+        listEl.innerHTML = items.map(function (hero, idx) {
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(hero.name) : '';
+            var escaped = hero.name.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            var delay = centerOutwardDelays[idx] !== undefined ? centerOutwardDelays[idx] : 0;
+            return '<div class="recent-hero-item" data-hero-name="' + escaped + '" style="--rh-delay:' + delay + 's">' +
+                '<div class="recent-hero-icon-wrap">' +
+                  '<img src="' + iconUrl + '" alt="' + escaped + '" class="recent-hero-icon" onerror="this.style.display=\'none\'">' +
+                '</div>' +
+                '<div class="recent-hero-name">' + hero.name + '</div>' +
+            '</div>';
+        }).join('');
+
+        listEl.querySelectorAll('.recent-hero-item').forEach(function (el) {
+            el.addEventListener('click', function () {
+                var name = el.dataset.heroName;
+                if (name) matchupPage.selectHero(name);
+            });
+        });
+    };
+}());
 
 // ========== ФИДБЕК ==========
 
