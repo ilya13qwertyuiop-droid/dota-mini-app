@@ -1707,7 +1707,11 @@ function renderBuildTab(data) {
     }
 
     // ── Порядок прокачки ──────────────────────────────────────────────────
-    var abilities = data.ability_build || [];
+    // Filter out talents (special_bonus_*) — they appear in a separate block and
+    // would otherwise show broken icons and shift the level numbering.
+    var abilities = (data.ability_build || []).filter(function (aname) {
+        return aname.indexOf('special_bonus_') !== 0;
+    });
     html += '<div class="matchup-section"><div class="matchup-section-title">ПОРЯДОК ПРОКАЧКИ</div>';
     if (abilities.length > 0) {
         var slots = abilities.map(function (aname, i) {
