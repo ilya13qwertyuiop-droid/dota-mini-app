@@ -1680,15 +1680,15 @@ function renderBuildTab(data) {
         var facetBtns = facets.map(function (f, i) {
             var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/facets/icons/' + (f.icon || '') + '.png';
             var colorStyle = '';
-            if (f.color) {
+            if (f.color !== undefined && f.color !== null) {
                 var colorMap = {
-                    'RED': 'rgba(200,60,60,0.22)', 'BLUE': 'rgba(58,123,213,0.22)',
-                    'GREEN': 'rgba(34,197,94,0.22)', 'YELLOW': 'rgba(234,179,8,0.22)',
-                    'PURPLE': 'rgba(168,85,247,0.22)', 'ORANGE': 'rgba(249,115,22,0.22)',
-                    'CYAN': 'rgba(6,182,212,0.22)', 'BROWN': 'rgba(146,64,14,0.22)',
-                    'GRAY': 'rgba(156,163,175,0.22)', 'DARK_BLUE': 'rgba(30,58,138,0.22)',
+                    0: 'rgba(146,64,14,0.22)',
+                    1: 'rgba(200,60,60,0.22)',
+                    2: 'rgba(34,197,94,0.22)',
+                    3: 'rgba(6,182,212,0.22)',
+                    4: 'rgba(168,85,247,0.22)',
                 };
-                var bg = colorMap[f.color.toUpperCase()] || 'rgba(255,255,255,0.08)';
+                var bg = colorMap[f.color] !== undefined ? colorMap[f.color] : 'rgba(255,255,255,0.08)';
                 colorStyle = 'style="background:' + bg + '"';
             }
             var activeClass = i === 0 ? ' active' : '';
