@@ -30,7 +30,6 @@ from backend.stats_db import (
     get_hero_total_games,
     get_stats_mode,
     get_hero_ability_build,
-    get_hero_core_items,
     get_hero_talent_builds,
     get_hero_build_cache,
     get_app_cache_value,
@@ -640,10 +639,6 @@ async def api_hero_build(hero_id: int):
     raw_map = get_app_cache_value("ability_id_to_name") or {}
     ability_id_to_name: dict[int, str] = {int(k): v for k, v in raw_map.items()}
 
-    # ── items_by_id map (from app_cache) ──────────────────────────────────
-    raw_items = get_app_cache_value("items_by_id") or {}
-    items_by_id: dict[int, dict] = {int(k): v for k, v in raw_items.items()}
-
     # ── Ability build (live from our DB) ─────────────────────────────────
     ability_build: list[str] = []
     db_build = get_hero_ability_build(hero_id)
@@ -653,18 +648,8 @@ async def api_hero_build(hero_id: int):
             if aname:
                 ability_build.append(aname)
 
-    # ── Core items (live from our DB) ─────────────────────────────────────
-    core_rows = get_hero_core_items(hero_id, top_n=6, min_item_id=50)
-    core_items = []
-    for row in core_rows:
-        info = items_by_id.get(row["item_id"]) or {}
-        core_items.append({
-            "id":      row["item_id"],
-            "dname":   info.get("dname") or str(row["item_id"]),
-            "img":     info.get("img"),
-            "games":   row["games"],
-            "winrate": row["winrate"],
-        })
+    # ── Core items (pre-decoded, from hero_builds_cache populated weekly by builds_updater) ──
+    core_items: list[dict] = cached.get("core_items") or []
 
     # ── Talent picks (live from our DB) ──────────────────────────────────
     talent_picks_raw = get_hero_talent_builds(hero_id)

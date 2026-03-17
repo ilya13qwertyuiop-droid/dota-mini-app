@@ -91,6 +91,7 @@ from backend.stats_db import (
     get_app_cache_value,
     set_app_cache_value,
     set_hero_build_cache,
+    get_hero_core_items,
 )
 
 # ---------------------------------------------------------------------------
@@ -288,8 +289,8 @@ def _extract_player_stats(player: dict) -> dict:
         "item3":        core_items[3],
         "item4":        core_items[4],
         "item5":        core_items[5],
-        # --- ability build (first 18 upgrades, levels 1-18) ---
-        "ability_upgrades": (player.get("ability_upgrades_arr") or [])[:18],
+        # --- ability build (first 30 upgrades, covers levels 1-25 including all talents) ---
+        "ability_upgrades": (player.get("ability_upgrades_arr") or [])[:30],
     }
 
 
@@ -835,15 +836,22 @@ def _talent_display_name(talent_key: str, abilities_json: dict) -> str:
     if "{" not in dname:
         return dname
     # Build attrib key → value lookup for {s:KEY} substitution
-    attrib_map = {
-        a["key"]: str(a.get("value", ""))
-        for a in (entry.get("attrib") or [])
-        if isinstance(a, dict) and "key" in a
-    }
+    attrib_map: dict[str, str] = {}
+    for _a in (entry.get("attrib") or []):
+        if not isinstance(_a, dict) or "key" not in _a:
+            continue
+        _raw = _a.get("value")
+        # dotaconstants sometimes stores values as lists (per-level arrays); take first element
+        if isinstance(_raw, list):
+            _raw = _raw[0] if _raw else None
+        attrib_map[_a["key"]] = str(_raw) if _raw is not None else ""
+
     def _sub(m: re.Match) -> str:
         sign, key = m.group(1) or "", m.group(2)
         val = attrib_map.get(key)
-        return (sign + val) if val is not None else ""
+        if val is None:
+            return m.group(0)  # key not in attrib → keep template → triggers fallback below
+        return sign + val
     resolved = _TALENT_TEMPLATE_RE.sub(_sub, dname).strip()
     # Fall back if any unresolved templates remain
     if "{" in resolved:
@@ -1049,10 +1057,24 @@ async def _run_builds_update() -> None:
                     "img":   info["img"],
                 })
 
+        # ── Core items (from our DB, pre-decoded with items_by_id) ───────
+        core_rows = get_hero_core_items(hero_id, top_n=6, min_item_id=50)
+        core_items_cached = []
+        for _row in core_rows:
+            _info = items_by_id.get(str(_row["item_id"])) or {}
+            core_items_cached.append({
+                "id":      _row["item_id"],
+                "dname":   _info.get("dname") or str(_row["item_id"]),
+                "img":     _info.get("img"),
+                "games":   _row["games"],
+                "winrate": _row["winrate"],
+            })
+
         set_hero_build_cache(hero_id, {
             "facets":           facets,
             "talents":          talents,
             "start_game_items": start_game_items,
+            "core_items":       core_items_cached,
             "npc_name":         npc_name,
         })
         processed += 1
