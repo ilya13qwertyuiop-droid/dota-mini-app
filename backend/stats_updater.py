@@ -1053,20 +1053,20 @@ async def _run_builds_update() -> None:
         logger.info("[builds] hero_id=%s start_game_items raw top=%s", hero_id,
                     [(k, v) for k, v in start_sorted[:3]])
         start_game_items = []
-        for iname, _count in start_sorted:
-            info = (
-                items_by_name.get(iname)
-                or items_by_name.get("item_" + iname)
-                or items_by_name.get(iname.removeprefix("item_"))
-            )
+        for iid_str, _count in start_sorted:
+            try:
+                info = items_by_id.get(str(int(iid_str)))
+            except (ValueError, TypeError):
+                logger.debug("[builds] start_game_item bad id: %r", iid_str)
+                continue
             if info:
                 start_game_items.append({
-                    "id":    info["id"],
+                    "id":    int(iid_str),
                     "dname": info["dname"],
                     "img":   info["img"],
                 })
             else:
-                logger.debug("[builds] start_game_item not found in items_by_name: %r", iname)
+                logger.debug("[builds] start_game_item id not in items_by_id: %r", iid_str)
 
         # ── Core items (from our DB, pre-decoded with items_by_id) ───────
         core_rows = get_hero_core_items(hero_id, top_n=6, min_item_id=50)
