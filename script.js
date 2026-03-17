@@ -1668,6 +1668,16 @@ function selectFacet(idx) {
     if (_buildData) _renderFacetDesc(_buildData.facets);
 }
 
+function switchItemsTab(tab, btn) {
+    ['start', 'core'].forEach(function (t) {
+        var panel = document.getElementById('items-panel-' + t);
+        if (panel) panel.style.display = t === tab ? '' : 'none';
+    });
+    document.querySelectorAll('.build-items-tab').forEach(function (b) {
+        b.classList.toggle('active', b === btn);
+    });
+}
+
 function renderBuildTab(data) {
     var el = document.getElementById('build-content');
     if (!el) return;
@@ -1730,24 +1740,33 @@ function renderBuildTab(data) {
     // ── Таланты ───────────────────────────────────────────────────────────
     var talents = data.talents || [];
     if (talents.length > 0) {
-        // Сортируем по убыванию уровня (25→20→15→10) — дерево снизу вверх
+        var talentPicks = data.talent_picks || {};
         var sorted = talents.slice().sort(function (a, b) { return (b.level || 0) - (a.level || 0); });
         var talentRows = sorted.map(function (t) {
+            var popularAbility = talentPicks[String(t.level)] ? talentPicks[String(t.level)][0] : null;
+            var leftPopular  = !!(popularAbility && popularAbility === t.left_ability);
+            var rightPopular = !!(popularAbility && popularAbility === t.right_ability);
+            var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
+            var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
+            var leftStar  = leftPopular  ? '<span class="build-talent-star">\u2605</span>' : '';
+            var rightStar = rightPopular ? '<span class="build-talent-star">\u2605</span>' : '';
             return '<div class="build-talent-row">' +
-                '<div class="build-talent-left">' + (t.left || '') + '</div>' +
-                '<div class="build-talent-level">' + (t.level || '') + '</div>' +
-                '<div class="build-talent-right">' + (t.right || '') + '</div>' +
+                '<div class="' + leftCls + '">' + (t.left || '') + leftStar + '</div>' +
+                '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
+                '<div class="' + rightCls + '">' + rightStar + (t.right || '') + '</div>' +
                 '</div>';
         }).join('');
         html += '<div class="matchup-section">' +
             '<div class="matchup-section-title">ТАЛАНТЫ</div>' +
-            '<div class="build-talents">' + talentRows + '</div>' +
+            '<div class="build-talent-tree">' + talentRows + '</div>' +
             '</div>';
     }
 
-    // ── Стартовые предметы ────────────────────────────────────────────────
+    // ── Предметы (вкладки: Стартовые / Основные) ─────────────────────────
     var startItems = (data.items && data.items.start_game_items) || [];
-    if (startItems.length > 0) {
+    var coreItems  = (data.items && data.items.core_items)       || [];
+    if (startItems.length > 0 || coreItems.length > 0) {
+        var defaultTab = startItems.length > 0 ? 'start' : 'core';
         var startSlots = startItems.map(function (item) {
             return '<div class="build-item-slot">' +
                 (item.img
@@ -1756,30 +1775,29 @@ function renderBuildTab(data) {
                 '<span class="build-item-name">' + (item.dname || '') + '</span>' +
                 '</div>';
         }).join('');
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">СТАРТОВЫЕ ПРЕДМЕТЫ</div>' +
-            '<div class="build-items-row">' + startSlots + '</div>' +
-            '</div>';
-    }
-
-    // ── Основные предметы (из нашей БД) ──────────────────────────────────
-    var coreItems = (data.items && data.items.core_items) || [];
-    if (coreItems.length > 0) {
         var coreSlots = coreItems.map(function (item) {
-            var wr = item.winrate != null ? Math.round(item.winrate * 100) + '%' : '';
+            var wr    = item.winrate != null ? Math.round(item.winrate * 100) + '%' : '';
             var games = item.games ? item.games + '\u00a0игр' : '';
             return '<div class="build-item-slot">' +
                 (item.img
                     ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
                     : '<div class="build-item-icon"></div>') +
                 '<span class="build-item-name">' + (item.dname || '') + '</span>' +
-                (wr ? '<span class="build-item-stat">' + wr + '</span>' : '') +
+                (wr    ? '<span class="build-item-stat">'  + wr    + '</span>' : '') +
                 (games ? '<span class="build-item-games">' + games + '</span>' : '') +
                 '</div>';
         }).join('');
         html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">ОСНОВНЫЕ ПРЕДМЕТЫ</div>' +
+            '<div class="build-items-tabs">' +
+            '<button class="build-items-tab' + (defaultTab === 'start' ? ' active' : '') + '" onclick="switchItemsTab(\'start\', this)">Стартовые</button>' +
+            '<button class="build-items-tab' + (defaultTab === 'core'  ? ' active' : '') + '" onclick="switchItemsTab(\'core\', this)">Основные</button>' +
+            '</div>' +
+            '<div class="build-items-panel" id="items-panel-start"' + (defaultTab !== 'start' ? ' style="display:none"' : '') + '>' +
+            '<div class="build-items-row">' + startSlots + '</div>' +
+            '</div>' +
+            '<div class="build-items-panel" id="items-panel-core"' + (defaultTab !== 'core' ? ' style="display:none"' : '') + '>' +
             '<div class="build-items-row">' + coreSlots + '</div>' +
+            '</div>' +
             '</div>';
     }
 
