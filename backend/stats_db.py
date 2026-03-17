@@ -549,7 +549,7 @@ def _upsert_hero_ability_builds(conn, players: list[dict], radiant_win: bool) ->
         hero_id = p.get("hero_id")
         if not hero_id:
             continue
-        ability_ids = json.dumps(raw)  # already sliced to 18 by _extract_player_stats
+        ability_ids = json.dumps(raw)  # already sliced to 30 by _extract_player_stats
         slot = p.get("player_slot", 128)
         won = int((slot < 128) == radiant_win)
         conn.execute(
