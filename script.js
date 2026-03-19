@@ -1744,16 +1744,15 @@ function renderBuildTab(data) {
         var sorted = talents.slice().sort(function (a, b) { return (b.level || 0) - (a.level || 0); });
         var talentRows = sorted.map(function (t) {
             var popularAbility = talentPicks[String(t.level)] ? talentPicks[String(t.level)][0] : null;
-            var leftPopular  = !!(popularAbility && popularAbility === t.left_ability);
-            var rightPopular = !!(popularAbility && popularAbility === t.right_ability);
+            var popularName  = popularAbility ? popularAbility.ability_name : null;
+            var leftPopular  = !!(popularName && popularName === t.left_ability);
+            var rightPopular = !!(popularName && popularName === t.right_ability);
             var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
             var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
-            var leftStar  = leftPopular  ? '<span class="build-talent-star">\u2605</span>' : '';
-            var rightStar = rightPopular ? '<span class="build-talent-star">\u2605</span>' : '';
             return '<div class="build-talent-row">' +
-                '<div class="' + leftCls + '">' + (t.left || '') + leftStar + '</div>' +
+                '<div class="' + leftCls + '">' + (t.left || '') + '</div>' +
                 '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
-                '<div class="' + rightCls + '">' + rightStar + (t.right || '') + '</div>' +
+                '<div class="' + rightCls + '">' + (t.right || '') + '</div>' +
                 '</div>';
         }).join('');
         html += '<div class="matchup-section">' +

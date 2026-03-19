@@ -655,10 +655,13 @@ async def api_hero_build(hero_id: int):
     talent_picks_raw = get_hero_talent_builds(hero_id)
     talent_picks: dict[str, list] = {}
     for level, picks in talent_picks_raw.items():
-        talent_picks[str(level)] = [
-            {**pick, "ability_name": ability_id_to_name.get(pick["ability_id"])}
-            for pick in picks
-        ]
+        level_picks = []
+        for pick in picks:
+            aname = ability_id_to_name.get(pick["ability_id"])
+            if aname and aname.startswith("special_bonus_"):
+                level_picks.append({**pick, "ability_name": aname})
+        if level_picks:
+            talent_picks[str(level)] = level_picks
 
     logger.info(
         "[build] hero_id=%s facets=%d talents=%d ability_build=%d "
