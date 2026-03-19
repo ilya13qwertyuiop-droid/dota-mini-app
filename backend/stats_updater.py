@@ -1036,12 +1036,13 @@ async def _run_builds_update() -> None:
             failed += 1
 
         # ── Talents — build pairs from OpenDota level list ────────────
+        TALENT_LEVELS = [10, 15, 20, 25]
         raw_talents = hero_ab_data.get("talents") or []
         talents = []
-        for i in range(0, len(raw_talents), 2):
+        for pair_idx, i in enumerate(range(0, len(raw_talents), 2)):
             left_e  = raw_talents[i]     if i     < len(raw_talents) else {}
             right_e = raw_talents[i + 1] if i + 1 < len(raw_talents) else {}
-            level   = left_e.get("level") or right_e.get("level")
+            level   = TALENT_LEVELS[pair_idx] if pair_idx < len(TALENT_LEVELS) else (left_e.get("level") or right_e.get("level"))
             left_key  = left_e.get("name",  "")
             right_key = right_e.get("name", "")
             talents.append({
