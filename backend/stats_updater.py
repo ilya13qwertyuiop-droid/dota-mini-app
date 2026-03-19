@@ -1047,10 +1047,10 @@ async def _run_builds_update() -> None:
             right_key = right_e.get("name", "")
             talents.append({
                 "level":         level,
-                "left":          valve_talent_names.get(left_key)  or _talent_display_name(left_key,  abilities_json),
-                "left_ability":  left_key,
-                "right":         valve_talent_names.get(right_key) or _talent_display_name(right_key, abilities_json),
-                "right_ability": right_key,
+                "left":          valve_talent_names.get(right_key) or _talent_display_name(right_key, abilities_json),
+                "left_ability":  right_key,
+                "right":         valve_talent_names.get(left_key)  or _talent_display_name(left_key,  abilities_json),
+                "right_ability": left_key,
             })
 
         # ── Start-game items (from OpenDota itemPopularity) ───────────
