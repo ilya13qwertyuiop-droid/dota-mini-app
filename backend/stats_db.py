@@ -661,15 +661,20 @@ def set_hero_build_cache(hero_id: int, data: dict) -> None:
 def get_hero_talent_builds(hero_id: int) -> dict:
     """Returns talent pick statistics per level from hero_ability_builds.
 
-    Scans ability_ids arrays and extracts the ability_id chosen at each
-    talent level (index 9 = lvl 10, 14 = lvl 15, 19 = lvl 20, 24 = lvl 25).
-    Aggregates games/wins per ability_id at each level, returns top-2 per level
-    sorted by games descending.
+    For each talent level, checks a pair of indices and picks the ability_id
+    whose name starts with 'special_bonus_' (the actual talent).
+    Talent/skill order in ability_upgrades_arr can vary, so both slots are checked.
+
+    Pairs: lvl 10 → indices (9, 10), lvl 15 → (14, 15), lvl 20 → (19, 20), lvl 25 → (24, 25).
 
     Returns {level_int: [{"ability_id": int, "games": int, "wins": int, "winrate": float}]}
-    Only includes levels where data is available.
+    Only includes levels where talent data is available.
     """
-    TALENT_INDICES: dict[int, int] = {10: 9, 15: 14, 20: 19, 25: 24}
+    TALENT_PAIRS: dict[int, tuple[int, int]] = {10: (9, 10), 15: (14, 15), 20: (19, 20), 25: (24, 25)}
+
+    # Load ability_id → name map once from app_cache
+    raw_map = get_app_cache_value("ability_id_to_name") or {}
+    ability_id_to_name: dict[int, str] = {int(k): v for k, v in raw_map.items()}
 
     with engine.connect() as conn:
         rows = conn.execute(
@@ -686,16 +691,23 @@ def get_hero_talent_builds(hero_id: int) -> dict:
     for row in rows:
         ids: list = json.loads(row["ability_ids"])
         g, w = row["games"], row["wins"]
-        for level, idx in TALENT_INDICES.items():
-            if idx < len(ids):
-                aid = ids[idx]
-                if not aid:
-                    continue
-                lc = level_counts.setdefault(level, {})
-                if aid not in lc:
-                    lc[aid] = {"games": 0, "wins": 0}
-                lc[aid]["games"] += g
-                lc[aid]["wins"]  += w
+        for level, (idx_a, idx_b) in TALENT_PAIRS.items():
+            # Pick whichever slot holds the talent (special_bonus_*)
+            aid = None
+            for idx in (idx_a, idx_b):
+                if idx < len(ids) and ids[idx]:
+                    candidate = ids[idx]
+                    name = ability_id_to_name.get(int(candidate), "")
+                    if name.startswith("special_bonus_"):
+                        aid = candidate
+                        break
+            if not aid:
+                continue
+            lc = level_counts.setdefault(level, {})
+            if aid not in lc:
+                lc[aid] = {"games": 0, "wins": 0}
+            lc[aid]["games"] += g
+            lc[aid]["wins"]  += w
 
     result: dict[int, list] = {}
     for level in sorted(level_counts):
