@@ -946,21 +946,38 @@ async def _run_builds_update() -> None:
                 "ability_ids" if isinstance(ability_ids_data, dict) and ability_ids_data else "abilities.json")
 
     # items_by_id for API endpoint to decode item IDs
+    # First pass: collect all component_names referenced in any item's "components" field
+    _raw_items = items_data if isinstance(items_data, dict) else {}
+    _component_names: set[str] = set()
+    for _iinfo in _raw_items.values():
+        if isinstance(_iinfo, dict):
+            for _cname in (_iinfo.get("components") or []):
+                if isinstance(_cname, str):
+                    _component_names.add(_cname)
+                    _component_names.add("item_" + _cname)
+
     items_by_id: dict[str, dict] = {}
     items_by_name: dict[str, dict] = {}
-    for ikey, iinfo in (items_data if isinstance(items_data, dict) else {}).items():
+    for ikey, iinfo in _raw_items.items():
         if not isinstance(iinfo, dict):
             continue
         iid = iinfo.get("id")
         img = iinfo.get("img") or ""
         if img and not img.startswith("http"):
             img = CDN_BASE + img
-        entry = {"id": iid, "dname": iinfo.get("dname") or ikey, "img": img or None, "qual": iinfo.get("qual")}
+        clean = ikey.removeprefix("item_")
+        is_component = clean in _component_names or ikey in _component_names
+        entry = {
+            "id": iid,
+            "dname": iinfo.get("dname") or ikey,
+            "img": img or None,
+            "qual": iinfo.get("qual"),
+            "is_component": is_component,
+        }
         if iid is not None:
             items_by_id[str(int(iid))] = entry
-        clean = ikey.removeprefix("item_")
-        items_by_name[ikey]          = entry
-        items_by_name[clean]         = entry
+        items_by_name[ikey]            = entry
+        items_by_name[clean]           = entry
         items_by_name["item_" + clean] = entry
 
     set_app_cache_value("ability_id_to_name", ability_id_to_name)
