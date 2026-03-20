@@ -1656,12 +1656,12 @@ var _POSITION_LABELS = {
     'POSITION_4': 'Частичная поддержка',
     'POSITION_5': 'Поддержка',
 };
-var _POSITION_ICONS = {
-    'POSITION_1': '⚔️',
-    'POSITION_2': '⚡',
-    'POSITION_3': '🛡️',
-    'POSITION_4': '🤝',
-    'POSITION_5': '💧',
+var _POSITION_IMG = {
+    'POSITION_1': '/images/positions/pos_1.png',
+    'POSITION_2': '/images/positions/pos_2.png',
+    'POSITION_3': '/images/positions/pos_3.png',
+    'POSITION_4': '/images/positions/pos_4.png',
+    'POSITION_5': '/images/positions/pos_5.png',
 };
 
 function _showBuildLoading() {
@@ -1921,8 +1921,9 @@ function renderBuildTab(data) {
     // ── Позиции: иконка сверху, название снизу ───────────────────────────
     var posButtons = topPositions.map(function (pos) {
         var activeCls = pos === _buildPosition ? ' active' : '';
+        var imgSrc = _POSITION_IMG[pos] || '';
         return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
-            '<span class="build-filter-icon">' + (_POSITION_ICONS[pos] || '') + '</span>' +
+            '<img src="' + imgSrc + '" style="width:24px;height:24px;object-fit:contain;" onerror="this.style.display=\'none\'">' +
             '<span class="build-filter-name">' + (_POSITION_LABELS[pos] || pos) + '</span>' +
             '</button>';
     }).join('');
