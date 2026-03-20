@@ -1607,101 +1607,134 @@ margin-top: 14px;
 
 /* ========== BUILD TAB ========== */
 
-/* ---- Filters row ---- */
+/* ---- Filter block ---- */
 .build-filters {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.build-filter-positions {
+.build-filter-section {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.build-filter-ranks {
-  display: flex;
-  gap: 6px;
-}
-
-.build-pos-btn {
-  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 8px;
+}
+
+.build-filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.38);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  text-align: center;
+}
+
+.build-filter-segmented {
+  display: flex;
   gap: 4px;
-  padding: 5px 11px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 4px;
+  width: 100%;
+}
+
+.build-pos-btn,
+.build-rank-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  white-space: nowrap;
-}
-
-.build-pos-btn.active {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.38);
-  color: var(--text-main);
+  transition: all 0.18s ease;
+  font-family: inherit;
+  text-align: center;
 }
 
 .build-rank-btn {
-  display: flex;
-  align-items: center;
+  flex-direction: row;
   gap: 5px;
-  padding: 5px 11px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-muted);
+  padding: 10px 6px;
   font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
+.build-pos-btn.active,
 .build-rank-btn.active {
-  background: rgba(255, 255, 255, 0.13);
-  border-color: rgba(255, 255, 255, 0.32);
-  color: var(--text-main);
+  background: rgba(58, 123, 213, 0.3);
+  border-color: rgba(58, 123, 213, 0.7);
+  color: #e8f4ff;
+  box-shadow: 0 0 12px rgba(58, 123, 213, 0.4), inset 0 0 8px rgba(58, 123, 213, 0.1);
+}
+
+.build-filter-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.build-filter-name {
+  line-height: 1.2;
 }
 
 .build-rank-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
   flex-shrink: 0;
 }
 
-/* ---- Sub-tabs ---- */
+.build-rank-sep {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.build-filter-divider {
+  height: 1px;
+  background: var(--glass-border);
+  width: 100%;
+}
+
+/* ---- Sub-tabs (same style as .hero-page-tabs) ---- */
 .build-subtabs {
   display: flex;
-  gap: 2px;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 4px;
   margin-bottom: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 0;
 }
 
 .build-subtab {
-  padding: 7px 12px;
+  flex: 1;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: all 0.18s ease;
+  font-family: inherit;
+  text-align: center;
   white-space: nowrap;
 }
 
 .build-subtab.active {
-  color: var(--text-main);
-  border-bottom-color: rgba(255, 255, 255, 0.6);
+  background: rgba(58, 123, 213, 0.3);
+  border-color: rgba(58, 123, 213, 0.7);
+  color: #e8f4ff;
+  box-shadow: 0 0 20px rgba(58, 123, 213, 0.6), 0 0 6px rgba(58, 123, 213, 0.8), inset 0 0 12px rgba(58, 123, 213, 0.15);
 }
 
 /* ---- Talent winrate badge ---- */

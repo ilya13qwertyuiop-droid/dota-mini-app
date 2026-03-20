@@ -1930,30 +1930,33 @@ function renderBuildTab(data) {
         if (!hasPos) _buildPosition = topPositions[0];
     }
 
-    // ── Строка фильтра позиций ────────────────────────────────────────────
+    // ── Позиции: иконка сверху, название снизу ───────────────────────────
     var posButtons = topPositions.map(function (pos) {
         var activeCls = pos === _buildPosition ? ' active' : '';
         return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
-            (_POSITION_ICONS[pos] || '') + '\u00a0' + (_POSITION_LABELS[pos] || pos) +
+            '<span class="build-filter-icon">' + (_POSITION_ICONS[pos] || '') + '</span>' +
+            '<span class="build-filter-name">' + (_POSITION_LABELS[pos] || pos) + '</span>' +
             '</button>';
     }).join('');
 
-    // ── Строка фильтра ранга ──────────────────────────────────────────────
+    // ── Ранг: иконки — иконка — название ─────────────────────────────────
     var rankDefs = [
-        { rank: 'ALL',            label: 'Все ранги',    slugs: ['1-herald', '6-ancient'] },
-        { rank: 'DIVINE_IMMORTAL', label: 'Высокий ранг', slugs: ['7-divine', '8-immortal'] },
+        { rank: 'ALL',             label: 'Все ранги',    slugs: ['1-herald', '8-immortal'] },
+        { rank: 'DIVINE_IMMORTAL', label: 'Высокий ранг', slugs: ['7-divine',  '8-immortal'] },
     ];
     var rankButtons = rankDefs.map(function (r) {
         var activeCls = r.rank === _buildRank ? ' active' : '';
-        var imgs = r.slugs.map(function (slug) {
-            return '<img src="https://www.dotabuff.com/assets/rank_tiers/' + slug + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">';
-        }).join('');
+        var rankImgs =
+            '<img src="https://www.dotabuff.com/assets/rank_tiers/' + r.slugs[0] + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">' +
+            '<span class="build-rank-sep">—</span>' +
+            '<img src="https://www.dotabuff.com/assets/rank_tiers/' + r.slugs[1] + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">';
         return '<button class="build-rank-btn' + activeCls + '" data-rank="' + r.rank + '" onclick="selectBuildRank(\'' + r.rank + '\')">' +
-            imgs + '<span>' + r.label + '</span>' +
+            rankImgs +
+            '<span class="build-filter-name">' + r.label + '</span>' +
             '</button>';
     }).join('');
 
-    // ── Горизонтальные подвкладки ─────────────────────────────────────────
+    // ── Подвкладки ────────────────────────────────────────────────────────
     var subTabDefs = [
         { tab: 'facets',     label: 'Аспекты'   },
         { tab: 'talents',    label: 'Таланты'   },
@@ -1967,8 +1970,15 @@ function renderBuildTab(data) {
 
     el.innerHTML =
         '<div class="build-filters">' +
-            '<div class="build-filter-positions">' + posButtons + '</div>' +
-            '<div class="build-filter-ranks">' + rankButtons + '</div>' +
+            '<div class="build-filter-section">' +
+                '<div class="build-filter-label">ПОПУЛЯРНЫЕ ПОЗИЦИИ</div>' +
+                '<div class="build-filter-segmented">' + posButtons + '</div>' +
+            '</div>' +
+            '<div class="build-filter-divider"></div>' +
+            '<div class="build-filter-section">' +
+                '<div class="build-filter-label">РАНГ</div>' +
+                '<div class="build-filter-segmented">' + rankButtons + '</div>' +
+            '</div>' +
         '</div>' +
         '<div class="build-subtabs">' + subTabBtns + '</div>' +
         '<div id="build-subcontent"></div>';
