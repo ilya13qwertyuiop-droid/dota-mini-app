@@ -1749,7 +1749,7 @@ function _renderFacetsContent(data) {
         4: 'rgba(168,85,247,0.22)',
     };
     var btns = facets.map(function (f, i) {
-        var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/facets/icons/' + (f.icon || '') + '.png';
+        var iconUrl = '/images/facet_icons/' + (f.icon || '') + '.png';
         var bg = colorMap[f.color] !== undefined ? colorMap[f.color] : 'rgba(255,255,255,0.08)';
         var activeCls = i === _activeFacetIdx ? ' active' : '';
         return '<button class="build-facet-btn' + activeCls + '" data-idx="' + i + '" onclick="selectFacet(' + i + ')" style="background:' + bg + '">' +
