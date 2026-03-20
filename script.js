@@ -1769,14 +1769,15 @@ function _renderTalentsContent(data) {
     }
 
     // Stratz talent popularity for current position/rank
+    // score = winCount (= matchCount * winrate) — combined popularity+winrate formula
     var stratzTalents = [];
     var rankData = data.stratz && data.stratz[_buildRank];
     var posData  = rankData && rankData.by_position && rankData.by_position[_buildPosition];
     if (posData && posData.talents) {
         stratzTalents = posData.talents;
     }
-    var abilityIdPop = {}; // abilityId -> matchCount
-    stratzTalents.forEach(function (t) { abilityIdPop[t.abilityId] = t.matchCount || 0; });
+    var abilityScore = {}; // abilityId -> winCount as score
+    stratzTalents.forEach(function (t) { abilityScore[t.abilityId] = t.winCount || 0; });
 
     // Reverse map: abilityName -> abilityId
     var nameToId = {};
@@ -1789,30 +1790,17 @@ function _renderTalentsContent(data) {
     var rows = sorted.map(function (t) {
         var leftId  = nameToId[t.left_ability]  || 0;
         var rightId = nameToId[t.right_ability] || 0;
-        var leftPop  = leftId  ? (abilityIdPop[leftId]  || 0) : 0;
-        var rightPop = rightId ? (abilityIdPop[rightId] || 0) : 0;
-        var leftPopular  = hasStratz && leftPop  > rightPop;
-        var rightPopular = hasStratz && rightPop > leftPop;
-
-        var leftEntry  = hasStratz && leftId  ? _findBy(stratzTalents, 'abilityId', leftId)  : null;
-        var rightEntry = hasStratz && rightId ? _findBy(stratzTalents, 'abilityId', rightId) : null;
-        var leftWr  = (leftEntry  && leftEntry.matchCount)  ? Math.round(leftEntry.winCount  / leftEntry.matchCount  * 100) + '%' : '';
-        var rightWr = (rightEntry && rightEntry.matchCount) ? Math.round(rightEntry.winCount / rightEntry.matchCount * 100) + '%' : '';
+        var leftScore  = leftId  ? (abilityScore[leftId]  || 0) : 0;
+        var rightScore = rightId ? (abilityScore[rightId] || 0) : 0;
+        var leftPopular  = hasStratz && leftScore  > rightScore;
+        var rightPopular = hasStratz && rightScore > leftScore;
 
         var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
         var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
         return '<div class="build-talent-row">' +
-            '<div class="' + leftCls + '">' +
-                (leftPopular  ? '<span class="build-talent-star">★</span>' : '') +
-                '<span class="build-talent-text">' + (t.left || '') + '</span>' +
-                (leftWr  ? '<span class="build-talent-wr">' + leftWr  + '</span>' : '') +
-            '</div>' +
+            '<div class="' + leftCls  + '">' + (t.left  || '') + '</div>' +
             '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
-            '<div class="' + rightCls + '">' +
-                (rightWr ? '<span class="build-talent-wr">' + rightWr + '</span>' : '') +
-                '<span class="build-talent-text">' + (t.right || '') + '</span>' +
-                (rightPopular ? '<span class="build-talent-star">★</span>' : '') +
-            '</div>' +
+            '<div class="' + rightCls + '">' + (t.right || '') + '</div>' +
             '</div>';
     }).join('');
     return '<div class="build-talent-tree">' + rows + '</div>';
@@ -1911,7 +1899,7 @@ function _renderBuildSubContent() {
     else if (_buildSubTab === 'talents')    html = _renderTalentsContent(_buildData);
     else if (_buildSubTab === 'items')      html = _renderItemsContent(_buildData);
     else if (_buildSubTab === 'skillbuild') html = _renderSkillbuildContent(_buildData);
-    el.innerHTML = html;
+    el.innerHTML = '<div class="build-subcontent-card">' + html + '</div>';
 }
 
 // ── Основной рендер вкладки Сборка ───────────────────────────────────────
