@@ -33,6 +33,7 @@ from backend.stats_db import (
     get_hero_talent_builds,
     get_hero_build_cache,
     get_app_cache_value,
+    set_hero_build_cache,
 )
 from backend.config import BAYESIAN_SMOOTHING_C
 
@@ -679,6 +680,41 @@ async def api_hero_build(hero_id: int):
             "start_game_items": start_game_items,
             "core_items":       core_items,
         },
+    }
+
+
+# ========== Hero Positions ==========
+
+@app.get("/api/hero/{hero_id}/positions")
+async def api_hero_positions(hero_id: int, rank: str = "ALL"):
+    """Returns positions for a hero from Stratz data, sorted by matchCount desc.
+
+    Query param:
+        rank — "ALL" (default) or "DIVINE_IMMORTAL"
+    """
+    if hero_id <= 0:
+        raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
+
+    cached = get_hero_build_cache(hero_id)
+    if cached is None:
+        raise HTTPException(status_code=503, detail="Build data not yet available.")
+
+    stratz = cached.get("stratz")
+    if not stratz:
+        raise HTTPException(status_code=404, detail="Stratz data not imported yet.")
+
+    rank_key = rank.upper()
+    rank_data = stratz.get(rank_key)
+    if rank_data is None:
+        raise HTTPException(status_code=404, detail=f"No Stratz data for rank '{rank_key}'.")
+
+    positions = rank_data.get("positions", [])
+    positions_sorted = sorted(positions, key=lambda p: p.get("matchCount", 0), reverse=True)
+
+    return {
+        "hero_id": hero_id,
+        "rank": rank_key,
+        "positions": positions_sorted,
     }
 
 
