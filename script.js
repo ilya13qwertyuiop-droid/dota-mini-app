@@ -1899,7 +1899,7 @@ function _renderBuildSubContent() {
     else if (_buildSubTab === 'talents')    html = _renderTalentsContent(_buildData);
     else if (_buildSubTab === 'items')      html = _renderItemsContent(_buildData);
     else if (_buildSubTab === 'skillbuild') html = _renderSkillbuildContent(_buildData);
-    el.innerHTML = '<div class="build-subcontent-card">' + html + '</div>';
+    el.innerHTML = html;
 }
 
 // ── Основной рендер вкладки Сборка ───────────────────────────────────────
@@ -1946,14 +1946,17 @@ function renderBuildTab(data) {
 
     // ── Подвкладки ────────────────────────────────────────────────────────
     var subTabDefs = [
-        { tab: 'facets',     label: 'Аспекты'   },
-        { tab: 'talents',    label: 'Таланты'   },
-        { tab: 'items',      label: 'Предметы'  },
-        { tab: 'skillbuild', label: 'Скиллбилд' },
+        { tab: 'facets',     icon: '✨', label: 'Аспекты'   },
+        { tab: 'talents',    icon: '🎯', label: 'Таланты'   },
+        { tab: 'items',      icon: '🎒', label: 'Предметы'  },
+        { tab: 'skillbuild', icon: '📈', label: 'Скиллбилд' },
     ];
     var subTabBtns = subTabDefs.map(function (t) {
         var activeCls = t.tab === _buildSubTab ? ' active' : '';
-        return '<button class="build-subtab' + activeCls + '" data-tab="' + t.tab + '" onclick="selectBuildSubTab(\'' + t.tab + '\')">' + t.label + '</button>';
+        return '<button class="build-subtab' + activeCls + '" data-tab="' + t.tab + '" onclick="selectBuildSubTab(\'' + t.tab + '\')">' +
+            '<span class="build-filter-icon">' + t.icon + '</span>' +
+            '<span class="build-filter-name">' + t.label + '</span>' +
+            '</button>';
     }).join('');
 
     el.innerHTML =
@@ -1968,7 +1971,9 @@ function renderBuildTab(data) {
                 '<div class="build-filter-segmented">' + rankButtons + '</div>' +
             '</div>' +
         '</div>' +
-        '<div class="build-subtabs">' + subTabBtns + '</div>' +
+        '<div class="build-subtabs-wrap">' +
+            '<div class="build-filter-segmented">' + subTabBtns + '</div>' +
+        '</div>' +
         '<div id="build-subcontent"></div>';
 
     _renderBuildSubContent();
