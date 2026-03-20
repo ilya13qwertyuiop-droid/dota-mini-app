@@ -1661,11 +1661,10 @@ margin-top: 14px;
   text-align: center;
 }
 
-.build-rank-btn {
-  flex-direction: row;
-  gap: 5px;
-  padding: 10px 6px;
-  font-size: 12px;
+.build-rank-icons {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .build-pos-btn.active,
