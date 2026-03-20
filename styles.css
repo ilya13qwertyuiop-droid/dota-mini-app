@@ -1607,7 +1607,115 @@ margin-top: 14px;
 
 /* ========== BUILD TAB ========== */
 
-/* Re-uses .matchup-section for section wrappers */
+/* ---- Filters row ---- */
+.build-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.build-filter-positions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.build-filter-ranks {
+  display: flex;
+  gap: 6px;
+}
+
+.build-pos-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.build-pos-btn.active {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.38);
+  color: var(--text-main);
+}
+
+.build-rank-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.build-rank-btn.active {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: var(--text-main);
+}
+
+.build-rank-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* ---- Sub-tabs ---- */
+.build-subtabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0;
+}
+
+.build-subtab {
+  padding: 7px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.build-subtab.active {
+  color: var(--text-main);
+  border-bottom-color: rgba(255, 255, 255, 0.6);
+}
+
+/* ---- Talent winrate badge ---- */
+.build-talent-wr {
+  font-size: 10px;
+  color: #22C55E;
+  font-weight: 600;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.build-talent-text {
+  flex: 1;
+}
 
 /* ---- Facets ---- */
 .build-facets {
