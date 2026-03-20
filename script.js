@@ -1828,6 +1828,8 @@ function _renderItemsContent(data) {
         };
     }
 
+    var _QUAL_KEEP = { artifact: true, common: true, epic: true, rare: true };
+
     var startItems, coreItems;
     if (posData && posData.start_items && posData.start_items.length) {
         startItems = posData.start_items
@@ -1839,36 +1841,36 @@ function _renderItemsContent(data) {
     if (posData && posData.core_items && posData.core_items.length) {
         coreItems = posData.core_items
             .slice().sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
+            .slice(0, 12)
+            .filter(function (entry) {
+                return _QUAL_KEEP[(itemsDb[String(entry.itemId)] || {}).qual] === true;
+            })
             .slice(0, 6).map(resolveStratz);
     } else {
         coreItems = (data.items && data.items.core_items) || [];
     }
 
-    function itemSlot(item, showStats) {
-        var wr    = (showStats && item.winrate != null) ? Math.round(item.winrate * 100) + '%' : '';
-        var games = (showStats && item.matchCount)      ? item.matchCount + '\u00a0игр' : '';
+    function itemSlot(item) {
         return '<div class="build-item-slot">' +
             (item.img
                 ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
                 : '<div class="build-item-icon"></div>') +
             '<span class="build-item-name">' + (item.dname || '') + '</span>' +
-            (wr    ? '<span class="build-item-stat">'  + wr    + '</span>' : '') +
-            (games ? '<span class="build-item-games">' + games + '</span>' : '') +
             '</div>';
     }
 
-    var startSlots = startItems.map(function (item) { return itemSlot(item, false); }).join('');
-    var coreSlots  = coreItems.map(function  (item) { return itemSlot(item, true);  }).join('');
+    var startSlots = startItems.map(itemSlot).join('');
+    var coreSlots  = coreItems.map(itemSlot).join('');
 
-    return '<div class="build-items-tabs">' +
+    return '<div class="build-items-header">' +
         '<button class="build-items-tab active" onclick="switchItemsTab(\'start\', this)">Стартовые</button>' +
         '<button class="build-items-tab" onclick="switchItemsTab(\'core\', this)">Основные</button>' +
         '</div>' +
         '<div class="build-items-panel" id="items-panel-start">' +
-        '<div class="build-items-row">' + startSlots + '</div>' +
+        '<div class="build-items-grid">' + startSlots + '</div>' +
         '</div>' +
         '<div class="build-items-panel" id="items-panel-core" style="display:none">' +
-        '<div class="build-items-row">' + coreSlots + '</div>' +
+        '<div class="build-items-grid">' + coreSlots + '</div>' +
         '</div>';
 }
 
