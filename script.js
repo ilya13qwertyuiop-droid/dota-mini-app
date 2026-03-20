@@ -1972,6 +1972,7 @@ function renderBuildTab(data) {
             '</div>' +
         '</div>' +
         '<div class="build-subtabs-wrap">' +
+            '<div class="build-filter-label">ГАЙД</div>' +
             '<div class="build-filter-segmented">' + subTabBtns + '</div>' +
         '</div>' +
         '<div id="build-subcontent"></div>';
