@@ -1960,7 +1960,7 @@ margin-top: 14px;
 
 .build-items-grid {
   display: grid;
-  grid-template-columns: repeat(3, 72px);
+  grid-template-columns: repeat(3, 80px);
   gap: 6px;
 }
 
@@ -1969,13 +1969,13 @@ margin-top: 14px;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  width: 72px;
+  width: 80px;
 }
 
 .build-item-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 6px;
+  width: 80px;
+  height: 58px;           /* ~88:64 Dota 2 item aspect ratio */
+  border-radius: 5px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(0, 0, 0, 0.5);
@@ -1986,7 +1986,7 @@ margin-top: 14px;
   color: var(--text-muted);
   text-align: center;
   line-height: 1.25;
-  width: 72px;
+  width: 80px;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;

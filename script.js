@@ -1828,8 +1828,6 @@ function _renderItemsContent(data) {
         };
     }
 
-    var _QUAL_KEEP = { artifact: true, common: true, epic: true, rare: true };
-
     var startItems, coreItems;
     if (posData && posData.start_items && posData.start_items.length) {
         startItems = posData.start_items
@@ -1838,14 +1836,9 @@ function _renderItemsContent(data) {
     } else {
         startItems = (data.items && data.items.start_game_items) || [];
     }
+    // core_items are pre-filtered server-side (top-12 → qual/component filter → top-6)
     if (posData && posData.core_items && posData.core_items.length) {
-        coreItems = posData.core_items
-            .slice().sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
-            .slice(0, 12)
-            .filter(function (entry) {
-                return _QUAL_KEEP[(itemsDb[String(entry.itemId)] || {}).qual] === true;
-            })
-            .slice(0, 6).map(resolveStratz);
+        coreItems = posData.core_items.map(resolveStratz);
     } else {
         coreItems = (data.items && data.items.core_items) || [];
     }
