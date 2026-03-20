@@ -1704,46 +1704,41 @@ margin-top: 14px;
   width: 100%;
 }
 
-/* ---- Sub-tabs (same style as .hero-page-tabs) ---- */
-.build-subtabs {
-  display: flex;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
-  padding: 4px;
-  margin-top: 16px;
-  margin-bottom: 10px;
+/* ---- Sub-tabs segmented control ---- */
+.build-subtabs-wrap {
+  border-top: 0.5px solid var(--glass-border);
+  border-bottom: 0.5px solid var(--glass-border);
+  margin: 14px 0;
+  padding: 14px 0;
 }
+
+/* .build-subtabs-wrap uses .build-filter-segmented for the container */
 
 .build-subtab {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   padding: 8px 6px;
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.18s ease;
   font-family: inherit;
   text-align: center;
-  white-space: nowrap;
 }
 
 .build-subtab.active {
   background: rgba(58, 123, 213, 0.3);
   border-color: rgba(58, 123, 213, 0.7);
   color: #e8f4ff;
-  box-shadow: 0 0 20px rgba(58, 123, 213, 0.6), 0 0 6px rgba(58, 123, 213, 0.8), inset 0 0 12px rgba(58, 123, 213, 0.15);
-}
-
-/* ---- Sub-content card ---- */
-.build-subcontent-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  padding: 14px 12px;
+  box-shadow: 0 0 12px rgba(58, 123, 213, 0.4), inset 0 0 8px rgba(58, 123, 213, 0.1);
 }
 
 /* ---- Facets ---- */
