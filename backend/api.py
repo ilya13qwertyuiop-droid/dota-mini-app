@@ -650,7 +650,10 @@ async def api_hero_build(hero_id: int):
                 ability_build.append(aname)
 
     # ── Core items (pre-decoded, from hero_builds_cache populated weekly by builds_updater) ──
-    core_items: list[dict] = cached.get("core_items") or []
+    core_items: list[dict] = [
+        {"id": item.get("id"), "dname": item.get("dname"), "img": item.get("img")}
+        for item in (cached.get("core_items") or [])
+    ]
 
     # ── Talent picks (live from our DB) ──────────────────────────────────
     talent_picks_raw = get_hero_talent_builds(hero_id)

@@ -1924,17 +1924,18 @@ margin-top: 14px;
 }
 
 /* ---- Items tabs ---- */
-.build-items-tabs {
+.build-items-header {
   display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .build-items-tab {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 6px;
-  padding: 5px 16px;
+  padding: 5px 20px;
   font-size: 12px;
   color: var(--text-muted);
   cursor: pointer;
@@ -1951,11 +1952,16 @@ margin-top: 14px;
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* ---- Items ---- */
-.build-items-row {
+/* ---- Items inventory grid ---- */
+.build-items-panel {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  justify-content: center;
+}
+
+.build-items-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 6px;
 }
 
 .build-item-slot {
@@ -1963,42 +1969,28 @@ margin-top: 14px;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  width: 52px;
+  width: 72px;
 }
 
 .build-item-icon {
-  width: 52px;
-  height: 38px;
+  width: 72px;
+  height: 72px;
   border-radius: 6px;
   object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .build-item-name {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   text-align: center;
   line-height: 1.25;
-  max-width: 52px;
+  width: 72px;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.build-item-stat {
-  font-size: 10px;
-  color: #22C55E;
-  font-weight: 600;
-  text-align: center;
-  line-height: 1.2;
-}
-
-.build-item-games {
-  font-size: 9px;
-  color: var(--text-muted);
-  text-align: center;
 }
 
 .build-placeholder {

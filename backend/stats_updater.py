@@ -955,7 +955,7 @@ async def _run_builds_update() -> None:
         img = iinfo.get("img") or ""
         if img and not img.startswith("http"):
             img = CDN_BASE + img
-        entry = {"id": iid, "dname": iinfo.get("dname") or ikey, "img": img or None}
+        entry = {"id": iid, "dname": iinfo.get("dname") or ikey, "img": img or None, "qual": iinfo.get("qual")}
         if iid is not None:
             items_by_id[str(int(iid))] = entry
         clean = ikey.removeprefix("item_")
