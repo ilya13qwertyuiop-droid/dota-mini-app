@@ -1711,7 +1711,8 @@ margin-top: 14px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 12px;
   padding: 4px;
-  margin-bottom: 14px;
+  margin-top: 16px;
+  margin-bottom: 10px;
 }
 
 .build-subtab {
@@ -1737,17 +1738,12 @@ margin-top: 14px;
   box-shadow: 0 0 20px rgba(58, 123, 213, 0.6), 0 0 6px rgba(58, 123, 213, 0.8), inset 0 0 12px rgba(58, 123, 213, 0.15);
 }
 
-/* ---- Talent winrate badge ---- */
-.build-talent-wr {
-  font-size: 10px;
-  color: #22C55E;
-  font-weight: 600;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-.build-talent-text {
-  flex: 1;
+/* ---- Sub-content card ---- */
+.build-subcontent-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 14px 12px;
 }
 
 /* ---- Facets ---- */
@@ -1868,16 +1864,16 @@ margin-top: 14px;
 
 .build-talent-row {
   display: grid;
-  grid-template-columns: 1fr 48px 1fr;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: 1fr 40px 1fr;
+  align-items: stretch;
+  gap: 6px;
 }
 
 .build-talent-level-badge {
   position: relative;
   z-index: 1;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.18);
   background: #161622;
@@ -1885,10 +1881,10 @@ margin-top: 14px;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
   flex-shrink: 0;
-  margin: 0 auto;
+  margin: auto;
 }
 
 .build-talent-card {
@@ -1899,32 +1895,24 @@ margin-top: 14px;
   font-size: 12px;
   color: var(--text-main);
   line-height: 1.4;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 44px;
+  display: block;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-height: 40px;
 }
 
 .build-talent-left {
   text-align: right;
-  justify-content: flex-end;
 }
 
 .build-talent-right {
   text-align: left;
-  justify-content: flex-start;
 }
 
 .build-talent-card.build-talent-popular {
-  border-color: rgba(251, 191, 36, 0.55);
-  background: rgba(251, 191, 36, 0.09);
-}
-
-.build-talent-star {
-  color: #FBBF24;
-  font-size: 13px;
-  flex-shrink: 0;
-  line-height: 1;
+  border-color: rgba(251, 191, 36, 0.6);
+  background: rgba(251, 191, 36, 0.11);
+  color: #fde68a;
 }
 
 /* ---- Items tabs ---- */
