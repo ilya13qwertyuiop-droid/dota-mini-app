@@ -1642,31 +1642,89 @@ const matchupPage = {
 
 // ---------- Build: загрузка и рендер ----------
 
-var _buildData        = null;
-var _buildHeroId      = null;
-var _activeFacetIdx   = 0;
+var _buildData      = null;
+var _buildHeroId    = null;
+var _activeFacetIdx = 0;
+var _buildPosition  = null;   // 'POSITION_1' … 'POSITION_5'
+var _buildRank      = 'ALL';  // 'ALL' | 'DIVINE_IMMORTAL'
+var _buildSubTab    = 'facets'; // 'facets' | 'talents' | 'items' | 'skillbuild'
+
+var _POSITION_LABELS = {
+    'POSITION_1': 'Керри',
+    'POSITION_2': 'Мид',
+    'POSITION_3': 'Офлейн',
+    'POSITION_4': 'Частичная поддержка',
+    'POSITION_5': 'Поддержка',
+};
+var _POSITION_ICONS = {
+    'POSITION_1': '⚔️',
+    'POSITION_2': '⚡',
+    'POSITION_3': '🛡️',
+    'POSITION_4': '🤝',
+    'POSITION_5': '💧',
+};
 
 function _showBuildLoading() {
-    _buildData    = null;
+    _buildData      = null;
     _activeFacetIdx = 0;
+    _buildPosition  = null;
+    _buildRank      = 'ALL';
+    _buildSubTab    = 'facets';
     var el = document.getElementById('build-content');
     if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
 }
 
-function _renderFacetDesc(facets) {
-    var descEl = document.getElementById('build-facet-desc');
-    if (!descEl) return;
-    var f = facets[_activeFacetIdx];
-    if (!f) { descEl.textContent = ''; return; }
-    descEl.textContent = f.description || '';
+function _getTopPositions(data) {
+    var positions = (data.stratz && data.stratz.ALL && data.stratz.ALL.positions) || [];
+    return positions.slice()
+        .sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
+        .slice(0, 3)
+        .map(function (p) { return p.position; });
 }
+
+// ── Фасеты ────────────────────────────────────────────────────────────────
 
 function selectFacet(idx) {
     _activeFacetIdx = idx;
-    var btns = document.querySelectorAll('.build-facet-btn');
-    btns.forEach(function (btn, i) { btn.classList.toggle('active', i === idx); });
-    if (_buildData) _renderFacetDesc(_buildData.facets);
+    document.querySelectorAll('.build-facet-btn').forEach(function (btn, i) {
+        btn.classList.toggle('active', i === idx);
+    });
+    var descEl = document.getElementById('build-facet-desc');
+    if (descEl && _buildData) {
+        var f = (_buildData.facets || [])[idx];
+        descEl.textContent = f ? (f.description || '') : '';
+    }
 }
+
+// ── Фильтры позиции / ранга ───────────────────────────────────────────────
+
+function selectBuildPosition(pos) {
+    _buildPosition = pos;
+    document.querySelectorAll('.build-pos-btn').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-pos') === pos);
+    });
+    _renderBuildSubContent();
+}
+
+function selectBuildRank(rank) {
+    _buildRank = rank;
+    document.querySelectorAll('.build-rank-btn').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-rank') === rank);
+    });
+    _renderBuildSubContent();
+}
+
+// ── Горизонтальные подвкладки ─────────────────────────────────────────────
+
+function selectBuildSubTab(tab) {
+    _buildSubTab = tab;
+    document.querySelectorAll('.build-subtab').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
+    _renderBuildSubContent();
+}
+
+// ── Итемные вкладки (стартовые / основные) ────────────────────────────────
 
 function switchItemsTab(tab, btn) {
     ['start', 'core'].forEach(function (t) {
@@ -1678,133 +1736,244 @@ function switchItemsTab(tab, btn) {
     });
 }
 
+// ── Контент каждой подвкладки ─────────────────────────────────────────────
+
+function _renderFacetsContent(data) {
+    var facets = data.facets || [];
+    if (facets.length <= 1) {
+        return '<p class="build-placeholder">Аспекты для этого героя недоступны</p>';
+    }
+    var colorMap = {
+        0: 'rgba(146,64,14,0.22)',  1: 'rgba(200,60,60,0.22)',
+        2: 'rgba(34,197,94,0.22)',  3: 'rgba(6,182,212,0.22)',
+        4: 'rgba(168,85,247,0.22)',
+    };
+    var btns = facets.map(function (f, i) {
+        var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/facets/icons/' + (f.icon || '') + '.png';
+        var bg = colorMap[f.color] !== undefined ? colorMap[f.color] : 'rgba(255,255,255,0.08)';
+        var activeCls = i === _activeFacetIdx ? ' active' : '';
+        return '<button class="build-facet-btn' + activeCls + '" data-idx="' + i + '" onclick="selectFacet(' + i + ')" style="background:' + bg + '">' +
+            '<img src="' + iconUrl + '" class="build-facet-icon" onerror="this.style.display=\'none\'">' +
+            '<span class="build-facet-name">' + (f.title || f.name || '') + '</span>' +
+            '</button>';
+    }).join('');
+    var activeDesc = facets[_activeFacetIdx] ? (facets[_activeFacetIdx].description || '') : '';
+    return '<div class="build-facets">' + btns + '</div>' +
+        '<div class="build-facet-desc" id="build-facet-desc">' + activeDesc + '</div>';
+}
+
+function _renderTalentsContent(data) {
+    var talents = data.talents || [];
+    if (talents.length === 0) {
+        return '<p class="build-placeholder">Данные о талантах недоступны</p>';
+    }
+
+    // Stratz talent popularity for current position/rank
+    var stratzTalents = [];
+    var rankData = data.stratz && data.stratz[_buildRank];
+    var posData  = rankData && rankData.by_position && rankData.by_position[_buildPosition];
+    if (posData && posData.talents) {
+        stratzTalents = posData.talents;
+    }
+    var abilityIdPop = {}; // abilityId -> matchCount
+    stratzTalents.forEach(function (t) { abilityIdPop[t.abilityId] = t.matchCount || 0; });
+
+    // Reverse map: abilityName -> abilityId
+    var nameToId = {};
+    Object.keys(data.ability_id_to_name || {}).forEach(function (id) {
+        nameToId[data.ability_id_to_name[id]] = parseInt(id, 10);
+    });
+
+    var hasStratz = stratzTalents.length > 0;
+    var sorted = talents.slice().sort(function (a, b) { return (b.level || 0) - (a.level || 0); });
+    var rows = sorted.map(function (t) {
+        var leftId  = nameToId[t.left_ability]  || 0;
+        var rightId = nameToId[t.right_ability] || 0;
+        var leftPop  = leftId  ? (abilityIdPop[leftId]  || 0) : 0;
+        var rightPop = rightId ? (abilityIdPop[rightId] || 0) : 0;
+        var leftPopular  = hasStratz && leftPop  > rightPop;
+        var rightPopular = hasStratz && rightPop > leftPop;
+
+        var leftEntry  = hasStratz && leftId  ? _findBy(stratzTalents, 'abilityId', leftId)  : null;
+        var rightEntry = hasStratz && rightId ? _findBy(stratzTalents, 'abilityId', rightId) : null;
+        var leftWr  = (leftEntry  && leftEntry.matchCount)  ? Math.round(leftEntry.winCount  / leftEntry.matchCount  * 100) + '%' : '';
+        var rightWr = (rightEntry && rightEntry.matchCount) ? Math.round(rightEntry.winCount / rightEntry.matchCount * 100) + '%' : '';
+
+        var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
+        var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
+        return '<div class="build-talent-row">' +
+            '<div class="' + leftCls + '">' +
+                (leftPopular  ? '<span class="build-talent-star">★</span>' : '') +
+                '<span class="build-talent-text">' + (t.left || '') + '</span>' +
+                (leftWr  ? '<span class="build-talent-wr">' + leftWr  + '</span>' : '') +
+            '</div>' +
+            '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
+            '<div class="' + rightCls + '">' +
+                (rightWr ? '<span class="build-talent-wr">' + rightWr + '</span>' : '') +
+                '<span class="build-talent-text">' + (t.right || '') + '</span>' +
+                (rightPopular ? '<span class="build-talent-star">★</span>' : '') +
+            '</div>' +
+            '</div>';
+    }).join('');
+    return '<div class="build-talent-tree">' + rows + '</div>';
+}
+
+function _findBy(arr, key, val) {
+    for (var i = 0; i < arr.length; i++) {
+        if (arr[i][key] === val) return arr[i];
+    }
+    return null;
+}
+
+function _renderItemsContent(data) {
+    var rankData = data.stratz && data.stratz[_buildRank];
+    var posData  = rankData && rankData.by_position && rankData.by_position[_buildPosition];
+    var itemsDb  = data.items_db || {};
+
+    function resolveStratz(entry) {
+        var info = itemsDb[String(entry.itemId)] || {};
+        return {
+            dname:      info.dname || ('Item ' + entry.itemId),
+            img:        info.img   || null,
+            matchCount: entry.matchCount || 0,
+            winrate:    entry.matchCount ? (entry.winCount / entry.matchCount) : null,
+        };
+    }
+
+    var startItems, coreItems;
+    if (posData && posData.start_items && posData.start_items.length) {
+        startItems = posData.start_items
+            .slice().sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
+            .slice(0, 6).map(resolveStratz);
+    } else {
+        startItems = (data.items && data.items.start_game_items) || [];
+    }
+    if (posData && posData.core_items && posData.core_items.length) {
+        coreItems = posData.core_items
+            .slice().sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
+            .slice(0, 6).map(resolveStratz);
+    } else {
+        coreItems = (data.items && data.items.core_items) || [];
+    }
+
+    function itemSlot(item, showStats) {
+        var wr    = (showStats && item.winrate != null) ? Math.round(item.winrate * 100) + '%' : '';
+        var games = (showStats && item.matchCount)      ? item.matchCount + '\u00a0игр' : '';
+        return '<div class="build-item-slot">' +
+            (item.img
+                ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
+                : '<div class="build-item-icon"></div>') +
+            '<span class="build-item-name">' + (item.dname || '') + '</span>' +
+            (wr    ? '<span class="build-item-stat">'  + wr    + '</span>' : '') +
+            (games ? '<span class="build-item-games">' + games + '</span>' : '') +
+            '</div>';
+    }
+
+    var startSlots = startItems.map(function (item) { return itemSlot(item, false); }).join('');
+    var coreSlots  = coreItems.map(function  (item) { return itemSlot(item, true);  }).join('');
+
+    return '<div class="build-items-tabs">' +
+        '<button class="build-items-tab active" onclick="switchItemsTab(\'start\', this)">Стартовые</button>' +
+        '<button class="build-items-tab" onclick="switchItemsTab(\'core\', this)">Основные</button>' +
+        '</div>' +
+        '<div class="build-items-panel" id="items-panel-start">' +
+        '<div class="build-items-row">' + startSlots + '</div>' +
+        '</div>' +
+        '<div class="build-items-panel" id="items-panel-core" style="display:none">' +
+        '<div class="build-items-row">' + coreSlots + '</div>' +
+        '</div>';
+}
+
+function _renderSkillbuildContent(data) {
+    var abilities = (data.ability_build || []).filter(function (aname) {
+        return aname.indexOf('special_bonus_') !== 0;
+    });
+    if (abilities.length === 0) {
+        return '<p class="build-placeholder">Данные собираются, скоро появится</p>';
+    }
+    var slots = abilities.map(function (aname, i) {
+        var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/' + aname + '.png';
+        return '<div class="build-ability-slot">' +
+            '<div class="build-ability-level">' + (i + 1) + '</div>' +
+            '<img src="' + iconUrl + '" class="build-ability-icon" title="' + aname + '" onerror="this.style.opacity=\'0.3\'">' +
+            '</div>';
+    }).join('');
+    return '<div class="build-abilities">' + slots + '</div>';
+}
+
+// ── Переключение подконтента ──────────────────────────────────────────────
+
+function _renderBuildSubContent() {
+    var el = document.getElementById('build-subcontent');
+    if (!el || !_buildData) return;
+    var html = '';
+    if      (_buildSubTab === 'facets')     html = _renderFacetsContent(_buildData);
+    else if (_buildSubTab === 'talents')    html = _renderTalentsContent(_buildData);
+    else if (_buildSubTab === 'items')      html = _renderItemsContent(_buildData);
+    else if (_buildSubTab === 'skillbuild') html = _renderSkillbuildContent(_buildData);
+    el.innerHTML = html;
+}
+
+// ── Основной рендер вкладки Сборка ───────────────────────────────────────
+
 function renderBuildTab(data) {
     var el = document.getElementById('build-content');
     if (!el) return;
 
-    var html = '';
-
-    // ── Аспекты (только если больше одного) ──────────────────────────────
-    var facets = data.facets || [];
-    if (facets.length > 1) {
-        var facetBtns = facets.map(function (f, i) {
-            var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/facets/icons/' + (f.icon || '') + '.png';
-            var colorStyle = '';
-            if (f.color !== undefined && f.color !== null) {
-                var colorMap = {
-                    0: 'rgba(146,64,14,0.22)',
-                    1: 'rgba(200,60,60,0.22)',
-                    2: 'rgba(34,197,94,0.22)',
-                    3: 'rgba(6,182,212,0.22)',
-                    4: 'rgba(168,85,247,0.22)',
-                };
-                var bg = colorMap[f.color] !== undefined ? colorMap[f.color] : 'rgba(255,255,255,0.08)';
-                colorStyle = 'style="background:' + bg + '"';
-            }
-            var activeClass = i === 0 ? ' active' : '';
-            return '<button class="build-facet-btn' + activeClass + '" onclick="selectFacet(' + i + ')" ' + colorStyle + '>' +
-                '<img src="' + iconUrl + '" class="build-facet-icon" onerror="this.style.display=\'none\'">' +
-                '<span class="build-facet-name">' + (f.title || f.name || '') + '</span>' +
-                '</button>';
-        }).join('');
-
-        var firstDesc = (facets[0] && facets[0].description) ? facets[0].description : '';
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">АСПЕКТЫ</div>' +
-            '<div class="build-facets">' + facetBtns + '</div>' +
-            '<div class="build-facet-desc" id="build-facet-desc">' + firstDesc + '</div>' +
-            '</div>';
+    // Set default position to most popular
+    var topPositions = _getTopPositions(data);
+    if (topPositions.length > 0) {
+        var hasPos = false;
+        for (var pi = 0; pi < topPositions.length; pi++) {
+            if (topPositions[pi] === _buildPosition) { hasPos = true; break; }
+        }
+        if (!hasPos) _buildPosition = topPositions[0];
     }
 
-    // ── Порядок прокачки ──────────────────────────────────────────────────
-    // Filter out talents (special_bonus_*) — they appear in a separate block and
-    // would otherwise show broken icons and shift the level numbering.
-    var abilities = (data.ability_build || []).filter(function (aname) {
-        return aname.indexOf('special_bonus_') !== 0;
-    });
-    html += '<div class="matchup-section"><div class="matchup-section-title">ПОРЯДОК ПРОКАЧКИ</div>';
-    if (abilities.length > 0) {
-        var slots = abilities.map(function (aname, i) {
-            var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/' + aname + '.png';
-            return '<div class="build-ability-slot">' +
-                '<div class="build-ability-level">' + (i + 1) + '</div>' +
-                '<img src="' + iconUrl + '" class="build-ability-icon" title="' + aname + '" onerror="this.style.opacity=\'0.3\'">' +
-                '</div>';
-        }).join('');
-        html += '<div class="build-abilities">' + slots + '</div>';
-    } else {
-        html += '<p class="build-placeholder">Данные собираются, скоро появится</p>';
-    }
-    html += '</div>';
+    // ── Строка фильтра позиций ────────────────────────────────────────────
+    var posButtons = topPositions.map(function (pos) {
+        var activeCls = pos === _buildPosition ? ' active' : '';
+        return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
+            (_POSITION_ICONS[pos] || '') + '\u00a0' + (_POSITION_LABELS[pos] || pos) +
+            '</button>';
+    }).join('');
 
-    // ── Таланты ───────────────────────────────────────────────────────────
-    var talents = data.talents || [];
-    if (talents.length > 0) {
-        var talentPicks = data.talent_picks || {};
-        var sorted = talents.slice().sort(function (a, b) { return (b.level || 0) - (a.level || 0); });
-        var talentRows = sorted.map(function (t) {
-            var popularAbility = talentPicks[String(t.level)] ? talentPicks[String(t.level)][0] : null;
-            var popularName  = popularAbility ? popularAbility.ability_name : null;
-            var leftPopular  = !!(popularName && popularName === t.left_ability);
-            var rightPopular = !!(popularName && popularName === t.right_ability);
-            var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
-            var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
-            return '<div class="build-talent-row">' +
-                '<div class="' + leftCls + '">' + (t.left || '') + '</div>' +
-                '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
-                '<div class="' + rightCls + '">' + (t.right || '') + '</div>' +
-                '</div>';
+    // ── Строка фильтра ранга ──────────────────────────────────────────────
+    var rankDefs = [
+        { rank: 'ALL',            label: 'Все ранги',    slugs: ['1-herald', '6-ancient'] },
+        { rank: 'DIVINE_IMMORTAL', label: 'Высокий ранг', slugs: ['7-divine', '8-immortal'] },
+    ];
+    var rankButtons = rankDefs.map(function (r) {
+        var activeCls = r.rank === _buildRank ? ' active' : '';
+        var imgs = r.slugs.map(function (slug) {
+            return '<img src="https://www.dotabuff.com/assets/rank_tiers/' + slug + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">';
         }).join('');
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">ТАЛАНТЫ</div>' +
-            '<div class="build-talent-tree">' + talentRows + '</div>' +
-            '</div>';
-    }
+        return '<button class="build-rank-btn' + activeCls + '" data-rank="' + r.rank + '" onclick="selectBuildRank(\'' + r.rank + '\')">' +
+            imgs + '<span>' + r.label + '</span>' +
+            '</button>';
+    }).join('');
 
-    // ── Предметы (вкладки: Стартовые / Основные) ─────────────────────────
-    var startItems = (data.items && data.items.start_game_items) || [];
-    var coreItems  = (data.items && data.items.core_items)       || [];
-    if (startItems.length > 0 || coreItems.length > 0) {
-        var defaultTab = startItems.length > 0 ? 'start' : 'core';
-        var startSlots = startItems.map(function (item) {
-            return '<div class="build-item-slot">' +
-                (item.img
-                    ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
-                    : '<div class="build-item-icon"></div>') +
-                '<span class="build-item-name">' + (item.dname || '') + '</span>' +
-                '</div>';
-        }).join('');
-        var coreSlots = coreItems.map(function (item) {
-            var wr    = item.winrate != null ? Math.round(item.winrate * 100) + '%' : '';
-            var games = item.games ? item.games + '\u00a0игр' : '';
-            return '<div class="build-item-slot">' +
-                (item.img
-                    ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
-                    : '<div class="build-item-icon"></div>') +
-                '<span class="build-item-name">' + (item.dname || '') + '</span>' +
-                (wr    ? '<span class="build-item-stat">'  + wr    + '</span>' : '') +
-                (games ? '<span class="build-item-games">' + games + '</span>' : '') +
-                '</div>';
-        }).join('');
-        html += '<div class="matchup-section">' +
-            '<div class="build-items-tabs">' +
-            '<button class="build-items-tab' + (defaultTab === 'start' ? ' active' : '') + '" onclick="switchItemsTab(\'start\', this)">Стартовые</button>' +
-            '<button class="build-items-tab' + (defaultTab === 'core'  ? ' active' : '') + '" onclick="switchItemsTab(\'core\', this)">Основные</button>' +
-            '</div>' +
-            '<div class="build-items-panel" id="items-panel-start"' + (defaultTab !== 'start' ? ' style="display:none"' : '') + '>' +
-            '<div class="build-items-row">' + startSlots + '</div>' +
-            '</div>' +
-            '<div class="build-items-panel" id="items-panel-core"' + (defaultTab !== 'core' ? ' style="display:none"' : '') + '>' +
-            '<div class="build-items-row">' + coreSlots + '</div>' +
-            '</div>' +
-            '</div>';
-    }
+    // ── Горизонтальные подвкладки ─────────────────────────────────────────
+    var subTabDefs = [
+        { tab: 'facets',     label: 'Аспекты'   },
+        { tab: 'talents',    label: 'Таланты'   },
+        { tab: 'items',      label: 'Предметы'  },
+        { tab: 'skillbuild', label: 'Скиллбилд' },
+    ];
+    var subTabBtns = subTabDefs.map(function (t) {
+        var activeCls = t.tab === _buildSubTab ? ' active' : '';
+        return '<button class="build-subtab' + activeCls + '" data-tab="' + t.tab + '" onclick="selectBuildSubTab(\'' + t.tab + '\')">' + t.label + '</button>';
+    }).join('');
 
-    if (!html) {
-        html = '<p class="matchup-placeholder-text">Данные недоступны</p>';
-    }
+    el.innerHTML =
+        '<div class="build-filters">' +
+            '<div class="build-filter-positions">' + posButtons + '</div>' +
+            '<div class="build-filter-ranks">' + rankButtons + '</div>' +
+        '</div>' +
+        '<div class="build-subtabs">' + subTabBtns + '</div>' +
+        '<div id="build-subcontent"></div>';
 
-    el.innerHTML = html;
+    _renderBuildSubContent();
 }
 
 async function loadHeroBuild(heroId) {

@@ -672,14 +672,17 @@ async def api_hero_build(hero_id: int):
     )
 
     return {
-        "facets":        facets,
-        "ability_build": ability_build,
-        "talents":       talents,
-        "talent_picks":  talent_picks,
+        "facets":             facets,
+        "ability_build":      ability_build,
+        "ability_id_to_name": raw_map,
+        "talents":            talents,
+        "talent_picks":       talent_picks,
         "items": {
             "start_game_items": start_game_items,
             "core_items":       core_items,
         },
+        "items_db": get_app_cache_value("items_by_id") or {},
+        "stratz":   cached.get("stratz") or {},
     }
 
 
