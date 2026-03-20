@@ -1652,7 +1652,7 @@ var _buildSubTab    = 'facets'; // 'facets' | 'talents' | 'items' | 'skillbuild'
 var _POSITION_LABELS = {
     'POSITION_1': 'Керри',
     'POSITION_2': 'Мид',
-    'POSITION_3': 'Офлейн',
+    'POSITION_3': 'Оффлейн',
     'POSITION_4': 'Частичная поддержка',
     'POSITION_5': 'Поддержка',
 };
@@ -1936,9 +1936,11 @@ function renderBuildTab(data) {
     var rankButtons = rankDefs.map(function (r) {
         var activeCls = r.rank === _buildRank ? ' active' : '';
         var rankImgs =
-            '<img src="https://www.dotabuff.com/assets/rank_tiers/' + r.slugs[0] + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">' +
-            '<span class="build-rank-sep">—</span>' +
-            '<img src="https://www.dotabuff.com/assets/rank_tiers/' + r.slugs[1] + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">';
+            '<div class="build-rank-icons">' +
+                '<img src="https://www.dotabuff.com/assets/rank_tiers/' + r.slugs[0] + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">' +
+                '<span class="build-rank-sep">—</span>' +
+                '<img src="https://www.dotabuff.com/assets/rank_tiers/' + r.slugs[1] + '.png" class="build-rank-icon" onerror="this.style.display=\'none\'">' +
+            '</div>';
         return '<button class="build-rank-btn' + activeCls + '" data-rank="' + r.rank + '" onclick="selectBuildRank(\'' + r.rank + '\')">' +
             rankImgs +
             '<span class="build-filter-name">' + r.label + '</span>' +
