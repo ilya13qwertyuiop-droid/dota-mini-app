@@ -1647,7 +1647,7 @@ margin-top: 14px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   padding: 8px 6px;
   border: 1px solid transparent;
   border-radius: 9px;
@@ -1659,6 +1659,16 @@ margin-top: 14px;
   transition: all 0.18s ease;
   font-family: inherit;
   text-align: center;
+}
+
+/* Override inline size set in JS */
+.build-pos-btn img {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.build-rank-btn {
+  padding: 7px 5px;
 }
 
 .build-rank-icons {
@@ -1685,8 +1695,8 @@ margin-top: 14px;
 }
 
 .build-rank-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -1723,8 +1733,8 @@ margin-top: 14px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 8px 6px;
+  gap: 3px;
+  padding: 6px 5px;
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
@@ -1756,18 +1766,18 @@ margin-top: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 5px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: border-color 0.18s, background 0.18s;
   flex: 1 1 auto;
-  min-width: 120px;
+  min-width: 90px;
 }
 
 .build-facet-btn:active {
@@ -1780,11 +1790,10 @@ margin-top: 14px;
 }
 
 .build-facet-icon {
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
   flex-shrink: 0;
-  margin-bottom: 2px;
 }
 
 .build-facet-name {
