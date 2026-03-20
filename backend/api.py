@@ -608,6 +608,37 @@ async def api_hero_synergy(
     }
 
 
+_STRATZ_QUAL_KEEP = {"artifact", "common", "epic", "rare"}
+
+
+def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
+    """Pre-filter Stratz core_items per rank/position: top-12 → qual+component filter → top-6."""
+    result: dict = {}
+    for rank_key, rank_val in stratz_data.items():
+        if not isinstance(rank_val, dict):
+            result[rank_key] = rank_val
+            continue
+        new_by_pos: dict = {}
+        for pos_key, pos_val in (rank_val.get("by_position") or {}).items():
+            if not isinstance(pos_val, dict):
+                new_by_pos[pos_key] = pos_val
+                continue
+            core = sorted(
+                pos_val.get("core_items") or [],
+                key=lambda x: x.get("matchCount", 0),
+                reverse=True,
+            )[:12]
+            filtered = [
+                e for e in core
+                if (lambda info: info.get("qual") in _STRATZ_QUAL_KEEP and not info.get("is_component", False))(
+                    items_by_id.get(str(e.get("itemId", ""))) or {}
+                )
+            ][:6]
+            new_by_pos[pos_key] = {**pos_val, "core_items": filtered}
+        result[rank_key] = {**rank_val, "by_position": new_by_pos}
+    return result
+
+
 # ========== Hero Build ==========
 
 @app.get("/api/hero/{hero_id}/build")
@@ -650,7 +681,10 @@ async def api_hero_build(hero_id: int):
                 ability_build.append(aname)
 
     # ── Core items (pre-decoded, from hero_builds_cache populated weekly by builds_updater) ──
-    core_items: list[dict] = cached.get("core_items") or []
+    core_items: list[dict] = [
+        {"id": item.get("id"), "dname": item.get("dname"), "img": item.get("img")}
+        for item in (cached.get("core_items") or [])
+    ]
 
     # ── Talent picks (live from our DB) ──────────────────────────────────
     talent_picks_raw = get_hero_talent_builds(hero_id)
@@ -671,15 +705,21 @@ async def api_hero_build(hero_id: int):
         len(start_game_items), len(core_items), len(talent_picks),
     )
 
+    items_db = get_app_cache_value("items_by_id") or {}
+    stratz   = _filter_stratz_core_items(cached.get("stratz") or {}, items_db)
+
     return {
-        "facets":        facets,
-        "ability_build": ability_build,
-        "talents":       talents,
-        "talent_picks":  talent_picks,
+        "facets":             facets,
+        "ability_build":      ability_build,
+        "ability_id_to_name": raw_map,
+        "talents":            talents,
+        "talent_picks":       talent_picks,
         "items": {
             "start_game_items": start_game_items,
             "core_items":       core_items,
         },
+        "items_db": items_db,
+        "stratz":   stratz,
     }
 
 
