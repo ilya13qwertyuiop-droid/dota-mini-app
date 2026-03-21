@@ -7,12 +7,12 @@ Run as a standalone process:
 
 Environment variables (all optional, sensible defaults):
     OPENDOTA_API_KEY          — paid API key (up to 3000 req/min)
-    POLL_INTERVAL_MINUTES     — how often to poll for new matches (default: 15)
+    POLL_INTERVAL_MINUTES     — how often to poll for new matches (default: 60)
     MAX_REQUESTS_PER_MINUTE   — self-imposed rate limit (default: 30)
     MAX_MATCHES               — maximum matches to keep in DB (default: 300000)
     DAYS_TO_KEEP              — matches older than this are deleted (default: 90)
     CLEANUP_INTERVAL_HOURS    — how often to run cleanup job (default: 24)
-    MAX_MATCHES_PER_CYCLE     — max new matches processed per poll cycle (default: 50)
+    MAX_MATCHES_PER_CYCLE     — max new matches processed per poll cycle (default: 40)
     FETCH_MATCH_DETAILS       — MUST be "1" to collect hero data.
                                  publicMatches does not include real hero IDs
                                  (radiant_team/dire_team are zeroed in the API response).
@@ -98,12 +98,12 @@ from backend.stats_db import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-POLL_INTERVAL_MINUTES: int = int(os.getenv("POLL_INTERVAL_MINUTES", "15"))
+POLL_INTERVAL_MINUTES: int = int(os.getenv("POLL_INTERVAL_MINUTES", "60"))
 MAX_REQUESTS_PER_MINUTE: int = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "30"))
 MAX_MATCHES: int = int(os.getenv("MAX_MATCHES", "300000"))
 DAYS_TO_KEEP: int = int(os.getenv("DAYS_TO_KEEP", "90"))
 CLEANUP_INTERVAL_HOURS: int = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
-MAX_MATCHES_PER_CYCLE: int = int(os.getenv("MAX_MATCHES_PER_CYCLE", "50"))
+MAX_MATCHES_PER_CYCLE: int = int(os.getenv("MAX_MATCHES_PER_CYCLE", "40"))
 FETCH_MATCH_DETAILS: bool = os.getenv("FETCH_MATCH_DETAILS", "0") == "1"
 
 # Explorer polling loop (alternative to publicMatches path)
@@ -973,6 +973,7 @@ async def _run_builds_update() -> None:
             "img": img or None,
             "qual": iinfo.get("qual"),
             "is_component": is_component,
+            "cost": iinfo.get("cost"),
         }
         if iid is not None:
             items_by_id[str(int(iid))] = entry
