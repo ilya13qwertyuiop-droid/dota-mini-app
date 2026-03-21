@@ -609,10 +609,14 @@ async def api_hero_synergy(
 
 
 _STRATZ_QUAL_KEEP = {"artifact", "common", "epic", "rare"}
+_BOOT_ITEM_IDS = {48, 50, 63, 29, 214, 220, 931, 180, 1401}
 
 
 def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
-    """Pre-filter Stratz core_items per rank/position: top-12 → qual+component filter → top-6."""
+    """Pre-filter Stratz core_items per rank/position.
+
+    Steps: top-12 → qual+component filter → ensure a boot is present → top-6.
+    """
     result: dict = {}
     for rank_key, rank_val in stratz_data.items():
         if not isinstance(rank_val, dict):
@@ -623,18 +627,31 @@ def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
             if not isinstance(pos_val, dict):
                 new_by_pos[pos_key] = pos_val
                 continue
-            core = sorted(
+
+            all_sorted = sorted(
                 pos_val.get("core_items") or [],
                 key=lambda x: x.get("matchCount", 0),
                 reverse=True,
-            )[:12]
-            filtered = [
-                e for e in core
-                if (lambda info: info.get("qual") in _STRATZ_QUAL_KEEP and not info.get("is_component", False))(
-                    items_by_id.get(str(e.get("itemId", ""))) or {}
-                )
-            ][:6]
-            new_by_pos[pos_key] = {**pos_val, "core_items": filtered}
+            )
+
+            def _keep(e: dict) -> bool:
+                info = items_by_id.get(str(e.get("itemId", ""))) or {}
+                return info.get("qual") in _STRATZ_QUAL_KEEP and not info.get("is_component", False)
+
+            # top-12 filtered
+            filtered = [e for e in all_sorted[:12] if _keep(e)]
+
+            # ensure a boot is present — inject the top-matchCount boot if missing
+            has_boot = any(e.get("itemId") in _BOOT_ITEM_IDS for e in filtered[:7])
+            if not has_boot:
+                boot_candidates = [e for e in all_sorted if e.get("itemId") in _BOOT_ITEM_IDS]
+                if boot_candidates:
+                    filtered.append(boot_candidates[0])
+
+            # re-sort after possible injection and take top-6
+            filtered.sort(key=lambda x: x.get("matchCount", 0), reverse=True)
+            new_by_pos[pos_key] = {**pos_val, "core_items": filtered[:6]}
+
         result[rank_key] = {**rank_val, "by_position": new_by_pos}
     return result
 
