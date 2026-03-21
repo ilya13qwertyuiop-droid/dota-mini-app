@@ -1855,7 +1855,8 @@ function _renderItemsContent(data) {
     var startSlots = startItems.map(itemSlot).join('');
     var coreSlots  = coreItems.map(itemSlot).join('');
 
-    return '<div class="build-items-header">' +
+    return '<div class="build-items-wrap">' +
+        '<div class="build-items-header">' +
         '<button class="build-items-tab active" onclick="switchItemsTab(\'start\', this)">Стартовые</button>' +
         '<button class="build-items-tab" onclick="switchItemsTab(\'core\', this)">Основные</button>' +
         '</div>' +
@@ -1864,6 +1865,7 @@ function _renderItemsContent(data) {
         '</div>' +
         '<div class="build-items-panel" id="items-panel-core" style="display:none">' +
         '<div class="build-items-grid">' + coreSlots + '</div>' +
+        '</div>' +
         '</div>';
 }
 
