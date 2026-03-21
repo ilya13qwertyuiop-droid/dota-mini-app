@@ -635,8 +635,16 @@ def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
             )
 
             def _keep(e: dict) -> bool:
-                info = items_by_id.get(str(e.get("itemId", ""))) or {}
-                return info.get("qual") in _STRATZ_QUAL_KEEP and not info.get("is_component", False)
+                iid  = e.get("itemId")
+                info = items_by_id.get(str(iid)) or {}
+                if not (info.get("qual") in _STRATZ_QUAL_KEEP and not info.get("is_component", False)):
+                    return False
+                # boots bypass cost filter; other items must cost >= 1500
+                if iid not in _BOOT_ITEM_IDS:
+                    cost = info.get("cost")
+                    if cost is not None and cost < 1500:
+                        return False
+                return True
 
             # top-12 filtered
             filtered = [e for e in all_sorted[:12] if _keep(e)]
