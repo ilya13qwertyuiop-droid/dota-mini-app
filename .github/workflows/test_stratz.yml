@@ -1,0 +1,14 @@
+name: Test Stratz
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test Stratz API
+        run: |
+          curl -s "https://api.stratz.com/graphql" \
+            -X POST \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJTdWJqZWN0IjoiMGY4YzFiNDAtMDcwZi00NjAyLThjZTAtNzU0MDc1NzExN2M3IiwiU3RlYW1JZCI6IjI1NjMyOTQ1MSIsIkFQSVVzZXIiOiJ0cnVlIiwibmJmIjoxNzcyMTEyODU3LCJleHAiOjE4MDM2NDg4NTcsImlhdCI6MTc3MjExMjg1NywiaXNzIjoiaHR0cHM6Ly9hcGkuc3RyYXR6LmNvbSJ9.jWJ55lwtRqmkAG_NvCgkXD__vfPtorH9d7LHqWabGbg" \
+            -H "User-Agent: STRATZ_API" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"{ heroStats { winDay(heroIds: [14]) { heroId winCount } } }"}'
