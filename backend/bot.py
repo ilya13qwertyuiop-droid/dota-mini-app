@@ -141,6 +141,7 @@ load_env()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
+SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "@SetNaSdachy")  # chat_id канала спонсора
 
 # Telegram user_id администраторов — имеют доступ к /admin_feedback
 ADMIN_IDS: frozenset[int] = frozenset({556944111})
@@ -154,7 +155,7 @@ HERO_IMAGE_BASE_URL: str = os.environ.get(
 )
 
 async def is_subscriber(bot: Bot, user_id: int) -> bool:
-    """Проверяет подписку пользователя на канал CHECK_CHAT_ID.
+    """Проверяет подписку пользователя на оба канала: CHECK_CHAT_ID и SPONSOR_CHAT_ID.
 
     Каждый вызов делает свежий запрос getChatMember к Telegram API.
     При любой ошибке возвращает False и не падает.
@@ -163,10 +164,20 @@ async def is_subscriber(bot: Bot, user_id: int) -> bool:
         return False
     try:
         member = await bot.get_chat_member(chat_id=CHECK_CHAT_ID, user_id=user_id)
-        return member.status in ("member", "administrator", "creator")
+        if member.status not in ("member", "administrator", "creator"):
+            return False
     except Exception as e:
-        logger.warning("[is_subscriber] error for user %s: %s", user_id, e)
+        logger.warning("[is_subscriber] error for user %s (main channel): %s", user_id, e)
         return False
+    if SPONSOR_CHAT_ID:
+        try:
+            sponsor_member = await bot.get_chat_member(chat_id=SPONSOR_CHAT_ID, user_id=user_id)
+            if sponsor_member.status not in ("member", "administrator", "creator"):
+                return False
+        except Exception as e:
+            logger.warning("[is_subscriber] error for user %s (sponsor channel): %s", user_id, e)
+            return False
+    return True
 
 
 # -------- handlers --------
@@ -196,12 +207,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subscribed = await is_subscriber(context.bot, user_id)
 
     if not subscribed:
-        kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
-        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+uY95DeTDqWkwZDJi"),
+            ]
+        ])
         await update.message.reply_text(
-            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
-            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз.",
             reply_markup=kb,
         )
         return
@@ -299,12 +313,15 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
-        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+uY95DeTDqWkwZDJi"),
+            ]
+        ])
         await update.message.reply_text(
-            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
-            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз.",
             reply_markup=kb,
         )
         return
@@ -589,12 +606,15 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
-        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+uY95DeTDqWkwZDJi"),
+            ]
+        ])
         await update.message.reply_text(
-            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
-            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз.",
             reply_markup=kb,
         )
         return
@@ -985,12 +1005,15 @@ async def counters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
-        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+uY95DeTDqWkwZDJi"),
+            ]
+        ])
         await update.message.reply_text(
-            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
-            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз.",
             reply_markup=kb,
         )
         return
@@ -1019,12 +1042,15 @@ async def synergy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
-        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+uY95DeTDqWkwZDJi"),
+            ]
+        ])
         await update.message.reply_text(
-            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
-            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз.",
             reply_markup=kb,
         )
         return
@@ -1295,12 +1321,15 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📢 Подписаться на канал", url="https://t.me/kasumi_tt")]]
-        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+uY95DeTDqWkwZDJi"),
+            ]
+        ])
         await update.message.reply_text(
-            "⛔ Чтобы пользоваться ботом, подпишись на канал создателя.\n\n"
-            "После подписки нажми /start ещё раз — и появится кнопка для открытия мини‑приложения.",
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз.",
             reply_markup=kb,
         )
         return
