@@ -1700,11 +1700,13 @@ margin-top: 14px;
 /* ---- Skill row ---- */
 .build-skillrow {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 2px;
 }
 
 .build-ability-slot {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1719,8 +1721,8 @@ margin-top: 14px;
 }
 
 .build-ability-icon {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 4px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.08);

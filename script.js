@@ -1676,6 +1676,21 @@ var _POSITION_IMG = {
     'POSITION_4': '/images/positions/pos_4.png',
     'POSITION_5': '/images/positions/pos_5.png',
 };
+// Прямые маппинги для ключей dota_builds (pos%20N)
+var _DOTA_POS_LABELS = {
+    'pos%201': 'Керри',
+    'pos%202': 'Мид',
+    'pos%203': 'Оффлейн',
+    'pos%204': 'Частичная поддержка',
+    'pos%205': 'Поддержка',
+};
+var _DOTA_POS_IMG = {
+    'pos%201': '/images/positions/pos_1.png',
+    'pos%202': '/images/positions/pos_2.png',
+    'pos%203': '/images/positions/pos_3.png',
+    'pos%204': '/images/positions/pos_4.png',
+    'pos%205': '/images/positions/pos_5.png',
+};
 
 function _showBuildLoading() {
     _buildData     = null;
@@ -1709,7 +1724,7 @@ function _getTopPositionsFromBuilds(data) {
             var total = (data.dota_builds[k].sixslot || []).reduce(function (s, e) {
                 return s + (e.num_matches || 0);
             }, 0);
-            return { position: _DOTA_TO_STRATZ_POS[k] || k, matchCount: total };
+            return { position: k, matchCount: total };
         });
         arr.sort(function (a, b) { return b.matchCount - a.matchCount; });
         return arr.slice(0, 3).map(function (p) { return p.position; });
@@ -1761,16 +1776,24 @@ function _buildSkillRowHtml(dotaPos, data) {
 function _buildTalentsHtml(dotaPos, data) {
     var rows;
     if (dotaPos && dotaPos.talents && dotaPos.talents.length) {
+        // Строим карту ability_name → русское название из Valve-данных
+        var ruMap = {};
+        (data.talents_valve || []).forEach(function (tv) {
+            if (tv.left_ability  && tv.left)  ruMap[tv.left_ability]  = tv.left;
+            if (tv.right_ability && tv.right) ruMap[tv.right_ability] = tv.right;
+        });
         var sorted = dotaPos.talents.slice().sort(function (a, b) { return (a.lvl || 0) - (b.lvl || 0); });
         rows = sorted.map(function (t) {
             var leftPopular  = t.choice === 'lt';
             var rightPopular = t.choice === 'rt';
             var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
             var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
+            var leftName  = ruMap[(t.left  || {}).name] || (t.left  || {}).displayName || '';
+            var rightName = ruMap[(t.right || {}).name] || (t.right || {}).displayName || '';
             return '<div class="build-talent-row">' +
-                '<div class="' + leftCls  + '">' + ((t.left  || {}).displayName || '') + '</div>' +
+                '<div class="' + leftCls  + '">' + leftName  + '</div>' +
                 '<div class="build-talent-level-badge">' + (t.lvl || '') + '</div>' +
-                '<div class="' + rightCls + '">' + ((t.right || {}).displayName || '') + '</div>' +
+                '<div class="' + rightCls + '">' + rightName + '</div>' +
                 '</div>';
         }).join('');
     } else {
@@ -1854,15 +1877,15 @@ function renderBuildTab(data) {
         _buildPosition = topPositions[0];
     }
 
-    var posKey  = _STRATZ_POS_TO_DOTA[_buildPosition];
-    var dotaPos = data.dota_builds && posKey && data.dota_builds[posKey];
+    var dotaPos = data.dota_builds && _buildPosition && data.dota_builds[_buildPosition];
 
     var posButtons = topPositions.map(function (pos) {
         var activeCls = pos === _buildPosition ? ' active' : '';
-        var imgSrc = _POSITION_IMG[pos] || '';
+        var imgSrc = _DOTA_POS_IMG[pos] || _POSITION_IMG[pos] || '';
+        var label  = _DOTA_POS_LABELS[pos] || _POSITION_LABELS[pos] || pos;
         return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
             '<img src="' + imgSrc + '" style="width:24px;height:24px;object-fit:contain;" onerror="this.style.display=\'none\'">' +
-            '<span class="build-filter-name">' + (_POSITION_LABELS[pos] || pos) + '</span>' +
+            '<span class="build-filter-name">' + label + '</span>' +
             '</button>';
     }).join('');
 
