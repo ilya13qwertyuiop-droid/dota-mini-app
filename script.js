@@ -1791,7 +1791,8 @@ function _applyTalentNum(ruName, num) {
         var qIdx = ruName.indexOf('?');
         var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
         console.log('talent debug:', { charBefore: charBefore, numSign: num[0], num: num, ruName: ruName });
-        var numToInsert = ((charBefore === '+' && num[0] === '+') || (charBefore === '-' && num[0] === '-'))
+        var isMinus = charBefore === '-' || charBefore === '\u2013' || charBefore === '\u2014';
+        var numToInsert = ((charBefore === '+' && num[0] === '+') || (isMinus && num[0] === '-'))
             ? num.slice(1) : num;
         return ruName.replace('?', numToInsert);
     }
