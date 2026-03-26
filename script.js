@@ -1790,7 +1790,8 @@ function _applyTalentNum(ruName, num) {
     if (ruName.indexOf('?') !== -1) {
         var qIdx = ruName.indexOf('?');
         var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
-        var numToInsert = (charBefore === '+' || charBefore === '-') ? num.replace(/^[+\-]/, '') : num;
+        var numSign = (num[0] === '+' || num[0] === '-') ? num[0] : '';
+        var numToInsert = (numSign && charBefore === numSign) ? num.replace(/^[+\-]/, '') : num;
         return ruName.replace('?', numToInsert);
     }
     // Если в русском тексте уже есть цифры — не дублируем число
@@ -1886,16 +1887,15 @@ function _buildItemsSectionHtml(dotaPos, data) {
     var coreHtml;
     if (dotaPos && dotaPos.anchor_items && dotaPos.anchor_items.length) {
         var anchorSorted = (dotaPos.anchor_items || []).slice()
-            .sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
-        var maxPR = anchorSorted.length ? (anchorSorted[0].pick_rate || 0) : 1;
+            .sort(function (a, b) { return (b.pr || 0) - (a.pr || 0); });
+        var maxPR = anchorSorted.length ? Math.max.apply(null, anchorSorted.map(function (i) { return i.pr || 0; })) : 1;
         coreHtml = '<div class="build-items-grid build-items-grid--anchor">' +
             anchorSorted.map(function (e) {
-                var info = resolveById(e.raw_item_id || e.item_id);
-                var pr = e.pick_rate || 0;
+                var info = resolveById(e.raw_item_id);
+                var pr = e.pr || 0;
                 var prPct = (pr * 100).toFixed(0) + '%';
                 var fillPct = maxPR > 0 ? (pr / maxPR * 100).toFixed(1) : '0';
-                var timeVal = e.avg_time || e.time_minutes || e.time || null;
-                var timeStr = timeVal ? '~' + Math.round(timeVal) + 'м' : '';
+                var timeStr = e.avg_minute != null ? '~' + Math.round(e.avg_minute) + 'м' : '';
                 return '<div class="build-item-slot build-item-slot--anchor">' +
                     '<div class="build-item-anchor-top">' +
                         (info.img
