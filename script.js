@@ -1642,152 +1642,247 @@ const matchupPage = {
 
 // ---------- Build: загрузка и рендер ----------
 
-var _buildData        = null;
-var _buildHeroId      = null;
-var _activeFacetIdx   = 0;
+var _buildData      = null;
+var _buildHeroId    = null;
+var _buildPosition  = null;   // 'POSITION_1' … 'POSITION_5'
+var _buildItemsTab  = 'core'; // 'start' | 'core' | 'situ'
+
+var _STRATZ_POS_TO_DOTA = {
+    'POSITION_1': 'pos%201',
+    'POSITION_2': 'pos%202',
+    'POSITION_3': 'pos%203',
+    'POSITION_4': 'pos%204',
+    'POSITION_5': 'pos%205',
+};
+var _DOTA_TO_STRATZ_POS = {
+    'pos%201': 'POSITION_1',
+    'pos%202': 'POSITION_2',
+    'pos%203': 'POSITION_3',
+    'pos%204': 'POSITION_4',
+    'pos%205': 'POSITION_5',
+};
+
+var _POSITION_LABELS = {
+    'POSITION_1': 'Керри',
+    'POSITION_2': 'Мид',
+    'POSITION_3': 'Оффлейн',
+    'POSITION_4': 'Частичная поддержка',
+    'POSITION_5': 'Поддержка',
+};
+var _POSITION_IMG = {
+    'POSITION_1': '/images/positions/pos_1.png',
+    'POSITION_2': '/images/positions/pos_2.png',
+    'POSITION_3': '/images/positions/pos_3.png',
+    'POSITION_4': '/images/positions/pos_4.png',
+    'POSITION_5': '/images/positions/pos_5.png',
+};
 
 function _showBuildLoading() {
-    _buildData    = null;
-    _activeFacetIdx = 0;
+    _buildData     = null;
+    _buildPosition = null;
+    _buildItemsTab = 'core';
     var el = document.getElementById('build-content');
     if (el) el.innerHTML = '<p class="matchup-placeholder-text">Загрузка...</p>';
 }
 
-function _renderFacetDesc(facets) {
-    var descEl = document.getElementById('build-facet-desc');
-    if (!descEl) return;
-    var f = facets[_activeFacetIdx];
-    if (!f) { descEl.textContent = ''; return; }
-    descEl.textContent = f.description || '';
+function selectBuildPosition(pos) {
+    _buildPosition = pos;
+    if (_buildData) renderBuildTab(_buildData);
 }
 
-function selectFacet(idx) {
-    _activeFacetIdx = idx;
-    var btns = document.querySelectorAll('.build-facet-btn');
-    btns.forEach(function (btn, i) { btn.classList.toggle('active', i === idx); });
-    if (_buildData) _renderFacetDesc(_buildData.facets);
+function switchBuildItemsTab(tab) {
+    _buildItemsTab = tab;
+    ['start', 'core', 'situ'].forEach(function (t) {
+        var panel = document.getElementById('build-items-panel-' + t);
+        if (panel) panel.style.display = t === tab ? '' : 'none';
+    });
+    document.querySelectorAll('.build-items-tab-btn').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
 }
+
+// ── helpers ───────────────────────────────────────────────────────────────
+
+function _getTopPositionsFromBuilds(data) {
+    if (data.dota_builds) {
+        var arr = Object.keys(data.dota_builds).map(function (k) {
+            var total = (data.dota_builds[k].sixslot || []).reduce(function (s, e) {
+                return s + (e.num_matches || 0);
+            }, 0);
+            return { position: _DOTA_TO_STRATZ_POS[k] || k, matchCount: total };
+        });
+        arr.sort(function (a, b) { return b.matchCount - a.matchCount; });
+        return arr.slice(0, 3).map(function (p) { return p.position; });
+    }
+    var positions = (data.stratz && data.stratz.ALL && data.stratz.ALL.positions) || [];
+    return positions.slice()
+        .sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
+        .slice(0, 3)
+        .map(function (p) { return p.position; });
+}
+
+function _buildSkillRowHtml(dotaPos, data) {
+    var abilities;
+    if (dotaPos && dotaPos.abilities && dotaPos.abilities.length) {
+        abilities = dotaPos.abilities
+            .filter(function (a) { return !a.isTalent; })
+            .map(function (a) { return a.name; });
+    } else {
+        abilities = (data.ability_build || []).filter(function (n) {
+            return n.indexOf('special_bonus_') !== 0;
+        });
+    }
+    if (!abilities.length) {
+        return '<p class="build-placeholder">Данные собираются, скоро появится</p>';
+    }
+
+    // Detect ult: unique ability name that appears fewest times
+    var counts = {};
+    abilities.forEach(function (n) { counts[n] = (counts[n] || 0) + 1; });
+    var vals = Object.keys(counts).map(function (k) { return counts[k]; });
+    var minC = Math.min.apply(null, vals);
+    var maxC = Math.max.apply(null, vals);
+    var ultNames = {};
+    if (minC < maxC) {
+        Object.keys(counts).forEach(function (n) { if (counts[n] === minC) ultNames[n] = true; });
+    }
+
+    var slots = abilities.map(function (aname, i) {
+        var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/' + aname + '.png';
+        var ultCls = ultNames[aname] ? ' build-ability-slot--ult' : '';
+        return '<div class="build-ability-slot' + ultCls + '">' +
+            '<div class="build-ability-level">' + (i + 1) + '</div>' +
+            '<img src="' + iconUrl + '" class="build-ability-icon" title="' + aname + '" onerror="this.style.opacity=\'0.3\'">' +
+            '</div>';
+    }).join('');
+    return '<div class="build-skillrow">' + slots + '</div>';
+}
+
+function _buildTalentsHtml(dotaPos, data) {
+    var rows;
+    if (dotaPos && dotaPos.talents && dotaPos.talents.length) {
+        var sorted = dotaPos.talents.slice().sort(function (a, b) { return (a.lvl || 0) - (b.lvl || 0); });
+        rows = sorted.map(function (t) {
+            var leftPopular  = t.choice === 'lt';
+            var rightPopular = t.choice === 'rt';
+            var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
+            var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
+            return '<div class="build-talent-row">' +
+                '<div class="' + leftCls  + '">' + ((t.left  || {}).displayName || '') + '</div>' +
+                '<div class="build-talent-level-badge">' + (t.lvl || '') + '</div>' +
+                '<div class="' + rightCls + '">' + ((t.right || {}).displayName || '') + '</div>' +
+                '</div>';
+        }).join('');
+    } else {
+        var talents = data.talents || [];
+        if (!talents.length) return '';
+        var sortedFb = talents.slice().sort(function (a, b) { return (a.level || 0) - (b.level || 0); });
+        rows = sortedFb.map(function (t) {
+            var leftCls  = 'build-talent-card build-talent-left';
+            var rightCls = 'build-talent-card build-talent-right';
+            return '<div class="build-talent-row">' +
+                '<div class="' + leftCls  + '">' + (t.left_display || t.left  || '') + '</div>' +
+                '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
+                '<div class="' + rightCls + '">' + (t.right_display || t.right || '') + '</div>' +
+                '</div>';
+        }).join('');
+    }
+    return '<div class="build-talent-tree">' + rows + '</div>';
+}
+
+function _buildItemsSectionHtml(dotaPos, data) {
+    var itemsDb = data.items_db || {};
+    function resolveById(id) {
+        var info = itemsDb[String(id)] || {};
+        return { dname: info.dname || ('Item ' + id), img: info.img || null };
+    }
+
+    var startItems = [], coreItems = [], situItems = [];
+    if (dotaPos) {
+        var starting = dotaPos.starting_items || [];
+        if (starting.length && Array.isArray(starting[0][0])) {
+            startItems = starting[0][0].map(resolveById);
+        }
+        var sixslot = dotaPos.sixslot || [];
+        coreItems = sixslot.filter(function (e) { return (e.pick_rate || 0) >= 0.4; })
+            .slice().sort(function (a, b) { return b.pick_rate - a.pick_rate; })
+            .slice(0, 6).map(function (e) { return resolveById(e.item_id); });
+        situItems = sixslot.filter(function (e) { var pr = e.pick_rate || 0; return pr >= 0.1 && pr < 0.4; })
+            .slice().sort(function (a, b) { return b.pick_rate - a.pick_rate; })
+            .slice(0, 6).map(function (e) { return resolveById(e.item_id); });
+    } else {
+        startItems = (data.items && data.items.start_game_items) || [];
+        coreItems  = (data.items && data.items.core_items) || [];
+    }
+
+    function itemSlot(item) {
+        return '<div class="build-item-slot">' +
+            (item.img
+                ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
+                : '<div class="build-item-icon"></div>') +
+            '<span class="build-item-name">' + (item.dname || '') + '</span>' +
+            '</div>';
+    }
+
+    var tabDefs = [
+        { tab: 'start', label: 'Стартовые',  items: startItems },
+        { tab: 'core',  label: 'Основные',   items: coreItems  },
+        { tab: 'situ',  label: 'Ситуативные', items: situItems  },
+    ];
+    var tabBtns = tabDefs.map(function (td) {
+        var activeCls = td.tab === _buildItemsTab ? ' active' : '';
+        return '<button class="build-items-tab-btn' + activeCls + '" data-tab="' + td.tab + '" onclick="switchBuildItemsTab(\'' + td.tab + '\')">' + td.label + '</button>';
+    }).join('');
+    var panels = tabDefs.map(function (td) {
+        var display = td.tab === _buildItemsTab ? '' : 'none';
+        return '<div class="build-items-panel" id="build-items-panel-' + td.tab + '" style="display:' + display + '">' +
+            '<div class="build-items-grid">' + td.items.map(itemSlot).join('') + '</div>' +
+            '</div>';
+    }).join('');
+
+    return '<div class="build-filter-segmented build-items-tabs-ctrl">' + tabBtns + '</div>' + panels;
+}
+
+// ── Основной рендер вкладки Сборка ───────────────────────────────────────
 
 function renderBuildTab(data) {
     var el = document.getElementById('build-content');
     if (!el) return;
 
-    var html = '';
-
-    // ── Аспекты (только если больше одного) ──────────────────────────────
-    var facets = data.facets || [];
-    if (facets.length > 1) {
-        var facetBtns = facets.map(function (f, i) {
-            var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/facets/icons/' + (f.icon || '') + '.png';
-            var colorStyle = '';
-            if (f.color !== undefined && f.color !== null) {
-                var colorMap = {
-                    0: 'rgba(146,64,14,0.22)',
-                    1: 'rgba(200,60,60,0.22)',
-                    2: 'rgba(34,197,94,0.22)',
-                    3: 'rgba(6,182,212,0.22)',
-                    4: 'rgba(168,85,247,0.22)',
-                };
-                var bg = colorMap[f.color] !== undefined ? colorMap[f.color] : 'rgba(255,255,255,0.08)';
-                colorStyle = 'style="background:' + bg + '"';
-            }
-            var activeClass = i === 0 ? ' active' : '';
-            return '<button class="build-facet-btn' + activeClass + '" onclick="selectFacet(' + i + ')" ' + colorStyle + '>' +
-                '<img src="' + iconUrl + '" class="build-facet-icon" onerror="this.style.display=\'none\'">' +
-                '<span class="build-facet-name">' + (f.title || f.name || '') + '</span>' +
-                '</button>';
-        }).join('');
-
-        var firstDesc = (facets[0] && facets[0].description) ? facets[0].description : '';
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">АСПЕКТЫ</div>' +
-            '<div class="build-facets">' + facetBtns + '</div>' +
-            '<div class="build-facet-desc" id="build-facet-desc">' + firstDesc + '</div>' +
-            '</div>';
+    var topPositions = _getTopPositionsFromBuilds(data);
+    if (topPositions.length && topPositions.indexOf(_buildPosition) === -1) {
+        _buildPosition = topPositions[0];
     }
 
-    // ── Порядок прокачки ──────────────────────────────────────────────────
-    // Filter out talents (special_bonus_*) — they appear in a separate block and
-    // would otherwise show broken icons and shift the level numbering.
-    var abilities = (data.ability_build || []).filter(function (aname) {
-        return aname.indexOf('special_bonus_') !== 0;
-    });
-    html += '<div class="matchup-section"><div class="matchup-section-title">ПОРЯДОК ПРОКАЧКИ</div>';
-    if (abilities.length > 0) {
-        var slots = abilities.map(function (aname, i) {
-            var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/' + aname + '.png';
-            return '<div class="build-ability-slot">' +
-                '<div class="build-ability-level">' + (i + 1) + '</div>' +
-                '<img src="' + iconUrl + '" class="build-ability-icon" title="' + aname + '" onerror="this.style.opacity=\'0.3\'">' +
-                '</div>';
-        }).join('');
-        html += '<div class="build-abilities">' + slots + '</div>';
-    } else {
-        html += '<p class="build-placeholder">Данные собираются, скоро появится</p>';
-    }
-    html += '</div>';
+    var posKey  = _STRATZ_POS_TO_DOTA[_buildPosition];
+    var dotaPos = data.dota_builds && posKey && data.dota_builds[posKey];
 
-    // ── Таланты ───────────────────────────────────────────────────────────
-    var talents = data.talents || [];
-    if (talents.length > 0) {
-        // Сортируем по убыванию уровня (25→20→15→10) — дерево снизу вверх
-        var sorted = talents.slice().sort(function (a, b) { return (b.level || 0) - (a.level || 0); });
-        var talentRows = sorted.map(function (t) {
-            return '<div class="build-talent-row">' +
-                '<div class="build-talent-left">' + (t.left || '') + '</div>' +
-                '<div class="build-talent-level">' + (t.level || '') + '</div>' +
-                '<div class="build-talent-right">' + (t.right || '') + '</div>' +
-                '</div>';
-        }).join('');
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">ТАЛАНТЫ</div>' +
-            '<div class="build-talents">' + talentRows + '</div>' +
-            '</div>';
-    }
+    var posButtons = topPositions.map(function (pos) {
+        var activeCls = pos === _buildPosition ? ' active' : '';
+        var imgSrc = _POSITION_IMG[pos] || '';
+        return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
+            '<img src="' + imgSrc + '" style="width:24px;height:24px;object-fit:contain;" onerror="this.style.display=\'none\'">' +
+            '<span class="build-filter-name">' + (_POSITION_LABELS[pos] || pos) + '</span>' +
+            '</button>';
+    }).join('');
 
-    // ── Стартовые предметы ────────────────────────────────────────────────
-    var startItems = (data.items && data.items.start_game_items) || [];
-    if (startItems.length > 0) {
-        var startSlots = startItems.map(function (item) {
-            return '<div class="build-item-slot">' +
-                (item.img
-                    ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
-                    : '<div class="build-item-icon"></div>') +
-                '<span class="build-item-name">' + (item.dname || '') + '</span>' +
-                '</div>';
-        }).join('');
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">СТАРТОВЫЕ ПРЕДМЕТЫ</div>' +
-            '<div class="build-items-row">' + startSlots + '</div>' +
-            '</div>';
-    }
-
-    // ── Основные предметы (из нашей БД) ──────────────────────────────────
-    var coreItems = (data.items && data.items.core_items) || [];
-    if (coreItems.length > 0) {
-        var coreSlots = coreItems.map(function (item) {
-            var wr = item.winrate != null ? Math.round(item.winrate * 100) + '%' : '';
-            var games = item.games ? item.games + '\u00a0игр' : '';
-            return '<div class="build-item-slot">' +
-                (item.img
-                    ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
-                    : '<div class="build-item-icon"></div>') +
-                '<span class="build-item-name">' + (item.dname || '') + '</span>' +
-                (wr ? '<span class="build-item-stat">' + wr + '</span>' : '') +
-                (games ? '<span class="build-item-games">' + games + '</span>' : '') +
-                '</div>';
-        }).join('');
-        html += '<div class="matchup-section">' +
-            '<div class="matchup-section-title">ОСНОВНЫЕ ПРЕДМЕТЫ</div>' +
-            '<div class="build-items-row">' + coreSlots + '</div>' +
-            '</div>';
-    }
-
-    if (!html) {
-        html = '<p class="matchup-placeholder-text">Данные недоступны</p>';
-    }
-
-    el.innerHTML = html;
+    el.innerHTML =
+        '<div class="build-filters">' +
+            '<div class="build-filter-section">' +
+                '<div class="build-filter-label">ПОПУЛЯРНЫЕ ПОЗИЦИИ</div>' +
+                '<div class="build-filter-segmented">' + posButtons + '</div>' +
+            '</div>' +
+        '</div>' +
+        '<div class="build-section">' +
+            '<div class="build-section-label">ПРОКАЧКА</div>' +
+            _buildSkillRowHtml(dotaPos, data) +
+            _buildTalentsHtml(dotaPos, data) +
+        '</div>' +
+        '<div class="build-section-divider"></div>' +
+        '<div class="build-section">' +
+            '<div class="build-section-label">ПРЕДМЕТЫ</div>' +
+            _buildItemsSectionHtml(dotaPos, data) +
+        '</div>';
 }
 
 async function loadHeroBuild(heroId) {

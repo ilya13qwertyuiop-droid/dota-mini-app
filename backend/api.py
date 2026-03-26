@@ -667,11 +667,11 @@ def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
 # ========== Hero Build ==========
 
 _STRATZ_TO_DOTA_POS: dict[str, str] = {
-    "POSITION_1": "pos 1",
-    "POSITION_2": "pos 2",
-    "POSITION_3": "pos 3",
-    "POSITION_4": "pos 4",
-    "POSITION_5": "pos 5",
+    "POSITION_1": "pos%201",
+    "POSITION_2": "pos%202",
+    "POSITION_3": "pos%203",
+    "POSITION_4": "pos%204",
+    "POSITION_5": "pos%205",
 }
 _DOTA_TO_STRATZ_POS: dict[str, str] = {v: k for k, v in _STRATZ_TO_DOTA_POS.items()}
 
