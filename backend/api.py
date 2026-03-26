@@ -805,6 +805,7 @@ async def api_hero_build(hero_id: int):
             "ability_build": ability_build,
             "ability_id_to_name": {},
             "talents":      talents,
+            "talents_valve": cached.get("talents", []),
             "talent_picks": {},
             "items": {
                 "start_game_items": start_game_items,
