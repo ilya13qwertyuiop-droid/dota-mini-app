@@ -1707,7 +1707,7 @@ function selectBuildPosition(pos) {
 
 function switchBuildItemsTab(tab) {
     _buildItemsTab = tab;
-    ['start', 'core', 'neutral'].forEach(function (t) {
+    ['start', 'core', 'situ', 'neutral'].forEach(function (t) {
         var panel = document.getElementById('build-items-panel-' + t);
         if (panel) panel.style.display = t === tab ? '' : 'none';
     });
@@ -1790,7 +1790,10 @@ function _applyTalentNum(ruName, num) {
     if (ruName.indexOf('?') !== -1) return ruName.replace('?', num);
     // Если в русском тексте уже есть цифры — не дублируем число
     if (/\d/.test(ruName)) return ruName;
-    return num + ' ' + ruName;
+    // Убираем дублирующийся знак: если num начинается с +/- и ruName тоже начинается с того же знака
+    var numSign = (num[0] === '+' || num[0] === '-') ? num[0] : '';
+    var ruTrimmed = (numSign && ruName[0] === numSign) ? ruName.slice(1).replace(/^\s+/, '') : ruName;
+    return num + ' ' + ruTrimmed;
 }
 
 function _buildTalentsHtml(dotaPos, data) {
@@ -1864,42 +1867,50 @@ function _buildItemsSectionHtml(dotaPos, data) {
             '</div>';
     }
 
-    // ── Основные (items_mid_late, топ-8 по pick_rate, сетка 4×2) ────────
-    var midLateHtml = '';
-    if (dotaPos && dotaPos.items_mid_late) {
-        var midLate = (dotaPos.items_mid_late || []).slice()
-            .sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); })
-            .slice(0, 8);
-        midLateHtml = '<div class="build-items-grid build-items-grid--mid-late">' +
-            midLate.map(function (e, i) {
-                var info = resolveById(e.raw_item_id);
-                var accentCls = i < 4 ? ' build-item-slot--accent' : '';
-                var prPct = ((e.pick_rate || 0) * 100).toFixed(0) + '%';
-                var timeVal = e.avg_time || e.time_minutes || e.time || null;
-                var timeStr = timeVal ? '~' + Math.round(timeVal) + 'м' : '';
-                return '<div class="build-item-slot build-item-slot--mid-late' + accentCls + '">' +
-                    (info.img
-                        ? '<img src="' + info.img + '" class="build-item-icon build-item-icon--mid-late" onerror="this.style.opacity=\'0.3\'">'
-                        : '<div class="build-item-icon build-item-icon--mid-late"></div>') +
-                    '<span class="build-item-pick-rate">' + prPct + '</span>' +
-                    (timeStr ? '<span class="build-item-time">' + timeStr + '</span>' : '') +
-                    '</div>';
-            }).join('') +
+    function itemSlotPR(item, prPct) {
+        return '<div class="build-item-slot">' +
+            (item.img
+                ? '<img src="' + item.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
+                : '<div class="build-item-icon"></div>') +
+            '<span class="build-item-name">' + (item.dname || '') + '</span>' +
+            '<span class="build-item-pick-rate">' + prPct + '</span>' +
             '</div>';
-    } else {
-        // Fallback: sixslot как раньше
-        var sixslot = dotaPos ? (dotaPos.sixslot || []) : [];
-        var coreItems = sixslot.filter(function (e) { return (e.pick_rate || 0) >= 0.4; })
-            .slice().sort(function (a, b) { return b.pick_rate - a.pick_rate; })
-            .slice(0, 6).map(function (e) { return resolveById(e.item_id); });
-        if (!coreItems.length) coreItems = (data.items && data.items.core_items) || [];
-        midLateHtml = '<div class="build-items-grid">' + coreItems.map(itemSlot).join('') + '</div>';
     }
+
+    // ── Основные и Ситуативные — из sixslot ──────────────────────────────
+    var sixslot = dotaPos ? (dotaPos.sixslot || []) : [];
+    var sixslotSorted = sixslot.slice().sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
+
+    var coreSlots = sixslotSorted
+        .filter(function (e) { return (e.pick_rate || 0) >= 0.4; })
+        .slice(0, 6);
+    if (!coreSlots.length) {
+        // Fallback: API-provided core items (no pick_rate)
+        coreSlots = null;
+    }
+    var coreHtml;
+    if (coreSlots) {
+        coreHtml = '<div class="build-items-grid">' +
+            coreSlots.map(function (e) {
+                return itemSlotPR(resolveById(e.item_id), ((e.pick_rate || 0) * 100).toFixed(0) + '%');
+            }).join('') + '</div>';
+    } else {
+        var fallbackCore = (data.items && data.items.core_items) || [];
+        coreHtml = '<div class="build-items-grid">' + fallbackCore.map(itemSlot).join('') + '</div>';
+    }
+
+    var situSlots = sixslotSorted
+        .filter(function (e) { var pr = e.pick_rate || 0; return pr >= 0.1 && pr < 0.4; });
+    var situHtml = situSlots.length
+        ? '<div class="build-items-grid">' +
+            situSlots.map(function (e) {
+                return itemSlotPR(resolveById(e.item_id), ((e.pick_rate || 0) * 100).toFixed(0) + '%');
+            }).join('') + '</div>'
+        : '<p class="build-placeholder">Нет данных</p>';
 
     // ── Нейтральные (neutral_stats = {"0": {itemId: {wins,count,win_rate,pick_rate}}, ...}) ────
     var neutralHtml = '';
     if (dotaPos && dotaPos.neutral_stats) {
-        // Собираем лучший предмет по pick_rate для каждого тира
         var tierBest = {};  // tier (str) → { itemId, pick_rate }
         Object.entries(dotaPos.neutral_stats || {}).forEach(function (tierEntry) {
             var tier  = tierEntry[0];  // "0".."4"
@@ -1933,8 +1944,9 @@ function _buildItemsSectionHtml(dotaPos, data) {
     }
 
     var tabDefs = [
-        { tab: 'start',   label: 'Стартовые'  },
-        { tab: 'core',    label: 'Основные'   },
+        { tab: 'start',   label: 'Стартовые'   },
+        { tab: 'core',    label: 'Основные'    },
+        { tab: 'situ',    label: 'Ситуативные' },
         { tab: 'neutral', label: 'Нейтральные' },
     ];
     var tabBtns = tabDefs.map(function (td) {
@@ -1947,12 +1959,11 @@ function _buildItemsSectionHtml(dotaPos, data) {
         return '<div class="build-items-panel" id="build-items-panel-' + tab + '" style="display:' + display + '">' + innerHtml + '</div>';
     }
 
-    var startPanel   = makePanel('start',   '<div class="build-items-grid">' + startItems.map(itemSlot).join('') + '</div>');
-    var corePanel    = makePanel('core',    midLateHtml);
-    var neutralPanel = makePanel('neutral', neutralHtml || '<p class="build-placeholder">Нет данных</p>');
-
     return '<div class="build-filter-segmented build-items-tabs-ctrl">' + tabBtns + '</div>' +
-        startPanel + corePanel + neutralPanel;
+        makePanel('start',   '<div class="build-items-grid">' + startItems.map(itemSlot).join('') + '</div>') +
+        makePanel('core',    coreHtml) +
+        makePanel('situ',    situHtml) +
+        makePanel('neutral', neutralHtml || '<p class="build-placeholder">Нет данных</p>');
 }
 
 // ── Основной рендер вкладки Сборка ───────────────────────────────────────
