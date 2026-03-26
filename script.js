@@ -1719,16 +1719,23 @@ function switchBuildItemsTab(tab) {
 // ── helpers ───────────────────────────────────────────────────────────────
 
 function _getTopPositionsFromBuilds(data) {
+    // Prefer explicit sorted positions list from API (dota-key format: 'pos%20N')
+    if (data.positions && data.positions.length) {
+        return data.positions.slice(0, 3);
+    }
+    // Fallback: derive from dota_builds keys
     if (data.dota_builds) {
         var arr = Object.keys(data.dota_builds).map(function (k) {
-            var total = (data.dota_builds[k].sixslot || []).reduce(function (s, e) {
-                return s + (e.num_matches || 0);
-            }, 0);
+            var pd = data.dota_builds[k];
+            var total = pd.num_matches != null
+                ? pd.num_matches
+                : (pd.sixslot || []).reduce(function (s, e) { return s + (e.num_matches || 0); }, 0);
             return { position: k, matchCount: total };
         });
         arr.sort(function (a, b) { return b.matchCount - a.matchCount; });
         return arr.slice(0, 3).map(function (p) { return p.position; });
     }
+    // Fallback: stratz positions (POSITION_N format)
     var positions = (data.stratz && data.stratz.ALL && data.stratz.ALL.positions) || [];
     return positions.slice()
         .sort(function (a, b) { return (b.matchCount || 0) - (a.matchCount || 0); })
