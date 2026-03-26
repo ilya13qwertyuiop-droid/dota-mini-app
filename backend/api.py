@@ -804,11 +804,22 @@ async def api_hero_build(hero_id: int):
         ability_build, talents, core_items, start_game_items = _resolve_dota_builds(
             dota_builds, top_position, items_db
         )
+        # Sorted list of dota-format position keys (pos%20N) by num_matches desc.
+        # Included so the frontend doesn't have to derive order from dota_builds keys.
+        dota_keys_sorted: list[str] = sorted(
+            dota_builds.keys(),
+            key=lambda k: (
+                dota_builds[k].get("num_matches")
+                or sum(e.get("num_matches", 0) for e in (dota_builds[k].get("sixslot") or []))
+            ),
+            reverse=True,
+        )
         logger.info(
             "[build] hero_id=%s source=dota_builds top_pos=%s "
-            "ability_build=%d talents=%d core_items=%d start_items=%d",
+            "ability_build=%d talents=%d core_items=%d start_items=%d positions=%s",
             hero_id, top_position,
             len(ability_build), len(talents), len(core_items), len(start_game_items),
+            dota_keys_sorted,
         )
         return {
             "facets":       facets,
@@ -821,6 +832,7 @@ async def api_hero_build(hero_id: int):
                 "start_game_items": start_game_items,
                 "core_items":       core_items,
             },
+            "positions":   dota_keys_sorted,
             "items_db":    items_db,
             "stratz":      stratz,
             "dota_builds": dota_builds,
