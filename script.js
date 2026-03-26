@@ -1894,30 +1894,31 @@ function _buildItemsSectionHtml(dotaPos, data) {
         midLateHtml = '<div class="build-items-grid">' + coreItems.map(itemSlot).join('') + '</div>';
     }
 
-    // ── Нейтральные (neutral_stats, тир 0-4, топ-1 по pick_rate) ────────
+    // ── Нейтральные (neutral_stats = {"0": {itemId: {wins,count,win_rate,pick_rate}}, ...}) ────
     var neutralHtml = '';
     if (dotaPos && dotaPos.neutral_stats) {
-        var tierBest = {};
-        (dotaPos.neutral_stats || []).forEach(function (e) {
-            var tier = e.tier != null ? e.tier : null;
-            if (tier === null) return;
-            if (!tierBest[tier] || (e.pick_rate || 0) > (tierBest[tier].pick_rate || 0)) {
-                tierBest[tier] = e;
-            }
+        // Собираем лучший предмет по pick_rate для каждого тира
+        var tierBest = {};  // tier (str) → { itemId, pick_rate }
+        Object.entries(dotaPos.neutral_stats || {}).forEach(function (tierEntry) {
+            var tier  = tierEntry[0];  // "0".."4"
+            var items = tierEntry[1];  // { itemId: {wins, count, win_rate, pick_rate} }
+            var top = Object.entries(items || {})
+                .sort(function (a, b) { return (b[1].pick_rate || 0) - (a[1].pick_rate || 0); })[0];
+            if (top) tierBest[tier] = { itemId: top[0], pick_rate: top[1].pick_rate || 0 };
         });
         var tierLabels = ['Тир 1', 'Тир 2', 'Тир 3', 'Тир 4', 'Тир 5'];
         neutralHtml = '<div class="build-items-grid build-items-grid--neutral">' +
             [0, 1, 2, 3, 4].map(function (tier) {
-                var e = tierBest[tier];
-                if (!e) {
+                var best = tierBest[String(tier)];
+                if (!best) {
                     return '<div class="build-item-slot build-item-slot--neutral">' +
                         '<div class="build-item-icon build-item-icon--neutral"></div>' +
                         '<span class="build-neutral-tier">' + tierLabels[tier] + '</span>' +
                         '<span class="build-item-pick-rate">—</span>' +
                         '</div>';
                 }
-                var info = resolveById(e.item_id);
-                var prPct = ((e.pick_rate || 0) * 100).toFixed(0) + '%';
+                var info = resolveById(best.itemId);
+                var prPct = ((best.pick_rate || 0) * 100).toFixed(0) + '%';
                 return '<div class="build-item-slot build-item-slot--neutral">' +
                     (info.img
                         ? '<img src="' + info.img + '" class="build-item-icon build-item-icon--neutral" onerror="this.style.opacity=\'0.3\'" title="' + (info.dname || '') + '">'
