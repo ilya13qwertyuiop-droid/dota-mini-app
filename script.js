@@ -1787,7 +1787,12 @@ function _extractTalentNum(displayName) {
 
 function _applyTalentNum(ruName, num) {
     if (!num) return ruName;
-    if (ruName.indexOf('?') !== -1) return ruName.replace('?', num);
+    if (ruName.indexOf('?') !== -1) {
+        var qIdx = ruName.indexOf('?');
+        var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
+        var numToInsert = (charBefore === '+' || charBefore === '-') ? num.replace(/^[+\-]/, '') : num;
+        return ruName.replace('?', numToInsert);
+    }
     // Если в русском тексте уже есть цифры — не дублируем число
     if (/\d/.test(ruName)) return ruName;
     // Убираем дублирующийся знак: если num начинается с +/- и ruName тоже начинается с того же знака
@@ -1877,28 +1882,56 @@ function _buildItemsSectionHtml(dotaPos, data) {
             '</div>';
     }
 
-    // ── Основные и Ситуативные — из sixslot ──────────────────────────────
-    var sixslot = dotaPos ? (dotaPos.sixslot || []) : [];
-    var sixslotSorted = sixslot.slice().sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
-
-    var coreSlots = sixslotSorted
-        .filter(function (e) { return (e.pick_rate || 0) >= 0.4; })
-        .slice(0, 6);
-    if (!coreSlots.length) {
-        // Fallback: API-provided core items (no pick_rate)
-        coreSlots = null;
-    }
+    // ── Основные — из anchor_items ────────────────────────────────────────
     var coreHtml;
-    if (coreSlots) {
-        coreHtml = '<div class="build-items-grid">' +
-            coreSlots.map(function (e) {
-                return itemSlotPR(resolveById(e.item_id), ((e.pick_rate || 0) * 100).toFixed(0) + '%');
+    if (dotaPos && dotaPos.anchor_items && dotaPos.anchor_items.length) {
+        var anchorSorted = (dotaPos.anchor_items || []).slice()
+            .sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
+        var maxPR = anchorSorted.length ? (anchorSorted[0].pick_rate || 0) : 1;
+        coreHtml = '<div class="build-items-grid build-items-grid--anchor">' +
+            anchorSorted.map(function (e) {
+                var info = resolveById(e.raw_item_id || e.item_id);
+                var pr = e.pick_rate || 0;
+                var prPct = (pr * 100).toFixed(0) + '%';
+                var fillPct = maxPR > 0 ? (pr / maxPR * 100).toFixed(1) : '0';
+                var timeVal = e.avg_time || e.time_minutes || e.time || null;
+                var timeStr = timeVal ? '~' + Math.round(timeVal) + 'м' : '';
+                return '<div class="build-item-slot build-item-slot--anchor">' +
+                    '<div class="build-item-anchor-top">' +
+                        (info.img
+                            ? '<img src="' + info.img + '" class="build-item-anchor-icon" onerror="this.style.opacity=\'0.3\'">'
+                            : '<div class="build-item-anchor-icon"></div>') +
+                        (timeStr ? '<span class="build-item-anchor-time">' + timeStr + '</span>' : '') +
+                    '</div>' +
+                    '<span class="build-item-anchor-name">' + (info.dname || '') + '</span>' +
+                    '<div class="build-item-anchor-bar-row">' +
+                        '<div class="build-item-anchor-bar-bg">' +
+                            '<div class="build-item-anchor-bar-fill" style="width:' + fillPct + '%"></div>' +
+                        '</div>' +
+                        '<span class="build-item-anchor-pr">' + prPct + '</span>' +
+                    '</div>' +
+                    '</div>';
             }).join('') + '</div>';
     } else {
-        var fallbackCore = (data.items && data.items.core_items) || [];
-        coreHtml = '<div class="build-items-grid">' + fallbackCore.map(itemSlot).join('') + '</div>';
+        // Fallback: sixslot pick_rate >= 0.4
+        var sixslotCore = (dotaPos ? (dotaPos.sixslot || []) : [])
+            .slice().sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); })
+            .filter(function (e) { return (e.pick_rate || 0) >= 0.4; })
+            .slice(0, 6);
+        if (sixslotCore.length) {
+            coreHtml = '<div class="build-items-grid">' +
+                sixslotCore.map(function (e) {
+                    return itemSlotPR(resolveById(e.item_id), ((e.pick_rate || 0) * 100).toFixed(0) + '%');
+                }).join('') + '</div>';
+        } else {
+            var fallbackCore = (data.items && data.items.core_items) || [];
+            coreHtml = '<div class="build-items-grid">' + fallbackCore.map(itemSlot).join('') + '</div>';
+        }
     }
 
+    // ── Ситуативные — из sixslot ──────────────────────────────────────────
+    var sixslot = dotaPos ? (dotaPos.sixslot || []) : [];
+    var sixslotSorted = sixslot.slice().sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
     var situSlots = sixslotSorted
         .filter(function (e) { var pr = e.pick_rate || 0; return pr >= 0.1 && pr < 0.4; });
     var situHtml = situSlots.length
