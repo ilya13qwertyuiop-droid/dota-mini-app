@@ -1790,8 +1790,8 @@ function _applyTalentNum(ruName, num) {
     if (ruName.indexOf('?') !== -1) {
         var qIdx = ruName.indexOf('?');
         var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
-        var numSign = (num[0] === '+' || num[0] === '-') ? num[0] : '';
-        var numToInsert = (numSign && charBefore === numSign) ? num.replace(/^[+\-]/, '') : num;
+        var numToInsert = ((charBefore === '+' && num[0] === '+') || (charBefore === '-' && num[0] === '-'))
+            ? num.slice(1) : num;
         return ruName.replace('?', numToInsert);
     }
     // Если в русском тексте уже есть цифры — не дублируем число
@@ -1888,26 +1888,18 @@ function _buildItemsSectionHtml(dotaPos, data) {
     if (dotaPos && dotaPos.anchor_items && dotaPos.anchor_items.length) {
         var anchorSorted = (dotaPos.anchor_items || []).slice()
             .sort(function (a, b) { return (b.pr || 0) - (a.pr || 0); });
-        var maxPR = anchorSorted.length ? Math.max.apply(null, anchorSorted.map(function (i) { return i.pr || 0; })) : 1;
-        coreHtml = '<div class="build-items-grid build-items-grid--anchor">' +
+        coreHtml = '<div class="build-items-grid">' +
             anchorSorted.map(function (e) {
                 var info = resolveById(e.raw_item_id);
-                var pr = e.pr || 0;
-                var prPct = (pr * 100).toFixed(0) + '%';
-                var fillPct = maxPR > 0 ? (pr / maxPR * 100).toFixed(1) : '0';
+                var prPct = ((e.pr || 0) * 100).toFixed(0) + '%';
                 var timeStr = e.avg_minute != null ? '~' + Math.round(e.avg_minute) + 'м' : '';
-                return '<div class="build-item-slot build-item-slot--anchor">' +
-                    '<div class="build-item-anchor-top">' +
-                        (info.img
-                            ? '<img src="' + info.img + '" class="build-item-anchor-icon" onerror="this.style.opacity=\'0.3\'">'
-                            : '<div class="build-item-anchor-icon"></div>') +
-                        (timeStr ? '<span class="build-item-anchor-time">' + timeStr + '</span>' : '') +
-                    '</div>' +
-                    '<span class="build-item-anchor-name">' + (info.dname || '') + '</span>' +
-                    '<div class="build-item-anchor-bar-row">' +
-                        '<div class="build-item-anchor-bar-bg">' +
-                            '<div class="build-item-anchor-bar-fill" style="width:' + fillPct + '%"></div>' +
-                        '</div>' +
+                return '<div class="build-item-slot">' +
+                    (info.img
+                        ? '<img src="' + info.img + '" class="build-item-icon" onerror="this.style.opacity=\'0.3\'">'
+                        : '<div class="build-item-icon"></div>') +
+                    '<span class="build-item-name">' + (info.dname || '') + '</span>' +
+                    '<div class="build-item-anchor-stats">' +
+                        (timeStr ? '<span class="build-item-anchor-time">' + timeStr + '</span>' : '<span></span>') +
                         '<span class="build-item-anchor-pr">' + prPct + '</span>' +
                     '</div>' +
                     '</div>';
