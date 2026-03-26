@@ -1790,6 +1790,7 @@ function _applyTalentNum(ruName, num) {
     if (ruName.indexOf('?') !== -1) {
         var qIdx = ruName.indexOf('?');
         var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
+        console.log('talent debug:', { charBefore: charBefore, numSign: num[0], num: num, ruName: ruName });
         var numToInsert = ((charBefore === '+' && num[0] === '+') || (charBefore === '-' && num[0] === '-'))
             ? num.slice(1) : num;
         return ruName.replace('?', numToInsert);
@@ -1887,11 +1888,11 @@ function _buildItemsSectionHtml(dotaPos, data) {
     var coreHtml;
     if (dotaPos && dotaPos.anchor_items && dotaPos.anchor_items.length) {
         var anchorSorted = (dotaPos.anchor_items || []).slice()
-            .sort(function (a, b) { return (b.pr || 0) - (a.pr || 0); });
+            .sort(function (a, b) { return (a.avg_minute || 0) - (b.avg_minute || 0); });
         coreHtml = '<div class="build-items-grid">' +
             anchorSorted.map(function (e) {
                 var info = resolveById(e.raw_item_id);
-                var prPct = ((e.pr || 0) * 100).toFixed(0) + '%';
+                var prPct = 'Берут ' + ((e.pr || 0) * 100).toFixed(0) + '%';
                 var timeStr = e.avg_minute != null ? '~' + Math.round(e.avg_minute) + 'м' : '';
                 return '<div class="build-item-slot">' +
                     (info.img
@@ -1899,8 +1900,8 @@ function _buildItemsSectionHtml(dotaPos, data) {
                         : '<div class="build-item-icon"></div>') +
                     '<span class="build-item-name">' + (info.dname || '') + '</span>' +
                     '<div class="build-item-anchor-stats">' +
-                        (timeStr ? '<span class="build-item-anchor-time">' + timeStr + '</span>' : '<span></span>') +
                         '<span class="build-item-anchor-pr">' + prPct + '</span>' +
+                        (timeStr ? '<span class="build-item-anchor-time">' + timeStr + '</span>' : '') +
                     '</div>' +
                     '</div>';
             }).join('') + '</div>';

@@ -1895,18 +1895,14 @@ margin-top: 14px;
   margin-top: 2px;
 }
 
-/* ---- Anchor item stats row (time + pick-rate) ---- */
+/* ---- Anchor item stats row (pick-rate left, time right) ---- */
 .build-item-anchor-stats {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
-}
-
-.build-item-anchor-time {
-  font-size: 8px;
-  color: rgba(150, 160, 180, 0.55);
-  line-height: 1;
+  padding: 0 6px;
+  box-sizing: border-box;
 }
 
 .build-item-anchor-pr {
@@ -1914,6 +1910,12 @@ margin-top: 14px;
   color: rgba(100, 180, 255, 0.9);
   line-height: 1;
   font-weight: 500;
+}
+
+.build-item-anchor-time {
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1;
 }
 
 /* ---- Mid-late items grid (4×2) ---- */
