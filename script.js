@@ -1648,18 +1648,18 @@ var _buildPosition  = null;   // 'POSITION_1' … 'POSITION_5'
 var _buildItemsTab  = 'core'; // 'start' | 'core' | 'situ'
 
 var _STRATZ_POS_TO_DOTA = {
-    'POSITION_1': 'pos 1',
-    'POSITION_2': 'pos 2',
-    'POSITION_3': 'pos 3',
-    'POSITION_4': 'pos 4',
-    'POSITION_5': 'pos 5',
+    'POSITION_1': 'pos%201',
+    'POSITION_2': 'pos%202',
+    'POSITION_3': 'pos%203',
+    'POSITION_4': 'pos%204',
+    'POSITION_5': 'pos%205',
 };
 var _DOTA_TO_STRATZ_POS = {
-    'pos 1': 'POSITION_1',
-    'pos 2': 'POSITION_2',
-    'pos 3': 'POSITION_3',
-    'pos 4': 'POSITION_4',
-    'pos 5': 'POSITION_5',
+    'pos%201': 'POSITION_1',
+    'pos%202': 'POSITION_2',
+    'pos%203': 'POSITION_3',
+    'pos%204': 'POSITION_4',
+    'pos%205': 'POSITION_5',
 };
 
 var _POSITION_LABELS = {
