@@ -1788,6 +1788,8 @@ function _extractTalentNum(displayName) {
 function _applyTalentNum(ruName, num) {
     if (!num) return ruName;
     if (ruName.indexOf('?') !== -1) return ruName.replace('?', num);
+    // Если в русском тексте уже есть цифры — не дублируем число
+    if (/\d/.test(ruName)) return ruName;
     return num + ' ' + ruName;
 }
 
@@ -1870,7 +1872,7 @@ function _buildItemsSectionHtml(dotaPos, data) {
             .slice(0, 8);
         midLateHtml = '<div class="build-items-grid build-items-grid--mid-late">' +
             midLate.map(function (e, i) {
-                var info = resolveById(e.item_id);
+                var info = resolveById(e.raw_item_id);
                 var accentCls = i < 4 ? ' build-item-slot--accent' : '';
                 var prPct = ((e.pick_rate || 0) * 100).toFixed(0) + '%';
                 var timeVal = e.avg_time || e.time_minutes || e.time || null;
