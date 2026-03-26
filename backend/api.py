@@ -666,13 +666,97 @@ def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
 
 # ========== Hero Build ==========
 
+_STRATZ_TO_DOTA_POS: dict[str, str] = {
+    "POSITION_1": "pos 1",
+    "POSITION_2": "pos 2",
+    "POSITION_3": "pos 3",
+    "POSITION_4": "pos 4",
+    "POSITION_5": "pos 5",
+}
+_DOTA_TO_STRATZ_POS: dict[str, str] = {v: k for k, v in _STRATZ_TO_DOTA_POS.items()}
+
+
+def _dota_builds_positions(dota_builds: dict) -> list[dict]:
+    """Return positions sorted by total sixslot num_matches desc.
+
+    Each entry: {"position": "POSITION_N", "matchCount": <int>}.
+    """
+    result = []
+    for dota_key, pos_data in dota_builds.items():
+        stratz_key = _DOTA_TO_STRATZ_POS.get(dota_key)
+        if not stratz_key:
+            continue
+        total = sum(e.get("num_matches", 0) for e in (pos_data.get("sixslot") or []))
+        result.append({"position": stratz_key, "matchCount": total})
+    result.sort(key=lambda x: x["matchCount"], reverse=True)
+    return result
+
+
+def _resolve_dota_builds(
+    dota_builds: dict,
+    top_position: str | None,
+    items_db: dict,
+) -> tuple[list[str], list[dict], list[dict], list[dict]]:
+    """Return (ability_build, talents, core_items, start_game_items) from dota_builds data.
+
+    Returns four empty lists when top_position is unknown or data is missing.
+    """
+    dota_pos_key = _STRATZ_TO_DOTA_POS.get(top_position or "") if top_position else None
+    pos_data = dota_builds.get(dota_pos_key) if dota_pos_key else None
+    if not pos_data:
+        return [], [], [], []
+
+    # Ability build — exclude talents (isTalent=True)
+    ability_build: list[str] = [
+        a["name"]
+        for a in (pos_data.get("abilities") or [])
+        if not a.get("isTalent", False) and a.get("name")
+    ]
+
+    # Talents — normalized format
+    talents: list[dict] = [
+        {
+            "level":         t.get("lvl"),
+            "left_ability":  (t.get("left") or {}).get("name", ""),
+            "left_display":  (t.get("left") or {}).get("displayName", ""),
+            "right_ability": (t.get("right") or {}).get("name", ""),
+            "right_display": (t.get("right") or {}).get("displayName", ""),
+            "choice":        t.get("choice", ""),
+        }
+        for t in (pos_data.get("talents") or [])
+    ]
+
+    # Core items — sixslot top-6 by pick_rate
+    def _resolve_item(item_id: int) -> dict:
+        info = items_db.get(str(item_id)) or {}
+        return {"id": item_id, "dname": info.get("dname"), "img": info.get("img")}
+
+    sixslot = sorted(
+        pos_data.get("sixslot") or [],
+        key=lambda x: x.get("pick_rate", 0),
+        reverse=True,
+    )[:6]
+    core_items: list[dict] = [_resolve_item(e["item_id"]) for e in sixslot if "item_id" in e]
+
+    # Start game items — first (most popular) starting set
+    start_game_items: list[dict] = []
+    starting = pos_data.get("starting_items") or []
+    if starting:
+        first_set = starting[0]
+        if first_set and isinstance(first_set[0], list):
+            start_game_items = [_resolve_item(iid) for iid in first_set[0]]
+
+    return ability_build, talents, core_items, start_game_items
+
+
 @app.get("/api/hero/{hero_id}/build")
 async def api_hero_build(hero_id: int):
     """Returns all data for the Build tab: facets, ability build, talents, items.
 
-    Static data (facets, talents, start_game_items) is read from hero_builds_cache
-    pre-populated by builds_updater_loop in stats_updater.py (refreshed weekly).
-    Live data (ability_build, core_items, talent_picks) is queried from our DB.
+    When dota_builds is present in the cache (imported via import_dota_builds.py),
+    ability_build / talents / items are sourced from dota2protracker data for the
+    hero's most popular position (determined from stratz.ALL.positions).
+    Falls back to the old logic (stratz + live DB) otherwise.
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
@@ -688,32 +772,68 @@ async def api_hero_build(hero_id: int):
             ),
         )
 
-    facets          = cached.get("facets", [])
-    talents         = cached.get("talents", [])
-    start_game_items = cached.get("start_game_items", [])
+    facets = cached.get("facets", [])
+    items_db = get_app_cache_value("items_by_id") or {}
+    stratz   = _filter_stratz_core_items(cached.get("stratz") or {}, items_db)
 
-    # ── ability_id → name map (from app_cache, built by builds_updater) ───
+    # ── Determine most popular position ───────────────────────────────────
+    dota_builds = cached.get("dota_builds")
+    top_position: str | None = None
+    if dota_builds:
+        sorted_pos = _dota_builds_positions(dota_builds)
+        top_position = sorted_pos[0]["position"] if sorted_pos else None
+    else:
+        stratz_raw = cached.get("stratz") or {}
+        all_positions = (stratz_raw.get("ALL") or {}).get("positions") or []
+        if all_positions:
+            top_pos = max(all_positions, key=lambda p: p.get("matchCount", 0))
+            top_position = top_pos.get("position")
+
+    # ── dota_builds path (dota2protracker data) ───────────────────────────
+    if dota_builds:
+        ability_build, talents, core_items, start_game_items = _resolve_dota_builds(
+            dota_builds, top_position, items_db
+        )
+        logger.info(
+            "[build] hero_id=%s source=dota_builds top_pos=%s "
+            "ability_build=%d talents=%d core_items=%d start_items=%d",
+            hero_id, top_position,
+            len(ability_build), len(talents), len(core_items), len(start_game_items),
+        )
+        return {
+            "facets":       facets,
+            "ability_build": ability_build,
+            "ability_id_to_name": {},
+            "talents":      talents,
+            "talent_picks": {},
+            "items": {
+                "start_game_items": start_game_items,
+                "core_items":       core_items,
+            },
+            "items_db":    items_db,
+            "stratz":      stratz,
+            "dota_builds": dota_builds,
+        }
+
+    # ── Fallback: old stratz + live DB logic ──────────────────────────────
     raw_map = get_app_cache_value("ability_id_to_name") or {}
     ability_id_to_name: dict[int, str] = {int(k): v for k, v in raw_map.items()}
 
-    # ── Ability build (live from our DB) ─────────────────────────────────
-    ability_build: list[str] = []
+    ability_build_fb: list[str] = []
     db_build = get_hero_ability_build(hero_id)
     if db_build and db_build.get("ability_ids"):
         for aid in db_build["ability_ids"]:
             aname = ability_id_to_name.get(int(aid))
             if aname:
-                ability_build.append(aname)
+                ability_build_fb.append(aname)
 
-    # ── Core items (pre-decoded, from hero_builds_cache populated weekly by builds_updater) ──
-    core_items: list[dict] = [
+    core_items_fb: list[dict] = [
         {"id": item.get("id"), "dname": item.get("dname"), "img": item.get("img")}
         for item in (cached.get("core_items") or [])
     ]
 
-    # ── Talent picks (live from our DB) ──────────────────────────────────
     talent_picks_raw = get_hero_talent_builds(hero_id)
-    talent_picks: dict[str, list] = {}
+    talent_picks_fb: dict[str, list] = {}
     for level, picks in talent_picks_raw.items():
         level_picks = []
         for pick in picks:
@@ -721,27 +841,27 @@ async def api_hero_build(hero_id: int):
             if aname and aname.startswith("special_bonus_"):
                 level_picks.append({**pick, "ability_name": aname})
         if level_picks:
-            talent_picks[str(level)] = level_picks
+            talent_picks_fb[str(level)] = level_picks
+
+    talents_fb = cached.get("talents", [])
+    start_game_items_fb = cached.get("start_game_items", [])
 
     logger.info(
-        "[build] hero_id=%s facets=%d talents=%d ability_build=%d "
+        "[build] hero_id=%s source=fallback facets=%d talents=%d ability_build=%d "
         "start_items=%d core_items=%d talent_picks_levels=%d",
-        hero_id, len(facets), len(talents), len(ability_build),
-        len(start_game_items), len(core_items), len(talent_picks),
+        hero_id, len(facets), len(talents_fb), len(ability_build_fb),
+        len(start_game_items_fb), len(core_items_fb), len(talent_picks_fb),
     )
-
-    items_db = get_app_cache_value("items_by_id") or {}
-    stratz   = _filter_stratz_core_items(cached.get("stratz") or {}, items_db)
 
     return {
         "facets":             facets,
-        "ability_build":      ability_build,
+        "ability_build":      ability_build_fb,
         "ability_id_to_name": raw_map,
-        "talents":            talents,
-        "talent_picks":       talent_picks,
+        "talents":            talents_fb,
+        "talent_picks":       talent_picks_fb,
         "items": {
-            "start_game_items": start_game_items,
-            "core_items":       core_items,
+            "start_game_items": start_game_items_fb,
+            "core_items":       core_items_fb,
         },
         "items_db": items_db,
         "stratz":   stratz,
@@ -751,11 +871,11 @@ async def api_hero_build(hero_id: int):
 # ========== Hero Positions ==========
 
 @app.get("/api/hero/{hero_id}/positions")
-async def api_hero_positions(hero_id: int, rank: str = "ALL"):
-    """Returns positions for a hero from Stratz data, sorted by matchCount desc.
+async def api_hero_positions(hero_id: int):
+    """Returns positions for a hero sorted by popularity.
 
-    Query param:
-        rank — "ALL" (default) or "DIVINE_IMMORTAL"
+    When dota_builds is present in the cache, uses total sixslot num_matches
+    per position. Falls back to Stratz ALL.positions matchCount otherwise.
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
@@ -764,23 +884,20 @@ async def api_hero_positions(hero_id: int, rank: str = "ALL"):
     if cached is None:
         raise HTTPException(status_code=503, detail="Build data not yet available.")
 
+    dota_builds = cached.get("dota_builds")
+    if dota_builds:
+        positions_sorted = _dota_builds_positions(dota_builds)
+        return {"hero_id": hero_id, "positions": positions_sorted}
+
+    # Fallback: stratz
     stratz = cached.get("stratz")
     if not stratz:
-        raise HTTPException(status_code=404, detail="Stratz data not imported yet.")
+        raise HTTPException(status_code=404, detail="No position data available.")
 
-    rank_key = rank.upper()
-    rank_data = stratz.get(rank_key)
-    if rank_data is None:
-        raise HTTPException(status_code=404, detail=f"No Stratz data for rank '{rank_key}'.")
-
-    positions = rank_data.get("positions", [])
+    all_data = stratz.get("ALL") or {}
+    positions = all_data.get("positions") or []
     positions_sorted = sorted(positions, key=lambda p: p.get("matchCount", 0), reverse=True)
-
-    return {
-        "hero_id": hero_id,
-        "rank": rank_key,
-        "positions": positions_sorted,
-    }
+    return {"hero_id": hero_id, "positions": positions_sorted}
 
 
 # ========== Feedback ==========
