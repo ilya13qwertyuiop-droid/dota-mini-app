@@ -677,17 +677,27 @@ _DOTA_TO_STRATZ_POS: dict[str, str] = {v: k for k, v in _STRATZ_TO_DOTA_POS.item
 
 
 def _dota_builds_positions(dota_builds: dict) -> list[dict]:
-    """Return positions sorted by total sixslot num_matches desc.
+    """Return positions sorted by num_matches desc.
 
-    Each entry: {"position": "POSITION_N", "matchCount": <int>}.
+    Each entry: {"position": "POSITION_N", "matchCount": <int>,
+                 "num_matches": <int>, "num_wins": <int>, "win_rate": <float>}.
+    Uses position-level num_matches when present, falls back to summing sixslot.
     """
     result = []
     for dota_key, pos_data in dota_builds.items():
         stratz_key = _DOTA_TO_STRATZ_POS.get(dota_key)
         if not stratz_key:
             continue
-        total = sum(e.get("num_matches", 0) for e in (pos_data.get("sixslot") or []))
-        result.append({"position": stratz_key, "matchCount": total})
+        num_matches = pos_data.get("num_matches")
+        if num_matches is None:
+            num_matches = sum(e.get("num_matches", 0) for e in (pos_data.get("sixslot") or []))
+        result.append({
+            "position":    stratz_key,
+            "matchCount":  num_matches,
+            "num_matches": num_matches,
+            "num_wins":    pos_data.get("num_wins"),
+            "win_rate":    pos_data.get("win_rate"),
+        })
     result.sort(key=lambda x: x["matchCount"], reverse=True)
     return result
 

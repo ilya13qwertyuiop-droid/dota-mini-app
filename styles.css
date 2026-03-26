@@ -1886,6 +1886,95 @@ margin-top: 14px;
   -webkit-box-orient: vertical;
 }
 
+/* ---- Position win-rate badge ---- */
+.build-pos-winrate {
+  display: block;
+  font-size: 9px;
+  color: rgba(200, 220, 255, 0.65);
+  line-height: 1;
+  margin-top: 2px;
+}
+
+/* ---- Mid-late items grid (4×2) ---- */
+.build-items-grid--mid-late {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+
+.build-item-slot--mid-late {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 2px;
+}
+
+.build-item-slot--mid-late.build-item-slot--accent {
+  border-color: rgba(58, 123, 213, 0.6);
+  background: rgba(58, 123, 213, 0.12);
+}
+
+.build-item-icon--mid-late {
+  width: 36px;
+  height: 26px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.build-item-pick-rate {
+  font-size: 8px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1;
+}
+
+.build-item-time {
+  font-size: 7px;
+  color: rgba(150, 160, 180, 0.55);
+  text-align: center;
+  line-height: 1;
+}
+
+/* ---- Neutral items grid (5 in a row) ---- */
+.build-items-grid--neutral {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+
+.build-item-slot--neutral {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 2px;
+}
+
+.build-item-icon--neutral {
+  width: 36px;
+  height: 26px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.build-neutral-tier {
+  font-size: 7px;
+  color: rgba(180, 190, 210, 0.6);
+  text-align: center;
+  line-height: 1;
+}
+
 .build-placeholder {
   font-size: 13px;
   color: var(--text-muted);

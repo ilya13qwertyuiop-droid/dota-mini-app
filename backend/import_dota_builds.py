@@ -43,7 +43,17 @@ def main() -> None:
         cached["dota_builds"] = positions
         set_hero_build_cache(hero_id, cached)
         updated += 1
-        logger.info("hero_id=%d updated (%d positions)", hero_id, len(positions))
+        new_fields_sample = {}
+        for pos_key, pos_data in positions.items():
+            new_fields_sample[pos_key] = {
+                "num_matches":   pos_data.get("num_matches"),
+                "num_wins":      pos_data.get("num_wins"),
+                "win_rate":      pos_data.get("win_rate"),
+                "items_mid_late": len(pos_data.get("items_mid_late") or []),
+                "anchor_items":  len(pos_data.get("anchor_items") or []),
+                "neutral_stats": len(pos_data.get("neutral_stats") or []),
+            }
+        logger.info("hero_id=%d updated (%d positions) new_fields=%s", hero_id, len(positions), new_fields_sample)
 
     logger.info("Done. total=%d updated=%d skipped=%d", total, updated, skipped)
 
