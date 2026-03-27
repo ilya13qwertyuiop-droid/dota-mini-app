@@ -74,6 +74,11 @@ margin-bottom: 6px;
 line-height: 1.25;
 }
 
+#page-home .dashboard-header h1 {
+font-size: 20px;
+font-weight: 500;
+}
+
 .dashboard-header p {
 font-size: 14px;
 color: var(--text-muted);
@@ -2038,14 +2043,16 @@ margin-top: 14px;
 
 .meta-block-header {
   margin-bottom: 14px;
+  text-align: center;
 }
 
 .meta-block-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-main);
+  opacity: 0.85;
 }
 
 .meta-pos-section {
@@ -2062,6 +2069,14 @@ margin-top: 14px;
 .meta-pos-icon {
   font-size: 14px;
   line-height: 1;
+}
+
+.meta-pos-icon-img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .meta-pos-label {
@@ -2098,9 +2113,15 @@ margin-top: 14px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 14px;
-  cursor: default;
+  cursor: pointer;
   opacity: 0;
   animation: fadeSlideIn 0.4s ease forwards;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.meta-hero-card:active {
+  background: rgba(74, 158, 255, 0.1);
+  border-color: rgba(74, 158, 255, 0.4);
 }
 
 .meta-hero-card--top {
