@@ -17,6 +17,10 @@ _meta_cache_time: float = 0
 # dota_builds.json raw content — file is large; read once per process lifetime
 _dota_builds_file_cache: dict | None = None
 
+# /api/hero/{hero_id}/build — full response per hero, TTL 30 min
+BUILD_CACHE_TTL = 1800
+_build_cache: dict[int, tuple[float, dict]] = {}  # {hero_id: (timestamp, data)}
+
 
 def _load_dota_builds_file() -> dict | None:
     """Return parsed dota_builds.json, caching the result in memory."""
@@ -801,6 +805,11 @@ async def api_hero_build(hero_id: int):
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
 
+    # ── In-memory build cache ─────────────────────────────────────────────
+    _cached_entry = _build_cache.get(hero_id)
+    if _cached_entry is not None and (time.time() - _cached_entry[0]) < BUILD_CACHE_TTL:
+        return _cached_entry[1]
+
     # ── Static data from pre-built cache ─────────────────────────────────
     cached = get_hero_build_cache(hero_id)
     if cached is None:
@@ -851,7 +860,7 @@ async def api_hero_build(hero_id: int):
             len(ability_build), len(talents), len(core_items), len(start_game_items),
             dota_keys_sorted,
         )
-        return {
+        _response = {
             "facets":       facets,
             "ability_build": ability_build,
             "ability_id_to_name": {},
@@ -867,6 +876,8 @@ async def api_hero_build(hero_id: int):
             "stratz":      stratz,
             "dota_builds": dota_builds,
         }
+        _build_cache[hero_id] = (time.time(), _response)
+        return _response
 
     # ── Fallback: old stratz + live DB logic ──────────────────────────────
     raw_map = get_app_cache_value("ability_id_to_name") or {}
@@ -906,7 +917,7 @@ async def api_hero_build(hero_id: int):
         len(start_game_items_fb), len(core_items_fb), len(talent_picks_fb),
     )
 
-    return {
+    _response = {
         "facets":             facets,
         "ability_build":      ability_build_fb,
         "ability_id_to_name": raw_map,
@@ -919,6 +930,8 @@ async def api_hero_build(hero_id: int):
         "items_db": items_db,
         "stratz":   stratz,
     }
+    _build_cache[hero_id] = (time.time(), _response)
+    return _response
 
 
 # ========== Hero Positions ==========
