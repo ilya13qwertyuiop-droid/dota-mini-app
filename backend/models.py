@@ -287,3 +287,19 @@ class Feedback(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+# ---------------------------------------------------------------------------
+# Analytics events
+# ---------------------------------------------------------------------------
+
+class AnalyticsEvent(Base):
+    __tablename__ = "analytics_events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    event = Column(String(64), nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
