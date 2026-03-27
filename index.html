@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=38" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -21,45 +21,28 @@
       <!-- Главная страница (Dashboard) -->
       <div id="page-home" class="page active">
         <div class="dashboard-header">
-          <h1>👋 Привет!</h1>
-          <p>Добро пожаловать в Dota 2 Helper</p>
+          <h1>🎮 Добро пожаловать в Dota 2 Helper</h1>
         </div>
 
-        <!-- Быстрые действия -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon">⚡</span>
-            <span class="card-title">Быстрые действия</span>
+        <!-- Мета патча -->
+        <div class="card meta-block">
+          <div class="meta-block-header">
+            <span class="meta-block-title">МЕТА ПАТЧА <span id="meta-patch-label">…</span></span>
           </div>
-          <div class="quick-actions">
-            <button class="action-btn" onclick="goToPositionQuiz()">
-              <span>🎯</span>
-              <span>Подобрать позицию</span>
-            </button>
-            <button class="action-btn" onclick="goToHeroQuiz()">
-              <span>🦸</span>
-              <span>Подобрать героя</span>
-            </button>
-            <button class="action-btn" onclick="goToMatchups()">
-              <span>⚔️</span>
-              <span>Матчапы</span>
-            </button>
-          </div>
+          <div id="meta-positions"></div>
         </div>
 
-        <!-- Поддержать автора -->
-        <button class="feedback-entry-btn donate-entry-btn" onclick="goToDonate()">
-          <span class="feedback-entry-icon">❤️</span>
-          <span class="feedback-entry-text">Поддержать автора</span>
-          <span class="feedback-entry-arrow">→</span>
-        </button>
-
-        <!-- Предложить улучшения -->
-        <button class="feedback-entry-btn" onclick="goToFeedback()">
-          <span class="feedback-entry-icon">💬</span>
-          <span class="feedback-entry-text">Предложить улучшения</span>
-          <span class="feedback-entry-arrow">→</span>
-        </button>
+        <!-- Поддержать / Предложить — одна строка -->
+        <div class="home-action-row">
+          <button class="feedback-entry-btn home-half-btn donate-entry-btn" onclick="goToDonate()">
+            <span class="feedback-entry-icon">❤️</span>
+            <span class="feedback-entry-text">Поддержать автора</span>
+          </button>
+          <button class="feedback-entry-btn home-half-btn" onclick="goToFeedback()">
+            <span class="feedback-entry-icon">💬</span>
+            <span class="feedback-entry-text">Предложить улучшения</span>
+          </button>
+        </div>
       </div>
 
       <!-- Страница фидбека -->
@@ -440,7 +423,7 @@
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
           <div class="dashboard-header">
-            <h1>⚔️ Матчапы</h1>
+            <h1>⚔️ Герои</h1>
             <p>Выбери героя и посмотри, кого он контрит и кто контрит его</p>
           </div>
 
@@ -459,6 +442,11 @@
             />
             <div id="matchup-suggestions" class="matchup-suggestions"></div>
           </div>
+
+          <div id="recent-heroes-block" class="recent-heroes-block" style="display:none;">
+            <div class="recent-heroes-title">Недавние герои</div>
+            <div id="recent-heroes-list" class="recent-heroes-list"></div>
+          </div>
         </div>
 
         <!-- Экран конкретного героя -->
@@ -472,27 +460,46 @@
             </div>
           </div>
 
-          <!-- Блок 1: Контрпики -->
-          <div class="matchup-section">
-            <div class="matchup-section-title">Контрпики</div>
-            <div class="matchup-tabs">
-              <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')">✅ Кого контрит</button>
-              <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')">❌ Кто контрит его</button>
+          <!-- Табы верхнего уровня -->
+          <div class="hero-page-tabs">
+            <button class="hero-page-tab active" id="hero-ptab-build" onclick="switchHeroPageTab('build')">Сборка</button>
+            <button class="hero-page-tab" id="hero-ptab-matchups" onclick="switchHeroPageTab('matchups')">Матчапы</button>
+          </div>
+
+          <!-- Панель: Матчапы -->
+          <div id="hero-tab-matchups" style="display:none;">
+            <!-- Блок 1: Контрпики -->
+            <div class="matchup-section">
+              <div class="matchup-section-title">Контрпики</div>
+              <div class="matchup-tabs">
+                <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')">✅ Кого контрит</button>
+                <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')">❌ Кто контрит его</button>
+              </div>
+              <div class="matchup-block" id="counters-list">
+                <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
+              </div>
             </div>
-            <div class="matchup-block" id="counters-list">
-              <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
+
+            <!-- Блок 2: Синергия -->
+            <div class="matchup-section">
+              <div class="matchup-section-title">Синергия с союзниками</div>
+              <div class="matchup-tabs">
+                <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')">🤝 Лучшие союзники</button>
+                <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')">💀 Худшие союзники</button>
+              </div>
+              <div class="matchup-block" id="synergy-list">
+                <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
+              </div>
             </div>
           </div>
 
-          <!-- Блок 2: Синергия -->
-          <div class="matchup-section">
-            <div class="matchup-section-title">Синергия с союзниками</div>
-            <div class="matchup-tabs">
-              <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')">🤝 Лучшие союзники</button>
-              <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')">💀 Худшие союзники</button>
-            </div>
-            <div class="matchup-block" id="synergy-list">
-              <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
+          <!-- Панель: Сборка -->
+          <div id="hero-tab-build">
+            <div id="build-content">
+              <div class="hero-tab-placeholder">
+                <div class="hero-tab-placeholder-icon">⚔️</div>
+                <div class="hero-tab-placeholder-text">Выбери героя</div>
+              </div>
             </div>
           </div>
 
@@ -594,7 +601,7 @@
         </div>
         <div class="nav-item" onclick="switchPage('database', event)">
           <div class="nav-icon">⚔️</div>
-          <div class="nav-label">Матчапы</div>
+          <div class="nav-label">Герои</div>
         </div>
         <div class="nav-item" onclick="switchPage('profile', event)">
           <div class="nav-icon">⚙️</div>
@@ -636,7 +643,7 @@
     <script src="heroes-mid.js?v=1"></script>
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
-    <script src="hero-images.js?v=2"></script>
-    <script src="script.js?v=15"></script>
+    <script src="hero-images.js?v=1"></script>
+    <script src="script.js?v=52"></script>
   </body>
 </html>
