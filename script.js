@@ -2043,6 +2043,7 @@ function renderBuildTab(data) {
 }
 
 async function loadHeroBuild(heroId) {
+    if (!_itemsDbLoaded) await _loadItemsDb();
     _buildHeroId = heroId;
     _showBuildLoading();
     try {
@@ -2753,11 +2754,12 @@ function _renderMeta(data) {
 
 // ── items_db: загружаем один раз при старте, используем во всём приложении ──
 var _itemsDb = {};
+var _itemsDbLoaded = false;
 
 async function _loadItemsDb() {
     try {
         var resp = await fetch(window.API_BASE_URL + '/items_db');
-        if (resp.ok) _itemsDb = await resp.json();
+        if (resp.ok) { _itemsDb = await resp.json(); _itemsDbLoaded = true; }
     } catch (e) {
         console.warn('Failed to load items_db:', e);
     }
