@@ -324,6 +324,9 @@
             }
 
 
+            if (pageName === 'home') {
+                loadMeta();
+            }
             if (pageName === 'quiz') {
                 document.getElementById('quiz-list').style.display = 'block';
                 document.getElementById('quiz-content-container').style.display = 'none';
@@ -2651,4 +2654,92 @@ function openDonationAlerts() {
         window.open(url, '_blank');
     }
 }
+
+// ========== МЕТА ПАТЧА ==========
+
+var _metaCache = null;
+
+var _META_POS_LABELS = {
+    'POSITION_1': 'Pos 1 · Керри',
+    'POSITION_2': 'Pos 2 · Мид',
+    'POSITION_3': 'Pos 3 · Хардлейн',
+    'POSITION_4': 'Pos 4 · Роумер',
+    'POSITION_5': 'Pos 5 · Саппорт',
+};
+
+var _META_POS_ICONS = {
+    'POSITION_1': '🗡️',
+    'POSITION_2': '⚡',
+    'POSITION_3': '🛡️',
+    'POSITION_4': '🏃',
+    'POSITION_5': '💚',
+};
+
+function loadMeta() {
+    if (_metaCache) {
+        _renderMeta(_metaCache);
+        return;
+    }
+    var API = window.API_BASE_URL || '/api';
+    fetch(API + '/meta')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _metaCache = data;
+            _renderMeta(data);
+        })
+        .catch(function(e) {
+            console.warn('[meta] failed to load:', e);
+        });
+}
+
+function _renderMeta(data) {
+    var patchLabel = document.getElementById('meta-patch-label');
+    if (patchLabel) {
+        patchLabel.textContent = data.patch || '—';
+    }
+    var posContainer = document.getElementById('meta-positions');
+    if (!posContainer) return;
+
+    var positions = data.positions || {};
+    var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
+    var html = '';
+
+    posOrder.forEach(function(posKey) {
+        var heroes = positions[posKey];
+        if (!heroes || !heroes.length) return;
+
+        var label = _META_POS_LABELS[posKey] || posKey;
+        var icon = _META_POS_ICONS[posKey] || '';
+
+        html += '<div class="meta-pos-section">';
+        html += '<div class="meta-pos-header"><span class="meta-pos-icon">' + icon + '</span><span class="meta-pos-label">' + label + '</span></div>';
+        html += '<div class="meta-heroes-scroll">';
+
+        heroes.forEach(function(hero, idx) {
+            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[hero.hero_id]) || ('Hero #' + hero.hero_id);
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+            var wrPct = Math.round(hero.win_rate * 100);
+            var isTop = idx === 0;
+
+            html += '<div class="meta-hero-card' + (isTop ? ' meta-hero-card--top' : '') + '" style="animation-delay:' + (idx * 80) + 'ms">';
+            html += '<div class="meta-hero-avatar-wrap"><img class="meta-hero-avatar" src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
+            html += '<div class="meta-hero-name">' + heroName + '</div>';
+            html += '<div class="meta-hero-wr">' + wrPct + '%</div>';
+            html += '</div>';
+        });
+
+        html += '</div></div>';
+    });
+
+    posContainer.innerHTML = html;
+}
+
+// Загружаем мету при старте (главная открыта по умолчанию)
+(function() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadMeta);
+    } else {
+        loadMeta();
+    }
+}());
 
