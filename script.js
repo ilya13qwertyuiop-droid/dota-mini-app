@@ -2707,7 +2707,7 @@ function _metaHeroClick(heroName) {
 function _renderMeta(data) {
     var patchLabel = document.getElementById('meta-patch-label');
     if (patchLabel) {
-        patchLabel.textContent = data.patch || '—';
+        patchLabel.textContent = data.patch || '7.41';
     }
     var posContainer = document.getElementById('meta-positions');
     if (!posContainer) return;
@@ -2750,17 +2750,19 @@ function _renderMeta(data) {
     });
 
     posContainer.innerHTML = html;
-    _initMetaAutoScroll();
+    setTimeout(_initMetaAutoScroll, 300);
 }
 
 function _initMetaAutoScroll() {
     var scrollEls = document.querySelectorAll('.meta-heroes-scroll');
     scrollEls.forEach(function(el) {
-        // Cancel any previous RAF for this element
         if (el._metaRaf) cancelAnimationFrame(el._metaRaf);
 
-        var dir = 1;
+        var speed = 15 + Math.random() * 20;
+        var dir = Math.random() > 0.5 ? 1 : -1;
+        var startDelay = Math.random() * 2000;
         var paused = false;
+        var started = false;
         var resumeTimer = null;
         var lastTs = null;
 
@@ -2774,13 +2776,22 @@ function _initMetaAutoScroll() {
         }
 
         el.addEventListener('pointerdown', pause, { passive: true });
+        el.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            el.scrollLeft += e.deltaY;
+            pause();
+        }, { passive: false });
 
         function step(ts) {
+            if (!started) {
+                el._metaRaf = requestAnimationFrame(step);
+                return;
+            }
             if (lastTs !== null && !paused) {
                 var dt = ts - lastTs;
                 var maxScroll = el.scrollWidth - el.clientWidth;
                 if (maxScroll > 0) {
-                    el.scrollLeft += dir * 20 * dt / 1000;
+                    el.scrollLeft += dir * speed * dt / 1000;
                     if (el.scrollLeft >= maxScroll - 0.5) {
                         dir = -1;
                     } else if (el.scrollLeft <= 0.5) {
@@ -2791,6 +2802,10 @@ function _initMetaAutoScroll() {
             lastTs = ts;
             el._metaRaf = requestAnimationFrame(step);
         }
+
+        setTimeout(function() {
+            started = true;
+        }, startDelay);
 
         el._metaRaf = requestAnimationFrame(step);
     });
