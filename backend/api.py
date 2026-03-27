@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import time
 import httpx
 from datetime import datetime, timezone
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -924,6 +926,89 @@ async def api_hero_positions(hero_id: int):
 
 
 # ========== Feedback ==========
+
+@app.get("/api/meta")
+async def api_meta():
+    """Returns top-5 meta heroes per position from dota_builds.json.
+
+    Primary position = the position with max num_matches for a hero.
+    Only heroes where the primary position matches AND num_matches >= 200.
+    Top 5 by win_rate per position.
+
+    Response format:
+    {
+      "patch": "7.41",
+      "positions": {
+        "POSITION_1": [{"hero_id": 54, "win_rate": 0.59, "num_matches": 2545}],
+        ...
+      }
+    }
+    """
+    builds_path = Path(__file__).resolve().parent.parent / "dota_builds.json"
+    if not builds_path.exists():
+        raise HTTPException(status_code=503, detail="dota_builds.json not found")
+
+    try:
+        with open(builds_path, encoding="utf-8") as f:
+            raw: dict = json.load(f)
+    except Exception as e:
+        logger.warning("[meta] Failed to read dota_builds.json: %s", e)
+        raise HTTPException(status_code=503, detail="Failed to read build data")
+
+    patch = raw.get("patch", "")
+
+    pos_keys = ["pos%201", "pos%202", "pos%203", "pos%204", "pos%205"]
+    # _DOTA_TO_STRATZ_POS: "pos%20N" -> "POSITION_N"
+    stratz_positions = ["POSITION_1", "POSITION_2", "POSITION_3", "POSITION_4", "POSITION_5"]
+    buckets: dict[str, list] = {p: [] for p in stratz_positions}
+
+    for hero_id_str, positions in raw.items():
+        if hero_id_str == "patch":
+            continue
+        if not isinstance(positions, dict):
+            continue
+        try:
+            hero_id = int(hero_id_str)
+        except ValueError:
+            continue
+
+        # Find primary position (max num_matches)
+        best_pos_key: str | None = None
+        best_matches = -1
+        for pk in pos_keys:
+            pos_data = positions.get(pk)
+            if not isinstance(pos_data, dict):
+                continue
+            nm = pos_data.get("num_matches") or 0
+            if nm > best_matches:
+                best_matches = nm
+                best_pos_key = pk
+
+        if best_pos_key is None:
+            continue
+
+        stratz_pos = _DOTA_TO_STRATZ_POS.get(best_pos_key)
+        if not stratz_pos:
+            continue
+
+        pos_data = positions[best_pos_key]
+        nm = pos_data.get("num_matches") or 0
+        wr = pos_data.get("win_rate")
+
+        if nm >= 200 and wr is not None:
+            buckets[stratz_pos].append({
+                "hero_id": hero_id,
+                "win_rate": round(float(wr), 4),
+                "num_matches": nm,
+            })
+
+    result_positions: dict[str, list] = {}
+    for pos in stratz_positions:
+        heroes = sorted(buckets[pos], key=lambda h: h["win_rate"], reverse=True)
+        result_positions[pos] = heroes[:5]
+
+    return {"patch": patch, "positions": result_positions}
+
 
 class FeedbackRequest(BaseModel):
     token: str
