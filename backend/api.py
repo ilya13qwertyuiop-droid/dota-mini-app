@@ -642,62 +642,6 @@ async def api_hero_synergy(
     }
 
 
-_STRATZ_QUAL_KEEP = {"artifact", "common", "epic", "rare"}
-_BOOT_ITEM_IDS = {48, 50, 63, 29, 214, 220, 931, 180, 1401}
-
-
-def _filter_stratz_core_items(stratz_data: dict, items_by_id: dict) -> dict:
-    """Pre-filter Stratz core_items per rank/position.
-
-    Steps: top-12 → qual+component filter → ensure a boot is present → top-6.
-    """
-    result: dict = {}
-    for rank_key, rank_val in stratz_data.items():
-        if not isinstance(rank_val, dict):
-            result[rank_key] = rank_val
-            continue
-        new_by_pos: dict = {}
-        for pos_key, pos_val in (rank_val.get("by_position") or {}).items():
-            if not isinstance(pos_val, dict):
-                new_by_pos[pos_key] = pos_val
-                continue
-
-            all_sorted = sorted(
-                pos_val.get("core_items") or [],
-                key=lambda x: x.get("matchCount", 0),
-                reverse=True,
-            )
-
-            def _keep(e: dict) -> bool:
-                iid  = e.get("itemId")
-                info = items_by_id.get(str(iid)) or {}
-                if not (info.get("qual") in _STRATZ_QUAL_KEEP and not info.get("is_component", False)):
-                    return False
-                # boots bypass cost filter; other items must cost >= 1500
-                if iid not in _BOOT_ITEM_IDS:
-                    cost = info.get("cost")
-                    if cost is not None and cost < 1500:
-                        return False
-                return True
-
-            # top-12 filtered
-            filtered = [e for e in all_sorted[:12] if _keep(e)]
-
-            # ensure a boot is present — inject from boot_items list if missing
-            has_boot = any(e.get("itemId") in _BOOT_ITEM_IDS for e in filtered[:7])
-            if not has_boot:
-                boot_items = pos_val.get("boot_items") or []
-                if boot_items:
-                    filtered.append(boot_items[0])
-
-            # re-sort after possible injection and take top-6
-            filtered.sort(key=lambda x: x.get("matchCount", 0), reverse=True)
-            new_by_pos[pos_key] = {**pos_val, "core_items": filtered[:6]}
-
-        result[rank_key] = {**rank_val, "by_position": new_by_pos}
-    return result
-
-
 # ========== Hero Build ==========
 
 _STRATZ_TO_DOTA_POS: dict[str, str] = {
@@ -823,7 +767,6 @@ async def api_hero_build(hero_id: int):
 
     facets = cached.get("facets", [])
     items_db = get_app_cache_value("items_by_id") or {}
-    stratz   = _filter_stratz_core_items(cached.get("stratz") or {}, items_db)
 
     # ── Determine most popular position ───────────────────────────────────
     dota_builds = cached.get("dota_builds")
@@ -872,7 +815,6 @@ async def api_hero_build(hero_id: int):
                 "core_items":       core_items,
             },
             "positions":   dota_keys_sorted,
-            "stratz":      stratz,
             "dota_builds": dota_builds,
         }
         _build_cache[hero_id] = (time.time(), _response)
@@ -926,7 +868,6 @@ async def api_hero_build(hero_id: int):
             "start_game_items": start_game_items_fb,
             "core_items":       core_items_fb,
         },
-        "stratz":   stratz,
     }
     _build_cache[hero_id] = (time.time(), _response)
     return _response
