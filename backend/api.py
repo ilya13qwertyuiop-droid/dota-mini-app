@@ -872,7 +872,6 @@ async def api_hero_build(hero_id: int):
                 "core_items":       core_items,
             },
             "positions":   dota_keys_sorted,
-            "items_db":    items_db,
             "stratz":      stratz,
             "dota_builds": dota_builds,
         }
@@ -927,7 +926,6 @@ async def api_hero_build(hero_id: int):
             "start_game_items": start_game_items_fb,
             "core_items":       core_items_fb,
         },
-        "items_db": items_db,
         "stratz":   stratz,
     }
     _build_cache[hero_id] = (time.time(), _response)
@@ -964,6 +962,21 @@ async def api_hero_positions(hero_id: int):
     positions = all_data.get("positions") or []
     positions_sorted = sorted(positions, key=lambda p: p.get("matchCount", 0), reverse=True)
     return {"hero_id": hero_id, "positions": positions_sorted}
+
+
+# ========== Items DB ==========
+
+from fastapi.responses import JSONResponse
+
+@app.get("/api/items_db")
+async def api_items_db():
+    """Returns items_by_id dict (shared across all heroes).
+
+    Cached in-memory server-side; clients should treat it as immutable
+    for the session (Cache-Control: public, max-age=3600).
+    """
+    data = get_app_cache_value("items_by_id") or {}
+    return JSONResponse(content=data, headers={"Cache-Control": "public, max-age=3600"})
 
 
 # ========== Feedback ==========
