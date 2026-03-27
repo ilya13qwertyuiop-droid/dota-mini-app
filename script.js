@@ -1852,9 +1852,8 @@ function _buildTalentsHtml(dotaPos, data) {
 }
 
 function _buildItemsSectionHtml(dotaPos, data) {
-    var itemsDb = data.items_db || {};
     function resolveById(id) {
-        var info = itemsDb[String(id)] || {};
+        var info = _itemsDb[String(id)] || {};
         return { dname: info.dname || ('Item ' + id), img: info.img || null };
     }
 
@@ -2044,6 +2043,7 @@ function renderBuildTab(data) {
 }
 
 async function loadHeroBuild(heroId) {
+    if (!_itemsDbLoaded) await _loadItemsDb();
     _buildHeroId = heroId;
     _showBuildLoading();
     try {
@@ -2752,12 +2752,26 @@ function _renderMeta(data) {
     posContainer.innerHTML = html;
 }
 
-// Загружаем мету при старте (главная открыта по умолчанию)
+// ── items_db: загружаем один раз при старте, используем во всём приложении ──
+var _itemsDb = {};
+var _itemsDbLoaded = false;
+
+async function _loadItemsDb() {
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/items_db');
+        if (resp.ok) { _itemsDb = await resp.json(); _itemsDbLoaded = true; }
+    } catch (e) {
+        console.warn('Failed to load items_db:', e);
+    }
+}
+
+// Загружаем мету и items_db при старте (главная открыта по умолчанию)
 (function() {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadMeta);
+        document.addEventListener('DOMContentLoaded', function() { loadMeta(); _loadItemsDb(); });
     } else {
         loadMeta();
+        _loadItemsDb();
     }
 }());
 
