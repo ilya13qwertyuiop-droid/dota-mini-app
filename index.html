@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=34" />
+    <link rel="stylesheet" href="styles.css?v=35" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -21,45 +21,28 @@
       <!-- Главная страница (Dashboard) -->
       <div id="page-home" class="page active">
         <div class="dashboard-header">
-          <h1>👋 Привет!</h1>
-          <p>Добро пожаловать в Dota 2 Helper</p>
+          <h1>Добро пожаловать в Dota 2 Helper</h1>
         </div>
 
-        <!-- Быстрые действия -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon">⚡</span>
-            <span class="card-title">Быстрые действия</span>
+        <!-- Мета патча -->
+        <div class="card meta-block">
+          <div class="meta-block-header">
+            <span class="meta-block-title">МЕТА ПАТЧА <span id="meta-patch-label">…</span></span>
           </div>
-          <div class="quick-actions">
-            <button class="action-btn" onclick="goToPositionQuiz()">
-              <span>🎯</span>
-              <span>Подобрать позицию</span>
-            </button>
-            <button class="action-btn" onclick="goToHeroQuiz()">
-              <span>🦸</span>
-              <span>Подобрать героя</span>
-            </button>
-            <button class="action-btn" onclick="goToMatchups()">
-              <span>⚔️</span>
-              <span>Герои</span>
-            </button>
-          </div>
+          <div id="meta-positions"></div>
         </div>
 
-        <!-- Поддержать автора -->
-        <button class="feedback-entry-btn donate-entry-btn" onclick="goToDonate()">
-          <span class="feedback-entry-icon">❤️</span>
-          <span class="feedback-entry-text">Поддержать автора</span>
-          <span class="feedback-entry-arrow">→</span>
-        </button>
-
-        <!-- Предложить улучшения -->
-        <button class="feedback-entry-btn" onclick="goToFeedback()">
-          <span class="feedback-entry-icon">💬</span>
-          <span class="feedback-entry-text">Предложить улучшения</span>
-          <span class="feedback-entry-arrow">→</span>
-        </button>
+        <!-- Поддержать / Предложить — одна строка -->
+        <div class="home-action-row">
+          <button class="feedback-entry-btn home-half-btn donate-entry-btn" onclick="goToDonate()">
+            <span class="feedback-entry-icon">❤️</span>
+            <span class="feedback-entry-text">Поддержать автора</span>
+          </button>
+          <button class="feedback-entry-btn home-half-btn" onclick="goToFeedback()">
+            <span class="feedback-entry-icon">💬</span>
+            <span class="feedback-entry-text">Предложить улучшения</span>
+          </button>
+        </div>
       </div>
 
       <!-- Страница фидбека -->
@@ -661,6 +644,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=48"></script>
+    <script src="script.js?v=49"></script>
   </body>
 </html>
