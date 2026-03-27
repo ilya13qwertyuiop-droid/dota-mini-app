@@ -2750,65 +2750,6 @@ function _renderMeta(data) {
     });
 
     posContainer.innerHTML = html;
-    setTimeout(_initMetaAutoScroll, 300);
-}
-
-function _initMetaAutoScroll() {
-    var scrollEls = document.querySelectorAll('.meta-heroes-scroll');
-    scrollEls.forEach(function(el) {
-        if (el._metaRaf) cancelAnimationFrame(el._metaRaf);
-
-        var speed = 15 + Math.random() * 20;
-        var dir = Math.random() > 0.5 ? 1 : -1;
-        var startDelay = Math.random() * 2000;
-        var paused = false;
-        var started = false;
-        var resumeTimer = null;
-        var lastTs = null;
-
-        function pause() {
-            paused = true;
-            if (resumeTimer) clearTimeout(resumeTimer);
-            resumeTimer = setTimeout(function() {
-                paused = false;
-                lastTs = null;
-            }, 2000);
-        }
-
-        el.addEventListener('pointerdown', pause, { passive: true });
-        el.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            el.scrollLeft += e.deltaY;
-            pause();
-        }, { passive: false });
-
-        function step(ts) {
-            if (!started) {
-                el._metaRaf = requestAnimationFrame(step);
-                return;
-            }
-            if (lastTs !== null && !paused) {
-                var dt = ts - lastTs;
-                var maxScroll = el.scrollWidth - el.clientWidth;
-                if (maxScroll > 0) {
-                    el.scrollLeft += dir * speed * dt / 1000;
-                    if (el.scrollLeft >= maxScroll - 0.5) {
-                        dir = -1;
-                    } else if (el.scrollLeft <= 0.5) {
-                        dir = 1;
-                    }
-                }
-            }
-            lastTs = ts;
-            el._metaRaf = requestAnimationFrame(step);
-        }
-
-        setTimeout(function() {
-            started = true;
-        }, startDelay);
-
-        el._metaRaf = requestAnimationFrame(step);
-    });
 }
 
 // Загружаем мету при старте (главная открыта по умолчанию)
