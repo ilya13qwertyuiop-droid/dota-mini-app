@@ -2056,14 +2056,14 @@ margin-top: 14px;
 }
 
 .meta-pos-section {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .meta-pos-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
+  margin: 4px 0;
 }
 
 .meta-pos-icon {
@@ -2080,7 +2080,7 @@ margin-top: 14px;
 }
 
 .meta-pos-label {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-main);
 }
@@ -2107,9 +2107,9 @@ margin-top: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  width: 80px;
-  padding: 10px 6px;
+  gap: 4px;
+  width: 68px;
+  padding: 6px 4px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 14px;
@@ -2130,8 +2130,8 @@ margin-top: 14px;
 }
 
 .meta-hero-avatar-wrap {
-  width: 54px;
-  height: 54px;
+  width: 52px;
+  height: 52px;
   border-radius: 10px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.06);
@@ -2150,18 +2150,18 @@ margin-top: 14px;
 }
 
 .meta-hero-name {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   text-align: center;
   line-height: 1.2;
-  max-width: 68px;
+  max-width: 64px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .meta-hero-wr {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 700;
   color: #4a9eff;
   line-height: 1;
