@@ -8,6 +8,33 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# ── In-memory caches ──────────────────────────────────────────────────────────
+# /api/meta result — recomputed at most once per hour
+META_CACHE_TTL = 3600
+_meta_cache: dict | None = None
+_meta_cache_time: float = 0
+
+# dota_builds.json raw content — file is large; read once per process lifetime
+_dota_builds_file_cache: dict | None = None
+
+
+def _load_dota_builds_file() -> dict | None:
+    """Return parsed dota_builds.json, caching the result in memory."""
+    global _dota_builds_file_cache
+    if _dota_builds_file_cache is not None:
+        return _dota_builds_file_cache
+    builds_path = Path(__file__).resolve().parent.parent / "dota_builds.json"
+    if not builds_path.exists():
+        return None
+    try:
+        with open(builds_path, encoding="utf-8") as f:
+            _dota_builds_file_cache = json.load(f)
+    except Exception as e:
+        logger.warning("[dota_builds] Failed to read dota_builds.json: %s", e)
+        return None
+    return _dota_builds_file_cache
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +83,7 @@ init_stats_tables()       # migration: adds rank_bucket column if missing
 # --- DB init end ---
 
 
+# Production: uvicorn backend.api:app --workers 4 --timeout-keep-alive 30
 app = FastAPI(title="Dota Mini App Backend")
 
 
@@ -944,16 +972,13 @@ async def api_meta():
       }
     }
     """
-    builds_path = Path(__file__).resolve().parent.parent / "dota_builds.json"
-    if not builds_path.exists():
-        raise HTTPException(status_code=503, detail="dota_builds.json not found")
+    global _meta_cache, _meta_cache_time
+    if _meta_cache is not None and (time.time() - _meta_cache_time) < META_CACHE_TTL:
+        return _meta_cache
 
-    try:
-        with open(builds_path, encoding="utf-8") as f:
-            raw: dict = json.load(f)
-    except Exception as e:
-        logger.warning("[meta] Failed to read dota_builds.json: %s", e)
-        raise HTTPException(status_code=503, detail="Failed to read build data")
+    raw = _load_dota_builds_file()
+    if raw is None:
+        raise HTTPException(status_code=503, detail="dota_builds.json not found")
 
     patch = raw.get("patch", "")
 
@@ -1007,7 +1032,9 @@ async def api_meta():
         heroes = sorted(buckets[pos], key=lambda h: h["win_rate"], reverse=True)
         result_positions[pos] = heroes[:5]
 
-    return {"patch": patch, "positions": result_positions}
+    _meta_cache = {"patch": patch, "positions": result_positions}
+    _meta_cache_time = time.time()
+    return _meta_cache
 
 
 class FeedbackRequest(BaseModel):
