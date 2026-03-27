@@ -81,6 +81,7 @@ def create_all_tables() -> None:
     """
     # Local imports: keeps database.py free of circular dependencies at module level
     from backend.models import (  # noqa: F401  (imported for Base registration)
+        AnalyticsEvent,
         HeroMatchup,
         HeroMatchupsCache,
         HeroStat,
