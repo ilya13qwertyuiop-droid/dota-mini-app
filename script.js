@@ -2662,17 +2662,17 @@ var _metaCache = null;
 var _META_POS_LABELS = {
     'POSITION_1': 'Pos 1 · Керри',
     'POSITION_2': 'Pos 2 · Мид',
-    'POSITION_3': 'Pos 3 · Хардлейн',
-    'POSITION_4': 'Pos 4 · Роумер',
-    'POSITION_5': 'Pos 5 · Саппорт',
+    'POSITION_3': 'Pos 3 · Оффлейн',
+    'POSITION_4': 'Pos 4 · Частичная поддержка',
+    'POSITION_5': 'Pos 5 · Поддержка',
 };
 
-var _META_POS_ICONS = {
-    'POSITION_1': '🗡️',
-    'POSITION_2': '⚡',
-    'POSITION_3': '🛡️',
-    'POSITION_4': '🏃',
-    'POSITION_5': '💚',
+var _META_POS_IMG = {
+    'POSITION_1': '/images/positions/pos_1.png',
+    'POSITION_2': '/images/positions/pos_2.png',
+    'POSITION_3': '/images/positions/pos_3.png',
+    'POSITION_4': '/images/positions/pos_4.png',
+    'POSITION_5': '/images/positions/pos_5.png',
 };
 
 function loadMeta() {
@@ -2692,6 +2692,18 @@ function loadMeta() {
         });
 }
 
+function _metaHeroClick(heroName) {
+    // Navigate to database page
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-database').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    var navItems = document.querySelectorAll('.nav-item');
+    if (navItems[2]) navItems[2].classList.add('active');
+    // Open build tab for the hero
+    _heroPageActiveTab = 'build';
+    matchupPage.selectHero(heroName);
+}
+
 function _renderMeta(data) {
     var patchLabel = document.getElementById('meta-patch-label');
     if (patchLabel) {
@@ -2709,10 +2721,13 @@ function _renderMeta(data) {
         if (!heroes || !heroes.length) return;
 
         var label = _META_POS_LABELS[posKey] || posKey;
-        var icon = _META_POS_ICONS[posKey] || '';
+        var imgSrc = _META_POS_IMG[posKey] || '';
 
         html += '<div class="meta-pos-section">';
-        html += '<div class="meta-pos-header"><span class="meta-pos-icon">' + icon + '</span><span class="meta-pos-label">' + label + '</span></div>';
+        html += '<div class="meta-pos-header">';
+        html += '<img class="meta-pos-icon-img" src="' + imgSrc + '" alt="" onerror="this.style.display=\'none\'">';
+        html += '<span class="meta-pos-label">' + label + '</span>';
+        html += '</div>';
         html += '<div class="meta-heroes-scroll">';
 
         heroes.forEach(function(hero, idx) {
@@ -2720,8 +2735,11 @@ function _renderMeta(data) {
             var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
             var wrPct = Math.round(hero.win_rate * 100);
             var isTop = idx === 0;
+            var escapedName = heroName.replace(/'/g, "\\'");
 
-            html += '<div class="meta-hero-card' + (isTop ? ' meta-hero-card--top' : '') + '" style="animation-delay:' + (idx * 80) + 'ms">';
+            html += '<div class="meta-hero-card' + (isTop ? ' meta-hero-card--top' : '') + '"';
+            html += ' style="animation-delay:' + (idx * 80) + 'ms"';
+            html += ' onclick="_metaHeroClick(\'' + escapedName + '\')">';
             html += '<div class="meta-hero-avatar-wrap"><img class="meta-hero-avatar" src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
             html += '<div class="meta-hero-name">' + heroName + '</div>';
             html += '<div class="meta-hero-wr">' + wrPct + '%</div>';
@@ -2732,6 +2750,50 @@ function _renderMeta(data) {
     });
 
     posContainer.innerHTML = html;
+    _initMetaAutoScroll();
+}
+
+function _initMetaAutoScroll() {
+    var scrollEls = document.querySelectorAll('.meta-heroes-scroll');
+    scrollEls.forEach(function(el) {
+        // Cancel any previous RAF for this element
+        if (el._metaRaf) cancelAnimationFrame(el._metaRaf);
+
+        var dir = 1;
+        var paused = false;
+        var resumeTimer = null;
+        var lastTs = null;
+
+        function pause() {
+            paused = true;
+            if (resumeTimer) clearTimeout(resumeTimer);
+            resumeTimer = setTimeout(function() {
+                paused = false;
+                lastTs = null;
+            }, 2000);
+        }
+
+        el.addEventListener('pointerdown', pause, { passive: true });
+
+        function step(ts) {
+            if (lastTs !== null && !paused) {
+                var dt = ts - lastTs;
+                var maxScroll = el.scrollWidth - el.clientWidth;
+                if (maxScroll > 0) {
+                    el.scrollLeft += dir * 20 * dt / 1000;
+                    if (el.scrollLeft >= maxScroll - 0.5) {
+                        dir = -1;
+                    } else if (el.scrollLeft <= 0.5) {
+                        dir = 1;
+                    }
+                }
+            }
+            lastTs = ts;
+            el._metaRaf = requestAnimationFrame(step);
+        }
+
+        el._metaRaf = requestAnimationFrame(step);
+    });
 }
 
 // Загружаем мету при старте (главная открыта по умолчанию)
