@@ -1112,12 +1112,11 @@
                         </div>
 
                         <div class="guide-row">
-                        <span>Гайд на D2PT</span>
                         <button
                             class="guide-chip hero-card__guide-btn"
                             data-hero-name="${hero.name}"
                         >
-                            Открыть гайд
+                            Сборка
                         </button>
                         </div>
                     `;
@@ -1204,13 +1203,7 @@
             const heroName = btn.getAttribute('data-hero-name');
             if (!heroName) return;
 
-            const url = getDota2ProTrackerUrl(heroName);
-
-            if (tg && typeof tg.openLink === 'function') {
-                tg.openLink(url);          // откроет во встроенном браузере Telegram
-            } else {
-                window.open(url, '_blank'); // запасной вариант
-            }
+            _metaHeroClick(heroName);
         });
 // ========== ПРОФИЛЬ ==========
 
