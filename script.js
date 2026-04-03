@@ -2925,12 +2925,32 @@ function _renderEnemySlots() {
 function _updateEvaluateBtn() {
     var allFilled = _drafterAllyPick.every(function(h) { return h !== null; });
     var wrap = document.getElementById('drafter-evaluate-wrap');
-    if (wrap) wrap.style.display = allFilled ? 'block' : 'none';
-    var btn = document.querySelector('.drafter-evaluate-btn');
-    if (btn) btn.classList.toggle('drafter-btn--ready', allFilled);
+    if (!wrap) return;
+    if (allFilled && wrap.style.display === 'none') {
+        wrap.style.display = 'block';
+        var btn = wrap.querySelector('.drafter-evaluate-btn');
+        if (btn) {
+            btn.style.animation = 'none';
+            btn.classList.add('drafter-btn--ready');
+            // trigger fadeInBtn
+            btn.style.animation = '';
+        }
+    } else if (!allFilled) {
+        wrap.style.display = 'none';
+        var btn2 = wrap.querySelector('.drafter-evaluate-btn');
+        if (btn2) btn2.classList.remove('drafter-btn--ready');
+    }
 }
 
 function drafterSlotClick(slotIndex) {
+    // If slot is filled — clear it and make it active
+    if (_drafterAllyPick[slotIndex]) {
+        _drafterAllyPick[slotIndex] = null;
+        _drafterActiveSlot = slotIndex;
+        renderDrafterSlots();
+        renderDrafterGrid();
+        return;
+    }
     _drafterActiveSlot = slotIndex;
     // Auto-activate position filter matching the slot
     var searchVal = (document.getElementById('drafter-search') || {}).value || '';

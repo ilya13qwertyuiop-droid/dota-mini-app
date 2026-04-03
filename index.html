@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=43" />
+    <link rel="stylesheet" href="styles.css?v=44" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -439,6 +439,11 @@
             </div>
           </div>
 
+          <!-- Кнопка оценки — между составами и поиском -->
+          <div id="drafter-evaluate-wrap" style="display:none; text-align:center; padding: 10px 16px 4px;">
+            <button class="drafter-evaluate-btn" onclick="submitDraft()">Оценить драфт</button>
+          </div>
+
           <!-- Сетка выбора героев -->
           <div class="drafter-picker">
             <input type="text" id="drafter-search" class="drafter-search" placeholder="Поиск..." oninput="onDrafterSearch()">
@@ -451,11 +456,6 @@
               <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)"><img src="/images/positions/pos_5.png" width="16" height="16" alt="5"></button>
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
-          </div>
-
-          <!-- Кнопка оценки -->
-          <div id="drafter-evaluate-wrap" style="display:none; text-align:center; padding: 12px 0 80px;">
-            <button class="drafter-evaluate-btn" onclick="submitDraft()">Оценить драфт</button>
           </div>
         </div>
 
@@ -710,6 +710,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=57"></script>
+    <script src="script.js?v=58"></script>
   </body>
 </html>

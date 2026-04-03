@@ -2886,15 +2886,20 @@ margin-top: 14px;
   display: block;
 }
 
-.drafter-btn--ready {
-  background: #c084fc !important;
-  color: #0a0612 !important;
-  animation: pulse-btn 1.5s ease-in-out infinite;
+@keyframes fadeInBtn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes pulse-btn {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.75; }
+}
+
+.drafter-btn--ready {
+  background: #c084fc !important;
+  color: #0a0612 !important;
+  animation: fadeInBtn 0.25s ease forwards, pulse-btn 1.5s ease-in-out 0.25s infinite;
 }
 
 .drafter-evaluate-btn {
