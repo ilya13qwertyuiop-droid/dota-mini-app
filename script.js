@@ -388,7 +388,7 @@
         function goToMatchups() {
             switchPage('database');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.querySelectorAll('.nav-item')[2].classList.add('active');
+            document.querySelectorAll('.nav-item')[3].classList.add('active');
         }
 
         function initQuiz() {
@@ -1507,6 +1507,9 @@ switchPage = function (pageName, event) {
     if (pageName === 'database') {
         matchupPage.showSearch();
     }
+    if (pageName === 'drafter') {
+        initDrafter();
+    }
 };
 
 // ========== МАТЧАПЫ ==========
@@ -2490,7 +2493,7 @@ function goBackFromFeedback() {
     target.classList.add('active');
 
     // Восстанавливаем нав-элемент
-    var navMap = { home: 0, quiz: 1, database: 2, profile: 3 };
+    var navMap = { home: 0, quiz: 1, drafter: 2, database: 3, profile: 4 };
     var navIdx = navMap[_prevPageBeforeFeedback];
     if (navIdx !== undefined) {
         var navItems = document.querySelectorAll('.nav-item');
@@ -2767,4 +2770,313 @@ async function _loadItemsDb() {
         _loadItemsDb();
     }
 }());
+
+// ========== ДРАФТЕР ==========
+
+var _drafterEnemyPick = [];          // [{hero_id, position}]
+var _drafterAllyPick = [null, null, null, null, null]; // null = пусто
+var _drafterActiveSlot = 0;
+var _drafterMatchLoaded = false;
+
+function _drafterHeroName(heroId) {
+    if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
+        return window.dotaHeroIdToName[heroId];
+    }
+    return null;
+}
+
+function _drafterHeroIcon(heroId) {
+    var name = _drafterHeroName(heroId);
+    if (name && window.getHeroIconUrlByName) {
+        return window.getHeroIconUrlByName(name);
+    }
+    return '';
+}
+
+function initDrafter() {
+    // Показать лучший результат
+    var best = localStorage.getItem('drafter_best_score');
+    document.getElementById('drafter-best-label').textContent = best !== null ? best : '—';
+
+    // Показать экран драфта, скрыть результат
+    document.getElementById('drafter-main').style.display = 'block';
+    document.getElementById('drafter-result').style.display = 'none';
+
+    // Загрузить матч если ещё не загружен
+    if (!_drafterMatchLoaded) {
+        loadDrafterMatch();
+    } else {
+        renderDrafterSlots();
+        renderDrafterGrid();
+    }
+}
+
+async function loadDrafterMatch() {
+    _drafterMatchLoaded = false;
+    _drafterAllyPick = [null, null, null, null, null];
+    _drafterActiveSlot = 0;
+    _drafterEnemyPick = [];
+
+    document.getElementById('drafter-main').style.display = 'block';
+    document.getElementById('drafter-result').style.display = 'none';
+    document.getElementById('drafter-evaluate-wrap').style.display = 'none';
+
+    var enemySlotsEl = document.getElementById('drafter-enemy-slots');
+    if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Загрузка...</div>';
+
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/random');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+
+        _drafterEnemyPick = (data.enemy || []).slice(0, 5);
+        while (_drafterEnemyPick.length < 5) {
+            _drafterEnemyPick.push({ hero_id: 0, position: '' });
+        }
+        _drafterMatchLoaded = true;
+    } catch (e) {
+        console.error('[drafter] loadDrafterMatch error:', e);
+        if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:#f44;font-size:12px;">Ошибка загрузки</div>';
+        return;
+    }
+
+    if (document.getElementById('drafter-search')) {
+        document.getElementById('drafter-search').value = '';
+    }
+    renderDrafterSlots();
+    renderDrafterGrid();
+}
+
+function renderDrafterSlots() {
+    _renderAllySlots();
+    _renderEnemySlots();
+    _updateEvaluateBtn();
+}
+
+function _renderAllySlots() {
+    var el = document.getElementById('drafter-ally-slots');
+    if (!el) return;
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+        var hero = _drafterAllyPick[i];
+        var isActive = (i === _drafterActiveSlot);
+        var cls = 'drafter-slot';
+        if (isActive) cls += ' drafter-slot--active';
+        if (hero) cls += ' drafter-slot--filled';
+        html += '<div class="' + cls + '" data-slot="' + i + '" onclick="drafterSlotClick(' + i + ')">';
+        if (hero && hero.hero_id) {
+            var iconUrl = _drafterHeroIcon(hero.hero_id);
+            if (iconUrl) {
+                html += '<img src="' + iconUrl + '" alt="" class="drafter-slot-img">';
+            } else {
+                html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
+            }
+        }
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function _renderEnemySlots() {
+    var el = document.getElementById('drafter-enemy-slots');
+    if (!el) return;
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+        var hero = _drafterEnemyPick[i] || { hero_id: 0 };
+        var cls = 'drafter-slot drafter-slot--enemy';
+        if (hero.hero_id) cls += ' drafter-slot--filled';
+        html += '<div class="' + cls + '">';
+        if (hero.hero_id) {
+            var iconUrl = _drafterHeroIcon(hero.hero_id);
+            if (iconUrl) {
+                html += '<img src="' + iconUrl + '" alt="" class="drafter-slot-img">';
+            } else {
+                html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
+            }
+        }
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function _updateEvaluateBtn() {
+    var allFilled = _drafterAllyPick.every(function(h) { return h !== null; });
+    var wrap = document.getElementById('drafter-evaluate-wrap');
+    if (wrap) wrap.style.display = allFilled ? 'block' : 'none';
+}
+
+function drafterSlotClick(slotIndex) {
+    _drafterActiveSlot = slotIndex;
+    _renderAllySlots();
+}
+
+function renderDrafterGrid() {
+    var el = document.getElementById('drafter-hero-grid');
+    if (!el) return;
+
+    var query = (document.getElementById('drafter-search') && document.getElementById('drafter-search').value || '').toLowerCase().trim();
+
+    if (!window.dotaHeroIds) {
+        el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">Герои не загружены</div>';
+        return;
+    }
+
+    // Собираем уникальных героев
+    var seen = new Set();
+    var heroes = [];
+    Object.keys(window.dotaHeroIds).forEach(function(name) {
+        var id = window.dotaHeroIds[name];
+        if (!seen.has(id)) {
+            seen.add(id);
+            heroes.push({ id: id, name: name });
+        }
+    });
+    heroes.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+    // Фильтрация
+    if (query) {
+        heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
+    }
+
+    // Уже выбранные
+    var pickedIds = new Set(_drafterAllyPick.filter(Boolean).map(function(h) { return h.hero_id; }));
+
+    var html = '';
+    heroes.forEach(function(h) {
+        var isPicked = pickedIds.has(h.id);
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
+        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '');
+        html += '<div class="' + cls + '" onclick="' + (isPicked ? '' : 'selectDrafterHero(' + h.id + ')') + '">';
+        if (iconUrl) {
+            html += '<img src="' + iconUrl + '" alt="' + h.name + '" class="drafter-grid-img">';
+        } else {
+            html += '<div style="width:48px;height:48px;background:#333;border-radius:6px;"></div>';
+        }
+        html += '</div>';
+    });
+
+    el.innerHTML = html;
+}
+
+function selectDrafterHero(heroId) {
+    if (_drafterActiveSlot >= 5) return;
+
+    _drafterAllyPick[_drafterActiveSlot] = {
+        hero_id: heroId,
+        position: 'pos ' + (_drafterActiveSlot + 1)
+    };
+
+    // Переходим к следующему пустому слоту
+    var next = -1;
+    for (var i = _drafterActiveSlot + 1; i < 5; i++) {
+        if (!_drafterAllyPick[i]) { next = i; break; }
+    }
+    if (next === -1) {
+        for (var j = 0; j < _drafterActiveSlot; j++) {
+            if (!_drafterAllyPick[j]) { next = j; break; }
+        }
+    }
+    if (next !== -1) _drafterActiveSlot = next;
+
+    renderDrafterSlots();
+    renderDrafterGrid();
+}
+
+async function submitDraft() {
+    var ally = _drafterAllyPick.filter(Boolean);
+    var enemy = _drafterEnemyPick.filter(function(h) { return h && h.hero_id; });
+
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ally: ally, enemy: enemy })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        showDrafterResult(data);
+    } catch (e) {
+        console.error('[drafter] submitDraft error:', e);
+        alert('Ошибка при оценке драфта');
+    }
+}
+
+function showDrafterResult(data) {
+    document.getElementById('drafter-main').style.display = 'none';
+    document.getElementById('drafter-result').style.display = 'block';
+
+    var total = Math.round(data.total_score || 0);
+
+    // Анимация счёта
+    var scoreEl = document.getElementById('drafter-score-display');
+    var duration = 1500;
+    var startTime = null;
+    function animStep(ts) {
+        if (!startTime) startTime = ts;
+        var progress = Math.min((ts - startTime) / duration, 1);
+        var eased = 1 - Math.pow(1 - progress, 3);
+        scoreEl.textContent = Math.round(eased * total);
+        if (progress < 1) requestAnimationFrame(animStep);
+        else scoreEl.textContent = total;
+    }
+    requestAnimationFrame(animStep);
+
+    // Градация
+    var grade = '';
+    if (total <= 40) grade = 'Катастрофа';
+    else if (total <= 60) grade = 'Слабовато';
+    else if (total <= 75) grade = 'Неплохо';
+    else if (total <= 90) grade = 'Хороший драфт!';
+    else grade = 'Идеальный драфт! 🔥';
+    document.getElementById('drafter-grade').textContent = grade;
+
+    // Компоненты
+    document.getElementById('dr-synergy').textContent = (data.synergy_score || 0).toFixed(1);
+    document.getElementById('dr-matchup').textContent = (data.matchup_score || 0).toFixed(1);
+    document.getElementById('dr-position').textContent = (data.position_score || 0).toFixed(1);
+
+    // Рекорд
+    var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
+    var recordEl = document.getElementById('drafter-record');
+    if (total > best) {
+        localStorage.setItem('drafter_best_score', total);
+        document.getElementById('drafter-best-label').textContent = total;
+        recordEl.style.display = 'block';
+    } else {
+        recordEl.style.display = 'none';
+    }
+
+    // Комментарии
+    var commentsEl = document.getElementById('drafter-comments');
+    var comments = data.comments || [];
+    var html = '';
+    comments.forEach(function(c) {
+        var icon = c.type === 'good' ? '<span class="drafter-comment-icon good">✓</span>'
+                 : c.type === 'bad'  ? '<span class="drafter-comment-icon bad">✗</span>'
+                 :                     '<span class="drafter-comment-icon warn">⚠</span>';
+        var text = _drafterCommentText(c);
+        html += '<div class="drafter-comment">' + icon + '<span>' + text + '</span></div>';
+    });
+    commentsEl.innerHTML = html;
+}
+
+function _drafterCommentText(c) {
+    var name1, name2;
+    if (c.kind === 'synergy') {
+        name1 = _drafterHeroName(c.hero_id1) || ('Герой #' + c.hero_id1);
+        name2 = _drafterHeroName(c.hero_id2) || ('Герой #' + c.hero_id2);
+        var sign = c.value >= 0 ? '+' : '';
+        return 'Хорошая синергия: ' + name1 + ' + ' + name2 + ' (' + sign + c.value.toFixed(1) + ')';
+    }
+    if (c.kind === 'matchup') {
+        name1 = _drafterHeroName(c.ally_hero_id) || ('Герой #' + c.ally_hero_id);
+        name2 = _drafterHeroName(c.enemy_hero_id) || ('Герой #' + c.enemy_hero_id);
+        return name1 + ' проигрывает вражескому ' + name2 + ' (' + c.value.toFixed(1) + ')';
+    }
+    if (c.kind === 'position') {
+        name1 = _drafterHeroName(c.hero_id) || ('Герой #' + c.hero_id);
+        return name1 + ' на нетипичной позиции';
+    }
+    return '';
+}
 
