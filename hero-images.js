@@ -127,6 +127,7 @@ window.dotaHeroImages = {
   'Marci': 'marci',
   'Primal Beast': 'primal_beast',
   'Muerta': 'muerta',
+  'Ringmaster': 'ringmaster',
   'Kez': 'kez',
   'Largo': 'largo'
 };
@@ -255,6 +256,7 @@ window.dotaHeroIds = {
   'Void Spirit': 126,
   'Snapfire': 128,
   'Mars': 129,
+  'Ringmaster': 131,
   'Dawnbreaker': 135,
   'Marci': 136,
   'Primal Beast': 137,

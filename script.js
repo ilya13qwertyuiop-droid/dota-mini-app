@@ -1361,7 +1361,6 @@ function displayPositionResult(profile) {
     // full = "Pos 1 — Керри"
     const full = positionData.position || '';
     const parts = full.split('—').map(s => s.trim());
-    const posLabel = parts[0] || ''; // "Pos 1"
     const roleLabel = parts[1] || positionData.posShort || full || 'Не указана';
 
     // Основная строка: "Основная позиция: Керри"
@@ -2832,7 +2831,9 @@ async function loadDrafterMatch() {
         _drafterEnemyPick = (data.enemy || []).slice(0, 5);
         // Sort by position number so slots match pos 1..5 order
         _drafterEnemyPick.sort(function(a, b) {
-            return parseInt(a.position) - parseInt(b.position);
+            var posA = parseInt((a.position || '').replace('pos ', ''));
+            var posB = parseInt((b.position || '').replace('pos ', ''));
+            return posA - posB;
         });
         while (_drafterEnemyPick.length < 5) {
             _drafterEnemyPick.push({ hero_id: 0, position: '' });
