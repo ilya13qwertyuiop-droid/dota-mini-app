@@ -2723,6 +2723,7 @@ margin-top: 14px;
   width: 100%;
   aspect-ratio: 1;
   max-width: 52px;
+  min-height: 52px;
   border-radius: 8px;
   background: rgba(255,255,255,0.06);
   border: 2px dashed rgba(255,255,255,0.18);
@@ -2801,6 +2802,13 @@ margin-top: 14px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drafter-pos-btn--all {
+  font-size: 9px;
 }
 
 .drafter-pos-btn--active {
@@ -2811,13 +2819,13 @@ margin-top: 14px;
 
 .drafter-hero-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
 }
 
 .drafter-grid-hero {
   width: 100%;
-  aspect-ratio: 1;
+  background: #1a1025;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
@@ -2834,6 +2842,32 @@ margin-top: 14px;
 }
 
 .drafter-grid-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.drafter-grid-img-empty {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #2a1f35;
+}
+
+.drafter-grid-name {
+  font-size: 8px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 3px 2px;
+  background: #1a1025;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+/* legacy — keep for other uses */
+.drafter-grid-img-legacy {
   width: 100%;
   height: 100%;
   object-fit: cover;

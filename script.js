@@ -3002,12 +3002,14 @@ function renderDrafterGrid() {
         var isPicked = pickedIds.has(h.id);
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
         var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '');
-        html += '<div class="' + cls + '" onclick="' + (isPicked ? '' : 'selectDrafterHero(' + h.id + ')') + '">';
+        var onclick = isPicked ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
+        html += '<div class="' + cls + '"' + onclick + '>';
         if (iconUrl) {
             html += '<img src="' + iconUrl + '" alt="' + h.name + '" class="drafter-grid-img">';
         } else {
-            html += '<div style="width:48px;height:48px;background:#333;border-radius:6px;"></div>';
+            html += '<div class="drafter-grid-img-empty"></div>';
         }
+        html += '<div class="drafter-grid-name">' + h.name + '</div>';
         html += '</div>';
     });
 
