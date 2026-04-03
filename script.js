@@ -3099,59 +3099,185 @@ function showDrafterResult(data) {
     document.getElementById('drafter-main').style.display = 'none';
     document.getElementById('drafter-result').style.display = 'block';
 
-    var total = Math.round(data.total_score || 0);
+    var duelStage   = document.getElementById('dr-duel-stage');
+    var duelSummary = document.getElementById('dr-duel-summary');
+    var finalScreen = document.getElementById('dr-final-screen');
 
-    // Анимация счёта
-    var scoreEl = document.getElementById('drafter-score-display');
-    var duration = 1500;
-    var startTime = null;
-    function animStep(ts) {
-        if (!startTime) startTime = ts;
-        var progress = Math.min((ts - startTime) / duration, 1);
-        var eased = 1 - Math.pow(1 - progress, 3);
-        scoreEl.textContent = Math.round(eased * total);
-        if (progress < 1) requestAnimationFrame(animStep);
-        else scoreEl.textContent = total;
+    duelStage.style.display   = 'block';
+    duelSummary.style.display = 'none';
+    finalScreen.style.display = 'none';
+
+    var duels = data.duels || [];
+    var duelResults = [];
+
+    // ── Шаг 1: последовательные дуэли ─────────────────────────────────────
+    function playDuel(index) {
+        if (index >= duels.length) {
+            showSummary();
+            return;
+        }
+        var duel = duels[index];
+        duelResults.push(duel);
+
+        var allyIcon  = _drafterHeroIcon(duel.ally_hero_id)  || '';
+        var enemyIcon = _drafterHeroIcon(duel.enemy_hero_id) || '';
+        var allyName  = _drafterHeroName(duel.ally_hero_id)  || ('Герой #' + duel.ally_hero_id);
+        var enemyName = _drafterHeroName(duel.enemy_hero_id) || ('Герой #' + duel.enemy_hero_id);
+
+        duelStage.style.animation = '';
+        duelStage.innerHTML = (
+            '<div class="dr-duel-pos-label">' + duel.position + '</div>' +
+            '<div class="dr-duel-arena">' +
+                '<div class="dr-duel-hero dr-duel-ally" id="dr-da">' +
+                    '<img src="' + allyIcon + '" onerror="this.style.display=\'none\'">' +
+                    '<div class="dr-duel-hero-name">' + allyName + '</div>' +
+                '</div>' +
+                '<div class="dr-duel-vs">VS</div>' +
+                '<div class="dr-duel-hero dr-duel-enemy" id="dr-de">' +
+                    '<img src="' + enemyIcon + '" onerror="this.style.display=\'none\'">' +
+                    '<div class="dr-duel-hero-name">' + enemyName + '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="dr-duel-result-icon" id="dr-dri"></div>'
+        );
+
+        // t=150ms: сближение
+        setTimeout(function() {
+            var ally  = document.getElementById('dr-da');
+            var enemy = document.getElementById('dr-de');
+            if (ally)  ally.style.animation  = 'slam-left 0.4s ease';
+            if (enemy) enemy.style.animation = 'slam-right 0.4s ease';
+        }, 150);
+
+        // t=550ms: тряска
+        setTimeout(function() {
+            void duelStage.offsetWidth;
+            duelStage.style.animation = 'shake 0.3s ease';
+        }, 550);
+
+        // t=900ms: результат
+        setTimeout(function() {
+            duelStage.style.animation = '';
+            var icon = document.getElementById('dr-dri');
+            if (icon) {
+                icon.textContent = duel.win ? '✅' : '❌';
+                icon.style.opacity = '1';
+                icon.style.animation = 'rank-pop 0.35s ease forwards';
+            }
+        }, 900);
+
+        // t=1500ms: следующая дуэль
+        setTimeout(function() {
+            playDuel(index + 1);
+        }, 1500);
     }
-    requestAnimationFrame(animStep);
 
-    // Градация
-    var grade = '';
-    if (total <= 40) grade = 'Катастрофа';
-    else if (total <= 60) grade = 'Слабовато';
-    else if (total <= 75) grade = 'Неплохо';
-    else if (total <= 90) grade = 'Хороший драфт!';
-    else grade = 'Идеальный драфт! 🔥';
-    document.getElementById('drafter-grade').textContent = grade;
+    // ── Шаг 2: итоговый список дуэлей ────────────────────────────────────
+    function showSummary() {
+        duelStage.style.display   = 'none';
+        duelSummary.style.display = 'block';
 
-    // Компоненты
-    document.getElementById('dr-synergy').textContent = (data.synergy_score || 0).toFixed(1);
-    document.getElementById('dr-matchup').textContent = (data.matchup_score || 0).toFixed(1);
-    document.getElementById('dr-position').textContent = (data.position_score || 0).toFixed(1);
+        var html = '<div class="dr-sum-title">Итог дуэлей</div>';
+        duelResults.forEach(function(duel) {
+            var allyIcon  = _drafterHeroIcon(duel.ally_hero_id)  || '';
+            var enemyIcon = _drafterHeroIcon(duel.enemy_hero_id) || '';
+            var allyName  = _drafterHeroName(duel.ally_hero_id)  || ('Герой #' + duel.ally_hero_id);
+            var enemyName = _drafterHeroName(duel.enemy_hero_id) || ('Герой #' + duel.enemy_hero_id);
+            html += (
+                '<div class="dr-sum-item">' +
+                    '<img src="' + allyIcon + '" class="dr-sum-icon" onerror="this.style.display=\'none\'">' +
+                    '<span class="dr-sum-name">' + allyName + '</span>' +
+                    '<span class="dr-sum-outcome">' + (duel.win ? '✅' : '❌') + '</span>' +
+                    '<img src="' + enemyIcon + '" class="dr-sum-icon" onerror="this.style.display=\'none\'">' +
+                    '<span class="dr-sum-name">' + enemyName + '</span>' +
+                    '<span class="dr-sum-pos">' + duel.position + '</span>' +
+                '</div>'
+            );
+        });
+        duelSummary.innerHTML = html;
 
-    // Рекорд
-    var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
-    var recordEl = document.getElementById('drafter-record');
-    if (total > best) {
-        localStorage.setItem('drafter_best_score', total);
-        document.getElementById('drafter-best-label').textContent = total;
-        recordEl.style.display = 'block';
-    } else {
-        recordEl.style.display = 'none';
+        setTimeout(function() {
+            duelSummary.style.display = 'none';
+            showFinal();
+        }, 800);
     }
 
-    // Комментарии
-    var commentsEl = document.getElementById('drafter-comments');
-    var comments = data.comments || [];
-    var html = '';
-    comments.forEach(function(c) {
-        var icon = c.type === 'good' ? '<span class="drafter-comment-icon good">✓</span>'
-                 : c.type === 'bad'  ? '<span class="drafter-comment-icon bad">✗</span>'
-                 :                     '<span class="drafter-comment-icon warn">⚠</span>';
-        var text = _drafterCommentText(c);
-        html += '<div class="drafter-comment">' + icon + '<span>' + text + '</span></div>';
-    });
-    commentsEl.innerHTML = html;
+    // ── Шаг 3: финальный экран с рангом ─────────────────────────────────
+    function showFinal() {
+        finalScreen.style.display = 'block';
+
+        var total = Math.round(data.total_score || 0);
+        var rank, rankColor, rankDesc, rankGlow;
+        if (total >= 95) {
+            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер'; rankGlow = true;
+        } else if (total >= 80) {
+            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?'; rankGlow = false;
+        } else if (total >= 60) {
+            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Крутой драфт!'; rankGlow = false;
+        } else if (total >= 40) {
+            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше'; rankGlow = false;
+        } else {
+            rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
+        }
+
+        // Рекорд
+        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
+        var isRecord = total > best;
+        if (isRecord) {
+            localStorage.setItem('drafter_best_score', total);
+            var bestLabel = document.getElementById('drafter-best-label');
+            if (bestLabel) bestLabel.textContent = total;
+        }
+        var recordEl = document.getElementById('dr-new-record');
+        if (recordEl) recordEl.style.display = isRecord ? 'block' : 'none';
+
+        // Буква
+        var letterEl = document.getElementById('dr-rank-letter');
+        if (letterEl) {
+            letterEl.textContent = rank;
+            letterEl.style.color = rankColor;
+            letterEl.style.animation = rankGlow
+                ? 'rank-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards, glow-gold 2s ease-in-out 0.5s infinite'
+                : 'rank-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards';
+        }
+
+        var descEl = document.getElementById('dr-rank-desc');
+        if (descEl) descEl.textContent = rankDesc;
+
+        // N/5 дуэлей
+        var wins = duelResults.filter(function(d) { return d.win; }).length;
+        var duelStatEl = document.getElementById('dr-stat-duels');
+        if (duelStatEl) duelStatEl.textContent = wins + '/5';
+
+        // Лучшая синергия
+        var comments = data.comments || [];
+        var synComment = comments.find(function(c) { return c.kind === 'synergy'; });
+        var synStatEl = document.getElementById('dr-stat-synergy');
+        if (synStatEl) {
+            if (synComment) {
+                var sn1 = _drafterHeroName(synComment.hero_id1) || ('Герой #' + synComment.hero_id1);
+                var sn2 = _drafterHeroName(synComment.hero_id2) || ('Герой #' + synComment.hero_id2);
+                synStatEl.textContent = sn1 + ' + ' + sn2;
+            } else {
+                synStatEl.textContent = '—';
+            }
+        }
+
+        // Худший матчап
+        var muComment = comments.find(function(c) { return c.kind === 'matchup'; });
+        var muStatEl = document.getElementById('dr-stat-matchup');
+        if (muStatEl) {
+            if (muComment) {
+                var mn1 = _drafterHeroName(muComment.ally_hero_id) || ('Герой #' + muComment.ally_hero_id);
+                var mn2 = _drafterHeroName(muComment.enemy_hero_id) || ('Герой #' + muComment.enemy_hero_id);
+                muStatEl.textContent = mn1 + ' vs ' + mn2;
+            } else {
+                muStatEl.textContent = '—';
+            }
+        }
+    }
+
+    playDuel(0);
 }
 
 function _drafterCommentText(c) {
