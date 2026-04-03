@@ -1130,21 +1130,14 @@ async def api_draft_random():
     if not matches:
         raise HTTPException(status_code=503, detail="draft_matches.json not available")
 
-    match = random.choice(list(matches.values()))
+    match = random.choice(matches)
     match_id = match.get("match_id", 0)
 
     # Randomly pick radiant or dire as the enemy
     if random.random() < 0.5:
-        heroes_raw = match.get("radiant") or []
+        heroes_raw = match.get("radiant") or match.get("radiant_heroes") or []
     else:
-        heroes_raw = match.get("dire") or []
-
-    # heroes_raw may be a JSON string (stored as text in DB) or already a list
-    if isinstance(heroes_raw, str):
-        try:
-            heroes_raw = json.loads(heroes_raw)
-        except Exception:
-            heroes_raw = []
+        heroes_raw = match.get("dire") or match.get("dire_heroes") or []
 
     enemy = []
     for entry in heroes_raw:
@@ -1206,7 +1199,7 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             val = (matchups.get(str(a)) or {}).get("vs", {}).get(str(e), {}).get("synergy", 0.0)
             matchup_pairs.append((a, e, float(val)))
 
-    matchup_sum = sum(v for _, _, v in matchup_pairs)
+    matchup_sum = sum(v for _, _, _, in matchup_pairs)
     n_mu = len(matchup_pairs) or 1
     matchup_score = matchup_sum / n_mu
 
