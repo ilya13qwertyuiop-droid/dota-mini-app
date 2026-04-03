@@ -2897,21 +2897,28 @@ margin-top: 14px;
 }
 
 .drafter-btn--ready {
-  background: #c084fc !important;
-  color: #0a0612 !important;
+  background: rgba(192, 132, 252, 0.15) !important;
   animation: fadeInBtn 0.25s ease forwards, pulse-btn 1.5s ease-in-out 0.25s infinite;
 }
 
 .drafter-evaluate-btn {
-  background: linear-gradient(135deg, #9c5cf7, #6a3dbf);
-  color: #fff;
-  border: none;
-  border-radius: 12px;
-  padding: 14px 36px;
-  font-size: 15px;
-  font-weight: 700;
+  background: transparent;
+  color: #c084fc;
+  border: 1px solid #c084fc;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  letter-spacing: 0.03em;
+  letter-spacing: 1px;
+  width: 100%;
+}
+
+#drafter-evaluate-wrap {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 10px 0;
+  margin: 4px 0;
 }
 
 /* Результат */
