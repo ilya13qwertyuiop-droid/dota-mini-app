@@ -1135,9 +1135,9 @@ async def api_draft_random():
 
     # Randomly pick radiant or dire as the enemy
     if random.random() < 0.5:
-        heroes_raw = match.get("radiant_heroes") or []
+        heroes_raw = match.get("radiant") or []
     else:
-        heroes_raw = match.get("dire_heroes") or []
+        heroes_raw = match.get("dire") or []
 
     # heroes_raw may be a JSON string (stored as text in DB) or already a list
     if isinstance(heroes_raw, str):
