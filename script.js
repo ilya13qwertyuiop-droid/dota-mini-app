@@ -2879,7 +2879,7 @@ function _renderAllySlots() {
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
         html += '<div class="drafter-slot-wrap">';
-        html += '<div class="' + cls + '" onclick="drafterSlotClick(' + i + ')">';
+        html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
             if (iconUrl) {
@@ -2887,6 +2887,8 @@ function _renderAllySlots() {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
+        } else {
+            html += '<span class="drafter-slot-plus">+</span>';
         }
         html += '</div>';
         html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="14" height="14"></div>';
@@ -2924,6 +2926,8 @@ function _updateEvaluateBtn() {
     var allFilled = _drafterAllyPick.every(function(h) { return h !== null; });
     var wrap = document.getElementById('drafter-evaluate-wrap');
     if (wrap) wrap.style.display = allFilled ? 'block' : 'none';
+    var btn = document.querySelector('.drafter-evaluate-btn');
+    if (btn) btn.classList.toggle('drafter-btn--ready', allFilled);
 }
 
 function drafterSlotClick(slotIndex) {
@@ -3019,18 +3023,22 @@ function renderDrafterGrid() {
 function selectDrafterHero(heroId) {
     if (_drafterActiveSlot >= 5) return;
 
-    _drafterAllyPick[_drafterActiveSlot] = {
+    var filledSlot = _drafterActiveSlot;
+
+    _drafterAllyPick[filledSlot] = {
         hero_id: heroId,
-        position: 'pos ' + (_drafterActiveSlot + 1)
+        position: 'pos ' + (filledSlot + 1)
     };
+
+    if (navigator.vibrate) navigator.vibrate(25);
 
     // Переходим к следующему пустому слоту
     var next = -1;
-    for (var i = _drafterActiveSlot + 1; i < 5; i++) {
+    for (var i = filledSlot + 1; i < 5; i++) {
         if (!_drafterAllyPick[i]) { next = i; break; }
     }
     if (next === -1) {
-        for (var j = 0; j < _drafterActiveSlot; j++) {
+        for (var j = 0; j < filledSlot; j++) {
             if (!_drafterAllyPick[j]) { next = j; break; }
         }
     }
@@ -3038,6 +3046,14 @@ function selectDrafterHero(heroId) {
 
     renderDrafterSlots();
     renderDrafterGrid();
+
+    // Animate the filled slot
+    var slotEl = document.getElementById('drafter-ally-slot-' + filledSlot);
+    if (slotEl) {
+        slotEl.style.transition = 'transform 0.15s ease';
+        slotEl.style.transform = 'scale(0.85)';
+        setTimeout(function() { slotEl.style.transform = 'scale(1)'; }, 150);
+    }
 }
 
 async function submitDraft() {

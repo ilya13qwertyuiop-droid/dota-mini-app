@@ -2722,8 +2722,9 @@ margin-top: 14px;
 .drafter-slot {
   width: 100%;
   aspect-ratio: 1;
-  max-width: 52px;
-  min-height: 52px;
+  max-width: 58px;
+  min-height: 58px;
+  position: relative;
   border-radius: 8px;
   background: rgba(255,255,255,0.06);
   border: 2px dashed rgba(255,255,255,0.18);
@@ -2841,16 +2842,27 @@ margin-top: 14px;
   cursor: default;
 }
 
+.drafter-slot-plus {
+  font-size: 18px;
+  color: rgba(255,255,255,0.15);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  line-height: 1;
+}
+
 .drafter-grid-img {
   width: 100%;
-  aspect-ratio: 1;
+  height: 44px;
   object-fit: cover;
   display: block;
 }
 
 .drafter-grid-img-empty {
   width: 100%;
-  aspect-ratio: 1;
+  height: 44px;
   background: #2a1f35;
 }
 
@@ -2872,6 +2884,17 @@ margin-top: 14px;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.drafter-btn--ready {
+  background: #c084fc !important;
+  color: #0a0612 !important;
+  animation: pulse-btn 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-btn {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.75; }
 }
 
 .drafter-evaluate-btn {
