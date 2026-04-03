@@ -2976,6 +2976,7 @@ margin-top: 14px;
 
 #dr-battle-screen {
   padding: 24px 16px 20px;
+  position: relative;
 }
 
 .dr-b-header {
@@ -2998,13 +2999,14 @@ margin-top: 14px;
   letter-spacing: 1px;
 }
 
-/* Арена: три колонки */
+/* Арена: три колонки — союзники | иконка | враги */
 
 .dr-b-arena {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .dr-b-side {
@@ -3013,18 +3015,6 @@ margin-top: 14px;
   align-items: center;
   gap: 10px;
   flex: 1;
-}
-
-.dr-b-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #a78bfa;
-  text-transform: uppercase;
-}
-
-.dr-b-label-enemy {
-  color: #f87171;
 }
 
 .dr-b-avatar {
@@ -3036,49 +3026,51 @@ margin-top: 14px;
   display: block;
 }
 
-.dr-b-avatar-ally  { border-color: #9c5cf7; }
-.dr-b-avatar-enemy { border-color: #ef4444; }
+.dr-b-avatar-ally  { border-color: #9c5cf7; box-shadow: 0 0 8px rgba(192,132,252,0.3); }
+.dr-b-avatar-enemy { border-color: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.2); }
 
-/* Центральная колонка — вертикальная шкала */
+/* Иконка результата по центру арены */
 
-.dr-b-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+.dr-b-center-icon {
   flex-shrink: 0;
-}
-
-.dr-bar-result {
-  font-size: 40px;
-  min-height: 48px;
-  line-height: 48px;
-  opacity: 0;
-  text-align: center;
-}
-
-.dr-bar-wrap {
-  width: 22px;
-  height: 150px;
-  border-radius: 11px;
-  overflow: hidden;
+  width: 52px;
+  height: 52px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Горизонтальная шкала */
+
+.dr-hbar-wrap {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
   background: rgba(255,255,255,0.06);
+  margin: 0 0 10px;
 }
 
-.dr-bar-ally {
-  width: 100%;
-  height: 50%;
-  background: linear-gradient(180deg, #a78bfa, #7c3aed);
-  transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+.dr-hbar-ally {
+  height: 100%;
+  width: 50%;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
 }
 
-.dr-bar-enemy {
-  width: 100%;
-  height: 50%;
-  background: linear-gradient(180deg, #ef4444, #b91c1c);
-  transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+.dr-hbar-enemy {
+  height: 100%;
+  width: 50%;
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
+}
+
+/* Текст результата под шкалой */
+
+.dr-b-result-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary, #ccc);
+  min-height: 18px;
+  margin-bottom: 20px;
 }
 
 /* Точки прогресса */
