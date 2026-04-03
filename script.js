@@ -3099,185 +3099,207 @@ function showDrafterResult(data) {
     document.getElementById('drafter-main').style.display = 'none';
     document.getElementById('drafter-result').style.display = 'block';
 
-    var duelStage   = document.getElementById('dr-duel-stage');
-    var duelSummary = document.getElementById('dr-duel-summary');
-    var finalScreen = document.getElementById('dr-final-screen');
+    var battleScreen = document.getElementById('dr-battle-screen');
+    var finalScreen  = document.getElementById('dr-final-screen');
 
-    duelStage.style.display   = 'block';
-    duelSummary.style.display = 'none';
-    finalScreen.style.display = 'none';
+    battleScreen.style.display = 'block';
+    finalScreen.style.display  = 'none';
 
     var duels = data.duels || [];
-    var duelResults = [];
 
-    // ── Шаг 1: последовательные дуэли ─────────────────────────────────────
-    function playDuel(index) {
-        if (index >= duels.length) {
-            showSummary();
-            return;
-        }
-        var duel = duels[index];
-        duelResults.push(duel);
+    function sleep(ms) {
+        return new Promise(function(resolve) { setTimeout(resolve, ms); });
+    }
 
-        var allyIcon  = _drafterHeroIcon(duel.ally_hero_id)  || '';
-        var enemyIcon = _drafterHeroIcon(duel.enemy_hero_id) || '';
-        var allyName  = _drafterHeroName(duel.ally_hero_id)  || ('Герой #' + duel.ally_hero_id);
-        var enemyName = _drafterHeroName(duel.enemy_hero_id) || ('Герой #' + duel.enemy_hero_id);
+    function _icon(id) { return _drafterHeroIcon(id) || ''; }
+    function _name(id) { return _drafterHeroName(id) || ('Герой #' + id); }
 
-        duelStage.style.animation = '';
-        duelStage.innerHTML = (
-            '<div class="dr-duel-pos-label">' + duel.position + '</div>' +
-            '<div class="dr-duel-arena">' +
-                '<div class="dr-duel-hero dr-duel-ally" id="dr-da">' +
-                    '<img src="' + allyIcon + '" onerror="this.style.display=\'none\'">' +
-                    '<div class="dr-duel-hero-name">' + allyName + '</div>' +
+    function _heroImgs(heroes, cls) {
+        return (heroes || []).map(function(h) {
+            return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar ' + cls + '" onerror="this.style.display=\'none\'">';
+        }).join('');
+    }
+
+    // ── Шаг 1: 3 битвы линий ─────────────────────────────────────────────
+    async function playBattle(index, duel) {
+        var dotsHtml = duels.map(function(_, d) {
+            return '<div class="dr-dot' + (d === index ? ' dr-dot-active' : '') + '" id="dr-dot-' + d + '"></div>';
+        }).join('');
+
+        battleScreen.style.animation = '';
+        void battleScreen.offsetWidth;
+        battleScreen.innerHTML = (
+            '<div class="dr-b-header">' +
+                '<div class="dr-b-num">БИТВА ' + (index + 1) + ' ИЗ ' + duels.length + '</div>' +
+                '<div class="dr-b-name">' + duel.name.toUpperCase() + '</div>' +
+            '</div>' +
+            '<div class="dr-b-arena">' +
+                '<div class="dr-b-side dr-b-ally" id="dr-side-ally">' +
+                    '<div class="dr-b-label">ТЫ</div>' +
+                    _heroImgs(duel.ally_heroes, 'dr-b-avatar-ally') +
                 '</div>' +
-                '<div class="dr-duel-vs">VS</div>' +
-                '<div class="dr-duel-hero dr-duel-enemy" id="dr-de">' +
-                    '<img src="' + enemyIcon + '" onerror="this.style.display=\'none\'">' +
-                    '<div class="dr-duel-hero-name">' + enemyName + '</div>' +
+                '<div class="dr-b-center">' +
+                    '<div class="dr-bar-result" id="dr-bar-result"></div>' +
+                    '<div class="dr-bar-wrap">' +
+                        '<div class="dr-bar-ally"  id="dr-bar-ally"></div>' +
+                        '<div class="dr-bar-enemy" id="dr-bar-enemy"></div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="dr-b-side dr-b-enemy" id="dr-side-enemy">' +
+                    '<div class="dr-b-label dr-b-label-enemy">ВРАГИ</div>' +
+                    _heroImgs(duel.enemy_heroes, 'dr-b-avatar-enemy') +
                 '</div>' +
             '</div>' +
-            '<div class="dr-duel-result-icon" id="dr-dri"></div>'
+            '<div class="dr-dots">' + dotsHtml + '</div>'
         );
 
-        // t=150ms: сближение
-        setTimeout(function() {
-            var ally  = document.getElementById('dr-da');
-            var enemy = document.getElementById('dr-de');
-            if (ally)  ally.style.animation  = 'slam-left 0.4s ease';
-            if (enemy) enemy.style.animation = 'slam-right 0.4s ease';
-        }, 150);
+        await sleep(500);
 
-        // t=550ms: тряска
-        setTimeout(function() {
-            void duelStage.offsetWidth;
-            duelStage.style.animation = 'shake 0.3s ease';
-        }, 550);
+        // Slam
+        var sideAlly  = document.getElementById('dr-side-ally');
+        var sideEnemy = document.getElementById('dr-side-enemy');
+        if (sideAlly)  sideAlly.style.animation  = 'slam-l 0.55s ease forwards';
+        if (sideEnemy) sideEnemy.style.animation = 'slam-r 0.55s ease forwards';
 
-        // t=900ms: результат
-        setTimeout(function() {
-            duelStage.style.animation = '';
-            var icon = document.getElementById('dr-dri');
-            if (icon) {
-                icon.textContent = duel.win ? '✅' : '❌';
-                icon.style.opacity = '1';
-                icon.style.animation = 'rank-pop 0.35s ease forwards';
-            }
-        }, 900);
+        await sleep(280);
 
-        // t=1500ms: следующая дуэль
-        setTimeout(function() {
-            playDuel(index + 1);
-        }, 1500);
+        // Shake
+        void battleScreen.offsetWidth;
+        battleScreen.style.animation = 'shake 0.5s ease';
+
+        await sleep(200);
+
+        // Заполнение шкалы
+        var pct = duel.win ? 62 : 38;
+        var barAlly  = document.getElementById('dr-bar-ally');
+        var barEnemy = document.getElementById('dr-bar-enemy');
+        if (barAlly)  barAlly.style.height  = pct + '%';
+        if (barEnemy) barEnemy.style.height = (100 - pct) + '%';
+
+        await sleep(1300);
+
+        // Результат над шкалой
+        var barResult = document.getElementById('dr-bar-result');
+        if (barResult) {
+            barResult.textContent = duel.win ? '✅' : '❌';
+            barResult.style.opacity = '1';
+            barResult.style.animation = 'rank-pop 0.4s ease forwards';
+        }
+
+        // Точка прогресса
+        var dot = document.getElementById('dr-dot-' + index);
+        if (dot) dot.className = 'dr-dot ' + (duel.win ? 'dr-dot-win' : 'dr-dot-loss');
+
+        await sleep(900);
     }
 
-    // ── Шаг 2: итоговый список дуэлей ────────────────────────────────────
-    function showSummary() {
-        duelStage.style.display   = 'none';
-        duelSummary.style.display = 'block';
-
-        var html = '<div class="dr-sum-title">Итог дуэлей</div>';
-        duelResults.forEach(function(duel) {
-            var allyIcon  = _drafterHeroIcon(duel.ally_hero_id)  || '';
-            var enemyIcon = _drafterHeroIcon(duel.enemy_hero_id) || '';
-            var allyName  = _drafterHeroName(duel.ally_hero_id)  || ('Герой #' + duel.ally_hero_id);
-            var enemyName = _drafterHeroName(duel.enemy_hero_id) || ('Герой #' + duel.enemy_hero_id);
-            html += (
-                '<div class="dr-sum-item">' +
-                    '<img src="' + allyIcon + '" class="dr-sum-icon" onerror="this.style.display=\'none\'">' +
-                    '<span class="dr-sum-name">' + allyName + '</span>' +
-                    '<span class="dr-sum-outcome">' + (duel.win ? '✅' : '❌') + '</span>' +
-                    '<img src="' + enemyIcon + '" class="dr-sum-icon" onerror="this.style.display=\'none\'">' +
-                    '<span class="dr-sum-name">' + enemyName + '</span>' +
-                    '<span class="dr-sum-pos">' + duel.position + '</span>' +
-                '</div>'
-            );
-        });
-        duelSummary.innerHTML = html;
-
-        setTimeout(function() {
-            duelSummary.style.display = 'none';
-            showFinal();
-        }, 800);
+    async function runBattles() {
+        for (var i = 0; i < duels.length; i++) {
+            await playBattle(i, duels[i]);
+        }
+        battleScreen.style.display = 'none';
+        showFinal();
     }
 
-    // ── Шаг 3: финальный экран с рангом ─────────────────────────────────
+    // ── Шаг 2: финальный экран ───────────────────────────────────────────
     function showFinal() {
-        finalScreen.style.display = 'block';
-
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
         if (total >= 95) {
-            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер'; rankGlow = true;
+            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';        rankGlow = true;
         } else if (total >= 80) {
-            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?'; rankGlow = false;
+            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Просто как ты это сделал?'; rankGlow = true;
         } else if (total >= 60) {
-            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Крутой драфт!'; rankGlow = false;
+            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Крутой драфт!';             rankGlow = false;
         } else if (total >= 40) {
-            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше'; rankGlow = false;
+            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';   rankGlow = false;
         } else {
-            rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
+            rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться';        rankGlow = false;
         }
 
         // Рекорд
-        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
+        var best = parseInt(localStorage.getItem('drafter_best') || '0', 10);
         var isRecord = total > best;
         if (isRecord) {
-            localStorage.setItem('drafter_best_score', total);
+            localStorage.setItem('drafter_best', total);
             var bestLabel = document.getElementById('drafter-best-label');
             if (bestLabel) bestLabel.textContent = total;
         }
-        var recordEl = document.getElementById('dr-new-record');
-        if (recordEl) recordEl.style.display = isRecord ? 'block' : 'none';
 
-        // Буква
-        var letterEl = document.getElementById('dr-rank-letter');
-        if (letterEl) {
-            letterEl.textContent = rank;
-            letterEl.style.color = rankColor;
-            letterEl.style.animation = rankGlow
-                ? 'rank-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards, glow-gold 2s ease-in-out 0.5s infinite'
-                : 'rank-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards';
-        }
+        var letterAnim = 'rank-pop 0.7s ease forwards' +
+            (rankGlow ? ', glow-s 2s ease-in-out 0.7s infinite' : '');
 
-        var descEl = document.getElementById('dr-rank-desc');
-        if (descEl) descEl.textContent = rankDesc;
+        // Блок битв линий
+        var battlesHtml = duels.map(function(duel) {
+            var allyImgs  = _heroImgs(duel.ally_heroes,  'dr-fin-av dr-fin-av-ally');
+            var enemyImgs = _heroImgs(duel.enemy_heroes, 'dr-fin-av dr-fin-av-enemy');
+            var outcome   = duel.win ? '✓' : '✗';
+            var outCls    = duel.win ? 'dr-fin-row-win' : 'dr-fin-row-loss';
+            return (
+                '<div class="dr-fin-row">' +
+                    '<div class="dr-fin-row-heroes">' +
+                        allyImgs + '<span class="dr-fin-vs">vs</span>' + enemyImgs +
+                    '</div>' +
+                    '<div class="dr-fin-row-name">' + duel.name + '</div>' +
+                    '<div class="dr-fin-row-out ' + outCls + '">' + outcome + '</div>' +
+                '</div>'
+            );
+        }).join('');
 
-        // N/5 дуэлей
-        var wins = duelResults.filter(function(d) { return d.win; }).length;
-        var duelStatEl = document.getElementById('dr-stat-duels');
-        if (duelStatEl) duelStatEl.textContent = wins + '/5';
-
-        // Лучшая синергия
+        // Карточка синергии
         var comments = data.comments || [];
-        var synComment = comments.find(function(c) { return c.kind === 'synergy'; });
-        var synStatEl = document.getElementById('dr-stat-synergy');
-        if (synStatEl) {
-            if (synComment) {
-                var sn1 = _drafterHeroName(synComment.hero_id1) || ('Герой #' + synComment.hero_id1);
-                var sn2 = _drafterHeroName(synComment.hero_id2) || ('Герой #' + synComment.hero_id2);
-                synStatEl.textContent = sn1 + ' + ' + sn2;
-            } else {
-                synStatEl.textContent = '—';
-            }
+        var synC = comments.find(function(c) { return c.kind === 'synergy'; });
+        var synHtml = '';
+        if (synC) {
+            synHtml = (
+                '<div class="dr-fin-card dr-fin-card-syn">' +
+                    '<div class="dr-fin-card-title">Лучшая синергия</div>' +
+                    '<div class="dr-fin-card-body">' +
+                        '<img src="' + _icon(synC.hero_id1) + '" class="dr-fin-av dr-fin-av-ally" onerror="this.style.display=\'none\'">' +
+                        '<div class="dr-fin-card-names">' + _name(synC.hero_id1) + '<br>' + _name(synC.hero_id2) + '</div>' +
+                        '<img src="' + _icon(synC.hero_id2) + '" class="dr-fin-av dr-fin-av-ally" onerror="this.style.display=\'none\'">' +
+                    '</div>' +
+                '</div>'
+            );
         }
 
-        // Худший матчап
-        var muComment = comments.find(function(c) { return c.kind === 'matchup'; });
-        var muStatEl = document.getElementById('dr-stat-matchup');
-        if (muStatEl) {
-            if (muComment) {
-                var mn1 = _drafterHeroName(muComment.ally_hero_id) || ('Герой #' + muComment.ally_hero_id);
-                var mn2 = _drafterHeroName(muComment.enemy_hero_id) || ('Герой #' + muComment.enemy_hero_id);
-                muStatEl.textContent = mn1 + ' vs ' + mn2;
-            } else {
-                muStatEl.textContent = '—';
-            }
+        // Карточка матчапа
+        var muC = comments.find(function(c) { return c.kind === 'matchup'; });
+        var muHtml = '';
+        if (muC) {
+            muHtml = (
+                '<div class="dr-fin-card dr-fin-card-mu">' +
+                    '<div class="dr-fin-card-title">Худший матчап</div>' +
+                    '<div class="dr-fin-card-body">' +
+                        '<img src="' + _icon(muC.ally_hero_id) + '" class="dr-fin-av dr-fin-av-ally" onerror="this.style.display=\'none\'">' +
+                        '<div class="dr-fin-card-names">' + _name(muC.ally_hero_id) + '<br><span style="font-size:10px;color:var(--text-muted)">теряет против</span><br>' + _name(muC.enemy_hero_id) + '</div>' +
+                        '<img src="' + _icon(muC.enemy_hero_id) + '" class="dr-fin-av dr-fin-av-enemy" onerror="this.style.display=\'none\'">' +
+                    '</div>' +
+                '</div>'
+            );
         }
+
+        finalScreen.style.display = 'block';
+        finalScreen.innerHTML = (
+            '<div class="dr-fin-wrap">' +
+                '<div class="dr-fin-rank-label">ТВОЯ ОЦЕНКА</div>' +
+                '<div class="dr-fin-letter" style="color:' + rankColor + ';animation:' + letterAnim + '">' + rank + '</div>' +
+                (isRecord ? '<div class="dr-fin-record">🏆 Новый рекорд!</div>' : '') +
+                '<div class="dr-fin-desc">' + rankDesc + '</div>' +
+                '<div class="dr-fin-battles">' +
+                    '<div class="dr-fin-block-title">БИТВЫ ЛИНИЙ</div>' +
+                    battlesHtml +
+                '</div>' +
+                synHtml +
+                muHtml +
+                '<div class="dr-fin-btn">' +
+                    '<button class="drafter-evaluate-btn" onclick="loadDrafterMatch()">⟳ НОВЫЙ МАТЧ</button>' +
+                '</div>' +
+            '</div>'
+        );
     }
 
-    playDuel(0);
+    runBattles();
 }
 
 function _drafterCommentText(c) {

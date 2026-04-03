@@ -2933,211 +2933,316 @@ margin-top: 14px;
 
 @keyframes shake {
   0%,100% { transform: translateX(0); }
-  25%      { transform: translateX(-5px); }
-  75%      { transform: translateX(5px); }
+  15%     { transform: translateX(-8px); }
+  30%     { transform: translateX(8px); }
+  45%     { transform: translateX(-6px); }
+  60%     { transform: translateX(6px); }
+  75%     { transform: translateX(-3px); }
+  90%     { transform: translateX(3px); }
 }
-@keyframes slam-left {
-  0%   { transform: translateX(0); }
-  50%  { transform: translateX(14px); }
-  100% { transform: translateX(0); }
+@keyframes slam-l {
+  0%   { transform: translateX(0) scale(1); }
+  40%  { transform: translateX(22px) scale(1.08); }
+  70%  { transform: translateX(-4px) scale(0.97); }
+  100% { transform: translateX(0) scale(1); }
 }
-@keyframes slam-right {
-  0%   { transform: translateX(0); }
-  50%  { transform: translateX(-14px); }
-  100% { transform: translateX(0); }
+@keyframes slam-r {
+  0%   { transform: translateX(0) scale(1); }
+  40%  { transform: translateX(-22px) scale(1.08); }
+  70%  { transform: translateX(4px) scale(0.97); }
+  100% { transform: translateX(0) scale(1); }
 }
 @keyframes rank-pop {
-  0%   { transform: scale(0.2); opacity: 0; }
-  60%  { transform: scale(1.2); }
-  100% { transform: scale(1);   opacity: 1; }
+  0%   { transform: scale(0.05); opacity: 0; }
+  55%  { transform: scale(1.3);  opacity: 1; }
+  75%  { transform: scale(0.92); }
+  100% { transform: scale(1);    opacity: 1; }
 }
-@keyframes glow-gold {
-  0%,100% { text-shadow: 0 0 10px rgba(251,191,36,0.4); }
-  50%     { text-shadow: 0 0 30px rgba(251,191,36,0.9), 0 0 60px rgba(251,191,36,0.4); }
+@keyframes glow-s {
+  0%,100% { text-shadow: 0 0 15px rgba(251,191,36,0.6); }
+  50%     { text-shadow: 0 0 35px rgba(251,191,36,1), 0 0 70px rgba(251,191,36,0.5); }
+}
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Дуэль — арена */
+/* Битва линий — экран */
 
-#dr-duel-stage {
-  padding: 28px 16px 16px;
+#dr-battle-screen {
+  padding: 24px 16px 20px;
+}
+
+.dr-b-header {
   text-align: center;
+  margin-bottom: 28px;
 }
 
-.dr-duel-pos-label {
-  font-size: 12px;
+.dr-b-num {
+  font-size: 10px;
   color: var(--text-muted);
-  text-transform: uppercase;
   letter-spacing: 1.5px;
-  margin-bottom: 24px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
 }
 
-.dr-duel-arena {
+.dr-b-name {
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+/* Арена: три колонки */
+
+.dr-b-arena {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.dr-duel-hero {
+.dr-b-side {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 90px;
+  gap: 10px;
+  flex: 1;
 }
 
-.dr-duel-hero img {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  object-fit: cover;
-}
-
-.dr-duel-ally  { transform-origin: right center; }
-.dr-duel-enemy { transform-origin: left center; }
-
-.dr-duel-hero-name {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-  max-width: 88px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dr-duel-vs {
-  font-size: 22px;
-  font-weight: 900;
-  color: var(--text-muted);
-  width: 56px;
-  text-align: center;
-}
-
-.dr-duel-result-icon {
-  font-size: 52px;
-  margin-top: 24px;
-  display: block;
-  opacity: 0;
-}
-
-/* Итог дуэлей */
-
-#dr-duel-summary {
-  padding: 20px 16px;
-}
-
-.dr-sum-title {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
+.dr-b-label {
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 1.5px;
+  color: #a78bfa;
   text-transform: uppercase;
-  margin-bottom: 14px;
 }
 
-.dr-sum-item {
-  display: grid;
-  grid-template-columns: 32px 1fr 28px 32px 1fr 40px;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  background: rgba(255,255,255,0.04);
+.dr-b-label-enemy {
+  color: #f87171;
+}
+
+.dr-b-avatar {
+  width: 56px;
+  height: 56px;
   border-radius: 8px;
-  margin-bottom: 6px;
-}
-
-.dr-sum-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 5px;
   object-fit: cover;
+  border: 2px solid transparent;
+  display: block;
 }
 
-.dr-sum-name {
-  font-size: 12px;
-  color: var(--text-secondary, #ccc);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.dr-b-avatar-ally  { border-color: #9c5cf7; }
+.dr-b-avatar-enemy { border-color: #ef4444; }
+
+/* Центральная колонка — вертикальная шкала */
+
+.dr-b-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
-.dr-sum-outcome {
-  font-size: 18px;
+.dr-bar-result {
+  font-size: 40px;
+  min-height: 48px;
+  line-height: 48px;
+  opacity: 0;
   text-align: center;
 }
 
-.dr-sum-pos {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: right;
+.dr-bar-wrap {
+  width: 22px;
+  height: 150px;
+  border-radius: 11px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,0.06);
 }
 
-/* Финальный экран */
+.dr-bar-ally {
+  width: 100%;
+  height: 50%;
+  background: linear-gradient(180deg, #a78bfa, #7c3aed);
+  transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dr-bar-enemy {
+  width: 100%;
+  height: 50%;
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Точки прогресса */
+
+.dr-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.dr-dot {
+  height: 6px;
+  width: 22px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.18);
+  transition: background 0.3s ease, width 0.3s ease;
+}
+
+.dr-dot-active { background: #9c5cf7; width: 36px; }
+.dr-dot-win    { background: #4ade80; }
+.dr-dot-loss   { background: #f87171; }
+
+/* Финальный экран — динамически строится в JS */
 
 #dr-final-screen {
-  padding: 28px 16px 0;
-  text-align: center;
+  overflow-y: auto;
 }
 
-.dr-rank-label {
-  font-size: 11px;
+.dr-fin-wrap {
+  padding: 28px 16px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dr-fin-rank-label {
+  font-size: 10px;
   color: var(--text-muted);
-  letter-spacing: 2px;
+  letter-spacing: 2.5px;
   text-transform: uppercase;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
-#dr-rank-letter {
-  font-size: 100px;
+.dr-fin-letter {
+  font-size: 104px;
   font-weight: 900;
   line-height: 1;
   opacity: 0;
 }
 
-#dr-rank-desc {
-  font-size: 15px;
-  color: var(--text-secondary, #ccc);
-  margin-top: 10px;
-}
-
-#dr-new-record {
-  font-size: 14px;
+.dr-fin-record {
+  font-size: 13px;
   color: #fbbf24;
   font-weight: 700;
-  margin-bottom: 10px;
+  margin-top: 6px;
 }
 
-.dr-stats-row {
-  display: flex;
-  justify-content: center;
-  margin: 28px 0 0;
-  border-top: 1px solid rgba(255,255,255,0.08);
-}
-
-.dr-stat {
-  flex: 1;
-  padding: 16px 8px;
-  border-right: 1px solid rgba(255,255,255,0.08);
+.dr-fin-desc {
+  font-size: 14px;
+  color: var(--text-secondary, #ccc);
+  margin-top: 8px;
+  margin-bottom: 20px;
   text-align: center;
 }
 
-.dr-stat:last-child {
-  border-right: none;
+/* Блок битв */
+
+.dr-fin-battles {
+  width: 100%;
+  margin-bottom: 14px;
 }
 
-.dr-stat > span {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dr-stat-label {
-  font-size: 11px;
+.dr-fin-block-title {
+  font-size: 10px;
   color: var(--text-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.dr-fin-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  animation: fadein 0.3s ease both;
+}
+
+.dr-fin-row-heroes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dr-fin-vs {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.dr-fin-av {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1.5px solid transparent;
+}
+
+.dr-fin-av-ally  { border-color: #9c5cf7; }
+.dr-fin-av-enemy { border-color: #ef4444; }
+
+.dr-fin-row-name {
+  flex: 1;
+  font-size: 13px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.dr-fin-row-out {
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dr-fin-row-win  { color: #4ade80; }
+.dr-fin-row-loss { color: #f87171; }
+
+/* Карточки синергии / матчапа */
+
+.dr-fin-card {
+  width: 100%;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  animation: fadein 0.4s ease both;
+}
+
+.dr-fin-card-syn { background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.2); }
+.dr-fin-card-mu  { background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.2); }
+
+.dr-fin-card-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.dr-fin-card-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dr-fin-card-names {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary, #ccc);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.dr-fin-btn {
+  margin-top: 20px;
+  width: 100%;
+  text-align: center;
 }
