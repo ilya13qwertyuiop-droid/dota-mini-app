@@ -3124,79 +3124,140 @@ function showDrafterResult(data) {
 
     function _heroImgs(heroes, cls) {
         return (heroes || []).map(function(h) {
-            return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar ' + cls + '" onerror="this.style.display=\'none\'">';
+            return '<img src="' + _icon(h.hero_id) + '" class="dr-fin-av ' + cls + '" onerror="this.style.display=\'none\'">';
         }).join('');
+    }
+
+    var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#10b981" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
+    var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>';
+
+    function spawnParticles(win) {
+        var canvas = document.getElementById('dr-particles-canvas');
+        if (!canvas) return;
+        canvas.width  = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        var ctx = canvas.getContext('2d');
+        var cx  = canvas.width  / 2;
+        var cy  = canvas.height / 2;
+        var rgb = win ? '192,132,252' : '239,68,68';
+        var particles = [];
+        for (var i = 0; i < 30; i++) {
+            var angle = Math.random() * Math.PI * 2;
+            var speed = 1.5 + Math.random() * 2.5;
+            particles.push({x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: 2 + Math.random() * 3, life: 60});
+        }
+        function tick() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            var alive = false;
+            particles.forEach(function(p) {
+                if (p.life <= 0) return;
+                alive = true;
+                p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life--;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(' + rgb + ',' + (p.life / 60) + ')';
+                ctx.fill();
+            });
+            if (alive) requestAnimationFrame(tick);
+        }
+        tick();
     }
 
     // ── Шаг 1: 3 битвы линий ─────────────────────────────────────────────
     async function playBattle(index, duel) {
+        var win = duel.win;
+
         var dotsHtml = duels.map(function(_, d) {
             return '<div class="dr-dot' + (d === index ? ' dr-dot-active' : '') + '" id="dr-dot-' + d + '"></div>';
         }).join('');
 
-        battleScreen.style.animation = '';
-        void battleScreen.offsetWidth;
+        gsap.set(battleScreen, {clearProps: 'backgroundColor,x'});
         battleScreen.innerHTML = (
+            '<canvas id="dr-particles-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;"></canvas>' +
             '<div class="dr-b-header">' +
                 '<div class="dr-b-num">БИТВА ' + (index + 1) + ' ИЗ ' + duels.length + '</div>' +
                 '<div class="dr-b-name">' + duel.name.toUpperCase() + '</div>' +
             '</div>' +
             '<div class="dr-b-arena">' +
                 '<div class="dr-b-side dr-b-ally" id="dr-side-ally">' +
-                    '<div class="dr-b-label">ТЫ</div>' +
-                    _heroImgs(duel.ally_heroes, 'dr-b-avatar-ally') +
+                    (duel.ally_heroes || []).map(function(h) {
+                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-ally" onerror="this.style.display=\'none\'">';
+                    }).join('') +
                 '</div>' +
-                '<div class="dr-b-center">' +
-                    '<div class="dr-bar-result" id="dr-bar-result"></div>' +
-                    '<div class="dr-bar-wrap">' +
-                        '<div class="dr-bar-ally"  id="dr-bar-ally"></div>' +
-                        '<div class="dr-bar-enemy" id="dr-bar-enemy"></div>' +
-                    '</div>' +
-                '</div>' +
+                '<div class="dr-b-center-icon" id="dr-result-icon" style="opacity:0;"></div>' +
                 '<div class="dr-b-side dr-b-enemy" id="dr-side-enemy">' +
-                    '<div class="dr-b-label dr-b-label-enemy">ВРАГИ</div>' +
-                    _heroImgs(duel.enemy_heroes, 'dr-b-avatar-enemy') +
+                    (duel.enemy_heroes || []).map(function(h) {
+                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-enemy" onerror="this.style.display=\'none\'">';
+                    }).join('') +
                 '</div>' +
             '</div>' +
+            '<div class="dr-hbar-wrap">' +
+                '<div class="dr-hbar-ally"  id="dr-hbar-ally"  style="width:50%"></div>' +
+                '<div class="dr-hbar-enemy" id="dr-hbar-enemy" style="width:50%"></div>' +
+            '</div>' +
+            '<div class="dr-b-result-text" id="dr-b-result-text"></div>' +
             '<div class="dr-dots">' + dotsHtml + '</div>'
         );
 
-        await sleep(500);
+        var allyEls    = Array.from(document.querySelectorAll('#dr-side-ally .dr-b-avatar'));
+        var enemyEls   = Array.from(document.querySelectorAll('#dr-side-enemy .dr-b-avatar'));
+        var resultIcon = document.getElementById('dr-result-icon');
+        var hbarAlly   = document.getElementById('dr-hbar-ally');
+        var hbarEnemy  = document.getElementById('dr-hbar-enemy');
+        var resultText = document.getElementById('dr-b-result-text');
 
-        // Slam
-        var sideAlly  = document.getElementById('dr-side-ally');
-        var sideEnemy = document.getElementById('dr-side-enemy');
-        if (sideAlly)  sideAlly.style.animation  = 'slam-l 0.55s ease forwards';
-        if (sideEnemy) sideEnemy.style.animation = 'slam-r 0.55s ease forwards';
+        gsap.set(allyEls,  {x: -30, opacity: 0});
+        gsap.set(enemyEls, {x:  30, opacity: 0});
 
-        await sleep(280);
+        await sleep(400);
 
-        // Shake
-        void battleScreen.offsetWidth;
-        battleScreen.style.animation = 'shake 0.5s ease';
+        // Герои появляются
+        gsap.to(allyEls,  {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
+        gsap.to(enemyEls, {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
+
+        await sleep(600);
+
+        // Сближение
+        gsap.to(allyEls,  {x:  18, scale: 1.08, duration: 0.4, ease: 'power2.in'});
+        gsap.to(enemyEls, {x: -18, scale: 1.08, duration: 0.4, ease: 'power2.in'});
+
+        await sleep(400);
+
+        // Удар: частицы + shake + отдача
+        spawnParticles(win);
+        gsap.to('#dr-battle-screen', {x: -7, duration: 0.05, yoyo: true, repeat: 7, ease: 'none',
+            onComplete: function() { gsap.set('#dr-battle-screen', {x: 0}); }});
+        gsap.to(allyEls,  {x: -3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
+        gsap.to(enemyEls, {x:  3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
 
         await sleep(200);
 
-        // Заполнение шкалы
-        var pct = duel.win ? 62 : 38;
-        var barAlly  = document.getElementById('dr-bar-ally');
-        var barEnemy = document.getElementById('dr-bar-enemy');
-        if (barAlly)  barAlly.style.height  = pct + '%';
-        if (barEnemy) barEnemy.style.height = (100 - pct) + '%';
+        // Шкала + фон + текст
+        gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 1.2, ease: 'power2.out'});
+        gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 1.2, ease: 'power2.out'});
+        gsap.to(battleScreen, {backgroundColor: win ? 'rgba(60,0,120,0.9)' : 'rgba(120,0,0,0.9)', duration: 0.8, ease: 'power2.out'});
+        if (resultText) {
+            resultText.textContent = win ? 'Доминирование на линии' : 'Сложная линия для нас';
+            gsap.fromTo(resultText, {opacity: 0, y: 8}, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
+        }
 
         await sleep(1300);
 
-        // Результат над шкалой
-        var barResult = document.getElementById('dr-bar-result');
-        if (barResult) {
-            barResult.textContent = duel.win ? '✅' : '❌';
-            barResult.style.opacity = '1';
-            barResult.style.animation = 'rank-pop 0.4s ease forwards';
+        // Герои возвращаются
+        gsap.to(allyEls.concat(enemyEls), {x: 0, scale: 1, duration: 0.3, ease: 'back.out(1)'});
+
+        // SVG иконка результата
+        if (resultIcon) {
+            resultIcon.innerHTML = win ? WIN_SVG : LOSS_SVG;
+            if (win) {
+                gsap.fromTo(resultIcon, {scale: 0, opacity: 0}, {scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)'});
+            } else {
+                gsap.fromTo(resultIcon, {y: -30, opacity: 0}, {y: 0, opacity: 1, duration: 0.4, ease: 'power2.out'});
+            }
         }
 
-        // Точка прогресса
         var dot = document.getElementById('dr-dot-' + index);
-        if (dot) dot.className = 'dr-dot ' + (duel.win ? 'dr-dot-win' : 'dr-dot-loss');
+        if (dot) dot.className = 'dr-dot ' + (win ? 'dr-dot-win' : 'dr-dot-loss');
 
         await sleep(900);
     }
@@ -3205,6 +3266,7 @@ function showDrafterResult(data) {
         for (var i = 0; i < duels.length; i++) {
             await playBattle(i, duels[i]);
         }
+        gsap.set(battleScreen, {clearProps: 'backgroundColor,x'});
         battleScreen.style.display = 'none';
         showFinal();
     }
@@ -3225,7 +3287,6 @@ function showDrafterResult(data) {
             rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться';        rankGlow = false;
         }
 
-        // Рекорд
         var best = parseInt(localStorage.getItem('drafter_best') || '0', 10);
         var isRecord = total > best;
         if (isRecord) {
@@ -3234,13 +3295,9 @@ function showDrafterResult(data) {
             if (bestLabel) bestLabel.textContent = total;
         }
 
-        var letterAnim = 'rank-pop 0.7s ease forwards' +
-            (rankGlow ? ', glow-s 2s ease-in-out 0.7s infinite' : '');
-
-        // Блок битв линий
         var battlesHtml = duels.map(function(duel) {
-            var allyImgs  = _heroImgs(duel.ally_heroes,  'dr-fin-av dr-fin-av-ally');
-            var enemyImgs = _heroImgs(duel.enemy_heroes, 'dr-fin-av dr-fin-av-enemy');
+            var allyImgs  = _heroImgs(duel.ally_heroes,  'dr-fin-av-ally');
+            var enemyImgs = _heroImgs(duel.enemy_heroes, 'dr-fin-av-enemy');
             var outcome   = duel.win ? '✓' : '✗';
             var outCls    = duel.win ? 'dr-fin-row-win' : 'dr-fin-row-loss';
             return (
@@ -3254,7 +3311,6 @@ function showDrafterResult(data) {
             );
         }).join('');
 
-        // Карточка синергии
         var comments = data.comments || [];
         var synC = comments.find(function(c) { return c.kind === 'synergy'; });
         var synHtml = '';
@@ -3271,7 +3327,6 @@ function showDrafterResult(data) {
             );
         }
 
-        // Карточка матчапа
         var muC = comments.find(function(c) { return c.kind === 'matchup'; });
         var muHtml = '';
         if (muC) {
@@ -3291,19 +3346,38 @@ function showDrafterResult(data) {
         finalScreen.innerHTML = (
             '<div class="dr-fin-wrap">' +
                 '<div class="dr-fin-rank-label">ТВОЯ ОЦЕНКА</div>' +
-                '<div class="dr-fin-letter" style="color:' + rankColor + ';animation:' + letterAnim + '">' + rank + '</div>' +
-                (isRecord ? '<div class="dr-fin-record">🏆 Новый рекорд!</div>' : '') +
-                '<div class="dr-fin-desc">' + rankDesc + '</div>' +
-                '<div class="dr-fin-battles">' +
+                '<div class="dr-fin-letter" id="dr-fin-letter" style="color:' + rankColor + ';opacity:0;">' + rank + '</div>' +
+                (isRecord ? '<div class="dr-fin-record" id="dr-fin-record">🏆 Новый рекорд!</div>' : '') +
+                '<div class="dr-fin-desc" id="dr-fin-desc">' + rankDesc + '</div>' +
+                '<div class="dr-fin-battles" id="dr-fin-battles">' +
                     '<div class="dr-fin-block-title">БИТВЫ ЛИНИЙ</div>' +
                     battlesHtml +
                 '</div>' +
-                synHtml +
-                muHtml +
-                '<div class="dr-fin-btn">' +
+                (synHtml ? '<div id="dr-fin-syn" style="width:100%">' + synHtml + '</div>' : '') +
+                (muHtml  ? '<div id="dr-fin-mu"  style="width:100%">' + muHtml  + '</div>' : '') +
+                '<div class="dr-fin-btn" id="dr-fin-btn">' +
                     '<button class="drafter-evaluate-btn" onclick="loadDrafterMatch()">⟳ НОВЫЙ МАТЧ</button>' +
                 '</div>' +
             '</div>'
+        );
+
+        // Буква появляется через GSAP
+        var letterEl = document.getElementById('dr-fin-letter');
+        gsap.fromTo(letterEl,
+            {scale: 0.05, opacity: 0},
+            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)', onComplete: function() {
+                if (rankGlow) {
+                    gsap.to(letterEl, {textShadow: '0 0 30px rgba(251,191,36,0.9)', yoyo: true, repeat: -1, duration: 1.5, ease: 'sine.inOut'});
+                }
+            }}
+        );
+
+        // Блок битв, синергии, матчапа — stagger fadein
+        var fadeSelectors = ['#dr-fin-record', '#dr-fin-desc', '#dr-fin-battles', '#dr-fin-syn', '#dr-fin-mu', '#dr-fin-btn'];
+        var fadeEls = fadeSelectors.map(function(s) { return document.querySelector(s); }).filter(Boolean);
+        gsap.fromTo(fadeEls,
+            {opacity: 0, y: 12},
+            {opacity: 1, y: 0, duration: 0.5, stagger: 0.15, ease: 'power2.out', delay: 0.4}
         );
     }
 
