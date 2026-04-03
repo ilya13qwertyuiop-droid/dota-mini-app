@@ -1122,10 +1122,6 @@ def _hero_primary_pos_num(hero_id: int) -> int | None:
     return _DOTA_POS_URL_TO_NUM.get(best_key) if best_key else None
 
 
-def _hero_name(hero_id: int) -> str:
-    names = get_app_cache_value("hero_id_to_name") or {}
-    return names.get(str(hero_id)) or names.get(hero_id) or f"Герой #{hero_id}"
-
 
 @app.get("/api/draft/random")
 async def api_draft_random():
@@ -1244,7 +1240,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             break
         comments.append({
             "type": "good",
-            "text": f"Отличная синергия: {_hero_name(a)} + {_hero_name(b)} ({v:+.1f})",
+            "kind": "synergy",
+            "hero_id1": a,
+            "hero_id2": b,
+            "value": round(v, 2),
         })
 
     # Top-2 worst matchups → "bad"
@@ -1254,7 +1253,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             break
         comments.append({
             "type": "bad",
-            "text": f"Твой {_hero_name(a)} проигрывает вражескому {_hero_name(e)} ({v:+.1f})",
+            "kind": "matchup",
+            "ally_hero_id": a,
+            "enemy_hero_id": e,
+            "value": round(v, 2),
         })
 
     # Heroes on atypical positions → "warn"
@@ -1263,10 +1265,15 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             break
         if score < 6.0:
             hero_entry = next((h for h in data.ally if h.hero_id == hero_id), None)
-            pos_str = hero_entry.position if hero_entry else "?"
+            picked_pos = hero_entry.position if hero_entry else ""
+            primary_num = _hero_primary_pos_num(hero_id)
+            primary_pos = f"pos {primary_num}" if primary_num else ""
             comments.append({
                 "type": "warn",
-                "text": f"{_hero_name(hero_id)} редко играется на позиции {pos_str}",
+                "kind": "position",
+                "hero_id": hero_id,
+                "picked_pos": picked_pos,
+                "primary_pos": primary_pos,
             })
 
     return {
