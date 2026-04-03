@@ -49,6 +49,7 @@ animation: fadeIn 0.3s ease;
 
 #page-drafter {
   position: relative;
+  min-height: 100vh;
 }
 
 #dr-bg-overlay {

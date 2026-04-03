@@ -2832,6 +2832,9 @@ async function loadDrafterMatch() {
     _drafterEnemyPick = [];
     _drafterPosFilter = 1;
 
+    var _ldrOverlay = document.getElementById('dr-bg-overlay');
+    if (_ldrOverlay) gsap.to(_ldrOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
+
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
     document.getElementById('drafter-evaluate-wrap').style.display = 'none';
@@ -3299,6 +3302,9 @@ function showDrafterResult(data) {
 
     // ── Шаг 2: финальный экран ───────────────────────────────────────────
     function showFinal() {
+        var _sfOverlay = document.getElementById('dr-bg-overlay');
+        if (_sfOverlay) gsap.to(_sfOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
+
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
         if (total >= 95) {
