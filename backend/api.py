@@ -1130,7 +1130,7 @@ async def api_draft_random():
     if not matches:
         raise HTTPException(status_code=503, detail="draft_matches.json not available")
 
-    match = random.choice(list(matches.values()))
+    match = random.choice(matches)
     match_id = match.get("match_id", 0)
 
     # Randomly pick radiant or dire as the enemy
@@ -1180,7 +1180,38 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
     ally_ids = [h.hero_id for h in data.ally]
     enemy_ids = [h.hero_id for h in data.enemy]
 
-    # ── synergy_score ─────────────────────────────────────────────────────
+    # ── position maps ──────────────────────────────────────────────────────
+    ally_by_pos: dict[str, int] = {}
+    for h in data.ally:
+        if h.position:
+            ally_by_pos[h.position] = h.hero_id
+
+    enemy_by_pos: dict[str, int] = {}
+    for h in data.enemy:
+        if h.position:
+            enemy_by_pos[h.position] = h.hero_id
+
+    # ── duels: pos vs pos (5 дуэлей, +16 за победу, +4 за поражение) ──────
+    duels: list[dict] = []
+    duel_score = 0.0
+    for pos_num in range(1, 6):
+        pos_str = f"pos {pos_num}"
+        ally_id = ally_by_pos.get(pos_str)
+        enemy_id = enemy_by_pos.get(pos_str)
+        if ally_id is None or enemy_id is None:
+            continue
+        syn = float((matchups.get(str(ally_id)) or {}).get("vs", {}).get(str(enemy_id), {}).get("synergy", 0.0))
+        win = syn > 0
+        duel_score += 16.0 if win else 4.0
+        duels.append({
+            "ally_hero_id": ally_id,
+            "enemy_hero_id": enemy_id,
+            "position": pos_str,
+            "synergy": round(syn, 2),
+            "win": win,
+        })
+
+    # ── synergy: среднее по 10 парам союзников, нормализация → 0-15 ────────
     synergy_pairs: list[tuple[int, int, float]] = []
     for i in range(len(ally_ids)):
         for j in range(i + 1, len(ally_ids)):
@@ -1188,40 +1219,30 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             val = (matchups.get(str(a)) or {}).get("with", {}).get(str(b), {}).get("synergy", 0.0)
             synergy_pairs.append((a, b, float(val)))
 
-    synergy_sum = sum(v for _, _, v in synergy_pairs)
-    n_syn = len(synergy_pairs) or 1
-    synergy_score = synergy_sum / n_syn
+    avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
+    synergy_component = max(0.0, min(15.0, (avg_synergy + 10) / 20 * 15))
 
-    # ── matchup_score ─────────────────────────────────────────────────────
+    # ── позиции: +1 за каждого героя на основной позиции → 0-5 ────────────
+    pos_scores: list[tuple[int, bool]] = []
+    for h in data.ally:
+        chosen = _pos_str_to_num(h.position)
+        primary = _hero_primary_pos_num(h.hero_id)
+        on_primary = chosen is not None and primary is not None and chosen == primary
+        pos_scores.append((h.hero_id, on_primary))
+
+    position_component = float(sum(1 for _, ok in pos_scores if ok))
+
+    # ── total_score = дуэли (20-80) + синергия (0-15) + позиции (0-5) ─────
+    total_score = max(0.0, min(100.0, duel_score + synergy_component + position_component))
+
+    # ── matchup_pairs для комментариев ─────────────────────────────────────
     matchup_pairs: list[tuple[int, int, float]] = []
     for a in ally_ids:
         for e in enemy_ids:
             val = (matchups.get(str(a)) or {}).get("vs", {}).get(str(e), {}).get("synergy", 0.0)
             matchup_pairs.append((a, e, float(val)))
 
-    matchup_sum = sum(v for _, _, v in matchup_pairs)
-    n_mu = len(matchup_pairs) or 1
-    matchup_score = matchup_sum / n_mu
-
-    # ── position_score ────────────────────────────────────────────────────
-    pos_scores: list[tuple[int, float]] = []
-    for h in data.ally:
-        chosen = _pos_str_to_num(h.position)
-        primary = _hero_primary_pos_num(h.hero_id)
-        if chosen is None or primary is None:
-            score = 5.0  # neutral when unknown
-        else:
-            diff = abs(chosen - primary)
-            score = 10.0 if diff == 0 else (6.0 if diff == 1 else 2.0)
-        pos_scores.append((h.hero_id, score))
-
-    position_score = sum(s for _, s in pos_scores) / (len(pos_scores) or 1)
-
-    # ── total_score ───────────────────────────────────────────────────────
-    syn_norm = ((synergy_score + 10) / 20) * 10
-    mu_norm = ((matchup_score + 10) / 20) * 10
-    total_score = (syn_norm + mu_norm + position_score) / 3 * 10
-    total_score = max(0.0, min(100.0, total_score))
+    matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
 
     # ── comments ──────────────────────────────────────────────────────────
     comments: list[dict] = []
@@ -1253,10 +1274,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
         })
 
     # Heroes on atypical positions → "warn"
-    for hero_id, score in pos_scores:
+    for hero_id, on_primary in pos_scores:
         if len(comments) >= 5:
             break
-        if score < 6.0:
+        if not on_primary:
             hero_entry = next((h for h in data.ally if h.hero_id == hero_id), None)
             picked_pos = hero_entry.position if hero_entry else ""
             primary_num = _hero_primary_pos_num(hero_id)
@@ -1271,8 +1292,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
 
     return {
         "total_score": round(total_score, 1),
-        "synergy_score": round(synergy_score, 2),
+        "synergy_score": round(avg_synergy, 2),
         "matchup_score": round(matchup_score, 2),
-        "position_score": round(position_score, 2),
+        "position_score": round(position_component, 2),
+        "duels": duels,
         "comments": comments,
     }
