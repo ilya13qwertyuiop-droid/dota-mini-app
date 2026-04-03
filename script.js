@@ -2772,10 +2772,15 @@ async function _loadItemsDb() {
 
 // ========== ДРАФТЕР ==========
 
+const HERO_PRIMARY_POSITIONS = {
+  1:1, 2:3, 3:5, 4:1, 5:5, 6:1, 7:4, 8:1, 9:4, 10:1, 11:1, 12:1, 13:2, 14:4, 15:3, 16:3, 17:2, 18:1, 19:4, 20:5, 21:4, 22:4, 23:3, 25:2, 26:5, 27:5, 28:3, 29:3, 30:5, 31:5, 32:1, 33:3, 34:2, 35:2, 36:2, 37:5, 38:3, 39:2, 40:5, 41:1, 42:1, 43:3, 44:1, 45:5, 46:1, 47:2, 48:1, 49:1, 50:5, 51:4, 52:2, 53:4, 54:1, 55:3, 56:1, 57:3, 58:5, 59:2, 60:3, 61:2, 62:4, 63:1, 64:5, 65:3, 66:5, 67:1, 68:5, 69:3, 70:1, 71:4, 72:1, 73:1, 74:2, 75:5, 76:2, 77:3, 78:3, 79:5, 80:2, 81:3, 82:2, 83:5, 84:5, 85:5, 86:4, 87:5, 88:4, 89:1, 90:2, 91:5, 92:3, 93:1, 94:1, 95:1, 96:3, 97:3, 98:3, 99:3, 100:4, 101:4, 102:5, 103:5, 104:3, 105:4, 106:2, 107:4, 108:3, 109:1, 110:4, 111:5, 112:5, 113:2, 114:1, 119:4, 120:2, 121:5, 123:4, 126:2, 128:4, 129:3, 131:5, 135:3, 136:5, 137:3, 138:1, 145:1, 155:3
+};
+
 var _drafterEnemyPick = [];          // [{hero_id, position}]
 var _drafterAllyPick = [null, null, null, null, null]; // null = пусто
 var _drafterActiveSlot = 0;
 var _drafterMatchLoaded = false;
+var _drafterPosFilter = 0;           // 0 = все, 1-5 = позиция
 
 function _drafterHeroName(heroId) {
     if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
@@ -2805,6 +2810,7 @@ function initDrafter() {
     if (!_drafterMatchLoaded) {
         loadDrafterMatch();
     } else {
+        _renderPosFilterBtns();
         renderDrafterSlots();
         renderDrafterGrid();
     }
@@ -2815,6 +2821,7 @@ async function loadDrafterMatch() {
     _drafterAllyPick = [null, null, null, null, null];
     _drafterActiveSlot = 0;
     _drafterEnemyPick = [];
+    _drafterPosFilter = 1;
 
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
@@ -2848,6 +2855,9 @@ async function loadDrafterMatch() {
     if (document.getElementById('drafter-search')) {
         document.getElementById('drafter-search').value = '';
     }
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = '1';
+    _renderPosFilterBtns();
     renderDrafterSlots();
     renderDrafterGrid();
 }
@@ -2879,7 +2889,7 @@ function _renderAllySlots() {
             }
         }
         html += '</div>';
-        html += '<div class="drafter-slot-pos">' + (i + 1) + '</div>';
+        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="14" height="14"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -2904,7 +2914,7 @@ function _renderEnemySlots() {
             }
         }
         html += '</div>';
-        html += '<div class="drafter-slot-pos">' + (i + 1) + '</div>';
+        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="14" height="14"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -2918,14 +2928,43 @@ function _updateEvaluateBtn() {
 
 function drafterSlotClick(slotIndex) {
     _drafterActiveSlot = slotIndex;
+    // Auto-activate position filter matching the slot
+    var searchVal = (document.getElementById('drafter-search') || {}).value || '';
+    if (!searchVal.trim()) {
+        _drafterPosFilter = slotIndex + 1;
+        _renderPosFilterBtns();
+    }
     _renderAllySlots();
+    renderDrafterGrid();
+}
+
+function setDrafterPosFilter(pos) {
+    _drafterPosFilter = pos;
+    _renderPosFilterBtns();
+    renderDrafterGrid();
+}
+
+function _renderPosFilterBtns() {
+    var btns = document.querySelectorAll('.drafter-pos-btn');
+    btns.forEach(function(btn) {
+        var p = parseInt(btn.dataset.pos);
+        btn.classList.toggle('drafter-pos-btn--active', p === _drafterPosFilter);
+    });
+}
+
+function onDrafterSearch() {
+    var query = (document.getElementById('drafter-search') || {}).value || '';
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = query.trim() ? '0.4' : '1';
+    renderDrafterGrid();
 }
 
 function renderDrafterGrid() {
     var el = document.getElementById('drafter-hero-grid');
     if (!el) return;
 
-    var query = (document.getElementById('drafter-search') && document.getElementById('drafter-search').value || '').toLowerCase().trim();
+    var searchEl = document.getElementById('drafter-search');
+    var query = searchEl ? searchEl.value.toLowerCase().trim() : '';
 
     if (!window.dotaHeroIds) {
         el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">Герои не загружены</div>';
@@ -2944,10 +2983,14 @@ function renderDrafterGrid() {
     });
     heroes.sort(function(a, b) { return a.name.localeCompare(b.name); });
 
-    // Фильтрация: при пустом поиске — первые 30 по алфавиту; при вводе — все 130
     if (query) {
+        // Поиск по тексту — все герои, фильтр позиции игнорируется
         heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
+    } else if (_drafterPosFilter > 0) {
+        // Фильтр по позиции
+        heroes = heroes.filter(function(h) { return HERO_PRIMARY_POSITIONS[h.id] === _drafterPosFilter; });
     } else {
+        // "Все" без поиска — первые 30 по алфавиту
         heroes = heroes.slice(0, 30);
     }
 
