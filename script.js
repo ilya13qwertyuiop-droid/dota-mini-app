@@ -1507,7 +1507,14 @@ switchPage = function (pageName, event) {
         matchupPage.showSearch();
     }
     if (pageName === 'drafter') {
-        initDrafter();
+        var resultEl = document.getElementById('drafter-result');
+        if (resultEl && resultEl.style.display !== 'none') {
+            resultEl.style.display = 'none';
+            document.getElementById('drafter-main').style.display = 'block';
+            loadDrafterMatch();
+        } else {
+            initDrafter();
+        }
     }
 };
 
@@ -3024,9 +3031,10 @@ function renderDrafterGrid() {
     var html = '';
     heroes.forEach(function(h) {
         var isPicked = pickedIds.has(h.id);
+        var isEnemy  = _drafterEnemyPick.some(function(e) { return e && e.hero_id === h.id; });
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
-        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '');
-        var onclick = isPicked ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
+        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-hero-disabled' : '');
+        var onclick = (isPicked || isEnemy) ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
         html += '<div class="' + cls + '"' + onclick + '>';
         if (iconUrl) {
             html += '<img src="' + iconUrl + '" alt="' + h.name + '" class="drafter-grid-img">';

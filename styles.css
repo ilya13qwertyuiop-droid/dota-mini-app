@@ -2842,6 +2842,11 @@ margin-top: 14px;
   cursor: default;
 }
 
+.drafter-hero-disabled {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
 .drafter-slot-plus {
   font-size: 18px;
   color: rgba(255,255,255,0.15);
