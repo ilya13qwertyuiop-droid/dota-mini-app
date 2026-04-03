@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import time
 import httpx
 from datetime import datetime, timezone
@@ -16,6 +17,12 @@ _meta_cache_time: float = 0
 
 # dota_builds.json raw content — file is large; read once per process lifetime
 _dota_builds_file_cache: dict | None = None
+
+# hero_matchups.json — read once per process lifetime
+_hero_matchups_file_cache: dict | None = None
+
+# draft_matches.json — read once per process lifetime
+_draft_matches_file_cache: list | None = None
 
 # /api/hero/{hero_id}/build — full response per hero, TTL 30 min
 BUILD_CACHE_TTL = 1800
@@ -37,6 +44,41 @@ def _load_dota_builds_file() -> dict | None:
         logger.warning("[dota_builds] Failed to read dota_builds.json: %s", e)
         return None
     return _dota_builds_file_cache
+
+
+def _load_hero_matchups_file() -> dict | None:
+    """Return parsed hero_matchups.json, caching the result in memory."""
+    global _hero_matchups_file_cache
+    if _hero_matchups_file_cache is not None:
+        return _hero_matchups_file_cache
+    path = Path(__file__).resolve().parent.parent / "hero_matchups.json"
+    if not path.exists():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            _hero_matchups_file_cache = json.load(f)
+    except Exception as e:
+        logger.warning("[hero_matchups] Failed to read hero_matchups.json: %s", e)
+        return None
+    return _hero_matchups_file_cache
+
+
+def _load_draft_matches_file() -> list | None:
+    """Return parsed draft_matches.json, caching the result in memory."""
+    global _draft_matches_file_cache
+    if _draft_matches_file_cache is not None:
+        return _draft_matches_file_cache
+    path = Path(__file__).resolve().parent.parent / "draft_matches.json"
+    if not path.exists():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            _draft_matches_file_cache = json.load(f)
+    except Exception as e:
+        logger.warning("[draft_matches] Failed to read draft_matches.json: %s", e)
+        return None
+    return _draft_matches_file_cache
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -770,6 +812,10 @@ async def api_hero_build(hero_id: int):
 
     # ── Determine most popular position ───────────────────────────────────
     dota_builds = cached.get("dota_builds")
+    if not dota_builds:
+        raw_file = _load_dota_builds_file()
+        if raw_file:
+            dota_builds = raw_file.get(str(hero_id))
     top_position: str | None = None
     if dota_builds:
         sorted_pos = _dota_builds_positions(dota_builds)
@@ -890,6 +936,10 @@ async def api_hero_positions(hero_id: int):
         raise HTTPException(status_code=503, detail="Build data not yet available.")
 
     dota_builds = cached.get("dota_builds")
+    if not dota_builds:
+        raw_file = _load_dota_builds_file()
+        if raw_file:
+            dota_builds = raw_file.get(str(hero_id))
     if dota_builds:
         positions_sorted = _dota_builds_positions(dota_builds)
         return {"hero_id": hero_id, "positions": positions_sorted}
@@ -1042,3 +1092,187 @@ async def submit_feedback(data: FeedbackRequest, db: Session = Depends(get_db)):
         username=username,
     )
     return {"success": True}
+
+
+# ========== Drafter ==========
+
+_DOTA_POS_URL_TO_NUM: dict[str, int] = {
+    "pos%201": 1, "pos%202": 2, "pos%203": 3, "pos%204": 4, "pos%205": 5,
+}
+
+
+def _hero_primary_pos_num(hero_id: int) -> int | None:
+    """Return primary position number (1-5) from dota_builds.json for a hero, or None."""
+    raw = _load_dota_builds_file()
+    if not raw:
+        return None
+    hero_data = raw.get(str(hero_id))
+    if not isinstance(hero_data, dict):
+        return None
+    best_key: str | None = None
+    best_nm = -1
+    for pk in _DOTA_POS_URL_TO_NUM:
+        pos_data = hero_data.get(pk)
+        if not isinstance(pos_data, dict):
+            continue
+        nm = pos_data.get("num_matches") or 0
+        if nm > best_nm:
+            best_nm = nm
+            best_key = pk
+    return _DOTA_POS_URL_TO_NUM.get(best_key) if best_key else None
+
+
+def _hero_name(hero_id: int) -> str:
+    names = get_app_cache_value("hero_id_to_name") or {}
+    return names.get(str(hero_id)) or names.get(hero_id) or f"Герой #{hero_id}"
+
+
+@app.get("/api/draft/random")
+async def api_draft_random():
+    """Returns a random enemy draft from draft_matches.json."""
+    matches = _load_draft_matches_file()
+    if not matches:
+        raise HTTPException(status_code=503, detail="draft_matches.json not available")
+
+    match = random.choice(matches)
+    match_id = match.get("match_id", 0)
+
+    # Randomly pick radiant or dire as the enemy
+    if random.random() < 0.5:
+        heroes_raw = match.get("radiant_heroes") or []
+    else:
+        heroes_raw = match.get("dire_heroes") or []
+
+    # heroes_raw may be a JSON string (stored as text in DB) or already a list
+    if isinstance(heroes_raw, str):
+        try:
+            heroes_raw = json.loads(heroes_raw)
+        except Exception:
+            heroes_raw = []
+
+    enemy = []
+    for entry in heroes_raw:
+        if isinstance(entry, dict):
+            hero_id = entry.get("hero_id")
+            position = entry.get("position", "")
+        else:
+            hero_id = entry
+            position = ""
+        if hero_id:
+            enemy.append({"hero_id": int(hero_id), "position": position})
+
+    return {"match_id": match_id, "enemy": enemy}
+
+
+class DraftHeroEntry(BaseModel):
+    hero_id: int
+    position: str = ""
+
+
+class DraftEvaluateRequest(BaseModel):
+    enemy: list[DraftHeroEntry] = []
+    ally: list[DraftHeroEntry] = []
+
+
+def _pos_str_to_num(pos: str) -> int | None:
+    """Convert 'pos 1'..'pos 5' or 'pos%201'..'pos%205' to 1..5."""
+    s = pos.strip().replace("%20", " ").lower()
+    for i in range(1, 6):
+        if s == f"pos {i}":
+            return i
+    return None
+
+
+@app.post("/api/draft/evaluate")
+async def api_draft_evaluate(data: DraftEvaluateRequest):
+    """Evaluates a draft based on synergy, matchups, and position fit."""
+    matchups = _load_hero_matchups_file() or {}
+
+    ally_ids = [h.hero_id for h in data.ally]
+    enemy_ids = [h.hero_id for h in data.enemy]
+
+    # ── synergy_score ─────────────────────────────────────────────────────
+    synergy_pairs: list[tuple[int, int, float]] = []
+    for i in range(len(ally_ids)):
+        for j in range(i + 1, len(ally_ids)):
+            a, b = ally_ids[i], ally_ids[j]
+            val = (matchups.get(str(a)) or {}).get("with", {}).get(str(b), {}).get("synergy", 0.0)
+            synergy_pairs.append((a, b, float(val)))
+
+    synergy_sum = sum(v for _, _, v in synergy_pairs)
+    n_syn = len(synergy_pairs) or 1
+    synergy_score = synergy_sum / n_syn
+
+    # ── matchup_score ─────────────────────────────────────────────────────
+    matchup_pairs: list[tuple[int, int, float]] = []
+    for a in ally_ids:
+        for e in enemy_ids:
+            val = (matchups.get(str(a)) or {}).get("vs", {}).get(str(e), {}).get("synergy", 0.0)
+            matchup_pairs.append((a, e, float(val)))
+
+    matchup_sum = sum(v for _, _, _, in matchup_pairs)
+    n_mu = len(matchup_pairs) or 1
+    matchup_score = matchup_sum / n_mu
+
+    # ── position_score ────────────────────────────────────────────────────
+    pos_scores: list[tuple[int, float]] = []
+    for h in data.ally:
+        chosen = _pos_str_to_num(h.position)
+        primary = _hero_primary_pos_num(h.hero_id)
+        if chosen is None or primary is None:
+            score = 5.0  # neutral when unknown
+        else:
+            diff = abs(chosen - primary)
+            score = 10.0 if diff == 0 else (6.0 if diff == 1 else 2.0)
+        pos_scores.append((h.hero_id, score))
+
+    position_score = sum(s for _, s in pos_scores) / (len(pos_scores) or 1)
+
+    # ── total_score ───────────────────────────────────────────────────────
+    syn_norm = ((synergy_score + 10) / 20) * 10
+    mu_norm = ((matchup_score + 10) / 20) * 10
+    total_score = (syn_norm + mu_norm + position_score) / 3 * 10
+    total_score = max(0.0, min(100.0, total_score))
+
+    # ── comments ──────────────────────────────────────────────────────────
+    comments: list[dict] = []
+
+    # Top-2 best synergy pairs → "good"
+    best_syn = sorted(synergy_pairs, key=lambda x: x[2], reverse=True)[:2]
+    for a, b, v in best_syn:
+        if len(comments) >= 5:
+            break
+        comments.append({
+            "type": "good",
+            "text": f"Отличная синергия: {_hero_name(a)} + {_hero_name(b)} ({v:+.1f})",
+        })
+
+    # Top-2 worst matchups → "bad"
+    worst_mu = sorted(matchup_pairs, key=lambda x: x[2])[:2]
+    for a, e, v in worst_mu:
+        if len(comments) >= 5:
+            break
+        comments.append({
+            "type": "bad",
+            "text": f"Твой {_hero_name(a)} проигрывает вражескому {_hero_name(e)} ({v:+.1f})",
+        })
+
+    # Heroes on atypical positions → "warn"
+    for hero_id, score in pos_scores:
+        if len(comments) >= 5:
+            break
+        if score < 6.0:
+            hero_entry = next((h for h in data.ally if h.hero_id == hero_id), None)
+            pos_str = hero_entry.position if hero_entry else "?"
+            comments.append({
+                "type": "warn",
+                "text": f"{_hero_name(hero_id)} редко играется на позиции {pos_str}",
+            })
+
+    return {
+        "total_score": round(total_score, 1),
+        "synergy_score": round(synergy_score, 2),
+        "matchup_score": round(matchup_score, 2),
+        "position_score": round(position_score, 2),
+        "comments": comments,
+    }
