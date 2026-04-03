@@ -1130,7 +1130,7 @@ async def api_draft_random():
     if not matches:
         raise HTTPException(status_code=503, detail="draft_matches.json not available")
 
-    match = random.choice(matches)
+    match = random.choice(list(matches.values()))
     match_id = match.get("match_id", 0)
 
     # Randomly pick radiant or dire as the enemy
