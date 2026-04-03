@@ -2812,7 +2812,7 @@ function initDrafter() {
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
-    document.getElementById('page-drafter').style.background = '';
+    document.getElementById('page-drafter').style.backgroundColor = '';
 
     // Загрузить матч если ещё не загружен
     if (!_drafterMatchLoaded) {
@@ -3236,9 +3236,7 @@ function showDrafterResult(data) {
         // Шкала + фон страницы + текст
         gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 1.2, ease: 'power2.out'});
         gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 1.2, ease: 'power2.out'});
-        document.getElementById('page-drafter').style.background = win
-            ? 'radial-gradient(ellipse at 50% 30%, rgba(88,28,220,0.4) 0%, #0a0612 60%)'
-            : 'radial-gradient(ellipse at 50% 30%, rgba(180,0,0,0.4) 0%, #0a0612 60%)';
+        document.getElementById('page-drafter').style.backgroundColor = win ? '#0d0520' : '#150505';
         if (resultText) {
             resultText.textContent = win ? 'Доминирование на линии' : 'Сложная линия для нас';
             gsap.fromTo(resultText, {opacity: 0, y: 8}, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
