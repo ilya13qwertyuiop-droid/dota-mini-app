@@ -47,6 +47,24 @@ padding: 20px;
 animation: fadeIn 0.3s ease;
 }
 
+#page-drafter {
+  position: relative;
+}
+
+#dr-bg-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+}
+
+#drafter-main,
+#drafter-result {
+  position: relative;
+  z-index: 1;
+}
+
 .page.active {
 display: block;
 }

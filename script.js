@@ -2812,7 +2812,8 @@ function initDrafter() {
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
-    document.getElementById('page-drafter').style.backgroundColor = '';
+    var _drOverlay = document.getElementById('dr-bg-overlay');
+    if (_drOverlay) gsap.to(_drOverlay, {opacity: 0, duration: 0.4, ease: 'power2.out'});
 
     // Загрузить матч если ещё не загружен
     if (!_drafterMatchLoaded) {
@@ -3164,6 +3165,30 @@ function showDrafterResult(data) {
         tick();
     }
 
+    // ── Фон страницы — overlay с градиентом ─────────────────────────────
+    function setBattleBackground(win) {
+        var pageDrafter = document.getElementById('page-drafter');
+        var overlay = document.getElementById('dr-bg-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'dr-bg-overlay';
+            pageDrafter.insertBefore(overlay, pageDrafter.firstChild);
+        }
+        var newBg = win
+            ? 'radial-gradient(ellipse at 50% 20%, rgba(120,40,220,0.5) 0%, #0a0612 65%)'
+            : 'radial-gradient(ellipse at 50% 20%, rgba(180,20,20,0.5) 0%, #0a0612 65%)';
+        var currentOpacity = parseFloat(gsap.getProperty(overlay, 'opacity')) || 0;
+        if (currentOpacity < 0.1) {
+            overlay.style.background = newBg;
+            gsap.to(overlay, {opacity: 1, duration: 0.8, ease: 'power2.out'});
+        } else {
+            gsap.to(overlay, {opacity: 0.05, duration: 0.25, ease: 'power2.out', onComplete: function() {
+                overlay.style.background = newBg;
+                gsap.to(overlay, {opacity: 1, duration: 0.55, ease: 'power2.out'});
+            }});
+        }
+    }
+
     // ── Шаг 1: 3 битвы линий ─────────────────────────────────────────────
     async function playBattle(index, duel) {
         var win = duel.win;
@@ -3216,11 +3241,11 @@ function showDrafterResult(data) {
         gsap.to(allyEls,  {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
         gsap.to(enemyEls, {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
 
-        await sleep(600);
+        await sleep(300);
 
         // Сближение
-        gsap.to(allyEls,  {x:  18, scale: 1.08, duration: 0.4, ease: 'power2.in'});
-        gsap.to(enemyEls, {x: -18, scale: 1.08, duration: 0.4, ease: 'power2.in'});
+        gsap.to(allyEls,  {x:  18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
+        gsap.to(enemyEls, {x: -18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
 
         await sleep(400);
 
@@ -3231,18 +3256,18 @@ function showDrafterResult(data) {
         gsap.to(allyEls,  {x: -3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
         gsap.to(enemyEls, {x:  3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
 
-        await sleep(200);
+        await sleep(150);
 
         // Шкала + фон страницы + текст
-        gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 1.2, ease: 'power2.out'});
-        gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 1.2, ease: 'power2.out'});
-        document.getElementById('page-drafter').style.backgroundColor = win ? '#0d0520' : '#150505';
+        gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 0.9, ease: 'power2.out'});
+        gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 0.9, ease: 'power2.out'});
+        setBattleBackground(win);
         if (resultText) {
             resultText.textContent = win ? 'Доминирование на линии' : 'Сложная линия для нас';
             gsap.fromTo(resultText, {opacity: 0, y: 8}, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
         }
 
-        await sleep(1300);
+        await sleep(900);
 
         // Герои возвращаются
         gsap.to(allyEls.concat(enemyEls), {x: 0, scale: 1, duration: 0.3, ease: 'back.out(1)'});
@@ -3260,7 +3285,7 @@ function showDrafterResult(data) {
         var dot = document.getElementById('dr-dot-' + index);
         if (dot) dot.className = 'dr-dot ' + (win ? 'dr-dot-win' : 'dr-dot-loss');
 
-        await sleep(900);
+        await sleep(600);
     }
 
     async function runBattles() {
