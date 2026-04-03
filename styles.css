@@ -3029,6 +3029,13 @@ margin-top: 14px;
 .dr-b-avatar-ally  { border-color: #9c5cf7; box-shadow: 0 0 8px rgba(192,132,252,0.3); }
 .dr-b-avatar-enemy { border-color: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.2); }
 
+.dr-b-avatar img {
+  object-fit: cover;
+  object-position: center center;
+  width: 100%;
+  height: 100%;
+}
+
 /* Иконка результата по центру арены */
 
 .dr-b-center-icon {
