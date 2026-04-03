@@ -2975,13 +2975,13 @@ margin-top: 14px;
 /* Битва линий — экран */
 
 #dr-battle-screen {
-  padding: 24px 16px 20px;
+  padding: 16px 16px 16px;
   position: relative;
 }
 
 .dr-b-header {
   text-align: center;
-  margin-bottom: 28px;
+  margin-bottom: 18px;
 }
 
 .dr-b-num {
@@ -3005,21 +3005,21 @@ margin-top: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .dr-b-side {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
 }
 
 .dr-b-avatar {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 8px;
   object-fit: cover;
   border: 2px solid transparent;
