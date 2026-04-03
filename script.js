@@ -2830,6 +2830,10 @@ async function loadDrafterMatch() {
         var data = await resp.json();
 
         _drafterEnemyPick = (data.enemy || []).slice(0, 5);
+        // Sort by position number so slots match pos 1..5 order
+        _drafterEnemyPick.sort(function(a, b) {
+            return parseInt(a.position) - parseInt(b.position);
+        });
         while (_drafterEnemyPick.length < 5) {
             _drafterEnemyPick.push({ hero_id: 0, position: '' });
         }
@@ -2863,7 +2867,8 @@ function _renderAllySlots() {
         var cls = 'drafter-slot';
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
-        html += '<div class="' + cls + '" data-slot="' + i + '" onclick="drafterSlotClick(' + i + ')">';
+        html += '<div class="drafter-slot-wrap">';
+        html += '<div class="' + cls + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
             if (iconUrl) {
@@ -2872,6 +2877,8 @@ function _renderAllySlots() {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
         }
+        html += '</div>';
+        html += '<div class="drafter-slot-pos">' + (i + 1) + '</div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -2885,6 +2892,7 @@ function _renderEnemySlots() {
         var hero = _drafterEnemyPick[i] || { hero_id: 0 };
         var cls = 'drafter-slot drafter-slot--enemy';
         if (hero.hero_id) cls += ' drafter-slot--filled';
+        html += '<div class="drafter-slot-wrap">';
         html += '<div class="' + cls + '">';
         if (hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -2894,6 +2902,8 @@ function _renderEnemySlots() {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
         }
+        html += '</div>';
+        html += '<div class="drafter-slot-pos">' + (i + 1) + '</div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -2933,9 +2943,11 @@ function renderDrafterGrid() {
     });
     heroes.sort(function(a, b) { return a.name.localeCompare(b.name); });
 
-    // Фильтрация
+    // Фильтрация: при пустом поиске — первые 30 по алфавиту; при вводе — все 130
     if (query) {
         heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
+    } else {
+        heroes = heroes.slice(0, 30);
     }
 
     // Уже выбранные
