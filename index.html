@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=38" />
+    <link rel="stylesheet" href="styles.css?v=39" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -417,6 +417,60 @@
         </div>
       </div>
 
+      <!-- Страница драфтера -->
+      <div id="page-drafter" class="page">
+
+        <!-- Экран драфта -->
+        <div id="drafter-main">
+          <div class="dashboard-header">
+            <h1>ДРАФТЕР</h1>
+            <div class="drafter-best-score">Лучший результат: <span id="drafter-best-label">—</span>/100</div>
+          </div>
+
+          <!-- Два блока составов -->
+          <div class="drafter-teams">
+            <div class="drafter-team">
+              <div class="drafter-team-title">Твоя команда</div>
+              <div class="drafter-slots" id="drafter-ally-slots"></div>
+            </div>
+            <div class="drafter-team">
+              <div class="drafter-team-title">Враги</div>
+              <div class="drafter-slots" id="drafter-enemy-slots"></div>
+            </div>
+          </div>
+
+          <!-- Сетка выбора героев -->
+          <div class="drafter-picker">
+            <input type="text" id="drafter-search" class="drafter-search" placeholder="Поиск..." oninput="renderDrafterGrid()">
+            <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
+          </div>
+
+          <!-- Кнопка оценки -->
+          <div id="drafter-evaluate-wrap" style="display:none; text-align:center; padding: 12px 0 80px;">
+            <button class="drafter-evaluate-btn" onclick="submitDraft()">Оценить драфт</button>
+          </div>
+        </div>
+
+        <!-- Страница результата -->
+        <div id="drafter-result" style="display:none;">
+          <div class="drafter-result-score-wrap">
+            <div class="drafter-result-score" id="drafter-score-display">0</div>
+            <div class="drafter-result-grade" id="drafter-grade"></div>
+            <div class="drafter-record" id="drafter-record" style="display:none;">🏆 Новый рекорд!</div>
+          </div>
+          <div class="drafter-components">
+            <div class="drafter-component">Синергия <span id="dr-synergy">—</span></div>
+            <div class="drafter-component">Контрпики <span id="dr-matchup">—</span></div>
+            <div class="drafter-component">Позиции <span id="dr-position">—</span></div>
+          </div>
+          <div class="drafter-comments" id="drafter-comments"></div>
+          <div style="text-align:center; padding: 16px 0 80px;">
+            <button class="drafter-evaluate-btn" onclick="loadDrafterMatch()">Новый матч</button>
+          </div>
+        </div>
+
+      </div>
+
       <!-- Страница матчапов -->
       <div id="page-database" class="page">
 
@@ -599,8 +653,12 @@
           <div class="nav-icon">🎯</div>
           <div class="nav-label">Квизы</div>
         </div>
-        <div class="nav-item" onclick="switchPage('database', event)">
+        <div class="nav-item" onclick="switchPage('drafter', event)">
           <div class="nav-icon">⚔️</div>
+          <div class="nav-label">Драфтер</div>
+        </div>
+        <div class="nav-item" onclick="switchPage('database', event)">
+          <div class="nav-icon">🛡️</div>
           <div class="nav-label">Герои</div>
         </div>
         <div class="nav-item" onclick="switchPage('profile', event)">
@@ -644,6 +702,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=52"></script>
+    <script src="script.js?v=53"></script>
   </body>
 </html>
