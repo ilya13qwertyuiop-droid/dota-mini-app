@@ -282,6 +282,11 @@
 
         const USER_TOKEN = getTokenFromUrl();
 
+        // Фоновая загрузка профиля при старте — не блокирует интерфейс
+        if (USER_TOKEN) {
+            setTimeout(function() { initProfile(); }, 0);
+        }
+
         // Сохранение результата на backend
         async function saveResultToBackend(result) {
             if (!USER_TOKEN) {
@@ -388,7 +393,7 @@
         function goToMatchups() {
             switchPage('database');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.querySelectorAll('.nav-item')[2].classList.add('active');
+            document.querySelectorAll('.nav-item')[3].classList.add('active');
         }
 
         function initQuiz() {
@@ -1361,7 +1366,6 @@ function displayPositionResult(profile) {
     // full = "Pos 1 — Керри"
     const full = positionData.position || '';
     const parts = full.split('—').map(s => s.trim());
-    const posLabel = parts[0] || ''; // "Pos 1"
     const roleLabel = parts[1] || positionData.posShort || full || 'Не указана';
 
     // Основная строка: "Основная позиция: Керри"
@@ -1506,6 +1510,16 @@ switchPage = function (pageName, event) {
     }
     if (pageName === 'database') {
         matchupPage.showSearch();
+    }
+    if (pageName === 'drafter') {
+        var resultEl = document.getElementById('drafter-result');
+        if (resultEl && resultEl.style.display !== 'none') {
+            resultEl.style.display = 'none';
+            document.getElementById('drafter-main').style.display = 'block';
+            loadDrafterMatch();
+        } else {
+            initDrafter();
+        }
     }
 };
 
@@ -2490,7 +2504,7 @@ function goBackFromFeedback() {
     target.classList.add('active');
 
     // Восстанавливаем нав-элемент
-    var navMap = { home: 0, quiz: 1, database: 2, profile: 3 };
+    var navMap = { home: 0, quiz: 1, drafter: 2, database: 3, profile: 4 };
     var navIdx = navMap[_prevPageBeforeFeedback];
     if (navIdx !== undefined) {
         var navItems = document.querySelectorAll('.nav-item');
@@ -2653,11 +2667,11 @@ function openDonationAlerts() {
 var _metaCache = null;
 
 var _META_POS_LABELS = {
-    'POSITION_1': 'Pos 1 · Керри',
-    'POSITION_2': 'Pos 2 · Мид',
-    'POSITION_3': 'Pos 3 · Оффлейн',
-    'POSITION_4': 'Pos 4 · Частичная поддержка',
-    'POSITION_5': 'Pos 5 · Поддержка',
+    'POSITION_1': 'КЕРРИ',
+    'POSITION_2': 'МИД',
+    'POSITION_3': 'ОФФЛЕЙН',
+    'POSITION_4': 'ЧЕТВЁРКА',
+    'POSITION_5': 'ПЯТЁРКА',
 };
 
 var _META_POS_IMG = {
@@ -2698,48 +2712,49 @@ function _metaHeroClick(heroName) {
 }
 
 function _renderMeta(data) {
-    var patchLabel = document.getElementById('meta-patch-label');
-    if (patchLabel) {
-        patchLabel.textContent = data.patch || '7.41';
-    }
     var posContainer = document.getElementById('meta-positions');
     if (!posContainer) return;
 
+    var patch = data.patch || '7.41';
     var positions = data.positions || {};
     var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
-    var html = '';
 
-    posOrder.forEach(function(posKey) {
+    var html = '<div class="meta-top-bar">';
+    html += '<div class="meta-top-title">МЕТА ПАТЧА</div>';
+    html += '<div class="meta-top-patch">' + patch + '</div>';
+    html += '</div>';
+
+    posOrder.forEach(function(posKey, posIdx) {
         var heroes = positions[posKey];
         if (!heroes || !heroes.length) return;
 
         var label = _META_POS_LABELS[posKey] || posKey;
         var imgSrc = _META_POS_IMG[posKey] || '';
 
-        html += '<div class="meta-pos-section">';
+        html += '<div class="meta-pos-block">';
         html += '<div class="meta-pos-header">';
-        html += '<img class="meta-pos-icon-img" src="' + imgSrc + '" alt="" onerror="this.style.display=\'none\'">';
-        html += '<span class="meta-pos-label">' + label + '</span>';
+        html += '<img src="' + imgSrc + '" class="meta-pos-icon" alt="">';
+        html += '<div class="meta-pos-label">' + label + '</div>';
         html += '</div>';
-        html += '<div class="meta-heroes-scroll">';
+        html += '<div class="meta-heroes-row">';
 
-        heroes.forEach(function(hero, idx) {
+        heroes.slice(0, 5).forEach(function(hero) {
             var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[hero.hero_id]) || ('Hero #' + hero.hero_id);
             var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
             var wrPct = Math.round(hero.win_rate * 100);
-            var isTop = idx === 0;
             var escapedName = heroName.replace(/'/g, "\\'");
 
-            html += '<div class="meta-hero-card' + (isTop ? ' meta-hero-card--top' : '') + '"';
-            html += ' style="animation-delay:' + (idx * 80) + 'ms"';
-            html += ' onclick="_metaHeroClick(\'' + escapedName + '\')">';
-            html += '<div class="meta-hero-avatar-wrap"><img class="meta-hero-avatar" src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
-            html += '<div class="meta-hero-name">' + heroName + '</div>';
+            html += '<div class="meta-hero-item" onclick="_metaHeroClick(\'' + escapedName + '\')">';
+            html += '<div class="meta-hero-avatar"><img src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
             html += '<div class="meta-hero-wr">' + wrPct + '%</div>';
             html += '</div>';
         });
 
         html += '</div></div>';
+
+        if (posIdx < posOrder.length - 1) {
+            html += '<div class="meta-divider"></div>';
+        }
     });
 
     posContainer.innerHTML = html;
@@ -2767,4 +2782,959 @@ async function _loadItemsDb() {
         _loadItemsDb();
     }
 }());
+
+// ========== ДРАФТЕР ==========
+
+const HERO_PRIMARY_POSITIONS = {
+  1:1, 2:3, 3:5, 4:1, 5:5, 6:1, 7:4, 8:1, 9:4, 10:1, 11:1, 12:1, 13:2, 14:4, 15:3, 16:3, 17:2, 18:1, 19:4, 20:5, 21:4, 22:4, 23:3, 25:2, 26:5, 27:5, 28:3, 29:3, 30:5, 31:5, 32:1, 33:3, 34:2, 35:2, 36:2, 37:5, 38:3, 39:2, 40:5, 41:1, 42:1, 43:3, 44:1, 45:5, 46:1, 47:2, 48:1, 49:1, 50:5, 51:4, 52:2, 53:4, 54:1, 55:3, 56:1, 57:3, 58:5, 59:2, 60:3, 61:2, 62:4, 63:1, 64:5, 65:3, 66:5, 67:1, 68:5, 69:3, 70:1, 71:4, 72:1, 73:1, 74:2, 75:5, 76:2, 77:3, 78:3, 79:5, 80:2, 81:3, 82:2, 83:5, 84:5, 85:5, 86:4, 87:5, 88:4, 89:1, 90:2, 91:5, 92:3, 93:1, 94:1, 95:1, 96:3, 97:3, 98:3, 99:3, 100:4, 101:4, 102:5, 103:5, 104:3, 105:4, 106:2, 107:4, 108:3, 109:1, 110:4, 111:5, 112:5, 113:2, 114:1, 119:4, 120:2, 121:5, 123:4, 126:2, 128:4, 129:3, 131:5, 135:3, 136:5, 137:3, 138:1, 145:1, 155:3
+};
+
+var _drafterEnemyPick = [];          // [{hero_id, position}]
+var _drafterAllyPick = [null, null, null, null, null]; // null = пусто
+var _drafterActiveSlot = 0;
+var _drafterMatchLoaded = false;
+var _drafterPosFilter = 0;           // 0 = все, 1-5 = позиция
+var _drafterLeaderboardCache = null;
+
+function _drafterHeroName(heroId) {
+    if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
+        return window.dotaHeroIdToName[heroId];
+    }
+    return null;
+}
+
+function _drafterHeroIcon(heroId) {
+    var name = _drafterHeroName(heroId);
+    if (name && window.getHeroIconUrlByName) {
+        return window.getHeroIconUrlByName(name);
+    }
+    return '';
+}
+
+function initDrafter() {
+    // Показать лучший результат
+    var best = localStorage.getItem('drafter_best_score');
+    document.getElementById('drafter-best-score').textContent = best !== null ? best : '—';
+
+    // Показать экран драфта, скрыть результат
+    document.getElementById('drafter-main').style.display = 'block';
+    document.getElementById('drafter-result').style.display = 'none';
+    var _drOverlay = document.getElementById('dr-bg-overlay');
+    if (_drOverlay) gsap.to(_drOverlay, {opacity: 0, duration: 0.4, ease: 'power2.out'});
+
+    // Prefetch лидерборда в фоне
+    if (!_drafterLeaderboardCache) {
+        fetch(window.API_BASE_URL + '/draft/leaderboard')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) { if (data) _drafterLeaderboardCache = data; })
+            .catch(function() {});
+    }
+
+    // Загрузить матч если ещё не загружен
+    if (!_drafterMatchLoaded) {
+        loadDrafterMatch();
+    } else {
+        _renderPosFilterBtns();
+        renderDrafterSlots();
+        renderDrafterGrid();
+    }
+}
+
+async function loadDrafterMatch() {
+    _drafterMatchLoaded = false;
+    _drafterAllyPick = [null, null, null, null, null];
+    _drafterActiveSlot = 0;
+    _drafterEnemyPick = [];
+    _drafterPosFilter = 1;
+
+    var _ldrOverlay = document.getElementById('dr-bg-overlay');
+    if (_ldrOverlay) gsap.to(_ldrOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
+
+    document.getElementById('drafter-main').style.display = 'block';
+    document.getElementById('drafter-result').style.display = 'none';
+    document.getElementById('drafter-evaluate-wrap').style.display = 'none';
+
+    var enemySlotsEl = document.getElementById('drafter-enemy-slots');
+    if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Загрузка...</div>';
+
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/random');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+
+        _drafterEnemyPick = (data.enemy || []).slice(0, 5);
+        // Sort by position number so slots match pos 1..5 order
+        _drafterEnemyPick.sort(function(a, b) {
+            var posA = parseInt((a.position || '').replace('pos ', ''));
+            var posB = parseInt((b.position || '').replace('pos ', ''));
+            return posA - posB;
+        });
+        while (_drafterEnemyPick.length < 5) {
+            _drafterEnemyPick.push({ hero_id: 0, position: '' });
+        }
+        _drafterMatchLoaded = true;
+    } catch (e) {
+        console.error('[drafter] loadDrafterMatch error:', e);
+        if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:#f44;font-size:12px;">Ошибка загрузки</div>';
+        return;
+    }
+
+    if (document.getElementById('drafter-search')) {
+        document.getElementById('drafter-search').value = '';
+    }
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = '1';
+    _renderPosFilterBtns();
+    renderDrafterSlots();
+    renderDrafterGrid();
+}
+
+function renderDrafterSlots() {
+    _renderAllySlots();
+    _renderEnemySlots();
+    _updateEvaluateBtn();
+}
+
+function _renderAllySlots() {
+    var el = document.getElementById('drafter-ally-slots');
+    if (!el) return;
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+        var hero = _drafterAllyPick[i];
+        var isActive = (i === _drafterActiveSlot);
+        var cls = 'drafter-slot';
+        if (isActive) cls += ' drafter-slot--active';
+        if (hero) cls += ' drafter-slot--filled';
+        html += '<div class="drafter-slot-wrap">';
+        html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
+        if (hero && hero.hero_id) {
+            var iconUrl = _drafterHeroIcon(hero.hero_id);
+            if (iconUrl) {
+                html += '<img src="' + iconUrl + '" alt="" class="drafter-slot-img">';
+            } else {
+                html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
+            }
+        } else {
+            html += '<span class="drafter-slot-plus">+</span>';
+        }
+        html += '</div>';
+        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function _renderEnemySlots() {
+    var el = document.getElementById('drafter-enemy-slots');
+    if (!el) return;
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+        var hero = _drafterEnemyPick[i] || { hero_id: 0 };
+        var cls = 'drafter-slot drafter-slot--enemy';
+        if (hero.hero_id) cls += ' drafter-slot--filled';
+        html += '<div class="drafter-slot-wrap">';
+        html += '<div class="' + cls + '">';
+        if (hero.hero_id) {
+            var iconUrl = _drafterHeroIcon(hero.hero_id);
+            if (iconUrl) {
+                html += '<img src="' + iconUrl + '" alt="" class="drafter-slot-img">';
+            } else {
+                html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
+            }
+        }
+        html += '</div>';
+        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function _updateEvaluateBtn() {
+    var allFilled = _drafterAllyPick.every(function(h) { return h !== null; });
+    var wrap = document.getElementById('drafter-evaluate-wrap');
+    if (!wrap) return;
+    if (allFilled && wrap.style.display === 'none') {
+        wrap.style.display = 'block';
+        var btn = wrap.querySelector('.drafter-evaluate-btn');
+        if (btn) {
+            btn.style.animation = 'none';
+            btn.classList.add('drafter-btn--ready');
+            // trigger fadeInBtn
+            btn.style.animation = '';
+        }
+    } else if (!allFilled) {
+        wrap.style.display = 'none';
+        var btn2 = wrap.querySelector('.drafter-evaluate-btn');
+        if (btn2) btn2.classList.remove('drafter-btn--ready');
+    }
+}
+
+function drafterSlotClick(slotIndex) {
+    // If slot is filled — clear it and make it active
+    if (_drafterAllyPick[slotIndex]) {
+        _drafterAllyPick[slotIndex] = null;
+        _drafterActiveSlot = slotIndex;
+        renderDrafterSlots();
+        renderDrafterGrid();
+        return;
+    }
+    _drafterActiveSlot = slotIndex;
+    // Auto-activate position filter matching the slot
+    var searchVal = (document.getElementById('drafter-search') || {}).value || '';
+    if (!searchVal.trim()) {
+        _drafterPosFilter = slotIndex + 1;
+        _renderPosFilterBtns();
+    }
+    _renderAllySlots();
+    renderDrafterGrid();
+}
+
+function setDrafterPosFilter(pos) {
+    _drafterPosFilter = pos;
+    _renderPosFilterBtns();
+    renderDrafterGrid();
+}
+
+function _renderPosFilterBtns() {
+    var btns = document.querySelectorAll('.drafter-pos-btn');
+    btns.forEach(function(btn) {
+        var p = parseInt(btn.dataset.pos);
+        btn.classList.toggle('drafter-pos-btn--active', p === _drafterPosFilter);
+    });
+}
+
+function onDrafterSearch() {
+    var query = (document.getElementById('drafter-search') || {}).value || '';
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = query.trim() ? '0.4' : '1';
+    renderDrafterGrid();
+}
+
+function renderDrafterGrid() {
+    var el = document.getElementById('drafter-hero-grid');
+    if (!el) return;
+
+    var searchEl = document.getElementById('drafter-search');
+    var query = searchEl ? searchEl.value.toLowerCase().trim() : '';
+
+    if (!window.dotaHeroIds) {
+        el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">Герои не загружены</div>';
+        return;
+    }
+
+    // Собираем уникальных героев
+    var seen = new Set();
+    var heroes = [];
+    Object.keys(window.dotaHeroIds).forEach(function(name) {
+        var id = window.dotaHeroIds[name];
+        if (!seen.has(id)) {
+            seen.add(id);
+            heroes.push({ id: id, name: name });
+        }
+    });
+    heroes.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+    if (query) {
+        // Поиск по тексту — все герои, фильтр позиции игнорируется
+        heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
+    } else {
+        // Фильтр по позиции (всегда 1-5)
+        heroes = heroes.filter(function(h) { return HERO_PRIMARY_POSITIONS[h.id] === _drafterPosFilter; });
+    }
+
+    // Уже выбранные
+    var pickedIds = new Set(_drafterAllyPick.filter(Boolean).map(function(h) { return h.hero_id; }));
+
+    var html = '';
+    heroes.forEach(function(h) {
+        var isPicked = pickedIds.has(h.id);
+        var isEnemy  = _drafterEnemyPick.some(function(e) { return e && e.hero_id === h.id; });
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
+        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-hero-disabled' : '');
+        var onclick = (isPicked || isEnemy) ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
+        html += '<div class="' + cls + '"' + onclick + '>';
+        if (iconUrl) {
+            html += '<img src="' + iconUrl + '" alt="' + h.name + '" class="drafter-grid-img">';
+        } else {
+            html += '<div class="drafter-grid-img-empty"></div>';
+        }
+        html += '<div class="drafter-grid-name">' + h.name + '</div>';
+        html += '</div>';
+    });
+
+    el.innerHTML = html;
+}
+
+function selectDrafterHero(heroId) {
+    if (_drafterActiveSlot >= 5) return;
+
+    var filledSlot = _drafterActiveSlot;
+
+    _drafterAllyPick[filledSlot] = {
+        hero_id: heroId,
+        position: 'pos ' + (filledSlot + 1)
+    };
+
+    if (navigator.vibrate) navigator.vibrate(25);
+
+    // Переходим к следующему пустому слоту
+    var next = -1;
+    for (var i = filledSlot + 1; i < 5; i++) {
+        if (!_drafterAllyPick[i]) { next = i; break; }
+    }
+    if (next === -1) {
+        for (var j = 0; j < filledSlot; j++) {
+            if (!_drafterAllyPick[j]) { next = j; break; }
+        }
+    }
+    if (next !== -1) _drafterActiveSlot = next;
+
+    renderDrafterSlots();
+    renderDrafterGrid();
+
+    // Animate the filled slot
+    var slotEl = document.getElementById('drafter-ally-slot-' + filledSlot);
+    if (slotEl) {
+        slotEl.style.transition = 'transform 0.15s ease';
+        slotEl.style.transform = 'scale(0.85)';
+        setTimeout(function() { slotEl.style.transform = 'scale(1)'; }, 150);
+    }
+}
+
+async function submitDraft() {
+    var ally = _drafterAllyPick.filter(Boolean);
+    var enemy = _drafterEnemyPick.filter(function(h) { return h && h.hero_id; });
+
+    var btn = document.getElementById('drafter-evaluate-btn');
+    if (btn) btn.disabled = true;
+
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ally: ally, enemy: enemy, token: USER_TOKEN || null })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        showDrafterResult(data);
+    } catch (e) {
+        console.error('[drafter] submitDraft error:', e);
+        alert('Ошибка при оценке драфта');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function hideDrafterFullpage(id) {
+    var el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+function _drafterFpSkeleton(title, backId) {
+    return (
+        '<div class="drafter-fp-header">' +
+            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
+            '<div class="drafter-fp-title">' + title + '</div>' +
+            '<div class="drafter-fp-spacer"></div>' +
+        '</div>' +
+        '<div class="drafter-fp-content">' +
+            '<div style="color:#6b7280;font-size:12px;padding:8px 0;">Загрузка...</div>' +
+        '</div>'
+    );
+}
+
+function _drafterFpError(title, backId) {
+    return (
+        '<div class="drafter-fp-header">' +
+            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
+            '<div class="drafter-fp-title">' + title + '</div>' +
+            '<div class="drafter-fp-spacer"></div>' +
+        '</div>' +
+        '<div class="drafter-fp-content"><div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div></div>'
+    );
+}
+
+function _draftRankColor(rank) {
+    return rank === 'SSS' || rank === 'S' ? '#fbbf24'
+         : rank === 'A' ? '#a78bfa'
+         : rank === 'B' ? '#60a5fa'
+         : '#9ca3af';
+}
+
+function _draftFormatDate(isoStr) {
+    if (!isoStr) return '';
+    var d = new Date(isoStr);
+    var now = new Date();
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var yesterdayStart = new Date(todayStart - 86400000);
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    var months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+    if (d >= todayStart) return 'сегодня ' + hh + ':' + mm;
+    if (d >= yesterdayStart) return 'вчера ' + hh + ':' + mm;
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + hh + ':' + mm;
+}
+
+function _rankCardStyle(rank) {
+    if (rank === 'SSS' || rank === 'S') return 'background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);';
+    if (rank === 'A') return 'background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);';
+    if (rank === 'B') return 'background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);';
+    return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);';
+}
+
+async function showDrafterHistory() {
+    var PAGE_ID = 'drafter-history-page';
+    var page = document.getElementById(PAGE_ID);
+    page.innerHTML = _drafterFpSkeleton('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
+    page.style.display = 'block';
+
+    if (!USER_TOKEN) {
+        page.innerHTML = (
+            '<div class="drafter-fp-header">' +
+                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
+                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
+                '<div class="drafter-fp-spacer"></div>' +
+            '</div>' +
+            '<div class="drafter-fp-content"><div style="color:#6b7280;font-size:13px;">Войдите, чтобы посмотреть историю</div></div>'
+        );
+        return;
+    }
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var rows = await resp.json();
+        var cardsHtml = rows.length === 0
+            ? '<div style="color:#6b7280;font-size:13px;">Нет сохранённых драфтов</div>'
+            : rows.map(function(r) {
+                var color = _draftRankColor(r.rank);
+                var cardStyle = _rankCardStyle(r.rank);
+                var dt = _draftFormatDate(r.created_at);
+                return (
+                    '<div class="drafter-hist-card" style="' + cardStyle + '">' +
+                        '<div style="font-size:24px;font-weight:900;color:' + color + ';width:40px;text-align:center;flex-shrink:0;line-height:1;">' + r.rank + '</div>' +
+                        '<div style="flex:1;font-size:12px;color:#6b7280;">' + dt + '</div>' +
+                        '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
+                    '</div>'
+                );
+            }).join('');
+        page.innerHTML = (
+            '<div class="drafter-fp-header">' +
+                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
+                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
+                '<div class="drafter-fp-spacer"></div>' +
+            '</div>' +
+            '<div class="drafter-fp-content">' +
+                '<div style="font-size:8px;color:#4b5563;text-align:center;margin-bottom:8px;">Последние 10 драфтов</div>' +
+                cardsHtml +
+            '</div>'
+        );
+    } catch (e) {
+        page.innerHTML = _drafterFpError('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
+    }
+}
+
+var _LB_SVG_STAR   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+var _LB_SVG_SILVER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><line x1="7" y1="12" x2="17" y2="12" stroke="#94a3b8" stroke-width="2.5"/></svg>';
+var _LB_SVG_SHIELD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#b45309" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>';
+
+function _lbAvatarColors(rank) {
+    if (rank === 1) return { bg: 'rgba(251,191,36,0.2)',  text: '#fbbf24' };
+    if (rank === 2) return { bg: 'rgba(148,163,184,0.2)', text: '#94a3b8' };
+    if (rank === 3) return { bg: 'rgba(180,83,9,0.2)',    text: '#b45309' };
+    return { bg: 'rgba(255,255,255,0.05)', text: '#6b7280' };
+}
+
+function _lbScoreColor(rank) {
+    if (rank === 1) return '#fbbf24';
+    if (rank === 2) return '#94a3b8';
+    if (rank === 3) return '#b45309';
+    return '#c084fc';
+}
+
+function _renderLeaderboardRows(rows, page, PAGE_ID) {
+    var rowsHtml = rows.length === 0
+        ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников (нужно минимум 5 драфтов)</div>'
+        : rows.map(function(r) {
+            var placeIcon = r.rank === 1 ? _LB_SVG_STAR : r.rank === 2 ? _LB_SVG_SILVER : r.rank === 3 ? _LB_SVG_SHIELD
+                : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
+            var rowCls = 'drafter-lb-row' + (r.rank === 1 ? ' drafter-lb-row--top1' : r.rank === 2 ? ' drafter-lb-row--top2' : r.rank === 3 ? ' drafter-lb-row--top3' : '');
+            var ac = _lbAvatarColors(r.rank);
+            var avatarHtml = r.photo_url
+                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" onerror="this.outerHTML=\'<div class=\\\"drafter-lb-avatar-letter\\\" style=\\\"background:' + ac.bg + ';color:' + ac.text + '\\\">' + (r.username || '?').charAt(0).toUpperCase() + '</div>\'">'
+                : '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + (r.username || '?').charAt(0).toUpperCase() + '</div>';
+            return (
+                '<div class="' + rowCls + '">' +
+                    '<div class="drafter-lb-place">' + placeIcon + '</div>' +
+                    avatarHtml +
+                    '<div class="drafter-lb-info">' +
+                        '<div class="drafter-lb-name">' + r.username + '</div>' +
+                        '<div class="drafter-lb-count">' + r.draft_count + ' \u0434\u0440\u0430\u0444\u0442\u043e\u0432</div>' +
+                    '</div>' +
+                    '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.avg_score + '</div>' +
+                '</div>'
+            );
+        }).join('');
+    page.innerHTML = (
+        '<div class="drafter-fp-header">' +
+            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← \u041d\u0430\u0437\u0430\u0434</button>' +
+            '<div class="drafter-fp-title">\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412</div>' +
+            '<div class="drafter-fp-spacer"></div>' +
+        '</div>' +
+        '<div class="lb-prize-banner">' +
+            '<img src="/images/arcana.gif" class="lb-prize-gif" alt="arcana">' +
+            '<div class="lb-prize-info">' +
+                '<div class="lb-prize-title">\u0410\u0440\u043a\u0430\u043d\u044b \u043a\u0430\u0436\u0434\u044b\u0439 \u043c\u0435\u0441\u044f\u0446</div>' +
+                '<div class="lb-prize-sub">\u0422\u043e\u043f-3 \u043f\u043e\u043b\u0443\u0447\u0430\u044e\u0442 \u0430\u0440\u043a\u0430\u043d\u0443 \u043d\u0430 \u0432\u044b\u0431\u043e\u0440 \u0432 \u043a\u043e\u043d\u0446\u0435 \u043c\u0435\u0441\u044f\u0446\u0430</div>' +
+                '<div class="lb-prize-month">\u0430\u043f\u0440\u0435\u043b\u044c 2026</div>' +
+            '</div>' +
+        '</div>' +
+        '<div class="lb-note">' +
+            '<span class="lb-note-icon">\u2139</span> ' +
+            '\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u044b \u0443\u0447\u0438\u0442\u044b\u0432\u0430\u044e\u0442\u0441\u044f \u043f\u043e\u0441\u043b\u0435 <b>5 \u0441\u044b\u0433\u0440\u0430\u043d\u043d\u044b\u0445 \u0434\u0440\u0430\u0444\u0442\u043e\u0432</b>' +
+        '</div>' +
+        '<div class="drafter-fp-content">' + rowsHtml + '</div>'
+    );
+}
+
+async function showDrafterLeaderboard() {
+    var PAGE_ID = 'drafter-leaderboard-page';
+    var page = document.getElementById(PAGE_ID);
+    page.style.display = 'block';
+
+    if (_drafterLeaderboardCache) {
+        _renderLeaderboardRows(_drafterLeaderboardCache, page, PAGE_ID);
+        return;
+    }
+
+    page.innerHTML = _drafterFpSkeleton('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/leaderboard');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var rows = await resp.json();
+        _drafterLeaderboardCache = rows;
+        _renderLeaderboardRows(rows, page, PAGE_ID);
+    } catch (e) {
+        page.innerHTML = _drafterFpError('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+    }
+}
+
+function showDrafterResult(data) {
+    document.getElementById('drafter-main').style.display = 'none';
+    document.getElementById('drafter-result').style.display = 'block';
+
+    var battleScreen = document.getElementById('dr-battle-screen');
+    var finalScreen  = document.getElementById('dr-final-screen');
+
+    battleScreen.style.display = 'block';
+    finalScreen.style.display  = 'none';
+
+    var duels = data.duels || [];
+
+    function sleep(ms) {
+        return new Promise(function(resolve) { setTimeout(resolve, ms); });
+    }
+
+    function _icon(id) { return _drafterHeroIcon(id) || ''; }
+    function _name(id) { return _drafterHeroName(id) || ('Герой #' + id); }
+
+    var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#10b981" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
+    var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>';
+
+    function spawnParticles(win) {
+        var canvas = document.getElementById('dr-particles-canvas');
+        if (!canvas) return;
+        canvas.width  = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        var ctx = canvas.getContext('2d');
+        var cx  = canvas.width  / 2;
+        var cy  = canvas.height / 2;
+        var rgb = win ? '192,132,252' : '239,68,68';
+        var particles = [];
+        for (var i = 0; i < 30; i++) {
+            var angle = Math.random() * Math.PI * 2;
+            var speed = 1.5 + Math.random() * 2.5;
+            particles.push({x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: 2 + Math.random() * 3, life: 60});
+        }
+        function tick() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            var alive = false;
+            particles.forEach(function(p) {
+                if (p.life <= 0) return;
+                alive = true;
+                p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life--;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(' + rgb + ',' + (p.life / 60) + ')';
+                ctx.fill();
+            });
+            if (alive) requestAnimationFrame(tick);
+        }
+        tick();
+    }
+
+    // ── Фон страницы — overlay с градиентом ─────────────────────────────
+    function setBattleBackground(win) {
+        var pageDrafter = document.getElementById('page-drafter');
+        var overlay = document.getElementById('dr-bg-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'dr-bg-overlay';
+            pageDrafter.insertBefore(overlay, pageDrafter.firstChild);
+        }
+        var newBg = win
+            ? 'radial-gradient(ellipse at 50% 20%, rgba(120,40,220,0.5) 0%, #0a0612 65%)'
+            : 'radial-gradient(ellipse at 50% 20%, rgba(180,20,20,0.5) 0%, #0a0612 65%)';
+        var currentOpacity = parseFloat(gsap.getProperty(overlay, 'opacity')) || 0;
+        if (currentOpacity < 0.1) {
+            overlay.style.background = newBg;
+            gsap.to(overlay, {opacity: 1, duration: 0.8, ease: 'power2.out'});
+        } else {
+            gsap.to(overlay, {opacity: 0.05, duration: 0.25, ease: 'power2.out', onComplete: function() {
+                overlay.style.background = newBg;
+                gsap.to(overlay, {opacity: 1, duration: 0.55, ease: 'power2.out'});
+            }});
+        }
+    }
+
+    // ── Шаг 1: 3 битвы линий ─────────────────────────────────────────────
+    async function playBattle(index, duel) {
+        var win = duel.win;
+
+        var dotsHtml = duels.map(function(_, d) {
+            return '<div class="dr-dot' + (d === index ? ' dr-dot-active' : '') + '" id="dr-dot-' + d + '"></div>';
+        }).join('');
+
+        gsap.set(battleScreen, {clearProps: 'backgroundColor,x'});
+        battleScreen.innerHTML = (
+            '<canvas id="dr-particles-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;"></canvas>' +
+            '<div class="dr-b-header">' +
+                '<div class="dr-b-num">БИТВА ' + (index + 1) + ' ИЗ ' + duels.length + '</div>' +
+                '<div class="dr-b-name">' + duel.name.toUpperCase() + '</div>' +
+            '</div>' +
+            '<div class="dr-b-arena">' +
+                '<div class="dr-b-side dr-b-ally" id="dr-side-ally">' +
+                    (duel.ally_heroes || []).map(function(h) {
+                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-ally" onerror="this.style.display=\'none\'">';
+                    }).join('') +
+                '</div>' +
+                '<div class="dr-b-center-icon" id="dr-result-icon" style="opacity:0;"></div>' +
+                '<div class="dr-b-side dr-b-enemy" id="dr-side-enemy">' +
+                    (duel.enemy_heroes || []).map(function(h) {
+                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-enemy" onerror="this.style.display=\'none\'">';
+                    }).join('') +
+                '</div>' +
+            '</div>' +
+            '<div class="dr-hbar-wrap">' +
+                '<div class="dr-hbar-ally"  id="dr-hbar-ally"  style="width:50%"></div>' +
+                '<div class="dr-hbar-enemy" id="dr-hbar-enemy" style="width:50%"></div>' +
+            '</div>' +
+            '<div class="dr-b-result-text" id="dr-b-result-text"></div>' +
+            '<div class="dr-dots">' + dotsHtml + '</div>'
+        );
+
+        var allyEls    = Array.from(document.querySelectorAll('#dr-side-ally .dr-b-avatar'));
+        var enemyEls   = Array.from(document.querySelectorAll('#dr-side-enemy .dr-b-avatar'));
+        var resultIcon = document.getElementById('dr-result-icon');
+        var hbarAlly   = document.getElementById('dr-hbar-ally');
+        var hbarEnemy  = document.getElementById('dr-hbar-enemy');
+        var resultText = document.getElementById('dr-b-result-text');
+
+        gsap.set(allyEls,  {x: -30, opacity: 0});
+        gsap.set(enemyEls, {x:  30, opacity: 0});
+
+        await sleep(400);
+
+        // Герои появляются
+        gsap.to(allyEls,  {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
+        gsap.to(enemyEls, {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
+
+        await sleep(300);
+
+        // Сближение
+        gsap.to(allyEls,  {x:  18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
+        gsap.to(enemyEls, {x: -18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
+
+        await sleep(400);
+
+        // Удар: частицы + shake + отдача
+        spawnParticles(win);
+        gsap.to('#dr-battle-screen', {x: -7, duration: 0.05, yoyo: true, repeat: 7, ease: 'none',
+            onComplete: function() { gsap.set('#dr-battle-screen', {x: 0}); }});
+        gsap.to(allyEls,  {x: -3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
+        gsap.to(enemyEls, {x:  3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
+
+        await sleep(150);
+
+        // Шкала + фон страницы + текст
+        gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 0.9, ease: 'power2.out'});
+        gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 0.9, ease: 'power2.out'});
+        setBattleBackground(win);
+        if (resultText) {
+            resultText.textContent = win ? 'Доминирование на линии' : 'Сложная линия для нас';
+            gsap.fromTo(resultText, {opacity: 0, y: 8}, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
+        }
+
+        await sleep(900);
+
+        // Герои возвращаются
+        gsap.to(allyEls.concat(enemyEls), {x: 0, scale: 1, duration: 0.3, ease: 'back.out(1)'});
+
+        // SVG иконка результата
+        if (resultIcon) {
+            resultIcon.innerHTML = win ? WIN_SVG : LOSS_SVG;
+            if (win) {
+                gsap.fromTo(resultIcon, {scale: 0, opacity: 0}, {scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)'});
+            } else {
+                gsap.fromTo(resultIcon, {y: -30, opacity: 0}, {y: 0, opacity: 1, duration: 0.4, ease: 'power2.out'});
+            }
+        }
+
+        var dot = document.getElementById('dr-dot-' + index);
+        if (dot) dot.className = 'dr-dot ' + (win ? 'dr-dot-win' : 'dr-dot-loss');
+
+        await sleep(600);
+    }
+
+    async function runBattles() {
+        for (var i = 0; i < duels.length; i++) {
+            await playBattle(i, duels[i]);
+        }
+        gsap.set(battleScreen, {clearProps: 'x'});
+        battleScreen.style.display = 'none';
+        showFinal();
+    }
+
+    // ── Шаг 2: финальный экран ───────────────────────────────────────────
+    function showFinal() {
+        var _sfOverlay = document.getElementById('dr-bg-overlay');
+        if (_sfOverlay) gsap.to(_sfOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
+
+        var total = Math.round(data.total_score || 0);
+        var rank, rankColor, rankDesc, rankGlow;
+        if (total >= 95) {
+            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
+        } else if (total >= 80) {
+            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
+        } else if (total >= 60) {
+            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';               rankGlow = false;
+        } else if (total >= 40) {
+            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
+        } else {
+            rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
+        }
+
+        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
+        var isRecord = total > best;
+        if (isRecord) {
+            localStorage.setItem('drafter_best_score', total);
+            var bestLabel = document.getElementById('drafter-best-score');
+            if (bestLabel) bestLabel.textContent = total;
+        }
+
+        // ── Битвы линий ──────────────────────────────────────────────────
+        var laneCardsHtml = duels.map(function(duel) {
+            var synColor = duel.win ? '#10b981' : '#ef4444';
+            var absSyn   = Math.abs(duel.synergy || 0);
+            var pct      = Math.min(95, Math.max(15, 50 + absSyn * 4));
+            var pctRound = Math.round(pct);
+
+            var allyAvatars = (duel.ally_heroes || []).map(function(h) {
+                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
+            }).join('');
+            var enemyAvatars = (duel.enemy_heroes || []).map(function(h) {
+                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
+            }).join('');
+
+            // Победившая половина: наша (левая) если win, вражеская (правая) если нет
+            var allyFillHtml  = duel.win
+                ? '<div class="lane-ally-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#10b981;"></div>'
+                : '';
+            var enemyFillHtml = !duel.win
+                ? '<div class="lane-enemy-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#ef4444;"></div>'
+                : '';
+
+            // Подпись: одно число, прижатое к победившей стороне
+            var labelHtml = duel.win
+                ? '<span class="lane-bar-val" style="color:#10b981;">' + pctRound + '%</span><span></span>'
+                : '<span></span><span class="lane-bar-val" style="color:#ef4444;text-align:right;">' + pctRound + '%</span>';
+
+            return (
+                '<div class="lane-card">' +
+                    '<div class="lane-header">' +
+                        '<span style="font-size:11px;font-weight:700;color:#e5e7eb;">' + duel.name + '</span>' +
+                        '<span style="font-size:11px;font-weight:700;color:' + synColor + ';">' + (duel.synergy != null ? duel.synergy.toFixed(2) : '\u2014') + '</span>' +
+                    '</div>' +
+                    '<div class="lane-teams">' +
+                        '<div class="lane-team">' +
+                            '<div class="lane-team-label">\u041c\u042b</div>' +
+                            '<div class="lane-heroes">' + allyAvatars + '</div>' +
+                        '</div>' +
+                        '<div class="lane-team right">' +
+                            '<div class="lane-team-label" style="text-align:right;">\u0412\u0420\u0410\u0413\u0418</div>' +
+                            '<div class="lane-heroes">' + enemyAvatars + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="lane-bar-center">' +
+                        '<div class="lane-bar-ally-half">' + allyFillHtml + '</div>' +
+                        '<div class="lane-bar-enemy-half">' + enemyFillHtml + '</div>' +
+                    '</div>' +
+                    '<div class="lane-bar-labels">' + labelHtml + '</div>' +
+                '</div>'
+            );
+        }).join('');
+
+        // ── Ключевые матчапы ─────────────────────────────────────────────
+        var comments = data.comments || [];
+        var matchupCardsHtml = comments.slice(0, 4).map(function(c) {
+            if (c.kind === 'synergy') {
+                var n1   = _name(c.hero_id1);
+                var n2   = _name(c.hero_id2);
+                var sign = c.value >= 0 ? '+' : '';
+                return (
+                    '<div class="matchup-card" style="border-left:2px solid #8b5cf6;background:rgba(139,92,246,0.08);">' +
+                        '<div class="mc-heroes">' +
+                            '<div class="mc-av"><img src="' + _icon(c.hero_id1) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                            '<span class="mc-sep">+</span>' +
+                            '<div class="mc-av"><img src="' + _icon(c.hero_id2) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                        '</div>' +
+                        '<div class="mc-info">' +
+                            '<div class="mc-text">' + n1 + ' + ' + n2 + '</div>' +
+                            '<div style="font-size:8px;color:#8b5cf6;">\u0421\u0438\u043d\u0435\u0440\u0433\u0438\u044f</div>' +
+                        '</div>' +
+                        '<div class="mc-val" style="color:#8b5cf6;">' + sign + c.value.toFixed(1) + '</div>' +
+                    '</div>'
+                );
+            }
+            if (c.kind === 'matchup') {
+                var allyName  = _name(c.ally_hero_id);
+                var enemyName = _name(c.enemy_hero_id);
+                if (c.value > 0) {
+                    return (
+                        '<div class="matchup-card" style="border-left:2px solid #10b981;background:rgba(16,185,129,0.08);">' +
+                            '<div class="mc-heroes">' +
+                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                                '<span class="mc-sep">vs</span>' +
+                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                            '</div>' +
+                            '<div class="mc-info">' +
+                                '<div class="mc-text">' + allyName + ' \u043a\u043e\u043d\u0442\u0440\u0438\u0442</div>' +
+                                '<div style="font-size:8px;color:#10b981;">' + enemyName + '</div>' +
+                            '</div>' +
+                            '<div class="mc-val" style="color:#10b981;">+' + c.value.toFixed(1) + '</div>' +
+                        '</div>'
+                    );
+                } else {
+                    return (
+                        '<div class="matchup-card" style="border-left:2px solid #ef4444;background:rgba(239,68,68,0.08);">' +
+                            '<div class="mc-heroes">' +
+                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                                '<span class="mc-sep">vs</span>' +
+                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                            '</div>' +
+                            '<div class="mc-info">' +
+                                '<div class="mc-text">' + allyName + ' \u043f\u0440\u043e\u0438\u0433\u0440\u044b\u0432\u0430\u0435\u0442</div>' +
+                                '<div style="font-size:8px;color:#ef4444;">' + enemyName + '</div>' +
+                            '</div>' +
+                            '<div class="mc-val" style="color:#ef4444;">' + c.value.toFixed(1) + '</div>' +
+                        '</div>'
+                    );
+                }
+            }
+            return '';
+        }).join('');
+
+        var warnComment = comments.find(function(c) { return c.type === 'warn' && c.kind === 'position'; });
+        var warnCardHtml = '';
+        if (warnComment && warnComment.hero_ids && warnComment.hero_ids.length > 0) {
+            var avatarsHtml = warnComment.hero_ids.map(function(hid) {
+                return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
+            }).join('');
+            var warnPenalty = -(warnComment.hero_ids.length * 5);
+            warnCardHtml = (
+                '<div class="matchup-card" style="border-left:2px solid #f59e0b;background:rgba(245,158,11,0.08);">' +
+                    '<div class="mc-heroes">' + avatarsHtml + '</div>' +
+                    '<div class="mc-info">' +
+                        '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
+                    '</div>' +
+                    '<div class="mc-val" style="color:#f59e0b;">' + warnPenalty + '</div>' +
+                '</div>'
+            );
+        }
+
+        finalScreen.style.display = 'block';
+        finalScreen.innerHTML = (
+            '<div class="dr-fin-wrap">' +
+                '<div class="dr-fin-rank-wrap" style="display:flex;flex-direction:column;align-items:center;width:100%;">' +
+                    '<div class="dr-fin-rank-label">\u0422\u0412\u041e\u042f \u041e\u0426\u0415\u041d\u041a\u0410</div>' +
+                    '<div class="dr-fin-letter" id="dr-fin-letter" style="color:' + rankColor + ';opacity:0;">' + rank + '</div>' +
+                    (isRecord ? '<div class="dr-fin-record">\ud83c\udfc6 \u041d\u043e\u0432\u044b\u0439 \u0440\u0435\u043a\u043e\u0440\u0434!</div>' : '') +
+                    '<div class="dr-fin-desc">' + rankDesc + '</div>' +
+                '</div>' +
+                '<div style="width:100%;margin-bottom:6px;">' +
+                    '<div class="dr-fin-block-title">\u0411\u0418\u0422\u0412\u042b \u041b\u0418\u041d\u0418\u0419</div>' +
+                    '<div>' + laneCardsHtml + '</div>' +
+                '</div>' +
+                (matchupCardsHtml || warnCardHtml ? (
+                    '<div style="width:100%;margin-bottom:6px;">' +
+                        '<div class="dr-fin-block-title">\u041a\u041b\u042e\u0427\u0415\u0412\u042b\u0415 \u041c\u0410\u0422\u0427\u0410\u041f\u042b</div>' +
+                        '<div>' + matchupCardsHtml + warnCardHtml + '</div>' +
+                    '</div>'
+                ) : '') +
+                '<button class="dr-fin-btn" id="dr-fin-btn" onclick="loadDrafterMatch()">\u27f3 \u041d\u041e\u0412\u042b\u0419 \u041c\u0410\u0422\u0427</button>' +
+            '</div>'
+        );
+
+        // Анимация прогресс-баров — только победившая половина
+        Array.from(finalScreen.querySelectorAll('.lane-card')).forEach(function(card, i) {
+            var fill = card.querySelector('.lane-ally-fill') || card.querySelector('.lane-enemy-fill');
+            if (!fill) return;
+            var pct      = parseFloat(fill.getAttribute('data-pct'));
+            var barDelay = 0.3 + (2 + i) * 0.12 + 0.4;
+            gsap.fromTo(fill, {width: '0%'}, {width: pct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
+        });
+
+        // Буква — отдельная pop-анимация (rank-pop)
+        var letterEl = document.getElementById('dr-fin-letter');
+        gsap.fromTo(letterEl,
+            {scale: 0.05, opacity: 0},
+            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)', delay: 0.5, onComplete: function() {
+                if (rankGlow) {
+                    gsap.to(letterEl, {textShadow: '0 0 30px rgba(251,191,36,0.9)', yoyo: true, repeat: -1, duration: 1.5, ease: 'sine.inOut'});
+                }
+            }}
+        );
+
+        // Stagger-анимация в DOM-порядке — охватывает все видимые элементы включая заголовки секций
+        var animEls = Array.from(finalScreen.querySelectorAll(
+            '.dr-fin-rank-wrap, .dr-fin-block-title, .lane-card, .matchup-card, #dr-fin-btn'
+        ));
+        gsap.fromTo(animEls,
+            {opacity: 0, y: 16},
+            {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
+        );
+    }
+
+    runBattles();
+}
+
+function _drafterCommentText(c) {
+    var name1, name2;
+    if (c.kind === 'synergy') {
+        name1 = _drafterHeroName(c.hero_id1) || ('Герой #' + c.hero_id1);
+        name2 = _drafterHeroName(c.hero_id2) || ('Герой #' + c.hero_id2);
+        var sign = c.value >= 0 ? '+' : '';
+        return 'Хорошая синергия: ' + name1 + ' + ' + name2 + ' (' + sign + c.value.toFixed(1) + ')';
+    }
+    if (c.kind === 'matchup') {
+        name1 = _drafterHeroName(c.ally_hero_id) || ('Герой #' + c.ally_hero_id);
+        name2 = _drafterHeroName(c.enemy_hero_id) || ('Герой #' + c.enemy_hero_id);
+        return name1 + ' проигрывает вражескому ' + name2 + ' (' + c.value.toFixed(1) + ')';
+    }
+    if (c.kind === 'position') {
+        name1 = _drafterHeroName(c.hero_id) || ('Герой #' + c.hero_id);
+        return name1 + ' На нетипичной позиции';
+    }
+    return '';
+}
 
