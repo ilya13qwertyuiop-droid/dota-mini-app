@@ -3121,6 +3121,27 @@ function hideDrafterListView() {
     document.getElementById('drafter-draft-content').style.display = 'block';
 }
 
+function _draftRankColor(rank) {
+    return rank === 'SSS' || rank === 'S' ? '#fbbf24'
+         : rank === 'A' ? '#a78bfa'
+         : rank === 'B' ? '#60a5fa'
+         : '#9ca3af';
+}
+
+function _draftFormatDate(isoStr) {
+    if (!isoStr) return '';
+    var d = new Date(isoStr);
+    var now = new Date();
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var yesterdayStart = new Date(todayStart - 86400000);
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    var months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+    if (d >= todayStart) return 'сегодня ' + hh + ':' + mm;
+    if (d >= yesterdayStart) return 'вчера ' + hh + ':' + mm;
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + hh + ':' + mm;
+}
+
 async function showDrafterHistory() {
     if (!USER_TOKEN) {
         _showDrafterListView(
@@ -3143,12 +3164,14 @@ async function showDrafterHistory() {
         var rows = await resp.json();
         var listHtml = rows.length === 0
             ? '<div style="color:var(--text-muted);font-size:13px;">Нет сохранённых драфтов</div>'
-            : rows.map(function(r, i) {
-                var dt = r.created_at ? r.created_at.slice(0, 16).replace('T', ' ') : '';
+            : rows.map(function(r) {
+                var color = _draftRankColor(r.rank);
+                var dt = _draftFormatDate(r.created_at);
                 return (
-                    '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
-                        '<div style="color:var(--text-muted);font-size:12px;">' + (i + 1) + '. ' + dt + '</div>' +
-                        '<div style="font-size:15px;font-weight:700;color:var(--accent);">' + r.total_score + '</div>' +
+                    '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+                        '<div style="font-size:20px;font-weight:800;color:' + color + ';width:36px;text-align:center;flex-shrink:0;">' + r.rank + '</div>' +
+                        '<div style="flex:1;font-size:12px;color:var(--text-muted);">' + dt + '</div>' +
+                        '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
                     '</div>'
                 );
             }).join('');
@@ -3183,21 +3206,29 @@ async function showDrafterLeaderboard() {
         var listHtml = rows.length === 0
             ? '<div style="color:var(--text-muted);font-size:13px;">Пока нет участников (нужно минимум 5 драфтов)</div>'
             : rows.map(function(r) {
-                var medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : r.rank + '.';
-                var name = r.username ? '@' + r.username : 'Игрок ' + r.user_id;
+                var medal = r.rank === 1 ? '\uD83E\uDD47' : r.rank === 2 ? '\uD83E\uDD48' : r.rank === 3 ? '\uD83E\uDD49' : '';
+                var placeHtml = medal
+                    ? '<div style="width:28px;font-size:18px;text-align:center;flex-shrink:0;">' + medal + '</div>'
+                    : '<div style="width:28px;font-size:11px;font-weight:700;color:var(--text-muted);text-align:center;flex-shrink:0;">' + r.rank + '</div>';
+                var avatarHtml = r.photo_url
+                    ? '<img src="' + r.photo_url + '" width="28" height="28" style="border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'">'
+                    : '<div style="width:28px;height:28px;border-radius:50%;background:rgba(192,132,252,0.25);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#c084fc;flex-shrink:0;">' + (r.username || '?').charAt(0).toUpperCase() + '</div>';
                 return (
                     '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
-                        '<div style="width:26px;font-size:14px;text-align:center;">' + medal + '</div>' +
-                        '<div style="flex:1;font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + '</div>' +
-                        '<div style="font-size:13px;color:var(--text-muted);margin-right:8px;white-space:nowrap;">' + r.draft_count + ' др.</div>' +
-                        '<div style="font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap;">' + r.avg_score + '</div>' +
+                        placeHtml +
+                        avatarHtml +
+                        '<div style="flex:1;min-width:0;">' +
+                            '<div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + r.username + '</div>' +
+                            '<div style="font-size:10px;color:var(--text-muted);">' + r.draft_count + ' драфтов</div>' +
+                        '</div>' +
+                        '<div style="font-size:18px;font-weight:800;color:#c084fc;white-space:nowrap;">' + r.avg_score + '</div>' +
                     '</div>'
                 );
             }).join('');
         _showDrafterListView(
             '<div style="padding:16px;">' +
                 '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-                '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">ТОП ДРАФТЕРОВ</div>' +
+                '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412</div>' +
                 listHtml +
             '</div>'
         );
