@@ -2722,6 +2722,127 @@ margin-top: 14px;
   border-color: rgba(192,132,252,0.6);
 }
 
+/* ── Полноэкранные страницы (история / топ драфтеров) ─────────── */
+.drafter-fullpage {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: #06000c;
+  overflow-y: auto;
+  padding-bottom: 40px;
+}
+
+.drafter-fp-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 16px 14px;
+}
+
+.drafter-fp-back {
+  background: rgba(192,132,252,0.1);
+  border: 1px solid rgba(192,132,252,0.25);
+  border-radius: 8px;
+  padding: 5px 12px;
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.drafter-fp-title {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1.5px;
+}
+
+/* занимает то же место что кнопка «назад», чтобы заголовок был по центру */
+.drafter-fp-spacer {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.drafter-fp-content {
+  padding: 0 16px;
+}
+
+/* ── Карточки истории ──────────────────────────────────────────── */
+.drafter-hist-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+/* ── Строки лидерборда ─────────────────────────────────────────── */
+.drafter-lb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.drafter-lb-place {
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.drafter-lb-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.drafter-lb-avatar-letter {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.drafter-lb-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.drafter-lb-name {
+  font-size: 13px;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drafter-lb-count {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 1px;
+}
+
+.drafter-lb-score {
+  font-size: 18px;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .drafter-teams {
   margin: 0 12px 12px;
   display: flex;
