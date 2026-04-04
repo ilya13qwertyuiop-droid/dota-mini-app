@@ -3233,9 +3233,9 @@ async function showDrafterHistory() {
     }
 }
 
-var _LB_SVG_STAR   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
-var _LB_SVG_SILVER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><line x1="7" y1="12" x2="17" y2="12" stroke="#94a3b8" stroke-width="2.5"/></svg>';
-var _LB_SVG_SHIELD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#b45309" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>';
+var _LB_ICON_1 = '<span style="color:#fbbf24;font-size:14px;">&#9733;</span>';
+var _LB_ICON_2 = '<span style="color:#94a3b8;font-size:12px;font-weight:700;">2</span>';
+var _LB_ICON_3 = '<span style="color:#b45309;font-size:12px;font-weight:700;">3</span>';
 
 function _lbAvatarColors(rank) {
     if (rank === 1) return { bg: 'rgba(251,191,36,0.2)',  text: '#fbbf24' };
@@ -3255,7 +3255,7 @@ function _renderLeaderboardRows(rows, page, PAGE_ID) {
     var rowsHtml = rows.length === 0
         ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников (нужно минимум 5 драфтов)</div>'
         : rows.map(function(r) {
-            var placeIcon = r.rank === 1 ? _LB_SVG_STAR : r.rank === 2 ? _LB_SVG_SILVER : r.rank === 3 ? _LB_SVG_SHIELD
+            var placeIcon = r.rank === 1 ? _LB_ICON_1 : r.rank === 2 ? _LB_ICON_2 : r.rank === 3 ? _LB_ICON_3
                 : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
             var rowCls = 'drafter-lb-row' + (r.rank === 1 ? ' drafter-lb-row--top1' : r.rank === 2 ? ' drafter-lb-row--top2' : r.rank === 3 ? ' drafter-lb-row--top3' : '');
             var ac = _lbAvatarColors(r.rank);
