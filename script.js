@@ -3439,12 +3439,14 @@ function showDrafterResult(data) {
             var avatarsHtml = warnComment.hero_ids.map(function(hid) {
                 return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
             }).join('');
+            var warnPenalty = -(warnComment.hero_ids.length * 5);
             warnCardHtml = (
                 '<div class="matchup-card" style="border-left:2px solid #f59e0b;background:rgba(245,158,11,0.08);">' +
                     '<div class="mc-heroes">' + avatarsHtml + '</div>' +
                     '<div class="mc-info">' +
                         '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
                     '</div>' +
+                    '<div class="mc-val" style="color:#f59e0b;">' + warnPenalty + '</div>' +
                 '</div>'
             );
         }
@@ -3520,7 +3522,7 @@ function _drafterCommentText(c) {
     }
     if (c.kind === 'position') {
         name1 = _drafterHeroName(c.hero_id) || ('Герой #' + c.hero_id);
-        return name1 + ' на нетипичной позиции';
+        return name1 + ' На нетипичной позиции';
     }
     return '';
 }
