@@ -3340,7 +3340,7 @@ function showDrafterResult(data) {
                 '<div class="lane-card">' +
                     '<div class="lane-header">' +
                         '<span style="font-size:11px;font-weight:700;color:#e5e7eb;">' + duel.name + '</span>' +
-                        '<span style="font-size:11px;font-weight:700;color:' + synColor + ';">' + (duel.synergy != null ? duel.synergy.toFixed(1) : '\u2014') + '</span>' +
+                        '<span style="font-size:11px;font-weight:700;color:' + synColor + ';">' + (duel.synergy != null ? duel.synergy.toFixed(2) : '\u2014') + '</span>' +
                     '</div>' +
                     '<div class="lane-teams">' +
                         '<div class="lane-team">' +
@@ -3357,7 +3357,7 @@ function showDrafterResult(data) {
                             '<div class="lane-bar-track"><div class="lane-bar-fill" style="width:' + allyPct + '%;background:' + barAllyColor + ';"></div></div>' +
                             '<div class="lane-bar-val" style="color:' + barAllyColor + ';">' + allyPct + '%</div>' +
                         '</div>' +
-                        '<div class="lane-bar-side" style="align-items:flex-end;">' +
+                        '<div class="lane-bar-side">' +
                             '<div class="lane-bar-track right"><div class="lane-bar-fill" style="width:' + enemyPct + '%;background:' + barEnemyColor + ';"></div></div>' +
                             '<div class="lane-bar-val" style="color:' + barEnemyColor + ';text-align:right;">' + enemyPct + '%</div>' +
                         '</div>' +
@@ -3460,19 +3460,11 @@ function showDrafterResult(data) {
             }}
         );
 
-        // Stagger-анимация всех блоков снизу вверх
-        var elements = [
-            '.dr-fin-rank-wrap',
-            '.lane-card:nth-child(1)',
-            '.lane-card:nth-child(2)',
-            '.lane-card:nth-child(3)',
-            '.matchup-card:nth-child(1)',
-            '.matchup-card:nth-child(2)',
-            '.matchup-card:nth-child(3)',
-            '.matchup-card:nth-child(4)',
-            '#dr-fin-btn'
-        ];
-        gsap.fromTo(elements,
+        // Stagger-анимация в DOM-порядке — охватывает все видимые элементы включая заголовки секций
+        var animEls = Array.from(finalScreen.querySelectorAll(
+            '.dr-fin-rank-wrap, .dr-fin-block-title, .lane-card, .matchup-card, #dr-fin-btn'
+        ));
+        gsap.fromTo(animEls,
             {opacity: 0, y: 16},
             {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
         );
