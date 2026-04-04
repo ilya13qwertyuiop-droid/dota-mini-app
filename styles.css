@@ -3131,7 +3131,9 @@ margin-top: 14px;
   padding: 28px 16px 80px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dr-fin-rank-label {
@@ -3270,7 +3272,7 @@ margin-top: 14px;
 #drafter-refresh-btn { font-size: 9px; color: #6b7280; background: transparent; border: 1px solid #2d1f4a; border-radius: 6px; padding: 3px 7px; cursor: pointer; line-height: 1; }
 
 /* ── Финальный экран — битвы линий ──────────────────────────────── */
-.lane-card { background: #0f0a1a; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
+.lane-card { background: #0f0a1a; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; width: 100%; box-sizing: border-box; }
 .lane-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
 .lane-teams { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
 .lane-team { display: flex; flex-direction: column; gap: 3px; }
@@ -3278,7 +3280,6 @@ margin-top: 14px;
 .lane-team-label { font-size: 7px; color: #6b7280; letter-spacing: 1px; }
 .lane-heroes { display: flex; gap: 3px; }
 .lane-avatar { width: 24px; height: 24px; border-radius: 4px; overflow: hidden; }
-.lane-card { width: 100%; }
 .lane-bar-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
 .lane-bar-side { display: flex; flex-direction: column; gap: 2px; }
 .lane-bar-track { height: 4px; border-radius: 2px; background: #1a1025; overflow: hidden; }
