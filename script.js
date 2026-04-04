@@ -2662,11 +2662,11 @@ function openDonationAlerts() {
 var _metaCache = null;
 
 var _META_POS_LABELS = {
-    'POSITION_1': 'Pos 1 · Керри',
-    'POSITION_2': 'Pos 2 · Мид',
-    'POSITION_3': 'Pos 3 · Оффлейн',
-    'POSITION_4': 'Pos 4 · Частичная поддержка',
-    'POSITION_5': 'Pos 5 · Поддержка',
+    'POSITION_1': 'КЕРРИ',
+    'POSITION_2': 'МИД',
+    'POSITION_3': 'ОФФЛЕЙН',
+    'POSITION_4': 'ЧЕТВЁРКА',
+    'POSITION_5': 'ПЯТЁРКА',
 };
 
 var _META_POS_IMG = {
@@ -2707,48 +2707,49 @@ function _metaHeroClick(heroName) {
 }
 
 function _renderMeta(data) {
-    var patchLabel = document.getElementById('meta-patch-label');
-    if (patchLabel) {
-        patchLabel.textContent = data.patch || '7.41';
-    }
     var posContainer = document.getElementById('meta-positions');
     if (!posContainer) return;
 
+    var patch = data.patch || '7.41';
     var positions = data.positions || {};
     var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
-    var html = '';
 
-    posOrder.forEach(function(posKey) {
+    var html = '<div class="meta-top-bar">';
+    html += '<div class="meta-top-title">МЕТА ПАТЧА</div>';
+    html += '<div class="meta-top-patch">' + patch + '</div>';
+    html += '</div>';
+
+    posOrder.forEach(function(posKey, posIdx) {
         var heroes = positions[posKey];
         if (!heroes || !heroes.length) return;
 
         var label = _META_POS_LABELS[posKey] || posKey;
         var imgSrc = _META_POS_IMG[posKey] || '';
 
-        html += '<div class="meta-pos-section">';
+        html += '<div class="meta-pos-block">';
         html += '<div class="meta-pos-header">';
-        html += '<img class="meta-pos-icon-img" src="' + imgSrc + '" alt="" onerror="this.style.display=\'none\'">';
-        html += '<span class="meta-pos-label">' + label + '</span>';
+        html += '<img src="' + imgSrc + '" class="meta-pos-icon" alt="">';
+        html += '<div class="meta-pos-label">' + label + '</div>';
         html += '</div>';
-        html += '<div class="meta-heroes-scroll">';
+        html += '<div class="meta-heroes-row">';
 
-        heroes.forEach(function(hero, idx) {
+        heroes.slice(0, 5).forEach(function(hero) {
             var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[hero.hero_id]) || ('Hero #' + hero.hero_id);
             var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
             var wrPct = Math.round(hero.win_rate * 100);
-            var isTop = idx === 0;
             var escapedName = heroName.replace(/'/g, "\\'");
 
-            html += '<div class="meta-hero-card' + (isTop ? ' meta-hero-card--top' : '') + '"';
-            html += ' style="animation-delay:' + (idx * 80) + 'ms"';
-            html += ' onclick="_metaHeroClick(\'' + escapedName + '\')">';
-            html += '<div class="meta-hero-avatar-wrap"><img class="meta-hero-avatar" src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
-            html += '<div class="meta-hero-name">' + heroName + '</div>';
+            html += '<div class="meta-hero-item" onclick="_metaHeroClick(\'' + escapedName + '\')">';
+            html += '<div class="meta-hero-avatar"><img src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
             html += '<div class="meta-hero-wr">' + wrPct + '%</div>';
             html += '</div>';
         });
 
         html += '</div></div>';
+
+        if (posIdx < posOrder.length - 1) {
+            html += '<div class="meta-divider"></div>';
+        }
     });
 
     posContainer.innerHTML = html;
