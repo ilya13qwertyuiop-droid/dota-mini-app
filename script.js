@@ -3323,11 +3323,10 @@ function showDrafterResult(data) {
 
         // ── Битвы линий ──────────────────────────────────────────────────
         var laneCardsHtml = duels.map(function(duel) {
-            var synColor      = duel.win ? '#4ade80' : '#f87171';
-            var allyPct       = duel.win ? 65 : 35;
-            var enemyPct      = duel.win ? 35 : 65;
-            var barAllyColor  = duel.win ? '#4ade80' : '#f87171';
-            var barEnemyColor = duel.win ? '#f87171' : '#4ade80';
+            var synColor = duel.win ? '#10b981' : '#ef4444';
+            var absSyn   = Math.abs(duel.synergy || 0);
+            var pct      = Math.min(95, Math.max(15, 50 + absSyn * 4));
+            var pctRound = Math.round(pct);
 
             var allyAvatars = (duel.ally_heroes || []).map(function(h) {
                 return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
@@ -3335,6 +3334,19 @@ function showDrafterResult(data) {
             var enemyAvatars = (duel.enemy_heroes || []).map(function(h) {
                 return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
             }).join('');
+
+            // Победившая половина: наша (левая) если win, вражеская (правая) если нет
+            var allyFillHtml  = duel.win
+                ? '<div class="lane-ally-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#10b981;"></div>'
+                : '';
+            var enemyFillHtml = !duel.win
+                ? '<div class="lane-enemy-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#ef4444;"></div>'
+                : '';
+
+            // Подпись: одно число, прижатое к победившей стороне
+            var labelHtml = duel.win
+                ? '<span class="lane-bar-val" style="color:#10b981;">' + pctRound + '%</span><span></span>'
+                : '<span></span><span class="lane-bar-val" style="color:#ef4444;text-align:right;">' + pctRound + '%</span>';
 
             return (
                 '<div class="lane-card">' +
@@ -3353,17 +3365,10 @@ function showDrafterResult(data) {
                         '</div>' +
                     '</div>' +
                     '<div class="lane-bar-center">' +
-                        '<div class="lane-bar-ally-half">' +
-                            '<div class="lane-ally-fill" data-pct="' + allyPct + '" style="width:0%;height:100%;background:' + barAllyColor + ';"></div>' +
-                        '</div>' +
-                        '<div class="lane-bar-enemy-half">' +
-                            '<div class="lane-enemy-fill" data-pct="' + enemyPct + '" style="width:0%;height:100%;background:' + barEnemyColor + ';"></div>' +
-                        '</div>' +
+                        '<div class="lane-bar-ally-half">' + allyFillHtml + '</div>' +
+                        '<div class="lane-bar-enemy-half">' + enemyFillHtml + '</div>' +
                     '</div>' +
-                    '<div class="lane-bar-labels">' +
-                        '<span class="lane-bar-val" style="color:' + barAllyColor + ';">' + allyPct + '%</span>' +
-                        '<span class="lane-bar-val" style="color:' + barEnemyColor + ';">' + enemyPct + '%</span>' +
-                    '</div>' +
+                    '<div class="lane-bar-labels">' + labelHtml + '</div>' +
                 '</div>'
             );
         }).join('');
@@ -3451,16 +3456,13 @@ function showDrafterResult(data) {
             '</div>'
         );
 
-        // Анимация прогресс-баров — запускаются после появления каждой карточки
+        // Анимация прогресс-баров — только победившая половина
         Array.from(finalScreen.querySelectorAll('.lane-card')).forEach(function(card, i) {
-            var allyFill  = card.querySelector('.lane-ally-fill');
-            var enemyFill = card.querySelector('.lane-enemy-fill');
-            if (!allyFill || !enemyFill) return;
-            var aPct     = parseFloat(allyFill.getAttribute('data-pct'));
-            var ePct     = parseFloat(enemyFill.getAttribute('data-pct'));
+            var fill = card.querySelector('.lane-ally-fill') || card.querySelector('.lane-enemy-fill');
+            if (!fill) return;
+            var pct      = parseFloat(fill.getAttribute('data-pct'));
             var barDelay = 0.3 + (2 + i) * 0.12 + 0.4;
-            gsap.fromTo(allyFill,  {width: '0%'}, {width: aPct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
-            gsap.fromTo(enemyFill, {width: '0%'}, {width: ePct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
+            gsap.fromTo(fill, {width: '0%'}, {width: pct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
         });
 
         // Буква — отдельная pop-анимация (rank-pop)
