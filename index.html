@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=53" />
+    <link rel="stylesheet" href="styles.css?v=54" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -432,7 +432,10 @@
           <!-- Два ряда составов: враги сверху, своя команда снизу -->
           <div class="drafter-teams">
             <div class="drafter-team-row">
-              <div class="drafter-team-title">ВРАГИ</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div class="drafter-team-title">ВРАГИ</div>
+                <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Обновить</button>
+              </div>
               <div class="drafter-slots-grid" id="drafter-enemy-slots"></div>
             </div>
             <div class="drafter-team-row">
@@ -700,6 +703,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=68"></script>
+    <script src="script.js?v=69"></script>
   </body>
 </html>
