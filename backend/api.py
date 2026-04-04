@@ -93,7 +93,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables
-from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult
+from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
 from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
@@ -1161,6 +1161,7 @@ class DraftHeroEntry(BaseModel):
 class DraftEvaluateRequest(BaseModel):
     enemy: list[DraftHeroEntry] = []
     ally: list[DraftHeroEntry] = []
+    token: str | None = None
 
 
 def _pos_str_to_num(pos: str) -> int | None:
@@ -1173,7 +1174,7 @@ def _pos_str_to_num(pos: str) -> int | None:
 
 
 @app.post("/api/draft/evaluate")
-async def api_draft_evaluate(data: DraftEvaluateRequest):
+async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)):
     """Evaluates a draft based on synergy, matchups, and position fit."""
     matchups = _load_hero_matchups_file() or {}
 
@@ -1304,6 +1305,13 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             "count": len(atypical_ids),
         })
 
+    # ── Сохраняем результат если передан токен ───────────────────────────────
+    if data.token:
+        uid = get_user_id_by_token(data.token)
+        if uid:
+            db.add(DBDraftResult(user_id=uid, total_score=round(total_score, 1)))
+            db.commit()
+
     return {
         "total_score": round(total_score, 1),
         "lane_score": round(lane_component, 2),
@@ -1313,3 +1321,64 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
         "duels": duels,
         "comments": comments,
     }
+
+
+@app.get("/api/draft/leaderboard")
+async def api_draft_leaderboard(db: Session = Depends(get_db)):
+    """Топ-25 пользователей по среднему total_score (минимум 5 драфтов)."""
+    from sqlalchemy import func
+
+    rows = (
+        db.query(
+            DBDraftResult.user_id,
+            func.avg(DBDraftResult.total_score).label("avg_score"),
+            func.count(DBDraftResult.id).label("draft_count"),
+        )
+        .group_by(DBDraftResult.user_id)
+        .having(func.count(DBDraftResult.id) >= 5)
+        .order_by(
+            func.avg(DBDraftResult.total_score).desc(),
+            func.count(DBDraftResult.id).desc(),
+        )
+        .limit(25)
+        .all()
+    )
+
+    result = []
+    for rank, row in enumerate(rows, 1):
+        profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == row.user_id).first()
+        username = None
+        if profile:
+            settings = profile.settings or {}
+            username = settings.get("username") or settings.get("first_name")
+        result.append({
+            "rank": rank,
+            "user_id": row.user_id,
+            "username": username,
+            "avg_score": round(row.avg_score, 1),
+            "draft_count": row.draft_count,
+        })
+    return result
+
+
+@app.get("/api/draft/history")
+async def api_draft_history(token: str, db: Session = Depends(get_db)):
+    """Последние 10 драфтов пользователя."""
+    user_id = get_user_id_by_token(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    rows = (
+        db.query(DBDraftResult)
+        .filter(DBDraftResult.user_id == user_id)
+        .order_by(DBDraftResult.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        {
+            "total_score": r.total_score,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]

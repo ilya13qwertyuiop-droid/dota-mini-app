@@ -3097,7 +3097,7 @@ async function submitDraft() {
         var resp = await fetch(window.API_BASE_URL + '/draft/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ally: ally, enemy: enemy })
+            body: JSON.stringify({ ally: ally, enemy: enemy, token: USER_TOKEN || null })
         });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
@@ -3105,6 +3105,109 @@ async function submitDraft() {
     } catch (e) {
         console.error('[drafter] submitDraft error:', e);
         alert('Ошибка при оценке драфта');
+    }
+}
+
+function _showDrafterListView(html) {
+    document.getElementById('drafter-draft-content').style.display = 'none';
+    var lv = document.getElementById('drafter-list-view');
+    lv.innerHTML = html;
+    lv.style.display = 'block';
+}
+
+function hideDrafterListView() {
+    document.getElementById('drafter-list-view').style.display = 'none';
+    document.getElementById('drafter-list-view').innerHTML = '';
+    document.getElementById('drafter-draft-content').style.display = 'block';
+}
+
+async function showDrafterHistory() {
+    if (!USER_TOKEN) {
+        _showDrafterListView(
+            '<div style="padding:16px;">' +
+                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+                '<div style="color:var(--text-muted);font-size:13px;">Войдите, чтобы посмотреть историю</div>' +
+            '</div>'
+        );
+        return;
+    }
+    _showDrafterListView(
+        '<div style="padding:16px;">' +
+            '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+            '<div style="color:var(--text-muted);font-size:12px;">Загрузка...</div>' +
+        '</div>'
+    );
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var rows = await resp.json();
+        var listHtml = rows.length === 0
+            ? '<div style="color:var(--text-muted);font-size:13px;">Нет сохранённых драфтов</div>'
+            : rows.map(function(r, i) {
+                var dt = r.created_at ? r.created_at.slice(0, 16).replace('T', ' ') : '';
+                return (
+                    '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+                        '<div style="color:var(--text-muted);font-size:12px;">' + (i + 1) + '. ' + dt + '</div>' +
+                        '<div style="font-size:15px;font-weight:700;color:var(--accent);">' + r.total_score + '</div>' +
+                    '</div>'
+                );
+            }).join('');
+        _showDrafterListView(
+            '<div style="padding:16px;">' +
+                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+                '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">МОИ ДРАФТЫ</div>' +
+                listHtml +
+            '</div>'
+        );
+    } catch (e) {
+        _showDrafterListView(
+            '<div style="padding:16px;">' +
+                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+                '<div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div>' +
+            '</div>'
+        );
+    }
+}
+
+async function showDrafterLeaderboard() {
+    _showDrafterListView(
+        '<div style="padding:16px;">' +
+            '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+            '<div style="color:var(--text-muted);font-size:12px;">Загрузка...</div>' +
+        '</div>'
+    );
+    try {
+        var resp = await fetch(window.API_BASE_URL + '/draft/leaderboard');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var rows = await resp.json();
+        var listHtml = rows.length === 0
+            ? '<div style="color:var(--text-muted);font-size:13px;">Пока нет участников (нужно минимум 5 драфтов)</div>'
+            : rows.map(function(r) {
+                var medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : r.rank + '.';
+                var name = r.username ? '@' + r.username : 'Игрок ' + r.user_id;
+                return (
+                    '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+                        '<div style="width:26px;font-size:14px;text-align:center;">' + medal + '</div>' +
+                        '<div style="flex:1;font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + '</div>' +
+                        '<div style="font-size:13px;color:var(--text-muted);margin-right:8px;white-space:nowrap;">' + r.draft_count + ' др.</div>' +
+                        '<div style="font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap;">' + r.avg_score + '</div>' +
+                    '</div>'
+                );
+            }).join('');
+        _showDrafterListView(
+            '<div style="padding:16px;">' +
+                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+                '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">ТОП ДРАФТЕРОВ</div>' +
+                listHtml +
+            '</div>'
+        );
+    } catch (e) {
+        _showDrafterListView(
+            '<div style="padding:16px;">' +
+                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
+                '<div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div>' +
+            '</div>'
+        );
     }
 }
 
