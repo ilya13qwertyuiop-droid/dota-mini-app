@@ -3433,6 +3433,22 @@ function showDrafterResult(data) {
             return '';
         }).join('');
 
+        var warnComment = comments.find(function(c) { return c.type === 'warn' && c.kind === 'position'; });
+        var warnCardHtml = '';
+        if (warnComment && warnComment.hero_ids && warnComment.hero_ids.length > 0) {
+            var avatarsHtml = warnComment.hero_ids.map(function(hid) {
+                return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
+            }).join('');
+            warnCardHtml = (
+                '<div class="matchup-card" style="border-left:2px solid #f59e0b;background:rgba(245,158,11,0.08);">' +
+                    '<div class="mc-heroes">' + avatarsHtml + '</div>' +
+                    '<div class="mc-info">' +
+                        '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
+                    '</div>' +
+                '</div>'
+            );
+        }
+
         finalScreen.style.display = 'block';
         finalScreen.innerHTML = (
             '<div class="dr-fin-wrap">' +
@@ -3446,10 +3462,10 @@ function showDrafterResult(data) {
                     '<div class="dr-fin-block-title">\u0411\u0418\u0422\u0412\u042b \u041b\u0418\u041d\u0418\u0419</div>' +
                     '<div>' + laneCardsHtml + '</div>' +
                 '</div>' +
-                (matchupCardsHtml ? (
+                (matchupCardsHtml || warnCardHtml ? (
                     '<div style="width:100%;margin-bottom:6px;">' +
                         '<div class="dr-fin-block-title">\u041a\u041b\u042e\u0427\u0415\u0412\u042b\u0415 \u041c\u0410\u0422\u0427\u0410\u041f\u042b</div>' +
-                        '<div>' + matchupCardsHtml + '</div>' +
+                        '<div>' + matchupCardsHtml + warnCardHtml + '</div>' +
                     '</div>'
                 ) : '') +
                 '<button class="dr-fin-btn" id="dr-fin-btn" onclick="loadDrafterMatch()">\u27f3 \u041d\u041e\u0412\u042b\u0419 \u041c\u0410\u0422\u0427</button>' +
