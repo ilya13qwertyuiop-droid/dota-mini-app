@@ -3108,17 +3108,33 @@ async function submitDraft() {
     }
 }
 
-function _showDrafterListView(html) {
-    document.getElementById('drafter-draft-content').style.display = 'none';
-    var lv = document.getElementById('drafter-list-view');
-    lv.innerHTML = html;
-    lv.style.display = 'block';
+function hideDrafterFullpage(id) {
+    var el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
-function hideDrafterListView() {
-    document.getElementById('drafter-list-view').style.display = 'none';
-    document.getElementById('drafter-list-view').innerHTML = '';
-    document.getElementById('drafter-draft-content').style.display = 'block';
+function _drafterFpSkeleton(title, backId) {
+    return (
+        '<div class="drafter-fp-header">' +
+            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
+            '<div class="drafter-fp-title">' + title + '</div>' +
+            '<div class="drafter-fp-spacer"></div>' +
+        '</div>' +
+        '<div class="drafter-fp-content">' +
+            '<div style="color:#6b7280;font-size:12px;padding:8px 0;">Загрузка...</div>' +
+        '</div>'
+    );
+}
+
+function _drafterFpError(title, backId) {
+    return (
+        '<div class="drafter-fp-header">' +
+            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
+            '<div class="drafter-fp-title">' + title + '</div>' +
+            '<div class="drafter-fp-spacer"></div>' +
+        '</div>' +
+        '<div class="drafter-fp-content"><div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div></div>'
+    );
 }
 
 function _draftRankColor(rank) {
@@ -3142,103 +3158,120 @@ function _draftFormatDate(isoStr) {
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + hh + ':' + mm;
 }
 
+function _rankCardStyle(rank) {
+    if (rank === 'SSS' || rank === 'S') return 'background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);';
+    if (rank === 'A') return 'background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);';
+    if (rank === 'B') return 'background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);';
+    return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);';
+}
+
 async function showDrafterHistory() {
+    var PAGE_ID = 'drafter-history-page';
+    var page = document.getElementById(PAGE_ID);
+    page.innerHTML = _drafterFpSkeleton('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
+    page.style.display = 'block';
+
     if (!USER_TOKEN) {
-        _showDrafterListView(
-            '<div style="padding:16px;">' +
-                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-                '<div style="color:var(--text-muted);font-size:13px;">Войдите, чтобы посмотреть историю</div>' +
-            '</div>'
+        page.innerHTML = (
+            '<div class="drafter-fp-header">' +
+                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
+                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
+                '<div class="drafter-fp-spacer"></div>' +
+            '</div>' +
+            '<div class="drafter-fp-content"><div style="color:#6b7280;font-size:13px;">Войдите, чтобы посмотреть историю</div></div>'
         );
         return;
     }
-    _showDrafterListView(
-        '<div style="padding:16px;">' +
-            '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-            '<div style="color:var(--text-muted);font-size:12px;">Загрузка...</div>' +
-        '</div>'
-    );
     try {
         var resp = await fetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
-        var listHtml = rows.length === 0
-            ? '<div style="color:var(--text-muted);font-size:13px;">Нет сохранённых драфтов</div>'
+        var cardsHtml = rows.length === 0
+            ? '<div style="color:#6b7280;font-size:13px;">Нет сохранённых драфтов</div>'
             : rows.map(function(r) {
                 var color = _draftRankColor(r.rank);
+                var cardStyle = _rankCardStyle(r.rank);
                 var dt = _draftFormatDate(r.created_at);
                 return (
-                    '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
-                        '<div style="font-size:20px;font-weight:800;color:' + color + ';width:36px;text-align:center;flex-shrink:0;">' + r.rank + '</div>' +
-                        '<div style="flex:1;font-size:12px;color:var(--text-muted);">' + dt + '</div>' +
+                    '<div class="drafter-hist-card" style="' + cardStyle + '">' +
+                        '<div style="font-size:24px;font-weight:900;color:' + color + ';width:40px;text-align:center;flex-shrink:0;line-height:1;">' + r.rank + '</div>' +
+                        '<div style="flex:1;font-size:12px;color:#6b7280;">' + dt + '</div>' +
                         '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
                     '</div>'
                 );
             }).join('');
-        _showDrafterListView(
-            '<div style="padding:16px;">' +
-                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-                '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">МОИ ДРАФТЫ</div>' +
-                listHtml +
-            '</div>'
+        page.innerHTML = (
+            '<div class="drafter-fp-header">' +
+                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
+                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
+                '<div class="drafter-fp-spacer"></div>' +
+            '</div>' +
+            '<div class="drafter-fp-content">' + cardsHtml + '</div>'
         );
     } catch (e) {
-        _showDrafterListView(
-            '<div style="padding:16px;">' +
-                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-                '<div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div>' +
-            '</div>'
-        );
+        page.innerHTML = _drafterFpError('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
     }
 }
 
+var _LB_SVG_STAR   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+var _LB_SVG_SILVER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><line x1="7" y1="12" x2="17" y2="12" stroke="#94a3b8" stroke-width="2.5"/></svg>';
+var _LB_SVG_SHIELD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#b45309" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>';
+
+function _lbAvatarColors(rank) {
+    if (rank === 1) return { bg: 'rgba(251,191,36,0.2)',  text: '#fbbf24' };
+    if (rank === 2) return { bg: 'rgba(148,163,184,0.2)', text: '#94a3b8' };
+    if (rank === 3) return { bg: 'rgba(180,83,9,0.2)',    text: '#b45309' };
+    return { bg: 'rgba(255,255,255,0.05)', text: '#6b7280' };
+}
+
+function _lbScoreColor(rank) {
+    if (rank === 1) return '#fbbf24';
+    if (rank === 2) return '#94a3b8';
+    if (rank === 3) return '#b45309';
+    return '#c084fc';
+}
+
 async function showDrafterLeaderboard() {
-    _showDrafterListView(
-        '<div style="padding:16px;">' +
-            '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-            '<div style="color:var(--text-muted);font-size:12px;">Загрузка...</div>' +
-        '</div>'
-    );
+    var PAGE_ID = 'drafter-leaderboard-page';
+    var page = document.getElementById(PAGE_ID);
+    page.innerHTML = _drafterFpSkeleton('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+    page.style.display = 'block';
+
     try {
         var resp = await fetch(window.API_BASE_URL + '/draft/leaderboard');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
-        var listHtml = rows.length === 0
-            ? '<div style="color:var(--text-muted);font-size:13px;">Пока нет участников (нужно минимум 5 драфтов)</div>'
+        var rowsHtml = rows.length === 0
+            ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников (нужно минимум 5 драфтов)</div>'
             : rows.map(function(r) {
-                var medal = r.rank === 1 ? '\uD83E\uDD47' : r.rank === 2 ? '\uD83E\uDD48' : r.rank === 3 ? '\uD83E\uDD49' : '';
-                var placeHtml = medal
-                    ? '<div style="width:28px;font-size:18px;text-align:center;flex-shrink:0;">' + medal + '</div>'
-                    : '<div style="width:28px;font-size:11px;font-weight:700;color:var(--text-muted);text-align:center;flex-shrink:0;">' + r.rank + '</div>';
+                var placeIcon = r.rank === 1 ? _LB_SVG_STAR : r.rank === 2 ? _LB_SVG_SILVER : r.rank === 3 ? _LB_SVG_SHIELD
+                    : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
+                var ac = _lbAvatarColors(r.rank);
                 var avatarHtml = r.photo_url
-                    ? '<img src="' + r.photo_url + '" width="28" height="28" style="border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'">'
-                    : '<div style="width:28px;height:28px;border-radius:50%;background:rgba(192,132,252,0.25);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#c084fc;flex-shrink:0;">' + (r.username || '?').charAt(0).toUpperCase() + '</div>';
+                    ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" onerror="this.outerHTML=\'<div class=\\\"drafter-lb-avatar-letter\\\" style=\\\"background:' + ac.bg + ';color:' + ac.text + '\\\">' + (r.username || '?').charAt(0).toUpperCase() + '</div>\'">'
+                    : '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + (r.username || '?').charAt(0).toUpperCase() + '</div>';
                 return (
-                    '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);">' +
-                        placeHtml +
+                    '<div class="drafter-lb-row">' +
+                        '<div class="drafter-lb-place">' + placeIcon + '</div>' +
                         avatarHtml +
-                        '<div style="flex:1;min-width:0;">' +
-                            '<div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + r.username + '</div>' +
-                            '<div style="font-size:10px;color:var(--text-muted);">' + r.draft_count + ' драфтов</div>' +
+                        '<div class="drafter-lb-info">' +
+                            '<div class="drafter-lb-name">' + r.username + '</div>' +
+                            '<div class="drafter-lb-count">' + r.draft_count + ' драфтов</div>' +
                         '</div>' +
-                        '<div style="font-size:18px;font-weight:800;color:#c084fc;white-space:nowrap;">' + r.avg_score + '</div>' +
+                        '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.avg_score + '</div>' +
                     '</div>'
                 );
             }).join('');
-        _showDrafterListView(
-            '<div style="padding:16px;">' +
-                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-                '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412</div>' +
-                listHtml +
-            '</div>'
+        page.innerHTML = (
+            '<div class="drafter-fp-header">' +
+                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
+                '<div class="drafter-fp-title">\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412</div>' +
+                '<div class="drafter-fp-spacer"></div>' +
+            '</div>' +
+            '<div class="drafter-fp-content">' + rowsHtml + '</div>'
         );
     } catch (e) {
-        _showDrafterListView(
-            '<div style="padding:16px;">' +
-                '<button class="drafter-mini-btn" onclick="hideDrafterListView()" style="margin-bottom:12px;">← Назад</button>' +
-                '<div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div>' +
-            '</div>'
-        );
+        page.innerHTML = _drafterFpError('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
     }
 }
 
