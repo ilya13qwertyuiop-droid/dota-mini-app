@@ -3259,15 +3259,17 @@ function _renderLeaderboardRows(rows, page, PAGE_ID) {
                 : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
             var rowCls = 'drafter-lb-row' + (r.rank === 1 ? ' drafter-lb-row--top1' : r.rank === 2 ? ' drafter-lb-row--top2' : r.rank === 3 ? ' drafter-lb-row--top3' : '');
             var ac = _lbAvatarColors(r.rank);
+            var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
+            var firstChar = displayName.charAt(0).toUpperCase();
             var avatarHtml = r.photo_url
-                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" onerror="this.outerHTML=\'<div class=\\\"drafter-lb-avatar-letter\\\" style=\\\"background:' + ac.bg + ';color:' + ac.text + '\\\">' + (r.username || '?').charAt(0).toUpperCase() + '</div>\'">'
-                : '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + (r.username || '?').charAt(0).toUpperCase() + '</div>';
+                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" onerror="this.outerHTML=\'<div class=\\\"drafter-lb-avatar-letter\\\" style=\\\"background:' + ac.bg + ';color:' + ac.text + '\\\">' + firstChar + '</div>\'">'
+                : '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>';
             return (
-                '<div class="' + rowCls + '">' +
+                '<div class="' + rowCls + '" style="display:flex;align-items:center;gap:8px">' +
                     '<div class="drafter-lb-place">' + placeIcon + '</div>' +
                     avatarHtml +
-                    '<div class="drafter-lb-info">' +
-                        '<div class="drafter-lb-name">' + r.username + '</div>' +
+                    '<div style="flex:1;min-width:0">' +
+                        '<div class="drafter-lb-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + displayName + '</div>' +
                         '<div class="drafter-lb-count">' + r.draft_count + ' \u0434\u0440\u0430\u0444\u0442\u043e\u0432</div>' +
                     '</div>' +
                     '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.avg_score + '</div>' +
