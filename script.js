@@ -3352,15 +3352,17 @@ function showDrafterResult(data) {
                             '<div class="lane-heroes">' + enemyAvatars + '</div>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="lane-bar-wrap">' +
-                        '<div class="lane-bar-side">' +
-                            '<div class="lane-bar-track"><div class="lane-bar-fill" style="width:' + allyPct + '%;background:' + barAllyColor + ';"></div></div>' +
-                            '<div class="lane-bar-val" style="color:' + barAllyColor + ';">' + allyPct + '%</div>' +
+                    '<div class="lane-bar-center">' +
+                        '<div class="lane-bar-ally-half">' +
+                            '<div class="lane-ally-fill" data-pct="' + allyPct + '" style="width:0%;height:100%;background:' + barAllyColor + ';"></div>' +
                         '</div>' +
-                        '<div class="lane-bar-side">' +
-                            '<div class="lane-bar-track right"><div class="lane-bar-fill" style="width:' + enemyPct + '%;background:' + barEnemyColor + ';"></div></div>' +
-                            '<div class="lane-bar-val" style="color:' + barEnemyColor + ';text-align:right;">' + enemyPct + '%</div>' +
+                        '<div class="lane-bar-enemy-half">' +
+                            '<div class="lane-enemy-fill" data-pct="' + enemyPct + '" style="width:0%;height:100%;background:' + barEnemyColor + ';"></div>' +
                         '</div>' +
+                    '</div>' +
+                    '<div class="lane-bar-labels">' +
+                        '<span class="lane-bar-val" style="color:' + barAllyColor + ';">' + allyPct + '%</span>' +
+                        '<span class="lane-bar-val" style="color:' + barEnemyColor + ';">' + enemyPct + '%</span>' +
                     '</div>' +
                 '</div>'
             );
@@ -3415,7 +3417,7 @@ function showDrafterResult(data) {
                                 '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
                             '</div>' +
                             '<div class="mc-info">' +
-                                '<div class="mc-text">' + allyName + ' \u0442\u0435\u0440\u044f\u0435\u0442 \u043f\u0440\u043e\u0442\u0438\u0432</div>' +
+                                '<div class="mc-text">' + allyName + ' \u043f\u0440\u043e\u0438\u0433\u0440\u044b\u0432\u0430\u0435\u0442</div>' +
                                 '<div style="font-size:8px;color:#ef4444;">' + enemyName + '</div>' +
                             '</div>' +
                             '<div class="mc-val" style="color:#ef4444;">' + c.value.toFixed(1) + '</div>' +
@@ -3448,6 +3450,18 @@ function showDrafterResult(data) {
                 '<button class="dr-fin-btn" id="dr-fin-btn" onclick="loadDrafterMatch()">\u27f3 \u041d\u041e\u0412\u042b\u0419 \u041c\u0410\u0422\u0427</button>' +
             '</div>'
         );
+
+        // Анимация прогресс-баров — запускаются после появления каждой карточки
+        Array.from(finalScreen.querySelectorAll('.lane-card')).forEach(function(card, i) {
+            var allyFill  = card.querySelector('.lane-ally-fill');
+            var enemyFill = card.querySelector('.lane-enemy-fill');
+            if (!allyFill || !enemyFill) return;
+            var aPct     = parseFloat(allyFill.getAttribute('data-pct'));
+            var ePct     = parseFloat(enemyFill.getAttribute('data-pct'));
+            var barDelay = 0.3 + (2 + i) * 0.12 + 0.4;
+            gsap.fromTo(allyFill,  {width: '0%'}, {width: aPct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
+            gsap.fromTo(enemyFill, {width: '0%'}, {width: ePct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
+        });
 
         // Буква — отдельная pop-анимация (rank-pop)
         var letterEl = document.getElementById('dr-fin-letter');
