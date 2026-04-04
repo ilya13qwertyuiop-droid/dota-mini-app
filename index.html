@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=56" />
+    <link rel="stylesheet" href="styles.css?v=57" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -427,7 +427,17 @@
           <div class="dashboard-header">
             <h1>ДРАФТЕР</h1>
             <div class="drafter-best-score">Лучший результат: <span id="drafter-best-label">—</span>/100</div>
+            <div class="drafter-header-btns">
+              <button class="drafter-mini-btn" onclick="showDrafterHistory()">&#128203; История</button>
+              <button class="drafter-mini-btn" onclick="showDrafterLeaderboard()">&#127942; Топ</button>
+            </div>
           </div>
+
+          <!-- История / Лидерборд -->
+          <div id="drafter-list-view" style="display:none;"></div>
+
+          <!-- Основной контент драфта -->
+          <div id="drafter-draft-content">
 
           <!-- Два ряда составов: враги сверху, своя команда снизу -->
           <div class="drafter-teams">
@@ -462,6 +472,7 @@
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
           </div>
+          </div><!-- /drafter-draft-content -->
         </div>
 
         <!-- Страница результата -->
@@ -703,6 +714,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=74"></script>
+    <script src="script.js?v=75"></script>
   </body>
 </html>
