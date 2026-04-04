@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=60" />
+    <link rel="stylesheet" href="styles.css?v=61" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -424,25 +424,41 @@
 
         <!-- Экран драфта -->
         <div id="drafter-main">
-          <div class="dashboard-header">
-            <h1>ДРАФТЕР</h1>
-            <div class="drafter-best-score">Лучший результат: <span id="drafter-best-label">—</span>/100</div>
-            <div class="drafter-header-btns">
-              <button class="drafter-mini-btn" onclick="showDrafterHistory()">&#128203; История</button>
-              <button class="drafter-mini-btn" onclick="showDrafterLeaderboard()">&#127942; Топ драфтеров</button>
+          <div class="drafter-top-bar">
+            <div class="drafter-top-left">
+              <div class="drafter-top-title">ДРАФТЕР</div>
+              <div class="drafter-top-record">Рекорд: <span id="drafter-best-score">—</span>/100</div>
+            </div>
+            <div class="drafter-top-btns">
+              <button class="drafter-top-btn" onclick="showDrafterHistory()">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
+                  <path d="M6 3.5V6L7.5 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                История
+              </button>
+              <button class="drafter-top-btn" onclick="showDrafterLeaderboard()">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1L7.5 4.5H11L8.5 6.5L9.5 10L6 8L2.5 10L3.5 6.5L1 4.5H4.5L6 1Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+                </svg>
+                Топ
+              </button>
             </div>
           </div>
+          <div class="drafter-top-divider"></div>
 
           <!-- Основной контент драфта -->
           <div id="drafter-draft-content">
 
+          <!-- Строка ВРАГИ + Обновить -->
+          <div class="drafter-enemies-bar">
+            <div class="drafter-enemies-label">ВРАГИ</div>
+            <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Обновить</button>
+          </div>
+
           <!-- Два ряда составов: враги сверху, своя команда снизу -->
           <div class="drafter-teams">
             <div class="drafter-team-row">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div class="drafter-team-title">ВРАГИ</div>
-                <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Обновить</button>
-              </div>
               <div class="drafter-slots-grid" id="drafter-enemy-slots"></div>
             </div>
             <div class="drafter-team-row">
@@ -717,6 +733,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=78"></script>
+    <script src="script.js?v=79"></script>
   </body>
 </html>

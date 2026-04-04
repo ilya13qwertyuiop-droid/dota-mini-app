@@ -2807,7 +2807,7 @@ function _drafterHeroIcon(heroId) {
 function initDrafter() {
     // Показать лучший результат
     var best = localStorage.getItem('drafter_best_score');
-    document.getElementById('drafter-best-label').textContent = best !== null ? best : '—';
+    document.getElementById('drafter-best-score').textContent = best !== null ? best : '—';
 
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
@@ -3206,7 +3206,10 @@ async function showDrafterHistory() {
                 '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
                 '<div class="drafter-fp-spacer"></div>' +
             '</div>' +
-            '<div class="drafter-fp-content">' + cardsHtml + '</div>'
+            '<div class="drafter-fp-content">' +
+                '<div style="font-size:8px;color:#4b5563;text-align:center;margin-bottom:8px;">Последние 10 драфтов</div>' +
+                cardsHtml +
+            '</div>'
         );
     } catch (e) {
         page.innerHTML = _drafterFpError('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
@@ -3484,7 +3487,7 @@ function showDrafterResult(data) {
         var isRecord = total > best;
         if (isRecord) {
             localStorage.setItem('drafter_best', total);
-            var bestLabel = document.getElementById('drafter-best-label');
+            var bestLabel = document.getElementById('drafter-best-score');
             if (bestLabel) bestLabel.textContent = total;
         }
 
