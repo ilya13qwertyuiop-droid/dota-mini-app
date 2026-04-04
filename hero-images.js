@@ -123,11 +123,11 @@ window.dotaHeroImages = {
   'Void Spirit': 'void_spirit',
   'Snapfire': 'snapfire',
   'Mars': 'mars',
-  'Ringmaster': 'ringmaster',
   'Dawnbreaker': 'dawnbreaker',
   'Marci': 'marci',
   'Primal Beast': 'primal_beast',
   'Muerta': 'muerta',
+  'Ringmaster': 'ringmaster',
   'Kez': 'kez',
   'Largo': 'largo'
 };

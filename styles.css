@@ -47,6 +47,25 @@ padding: 20px;
 animation: fadeIn 0.3s ease;
 }
 
+#page-drafter {
+  position: relative;
+  min-height: 100vh;
+}
+
+#dr-bg-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+}
+
+#drafter-main,
+#drafter-result {
+  position: relative;
+  z-index: 1;
+}
+
 .page.active {
 display: block;
 }
@@ -691,9 +710,9 @@ backdrop-filter: blur(20px) saturate(180%);
 -webkit-backdrop-filter: blur(20px) saturate(180%);
 border-top: 1px solid rgba(255, 255, 255, 0.08);
 display: flex;
-justify-content: space-around;
+justify-content: space-between;
 align-items: center;
-padding: 0 20px;
+padding: 0 8px;
 z-index: 1000;
 box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
 }
@@ -703,11 +722,12 @@ display: flex;
 flex-direction: column;
 align-items: center;
 gap: 4px;
-padding: 8px 16px;
+padding: 8px 4px;
 cursor: pointer;
 transition: all 0.2s ease;
 border-radius: 12px;
 color: var(--text-muted);
+flex: 1;
 }
 
 .nav-item:hover {
@@ -2038,121 +2058,98 @@ margin-top: 14px;
 /* ========== МЕТА ПАТЧА ========== */
 
 .meta-block {
-  padding: 16px 16px 8px;
+  padding: 0 0 4px;
+  overflow: hidden;
 }
 
-.meta-block-header {
-  margin-bottom: 14px;
-  text-align: center;
+/* ── Шапка мета-блока ────────────────────────────────────────────── */
+.meta-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
 }
 
-.meta-block-title {
-  font-size: 13px;
+.meta-top-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.meta-top-patch {
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.3);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 8px;
+  color: #10b981;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-main);
-  opacity: 0.85;
 }
 
-.meta-pos-section {
-  margin-bottom: 8px;
+/* ── Блок позиции ────────────────────────────────────────────────── */
+.meta-pos-block {
+  padding: 0 12px 8px;
 }
 
 .meta-pos-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 0;
+  margin-bottom: 6px;
 }
 
 .meta-pos-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.meta-pos-icon-img {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
-  flex-shrink: 0;
-  opacity: 0.85;
 }
 
 .meta-pos-label {
-  font-size: 11px;
+  font-size: 8px;
+  color: #6b7280;
+  letter-spacing: 1px;
   font-weight: 600;
-  color: var(--text-main);
 }
 
-.meta-heroes-scroll {
+.meta-heroes-row {
   display: flex;
-  flex-wrap: nowrap;
-  justify-content: space-between;
-  overflow-x: visible;
+  gap: 4px;
 }
 
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.meta-hero-card {
-  flex-shrink: 0;
+.meta-hero-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  width: 62px;
-  padding: 4px 2px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
+  gap: 2px;
   cursor: pointer;
-  opacity: 0;
-  animation: fadeSlideIn 0.4s ease forwards;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.meta-hero-card:active {
-  background: rgba(74, 158, 255, 0.1);
-  border-color: rgba(74, 158, 255, 0.4);
-}
-
-.meta-hero-card--top {
-  border-color: rgba(74, 158, 255, 0.35);
-  box-shadow: 0 0 8px rgba(74, 158, 255, 0.4);
-}
-
-.meta-hero-avatar-wrap {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
-  transition: transform 0.2s ease;
-}
-
-.meta-hero-card:hover .meta-hero-avatar-wrap {
-  transform: translateY(-3px);
 }
 
 .meta-hero-avatar {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.06);
+}
+
+.meta-hero-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.meta-hero-name {
-  display: none;
+.meta-hero-wr {
+  font-size: 7px;
+  color: #10b981;
+  font-weight: 700;
 }
 
-.meta-hero-wr {
-  font-size: 10px;
-  font-weight: 600;
-  color: #4a9eff;
-  line-height: 1;
+.meta-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.04);
+  margin: 0 12px 6px;
 }
 
 /* ========== HOME ACTION ROW ========== */
@@ -2669,3 +2666,805 @@ margin-top: 14px;
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-5px); }
 }
+
+/* ========== ДРАФТЕР ========== */
+
+.drafter-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 8px; }
+.drafter-top-left { display: flex; flex-direction: column; gap: 1px; }
+.drafter-top-title { font-size: 13px; font-weight: 800; color: #fff; letter-spacing: 1px; }
+.drafter-top-record { font-size: 7px; color: #4b5563; }
+.drafter-top-record span { color: #a78bfa; }
+.drafter-top-btns { display: flex; gap: 4px; }
+.drafter-top-btn { display: flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25); border-radius: 6px; padding: 5px 8px; font-size: 8px; color: #a78bfa; font-weight: 600; cursor: pointer; }
+.drafter-top-btn svg { color: #a78bfa; }
+.drafter-top-divider { height: 1px; background: rgba(255,255,255,0.05); margin: 0; }
+
+.drafter-enemies-bar { display: flex; align-items: center; justify-content: space-between; padding: 7px 14px 4px; }
+.drafter-enemies-label { font-size: 7px; color: #4b5563; letter-spacing: 1px; }
+
+/* ── Полноэкранные страницы (история / топ драфтеров) ─────────── */
+.drafter-fullpage {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: #0a0014;
+  overflow-y: auto;
+  padding-bottom: 40px;
+}
+
+.drafter-fp-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 16px 14px;
+}
+
+.drafter-fp-back {
+  background: rgba(192,132,252,0.1);
+  border: 1px solid rgba(192,132,252,0.25);
+  border-radius: 8px;
+  padding: 5px 12px;
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.drafter-fp-title {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1.5px;
+}
+
+/* занимает то же место что кнопка «назад», чтобы заголовок был по центру */
+.drafter-fp-spacer {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.drafter-fp-content {
+  padding: 0 16px;
+}
+
+/* ── Карточки истории ──────────────────────────────────────────── */
+.drafter-hist-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+/* ── Баннер приза ──────────────────────────────────────────────── */
+.lb-prize-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 14px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(79,36,180,0.1));
+  border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.lb-prize-gif {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.lb-prize-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+.lb-prize-sub {
+  font-size: 8px;
+  color: #a78bfa;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.lb-prize-month {
+  display: inline-block;
+  background: rgba(251,191,36,0.15);
+  border: 1px solid rgba(251,191,36,0.3);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 7px;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+/* ── Заметка ───────────────────────────────────────────────────── */
+.lb-note {
+  margin: 0 14px 8px;
+  font-size: 8px;
+  color: #6b7280;
+  line-height: 1.5;
+  border-left: 2px solid rgba(139,92,246,0.4);
+  padding-left: 8px;
+}
+.lb-note b {
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+/* ── Строки лидерборда ─────────────────────────────────────────── */
+.drafter-lb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+}
+.drafter-lb-row--top1 {
+  background: rgba(251,191,36,0.07);
+  border-color: rgba(251,191,36,0.18);
+}
+.drafter-lb-row--top2 {
+  background: rgba(148,163,184,0.06);
+  border-color: rgba(148,163,184,0.15);
+}
+.drafter-lb-row--top3 {
+  background: rgba(180,83,9,0.07);
+  border-color: rgba(180,83,9,0.18);
+}
+
+.drafter-lb-place {
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.drafter-lb-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.drafter-lb-avatar-letter {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.drafter-lb-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.drafter-lb-name {
+  font-size: 13px;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drafter-lb-count {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 1px;
+}
+
+.drafter-lb-score {
+  font-size: 18px;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.drafter-teams {
+  margin: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding-bottom: 8px;
+}
+
+.drafter-team-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drafter-team-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.drafter-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.drafter-slot-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.drafter-slot-pos {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.drafter-slot {
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 58px;
+  min-height: 62px;
+  position: relative;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 2px dashed rgba(255,255,255,0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.drafter-slot--active {
+  border: 2px solid #9c5cf7;
+  animation: drafterPulse 1.2s ease-in-out infinite;
+}
+
+.drafter-slot--enemy {
+  cursor: default;
+  border-color: rgba(244,67,54,0.35);
+}
+
+.drafter-slot--filled {
+  border-style: solid;
+  border-color: rgba(255,255,255,0.25);
+}
+
+.drafter-slot-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes drafterPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(156,92,247,0.6); }
+  50%       { box-shadow: 0 0 0 6px rgba(156,92,247,0); }
+}
+
+.drafter-picker {
+  margin: 0 16px 8px;
+  padding-top: 8px;
+}
+
+.drafter-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  padding: 9px 14px;
+  margin-bottom: 10px;
+  outline: none;
+}
+
+.drafter-search::placeholder {
+  color: var(--text-muted);
+}
+
+.drafter-pos-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  transition: opacity 0.2s;
+}
+
+.drafter-pos-btn {
+  flex: 1;
+  padding: 5px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drafter-pos-btn--all {
+  font-size: 9px;
+}
+
+.drafter-pos-btn--active {
+  background: rgba(156,92,247,0.25);
+  border-color: #9c5cf7;
+  color: #c89fff;
+}
+
+.drafter-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.drafter-grid-hero {
+  width: 100%;
+  background: #1a1025;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.drafter-grid-hero:active {
+  transform: scale(0.92);
+}
+
+.drafter-grid-hero--picked {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.drafter-hero-disabled {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.drafter-slot-plus {
+  font-size: 18px;
+  color: rgba(255,255,255,0.15);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.drafter-grid-img {
+  width: 100%;
+  height: 44px;
+  object-fit: cover;
+  display: block;
+}
+
+.drafter-grid-img-empty {
+  width: 100%;
+  height: 44px;
+  background: #2a1f35;
+}
+
+.drafter-grid-name {
+  font-size: 8px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 3px 2px;
+  background: #1a1025;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+/* legacy — keep for other uses */
+.drafter-grid-img-legacy {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes fadeInBtn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(192, 132, 252, 0.3), 0 0 0 1px rgba(192, 132, 252, 0.2);
+    border-color: rgba(192, 132, 252, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(192, 132, 252, 0.6), 0 0 0 2px rgba(192, 132, 252, 0.3);
+    border-color: rgba(192, 132, 252, 1);
+  }
+}
+
+.drafter-btn--ready {
+  animation: fadeInBtn 0.3s ease, pulse-glow 2s ease-in-out 0.3s infinite;
+}
+
+.drafter-evaluate-btn {
+  background: linear-gradient(135deg, #7c3aed, #c084fc);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  width: 100%;
+}
+
+#drafter-evaluate-wrap {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 10px 0;
+  margin: 4px 0;
+}
+
+/* Результат — анимации */
+
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  15%     { transform: translateX(-8px); }
+  30%     { transform: translateX(8px); }
+  45%     { transform: translateX(-6px); }
+  60%     { transform: translateX(6px); }
+  75%     { transform: translateX(-3px); }
+  90%     { transform: translateX(3px); }
+}
+@keyframes slam-l {
+  0%   { transform: translateX(0) scale(1); }
+  40%  { transform: translateX(22px) scale(1.08); }
+  70%  { transform: translateX(-4px) scale(0.97); }
+  100% { transform: translateX(0) scale(1); }
+}
+@keyframes slam-r {
+  0%   { transform: translateX(0) scale(1); }
+  40%  { transform: translateX(-22px) scale(1.08); }
+  70%  { transform: translateX(4px) scale(0.97); }
+  100% { transform: translateX(0) scale(1); }
+}
+@keyframes rank-pop {
+  0%   { transform: scale(0.05); opacity: 0; }
+  55%  { transform: scale(1.3);  opacity: 1; }
+  75%  { transform: scale(0.92); }
+  100% { transform: scale(1);    opacity: 1; }
+}
+@keyframes glow-s {
+  0%,100% { text-shadow: 0 0 15px rgba(251,191,36,0.6); }
+  50%     { text-shadow: 0 0 35px rgba(251,191,36,1), 0 0 70px rgba(251,191,36,0.5); }
+}
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Битва линий — экран */
+
+#dr-battle-screen {
+  padding: 16px 16px 16px;
+  position: relative;
+}
+
+.dr-b-header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.dr-b-num {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.dr-b-name {
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+/* Арена: три колонки — союзники | иконка | враги */
+
+.dr-b-arena {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.dr-b-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.dr-b-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid transparent;
+  display: block;
+}
+
+.dr-b-avatar-ally  { border-color: #9c5cf7; box-shadow: 0 0 8px rgba(192,132,252,0.3); }
+.dr-b-avatar-enemy { border-color: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.2); }
+
+.dr-b-avatar img {
+  object-fit: cover;
+  object-position: center center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Иконка результата по центру арены */
+
+.dr-b-center-icon {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Горизонтальная шкала */
+
+.dr-hbar-wrap {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.06);
+  margin: 0 0 10px;
+}
+
+.dr-hbar-ally {
+  height: 100%;
+  width: 50%;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
+}
+
+.dr-hbar-enemy {
+  height: 100%;
+  width: 50%;
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
+}
+
+/* Текст результата под шкалой */
+
+.dr-b-result-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary, #ccc);
+  min-height: 18px;
+  margin-bottom: 20px;
+}
+
+/* Точки прогресса */
+
+.dr-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.dr-dot {
+  height: 6px;
+  width: 22px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.18);
+  transition: background 0.3s ease, width 0.3s ease;
+}
+
+.dr-dot-active { background: #9c5cf7; width: 36px; }
+.dr-dot-win    { background: #4ade80; }
+.dr-dot-loss   { background: #f87171; }
+
+/* Финальный экран — динамически строится в JS */
+
+#dr-final-screen {
+  overflow-y: auto;
+  width: 100%;
+}
+
+.dr-fin-wrap {
+  padding: 28px 0 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dr-fin-rank-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.dr-fin-letter {
+  font-size: 104px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0;
+}
+
+.dr-fin-record {
+  font-size: 13px;
+  color: #fbbf24;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.dr-fin-desc {
+  font-size: 14px;
+  color: var(--text-secondary, #ccc);
+  margin-top: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* Блок битв */
+
+.dr-fin-battles {
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.dr-fin-block-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.dr-fin-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  animation: fadein 0.3s ease both;
+}
+
+.dr-fin-row-heroes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dr-fin-vs {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.dr-fin-av {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1.5px solid transparent;
+}
+
+.dr-fin-av-ally  { border-color: #9c5cf7; }
+.dr-fin-av-enemy { border-color: #ef4444; }
+
+.dr-fin-row-name {
+  flex: 1;
+  font-size: 13px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.dr-fin-row-out {
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dr-fin-row-win  { color: #4ade80; }
+.dr-fin-row-loss { color: #f87171; }
+
+/* Карточки синергии / матчапа */
+
+.dr-fin-card {
+  width: 100%;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  animation: fadein 0.4s ease both;
+}
+
+.dr-fin-card-syn { background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.2); }
+.dr-fin-card-mu  { background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.2); }
+
+.dr-fin-card-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.dr-fin-card-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dr-fin-card-names {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary, #ccc);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.dr-fin-btn { width: 100%; border-radius: 9px; font-size: 11px; font-weight: 700; padding: 10px; cursor: pointer; letter-spacing: 1px; border: none; background: linear-gradient(135deg, #7c3aed, #c084fc); color: #fff; margin-top: 10px; }
+
+#drafter-refresh-btn { background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 10px; font-size: 8px; color: #a78bfa; cursor: pointer; }
+
+/* ── Финальный экран — битвы линий ──────────────────────────────── */
+.lane-card { background: #0f0a1a; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; width: 100%; box-sizing: border-box; }
+.lane-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.lane-teams { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
+.lane-team { display: flex; flex-direction: column; gap: 3px; }
+.lane-team.right { align-items: flex-end; }
+.lane-team-label { font-size: 7px; color: #6b7280; letter-spacing: 1px; }
+.lane-heroes { display: flex; gap: 3px; }
+.lane-avatar { width: 24px; height: 24px; border-radius: 4px; overflow: hidden; }
+.lane-bar-center { height: 4px; background: #1a1025; border-radius: 2px; display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 4px; overflow: hidden; }
+.lane-bar-ally-half { display: flex; justify-content: flex-end; height: 100%; }
+.lane-bar-enemy-half { height: 100%; }
+.lane-bar-labels { display: flex; justify-content: space-between; }
+.lane-bar-val { font-size: 7px; }
+
+/* ── Финальный экран — ключевые матчапы ─────────────────────────── */
+.matchup-card { border-radius: 8px; padding: 7px 10px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; }
+.mc-heroes { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.mc-av { width: 22px; height: 22px; border-radius: 4px; overflow: hidden; }
+.mc-sep { font-size: 8px; color: #6b7280; padding: 0 1px; }
+.mc-info { flex: 1; }
+.mc-text { font-size: 8px; color: #d1d5db; line-height: 1.4; }
+.mc-val { font-size: 9px; font-weight: 700; flex-shrink: 0; }
