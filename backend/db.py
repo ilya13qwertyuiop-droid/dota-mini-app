@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import DotaNews, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
+from backend.models import DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +286,50 @@ def count_matches_with_game_mode() -> int:
     """Counts matches rows where game_mode IS NOT NULL."""
     with SessionLocal() as session:
         return session.query(Match).filter(Match.game_mode.isnot(None)).count()
+
+
+def get_top_drafters(month: int, year: int, limit: int = 3, min_drafts: int = 5) -> list[dict]:
+    """Топ-N драфтеров за заданный месяц/год с минимум min_drafts драфтами."""
+    from sqlalchemy import func
+    month_start = datetime(year, month, 1, tzinfo=None)
+    if month == 12:
+        month_end = datetime(year + 1, 1, 1, tzinfo=None)
+    else:
+        month_end = datetime(year, month + 1, 1, tzinfo=None)
+
+    with SessionLocal() as session:
+        rows = (
+            session.query(
+                DraftResult.user_id,
+                func.avg(DraftResult.total_score).label("avg_score"),
+                func.count(DraftResult.id).label("draft_count"),
+            )
+            .filter(DraftResult.created_at >= month_start, DraftResult.created_at < month_end)
+            .group_by(DraftResult.user_id)
+            .having(func.count(DraftResult.id) >= min_drafts)
+            .order_by(func.avg(DraftResult.total_score).desc())
+            .limit(limit)
+            .all()
+        )
+
+        user_ids = [r.user_id for r in rows]
+        profiles = {
+            p.user_id: (p.settings or {})
+            for p in session.query(UserProfile).filter(UserProfile.user_id.in_(user_ids)).all()
+        }
+
+        result = []
+        for rank, row in enumerate(rows, 1):
+            s = profiles.get(row.user_id, {})
+            result.append({
+                "rank": rank,
+                "user_id": row.user_id,
+                "username": s.get("username"),
+                "first_name": s.get("first_name") or f"Игрок {row.user_id}",
+                "avg_score": round(row.avg_score, 1),
+                "draft_count": row.draft_count,
+            })
+        return result
 
 
 # ---------------------------------------------------------------------------
