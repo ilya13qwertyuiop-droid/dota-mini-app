@@ -2710,7 +2710,7 @@ margin-top: 14px;
   position: absolute;
   inset: 0;
   z-index: 10;
-  background: #06000c;
+  background: #0a0014;
   overflow-y: auto;
   padding-bottom: 40px;
 }
@@ -2763,13 +2763,82 @@ margin-top: 14px;
   margin-bottom: 8px;
 }
 
+/* ── Баннер приза ──────────────────────────────────────────────── */
+.lb-prize-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 14px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(79,36,180,0.1));
+  border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.lb-prize-gif {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.lb-prize-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+.lb-prize-sub {
+  font-size: 8px;
+  color: #a78bfa;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.lb-prize-month {
+  display: inline-block;
+  background: rgba(251,191,36,0.15);
+  border: 1px solid rgba(251,191,36,0.3);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 7px;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+/* ── Заметка ───────────────────────────────────────────────────── */
+.lb-note {
+  margin: 0 14px 8px;
+  font-size: 8px;
+  color: #6b7280;
+  line-height: 1.5;
+  border-left: 2px solid rgba(139,92,246,0.4);
+  padding-left: 8px;
+}
+.lb-note b {
+  color: #a78bfa;
+  font-weight: 600;
+}
+
 /* ── Строки лидерборда ─────────────────────────────────────────── */
 .drafter-lb-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 9px 10px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+}
+.drafter-lb-row--top1 {
+  background: rgba(251,191,36,0.07);
+  border-color: rgba(251,191,36,0.18);
+}
+.drafter-lb-row--top2 {
+  background: rgba(148,163,184,0.06);
+  border-color: rgba(148,163,184,0.15);
+}
+.drafter-lb-row--top3 {
+  background: rgba(180,83,9,0.07);
+  border-color: rgba(180,83,9,0.18);
 }
 
 .drafter-lb-place {
