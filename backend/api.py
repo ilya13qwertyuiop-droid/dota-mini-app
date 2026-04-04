@@ -1348,14 +1348,17 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
     result = []
     for rank, row in enumerate(rows, 1):
         profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == row.user_id).first()
-        username = None
+        username = f"Игрок {row.user_id}"
+        photo_url = None
         if profile:
             settings = profile.settings or {}
-            username = settings.get("username") or settings.get("first_name")
+            username = settings.get("first_name") or settings.get("username") or username
+            photo_url = settings.get("photo_url") or None
         result.append({
             "rank": rank,
             "user_id": row.user_id,
             "username": username,
+            "photo_url": photo_url,
             "avg_score": round(row.avg_score, 1),
             "draft_count": row.draft_count,
         })
@@ -1378,9 +1381,17 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
         .limit(10)
         .all()
     )
+    def _score_rank(score: float) -> str:
+        if score >= 95: return "SSS"
+        if score >= 80: return "S"
+        if score >= 60: return "A"
+        if score >= 40: return "B"
+        return "C"
+
     return [
         {
             "total_score": r.total_score,
+            "rank": _score_rank(r.total_score),
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in rows
