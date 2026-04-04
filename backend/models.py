@@ -64,6 +64,9 @@ class UserProfile(Base):
     quiz_results = relationship(
         "QuizResult", back_populates="user", cascade="all, delete-orphan"
     )
+    draft_results = relationship(
+        "DraftResult", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class QuizResult(Base):
@@ -82,6 +85,23 @@ class QuizResult(Base):
     )
 
     user = relationship("UserProfile", back_populates="quiz_results")
+
+
+class DraftResult(Base):
+    __tablename__ = "draft_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
+    )
+    total_score = Column(Float, nullable=False)
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    user = relationship("UserProfile", back_populates="draft_results")
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +303,22 @@ class Feedback(Base):
     tags = Column(JSON, nullable=True)
     message = Column(Text, nullable=False)
     source = Column(String(32), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Analytics events
+# ---------------------------------------------------------------------------
+
+class AnalyticsEvent(Base):
+    __tablename__ = "analytics_events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    event = Column(String(64), nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=True, index=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
