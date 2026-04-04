@@ -1228,10 +1228,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
         _lane_entry("Сложная линия", a_hard, e_hard),
     ]
 
-    # +25 за победу, +8 за поражение → 24-75
-    duel_score = sum(25.0 if d["win"] else 8.0 for d in duels)
+    # ── Компонент 1: Линии (0-25) — 8.33 за победу на линии ────────────────
+    lane_component = sum(25.0 / 3 if d["win"] else 0.0 for d in duels)
 
-    # ── synergy: среднее по 10 парам союзников, нормализация → 0-15 ────────
+    # ── Компонент 2: Синергия команды (0-25) — 10 пар союзников ────────────
     synergy_pairs: list[tuple[int, int, float]] = []
     for i in range(len(ally_ids)):
         for j in range(i + 1, len(ally_ids)):
@@ -1240,22 +1240,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             synergy_pairs.append((a, b, float(val)))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(15.0, (avg_synergy + 10) / 20 * 15))
+    synergy_component = max(0.0, min(25.0, (avg_synergy + 10) / 20 * 25))
 
-    # ── позиции: +2 за каждого героя на основной позиции → 0-10 ────────────
-    pos_scores: list[tuple[int, bool]] = []
-    for h in data.ally:
-        chosen = _pos_str_to_num(h.position)
-        primary = _hero_primary_pos_num(h.hero_id)
-        on_primary = chosen is not None and primary is not None and chosen == primary
-        pos_scores.append((h.hero_id, on_primary))
-
-    position_component = float(sum(2 for _, ok in pos_scores if ok))
-
-    # ── total_score = линии (24-75) + синергия (0-15) + позиции (0-10) ────
-    total_score = max(0.0, min(100.0, duel_score + synergy_component + position_component))
-
-    # ── matchup_pairs для комментариев ─────────────────────────────────────
+    # ── Компонент 3: Матчап против врагов (0-25) — 25 пар наш vs вражеский ─
     matchup_pairs: list[tuple[int, int, float]] = []
     for a in ally_ids:
         for e in enemy_ids:
@@ -1263,6 +1250,20 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             matchup_pairs.append((a, e, float(val)))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
+    matchup_component = max(0.0, min(25.0, (matchup_score + 10) / 20 * 25))
+
+    # ── Компонент 4: Позиции (0-25) — 5 за каждого героя на основной ────────
+    pos_scores: list[tuple[int, bool]] = []
+    for h in data.ally:
+        chosen = _pos_str_to_num(h.position)
+        primary = _hero_primary_pos_num(h.hero_id)
+        on_primary = chosen is not None and primary is not None and chosen == primary
+        pos_scores.append((h.hero_id, on_primary))
+
+    position_component = sum(5.0 for _, ok in pos_scores if ok)
+
+    # ── total_score = 4 компонента по 25 очков ──────────────────────────────
+    total_score = lane_component + synergy_component + matchup_component + position_component
 
     # ── comments ──────────────────────────────────────────────────────────
     comments: list[dict] = []
@@ -1293,27 +1294,21 @@ async def api_draft_evaluate(data: DraftEvaluateRequest):
             "value": round(v, 2),
         })
 
-    # Heroes on atypical positions → "warn"
-    for hero_id, on_primary in pos_scores:
-        if len(comments) >= 5:
-            break
-        if not on_primary:
-            hero_entry = next((h for h in data.ally if h.hero_id == hero_id), None)
-            picked_pos = hero_entry.position if hero_entry else ""
-            primary_num = _hero_primary_pos_num(hero_id)
-            primary_pos = f"pos {primary_num}" if primary_num else ""
-            comments.append({
-                "type": "warn",
-                "kind": "position",
-                "hero_id": hero_id,
-                "picked_pos": picked_pos,
-                "primary_pos": primary_pos,
-            })
+    # Heroes on atypical positions → single consolidated "warn"
+    atypical_ids = [hero_id for hero_id, on_primary in pos_scores if not on_primary]
+    if atypical_ids:
+        comments.append({
+            "type": "warn",
+            "kind": "position",
+            "hero_ids": atypical_ids,
+            "count": len(atypical_ids),
+        })
 
     return {
         "total_score": round(total_score, 1),
-        "synergy_score": round(avg_synergy, 2),
-        "matchup_score": round(matchup_score, 2),
+        "lane_score": round(lane_component, 2),
+        "synergy_score": round(synergy_component, 2),
+        "matchup_score": round(matchup_component, 2),
         "position_score": round(position_component, 2),
         "duels": duels,
         "comments": comments,
