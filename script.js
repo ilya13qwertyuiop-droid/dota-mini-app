@@ -3358,7 +3358,7 @@ function showDrafterResult(data) {
                             '<div class="lane-bar-val" style="color:' + barAllyColor + ';">' + allyPct + '%</div>' +
                         '</div>' +
                         '<div class="lane-bar-side" style="align-items:flex-end;">' +
-                            '<div class="lane-bar-track"><div class="lane-bar-fill" style="width:' + enemyPct + '%;background:' + barEnemyColor + ';"></div></div>' +
+                            '<div class="lane-bar-track right"><div class="lane-bar-fill" style="width:' + enemyPct + '%;background:' + barEnemyColor + ';"></div></div>' +
                             '<div class="lane-bar-val" style="color:' + barEnemyColor + ';text-align:right;">' + enemyPct + '%</div>' +
                         '</div>' +
                     '</div>' +
