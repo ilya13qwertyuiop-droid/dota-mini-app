@@ -8,7 +8,7 @@ import traceback
 from collections import deque
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ from db import (
     count_new_users_today,
     count_active_users_30d,
     count_matches_with_game_mode,
+    get_top_drafters,
     upsert_user_profile_settings,
     toggle_notify_news,
 )
@@ -1518,6 +1519,48 @@ async def admin_matches_command(update: Update, _context: ContextTypes.DEFAULT_T
     await update.message.reply_text(f"🧩 Матчей с заполненным game_mode: {count}")
 
 
+# -------- /topdraft (скрытая команда для администраторов) --------
+
+async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Топ-3 драфтеров за текущий месяц. Только для администраторов."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    now = datetime.now(timezone.utc)
+    month_names = {
+        1: "январь", 2: "февраль", 3: "март", 4: "апрель",
+        5: "май", 6: "июнь", 7: "июль", 8: "август",
+        9: "сентябрь", 10: "октябрь", 11: "ноябрь", 12: "декабрь",
+    }
+    month_label = f"{month_names[now.month]} {now.year}"
+
+    try:
+        top = get_top_drafters(month=now.month, year=now.year)
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("❌ Не удалось получить топ драфтеров.")
+        return
+
+    if not top:
+        await update.message.reply_text(
+            f"🏆 Топ-3 драфтеров за {month_label}\n\nПока нет участников с 5+ драфтами."
+        )
+        return
+
+    medals = {1: "1.", 2: "2.", 3: "3."}
+    lines = [f"🏆 Топ-3 драфтеров за {month_label}\n"]
+    for r in top:
+        uname = f"@{r['username']}" if r["username"] else r["first_name"]
+        name = r["first_name"]
+        display = f"{uname} ({name})" if r["username"] else name
+        lines.append(
+            f"{medals[r['rank']]} {display} — {r['avg_score']} avg / {r['draft_count']} драфтов\n"
+            f"   user_id: {r['user_id']}"
+        )
+
+    await update.message.reply_text("\n".join(lines))
+
+
 async def force_update_builds_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     """Принудительно запускает обновление кеша сборок. Только для администраторов."""
     if update.effective_user.id not in ADMIN_IDS:
@@ -1649,6 +1692,7 @@ def main():
     application.add_handler(CommandHandler("admin_matches",  timed_handler("/admin_matches")(admin_matches_command)))
     application.add_handler(CommandHandler("stats_mode",          timed_handler("/stats_mode")(stats_mode_command)))
     application.add_handler(CommandHandler("force_update_builds", timed_handler("/force_update_builds")(force_update_builds_command)))
+    application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(
