@@ -3127,12 +3127,6 @@ function showDrafterResult(data) {
     function _icon(id) { return _drafterHeroIcon(id) || ''; }
     function _name(id) { return _drafterHeroName(id) || ('Герой #' + id); }
 
-    function _heroImgs(heroes, cls) {
-        return (heroes || []).map(function(h) {
-            return '<img src="' + _icon(h.hero_id) + '" class="dr-fin-av ' + cls + '" onerror="this.style.display=\'none\'">';
-        }).join('');
-    }
-
     var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#10b981" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
     var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>';
 
@@ -3308,13 +3302,13 @@ function showDrafterResult(data) {
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
         if (total >= 95) {
-            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';           rankGlow = true;
+            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
         } else if (total >= 80) {
-            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';         rankGlow = true;
+            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
         } else if (total >= 60) {
-            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';             rankGlow = false;
+            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';               rankGlow = false;
         } else if (total >= 40) {
-            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';    rankGlow = false;
+            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
         } else {
             rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
         }
@@ -3327,89 +3321,160 @@ function showDrafterResult(data) {
             if (bestLabel) bestLabel.textContent = total;
         }
 
-        var battlesHtml = duels.map(function(duel) {
-            var allyImgs  = _heroImgs(duel.ally_heroes,  'dr-fin-av-ally');
-            var enemyImgs = _heroImgs(duel.enemy_heroes, 'dr-fin-av-enemy');
-            var outcome   = duel.win ? '✓' : '✗';
-            var outCls    = duel.win ? 'dr-fin-row-win' : 'dr-fin-row-loss';
+        // ── Битвы линий ──────────────────────────────────────────────────
+        var laneCardsHtml = duels.map(function(duel) {
+            var synColor      = duel.win ? '#4ade80' : '#f87171';
+            var allyPct       = duel.win ? 65 : 35;
+            var enemyPct      = duel.win ? 35 : 65;
+            var barAllyColor  = duel.win ? '#4ade80' : '#f87171';
+            var barEnemyColor = duel.win ? '#f87171' : '#4ade80';
+
+            var allyAvatars = (duel.ally_heroes || []).map(function(h) {
+                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
+            }).join('');
+            var enemyAvatars = (duel.enemy_heroes || []).map(function(h) {
+                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
+            }).join('');
+
             return (
-                '<div class="dr-fin-row">' +
-                    '<div class="dr-fin-row-heroes">' +
-                        allyImgs + '<span class="dr-fin-vs">vs</span>' + enemyImgs +
+                '<div class="lane-card">' +
+                    '<div class="lane-header">' +
+                        '<span style="font-size:11px;font-weight:700;color:#e5e7eb;">' + duel.name + '</span>' +
+                        '<span style="font-size:11px;font-weight:700;color:' + synColor + ';">' + (duel.synergy != null ? duel.synergy.toFixed(1) : '\u2014') + '</span>' +
                     '</div>' +
-                    '<div class="dr-fin-row-name">' + duel.name + '</div>' +
-                    '<div class="dr-fin-row-out ' + outCls + '">' + outcome + '</div>' +
+                    '<div class="lane-teams">' +
+                        '<div class="lane-team">' +
+                            '<div class="lane-team-label">\u041c\u042b</div>' +
+                            '<div class="lane-heroes">' + allyAvatars + '</div>' +
+                        '</div>' +
+                        '<div class="lane-team right">' +
+                            '<div class="lane-team-label" style="text-align:right;">\u0412\u0420\u0410\u0413\u0418</div>' +
+                            '<div class="lane-heroes">' + enemyAvatars + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="lane-bar-wrap">' +
+                        '<div class="lane-bar-side">' +
+                            '<div class="lane-bar-track"><div class="lane-bar-fill" style="width:' + allyPct + '%;background:' + barAllyColor + ';"></div></div>' +
+                            '<div class="lane-bar-val" style="color:' + barAllyColor + ';">' + allyPct + '%</div>' +
+                        '</div>' +
+                        '<div class="lane-bar-side" style="align-items:flex-end;">' +
+                            '<div class="lane-bar-track"><div class="lane-bar-fill" style="width:' + enemyPct + '%;background:' + barEnemyColor + ';"></div></div>' +
+                            '<div class="lane-bar-val" style="color:' + barEnemyColor + ';text-align:right;">' + enemyPct + '%</div>' +
+                        '</div>' +
+                    '</div>' +
                 '</div>'
             );
         }).join('');
 
+        // ── Ключевые матчапы ─────────────────────────────────────────────
         var comments = data.comments || [];
-        var synC = comments.find(function(c) { return c.kind === 'synergy'; });
-        var synHtml = '';
-        if (synC) {
-            synHtml = (
-                '<div class="dr-fin-card dr-fin-card-syn">' +
-                    '<div class="dr-fin-card-title">Лучшая синергия</div>' +
-                    '<div class="dr-fin-card-body">' +
-                        '<img src="' + _icon(synC.hero_id1) + '" class="dr-fin-av dr-fin-av-ally" onerror="this.style.display=\'none\'">' +
-                        '<div class="dr-fin-card-names">' + _name(synC.hero_id1) + '<br>' + _name(synC.hero_id2) + '</div>' +
-                        '<img src="' + _icon(synC.hero_id2) + '" class="dr-fin-av dr-fin-av-ally" onerror="this.style.display=\'none\'">' +
-                    '</div>' +
-                '</div>'
-            );
-        }
-
-        var muC = comments.find(function(c) { return c.kind === 'matchup'; });
-        var muHtml = '';
-        if (muC) {
-            muHtml = (
-                '<div class="dr-fin-card dr-fin-card-mu">' +
-                    '<div class="dr-fin-card-title">Худший матчап</div>' +
-                    '<div class="dr-fin-card-body">' +
-                        '<img src="' + _icon(muC.ally_hero_id) + '" class="dr-fin-av dr-fin-av-ally" onerror="this.style.display=\'none\'">' +
-                        '<div class="dr-fin-card-names">' + _name(muC.ally_hero_id) + '<br><span style="font-size:10px;color:var(--text-muted)">теряет против</span><br>' + _name(muC.enemy_hero_id) + '</div>' +
-                        '<img src="' + _icon(muC.enemy_hero_id) + '" class="dr-fin-av dr-fin-av-enemy" onerror="this.style.display=\'none\'">' +
-                    '</div>' +
-                '</div>'
-            );
-        }
+        var matchupCardsHtml = comments.slice(0, 4).map(function(c) {
+            if (c.kind === 'synergy') {
+                var n1   = _name(c.hero_id1);
+                var n2   = _name(c.hero_id2);
+                var sign = c.value >= 0 ? '+' : '';
+                return (
+                    '<div class="matchup-card" style="border-left:2px solid #8b5cf6;background:rgba(139,92,246,0.08);">' +
+                        '<div class="mc-heroes">' +
+                            '<div class="mc-av"><img src="' + _icon(c.hero_id1) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                            '<span class="mc-sep">+</span>' +
+                            '<div class="mc-av"><img src="' + _icon(c.hero_id2) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                        '</div>' +
+                        '<div class="mc-info">' +
+                            '<div class="mc-text">' + n1 + ' + ' + n2 + '</div>' +
+                            '<div style="font-size:8px;color:#8b5cf6;">\u0421\u0438\u043d\u0435\u0440\u0433\u0438\u044f</div>' +
+                        '</div>' +
+                        '<div class="mc-val" style="color:#8b5cf6;">' + sign + c.value.toFixed(1) + '</div>' +
+                    '</div>'
+                );
+            }
+            if (c.kind === 'matchup') {
+                var allyName  = _name(c.ally_hero_id);
+                var enemyName = _name(c.enemy_hero_id);
+                if (c.value > 0) {
+                    return (
+                        '<div class="matchup-card" style="border-left:2px solid #10b981;background:rgba(16,185,129,0.08);">' +
+                            '<div class="mc-heroes">' +
+                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                                '<span class="mc-sep">vs</span>' +
+                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                            '</div>' +
+                            '<div class="mc-info">' +
+                                '<div class="mc-text">' + allyName + ' \u043a\u043e\u043d\u0442\u0440\u0438\u0442</div>' +
+                                '<div style="font-size:8px;color:#10b981;">' + enemyName + '</div>' +
+                            '</div>' +
+                            '<div class="mc-val" style="color:#10b981;">+' + c.value.toFixed(1) + '</div>' +
+                        '</div>'
+                    );
+                } else {
+                    return (
+                        '<div class="matchup-card" style="border-left:2px solid #ef4444;background:rgba(239,68,68,0.08);">' +
+                            '<div class="mc-heroes">' +
+                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                                '<span class="mc-sep">vs</span>' +
+                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
+                            '</div>' +
+                            '<div class="mc-info">' +
+                                '<div class="mc-text">' + allyName + ' \u0442\u0435\u0440\u044f\u0435\u0442 \u043f\u0440\u043e\u0442\u0438\u0432</div>' +
+                                '<div style="font-size:8px;color:#ef4444;">' + enemyName + '</div>' +
+                            '</div>' +
+                            '<div class="mc-val" style="color:#ef4444;">' + c.value.toFixed(1) + '</div>' +
+                        '</div>'
+                    );
+                }
+            }
+            return '';
+        }).join('');
 
         finalScreen.style.display = 'block';
         finalScreen.innerHTML = (
             '<div class="dr-fin-wrap">' +
-                '<div class="dr-fin-rank-label">ТВОЯ ОЦЕНКА</div>' +
-                '<div class="dr-fin-letter" id="dr-fin-letter" style="color:' + rankColor + ';opacity:0;">' + rank + '</div>' +
-                (isRecord ? '<div class="dr-fin-record" id="dr-fin-record">🏆 Новый рекорд!</div>' : '') +
-                '<div class="dr-fin-desc" id="dr-fin-desc">' + rankDesc + '</div>' +
-                '<div class="dr-fin-battles" id="dr-fin-battles">' +
-                    '<div class="dr-fin-block-title">БИТВЫ ЛИНИЙ</div>' +
-                    battlesHtml +
+                '<div class="dr-fin-rank-wrap" style="display:flex;flex-direction:column;align-items:center;width:100%;">' +
+                    '<div class="dr-fin-rank-label">\u0422\u0412\u041e\u042f \u041e\u0426\u0415\u041d\u041a\u0410</div>' +
+                    '<div class="dr-fin-letter" id="dr-fin-letter" style="color:' + rankColor + ';opacity:0;">' + rank + '</div>' +
+                    (isRecord ? '<div class="dr-fin-record">\ud83c\udfc6 \u041d\u043e\u0432\u044b\u0439 \u0440\u0435\u043a\u043e\u0440\u0434!</div>' : '') +
+                    '<div class="dr-fin-desc">' + rankDesc + '</div>' +
                 '</div>' +
-                (synHtml ? '<div id="dr-fin-syn" style="width:100%">' + synHtml + '</div>' : '') +
-                (muHtml  ? '<div id="dr-fin-mu"  style="width:100%">' + muHtml  + '</div>' : '') +
-                '<div class="dr-fin-btn" id="dr-fin-btn">' +
-                    '<button class="drafter-evaluate-btn" onclick="loadDrafterMatch()">⟳ НОВЫЙ МАТЧ</button>' +
+                '<div style="width:100%;margin-bottom:6px;">' +
+                    '<div class="dr-fin-block-title">\u0411\u0418\u0422\u0412\u042b \u041b\u0418\u041d\u0418\u0419</div>' +
+                    '<div>' + laneCardsHtml + '</div>' +
                 '</div>' +
+                (matchupCardsHtml ? (
+                    '<div style="width:100%;margin-bottom:6px;">' +
+                        '<div class="dr-fin-block-title">\u041a\u041b\u042e\u0427\u0415\u0412\u042b\u0415 \u041c\u0410\u0422\u0427\u0410\u041f\u042b</div>' +
+                        '<div>' + matchupCardsHtml + '</div>' +
+                    '</div>'
+                ) : '') +
+                '<button class="dr-fin-btn" id="dr-fin-btn" onclick="loadDrafterMatch()">\u27f3 \u041d\u041e\u0412\u042b\u0419 \u041c\u0410\u0422\u0427</button>' +
             '</div>'
         );
 
-        // Буква появляется через GSAP
+        // Буква — отдельная pop-анимация (rank-pop)
         var letterEl = document.getElementById('dr-fin-letter');
         gsap.fromTo(letterEl,
             {scale: 0.05, opacity: 0},
-            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)', onComplete: function() {
+            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)', delay: 0.5, onComplete: function() {
                 if (rankGlow) {
                     gsap.to(letterEl, {textShadow: '0 0 30px rgba(251,191,36,0.9)', yoyo: true, repeat: -1, duration: 1.5, ease: 'sine.inOut'});
                 }
             }}
         );
 
-        // Блок битв, синергии, матчапа — stagger fadein
-        var fadeSelectors = ['#dr-fin-record', '#dr-fin-desc', '#dr-fin-battles', '#dr-fin-syn', '#dr-fin-mu', '#dr-fin-btn'];
-        var fadeEls = fadeSelectors.map(function(s) { return document.querySelector(s); }).filter(Boolean);
-        gsap.fromTo(fadeEls,
-            {opacity: 0, y: 12},
-            {opacity: 1, y: 0, duration: 0.5, stagger: 0.15, ease: 'power2.out', delay: 0.4}
+        // Stagger-анимация всех блоков снизу вверх
+        var elements = [
+            '.dr-fin-rank-wrap',
+            '.lane-card:nth-child(1)',
+            '.lane-card:nth-child(2)',
+            '.lane-card:nth-child(3)',
+            '.matchup-card:nth-child(1)',
+            '.matchup-card:nth-child(2)',
+            '.matchup-card:nth-child(3)',
+            '.matchup-card:nth-child(4)',
+            '#dr-fin-btn'
+        ];
+        gsap.fromTo(elements,
+            {opacity: 0, y: 16},
+            {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
         );
     }
 

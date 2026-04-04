@@ -3264,8 +3264,28 @@ margin-top: 14px;
   text-align: center;
 }
 
-.dr-fin-btn {
-  margin-top: 20px;
-  width: 100%;
-  text-align: center;
-}
+.dr-fin-btn { width: 100%; border-radius: 9px; font-size: 11px; font-weight: 700; padding: 10px; cursor: pointer; letter-spacing: 1px; border: none; background: linear-gradient(135deg, #7c3aed, #c084fc); color: #fff; margin-top: 10px; }
+
+/* ── Финальный экран — битвы линий ──────────────────────────────── */
+.lane-card { background: #0f0a1a; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
+.lane-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.lane-teams { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
+.lane-team { display: flex; flex-direction: column; gap: 3px; }
+.lane-team.right { align-items: flex-end; }
+.lane-team-label { font-size: 7px; color: #6b7280; letter-spacing: 1px; }
+.lane-heroes { display: flex; gap: 3px; }
+.lane-avatar { width: 24px; height: 24px; border-radius: 4px; overflow: hidden; }
+.lane-bar-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.lane-bar-side { display: flex; flex-direction: column; gap: 2px; }
+.lane-bar-track { height: 4px; border-radius: 2px; background: #1a1025; overflow: hidden; }
+.lane-bar-fill { height: 100%; border-radius: 2px; }
+.lane-bar-val { font-size: 7px; }
+
+/* ── Финальный экран — ключевые матчапы ─────────────────────────── */
+.matchup-card { border-radius: 8px; padding: 7px 10px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
+.mc-heroes { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.mc-av { width: 22px; height: 22px; border-radius: 4px; overflow: hidden; }
+.mc-sep { font-size: 8px; color: #6b7280; padding: 0 1px; }
+.mc-info { flex: 1; }
+.mc-text { font-size: 8px; color: #d1d5db; line-height: 1.4; }
+.mc-val { font-size: 9px; font-weight: 700; flex-shrink: 0; }
