@@ -28,6 +28,10 @@ _draft_matches_file_cache: list | None = None
 BUILD_CACHE_TTL = 1800
 _build_cache: dict[int, tuple[float, dict]] = {}  # {hero_id: (timestamp, data)}
 
+# /api/draft/leaderboard — TTL 5 min
+_leaderboard_cache: list | None = None
+_leaderboard_cache_ts: float = 0.0
+
 
 def _load_dota_builds_file() -> dict | None:
     """Return parsed dota_builds.json, caching the result in memory."""
@@ -1327,6 +1331,11 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
 @app.get("/api/draft/leaderboard")
 async def api_draft_leaderboard(db: Session = Depends(get_db)):
     """Топ-25 пользователей по среднему total_score (минимум 5 драфтов)."""
+    global _leaderboard_cache, _leaderboard_cache_ts
+
+    if _leaderboard_cache is not None and time.time() - _leaderboard_cache_ts < 300:
+        return _leaderboard_cache
+
     from sqlalchemy import func
 
     rows = (
@@ -1334,26 +1343,21 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
             DBDraftResult.user_id,
             func.avg(DBDraftResult.total_score).label("avg_score"),
             func.count(DBDraftResult.id).label("draft_count"),
+            DBUserProfile.settings,
         )
-        .group_by(DBDraftResult.user_id)
+        .join(DBUserProfile, DBUserProfile.user_id == DBDraftResult.user_id)
+        .group_by(DBDraftResult.user_id, DBUserProfile.settings)
         .having(func.count(DBDraftResult.id) >= 5)
-        .order_by(
-            func.avg(DBDraftResult.total_score).desc(),
-            func.count(DBDraftResult.id).desc(),
-        )
+        .order_by(func.avg(DBDraftResult.total_score).desc())
         .limit(25)
         .all()
     )
 
     result = []
     for rank, row in enumerate(rows, 1):
-        profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == row.user_id).first()
-        username = f"Игрок {row.user_id}"
-        photo_url = None
-        if profile:
-            settings = profile.settings or {}
-            username = settings.get("first_name") or settings.get("username") or username
-            photo_url = settings.get("photo_url") or None
+        settings = row.settings or {}
+        username = settings.get("first_name") or settings.get("username") or f"Игрок {row.user_id}"
+        photo_url = settings.get("photo_url") or None
         result.append({
             "rank": rank,
             "user_id": row.user_id,
@@ -1362,6 +1366,9 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
             "avg_score": round(row.avg_score, 1),
             "draft_count": row.draft_count,
         })
+
+    _leaderboard_cache = result
+    _leaderboard_cache_ts = time.time()
     return result
 
 
