@@ -1343,19 +1343,24 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
             DBDraftResult.user_id,
             func.avg(DBDraftResult.total_score).label("avg_score"),
             func.count(DBDraftResult.id).label("draft_count"),
-            DBUserProfile.settings,
         )
-        .join(DBUserProfile, DBUserProfile.user_id == DBDraftResult.user_id)
-        .group_by(DBDraftResult.user_id, DBUserProfile.settings)
+        .group_by(DBDraftResult.user_id)
         .having(func.count(DBDraftResult.id) >= 5)
         .order_by(func.avg(DBDraftResult.total_score).desc())
         .limit(25)
         .all()
     )
 
+    user_ids = [r.user_id for r in rows]
+    profiles = {
+        p.user_id: p
+        for p in db.query(DBUserProfile).filter(DBUserProfile.user_id.in_(user_ids)).all()
+    }
+
     result = []
     for rank, row in enumerate(rows, 1):
-        settings = row.settings or {}
+        profile = profiles.get(row.user_id)
+        settings = (profile.settings if profile else None) or {}
         username = settings.get("first_name") or settings.get("username") or f"Игрок {row.user_id}"
         photo_url = settings.get("photo_url") or None
         result.append({
