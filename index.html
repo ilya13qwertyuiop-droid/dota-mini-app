@@ -9,7 +9,7 @@
     <title>Dota 2 Helper</title>
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=63" />
+    <link rel="stylesheet" href="styles.css?v=64" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -450,7 +450,7 @@
           <!-- Строка ВРАГИ + Обновить -->
           <div class="drafter-enemies-bar">
             <div class="drafter-enemies-label">ВРАГИ</div>
-            <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Обновить</button>
+            <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Новые враги</button>
           </div>
 
           <!-- Два ряда составов: враги сверху, своя команда снизу -->
@@ -471,9 +471,8 @@
 
           <!-- Сетка выбора героев -->
           <div class="drafter-picker">
-            <input type="text" id="drafter-search" class="drafter-search" placeholder="Поиск..." oninput="onDrafterSearch()">
+            <input type="text" id="drafter-search" class="drafter-search" placeholder="Найти любого героя..." oninput="onDrafterSearch()">
             <div class="drafter-pos-filters" id="drafter-pos-filters">
-              <button class="drafter-pos-btn drafter-pos-btn--all" data-pos="0" onclick="setDrafterPosFilter(0)">Все</button>
               <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)"><img src="/images/positions/pos_1.png" width="16" height="16" alt="1"></button>
               <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)"><img src="/images/positions/pos_2.png" width="16" height="16" alt="2"></button>
               <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)"><img src="/images/positions/pos_3.png" width="16" height="16" alt="3"></button>
@@ -730,6 +729,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=81"></script>
+    <script src="script.js?v=82"></script>
   </body>
 </html>
