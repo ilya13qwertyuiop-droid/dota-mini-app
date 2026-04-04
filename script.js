@@ -3261,9 +3261,11 @@ function _renderLeaderboardRows(rows, page, PAGE_ID) {
             var ac = _lbAvatarColors(r.rank);
             var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
             var firstChar = displayName.charAt(0).toUpperCase();
+            var letterDiv = '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>';
             var avatarHtml = r.photo_url
-                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" onerror="this.outerHTML=\'<div class=\\\"drafter-lb-avatar-letter\\\" style=\\\"background:' + ac.bg + ';color:' + ac.text + '\\\">' + firstChar + '</div>\'">'
-                : '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>';
+                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+                  '<div class="drafter-lb-avatar-letter" style="display:none;background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>'
+                : letterDiv;
             return (
                 '<div class="' + rowCls + '" style="display:flex;align-items:center;gap:8px">' +
                     '<div class="drafter-lb-place">' + placeIcon + '</div>' +
