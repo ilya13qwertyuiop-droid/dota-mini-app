@@ -32,6 +32,9 @@ _build_cache: dict[int, tuple[float, dict]] = {}  # {hero_id: (timestamp, data)}
 _leaderboard_cache: list | None = None
 _leaderboard_cache_ts: float = 0.0
 
+# /api/check-subscription — TTL 600s per user_id
+_subscription_cache: dict[int, float] = {}
+
 
 def _load_dota_builds_file() -> dict | None:
     """Return parsed dota_builds.json, caching the result in memory."""
@@ -222,33 +225,38 @@ class TelegramUserData(BaseModel):
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
     """Проверяет подписку пользователя на канал"""
+    global _subscription_cache
+
     # 1. по токену достаём user_id
     user_id = get_user_id_by_token(data.token)
     if not user_id:
-        # нет такого токена или он просрочен
         return CheckResponse(allowed=False)
 
+    # 2. кеш: если подписка уже подтверждена менее 600 сек назад — не идём в Telegram
+    cached_ts = _subscription_cache.get(user_id)
+    if cached_ts is not None and time.time() - cached_ts < 600:
+        return CheckResponse(allowed=True)
 
-    # 2. проверяем подписку через getChatMember
+    # 3. проверяем подписку через getChatMember
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
     params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
-
 
     async with httpx.AsyncClient() as client:
         r = await client.get(url, params=params)
 
-
     if r.status_code != 200:
         raise HTTPException(status_code=500, detail="Telegram API error")
-
 
     result = r.json().get("result", {})
     status = result.get("status")
 
-
     allowed_statuses = {"member", "administrator", "creator"}
     allowed = status in allowed_statuses
 
+    if allowed:
+        _subscription_cache[user_id] = time.time()
+    else:
+        _subscription_cache.pop(user_id, None)
 
     return CheckResponse(allowed=allowed)
 
@@ -1311,8 +1319,6 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
 
     # ── Сохраняем результат если передан токен ───────────────────────────────
     uid = get_user_id_by_token(data.token) if data.token else None
-    if uid is None and os.getenv("ENVIRONMENT") == "staging":
-        uid = 1
     if uid:
         db.add(DBDraftResult(user_id=uid, total_score=round(total_score, 1)))
         db.commit()
@@ -1381,8 +1387,6 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
 async def api_draft_history(token: str, db: Session = Depends(get_db)):
     """Последние 10 драфтов пользователя."""
     user_id = get_user_id_by_token(token) if token else None
-    if user_id is None and os.getenv("ENVIRONMENT") == "staging":
-        user_id = 1
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
