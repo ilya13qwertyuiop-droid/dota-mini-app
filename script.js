@@ -282,6 +282,11 @@
 
         const USER_TOKEN = getTokenFromUrl();
 
+        // Фоновая загрузка профиля при старте — не блокирует интерфейс
+        if (USER_TOKEN) {
+            setTimeout(function() { initProfile(); }, 0);
+        }
+
         // Сохранение результата на backend
         async function saveResultToBackend(result) {
             if (!USER_TOKEN) {
