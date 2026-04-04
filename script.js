@@ -2913,7 +2913,7 @@ function _renderAllySlots() {
             html += '<span class="drafter-slot-plus">+</span>';
         }
         html += '</div>';
-        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="14" height="14"></div>';
+        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -2938,7 +2938,7 @@ function _renderEnemySlots() {
             }
         }
         html += '</div>';
-        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="14" height="14"></div>';
+        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -3032,12 +3032,9 @@ function renderDrafterGrid() {
     if (query) {
         // Поиск по тексту — все герои, фильтр позиции игнорируется
         heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
-    } else if (_drafterPosFilter > 0) {
-        // Фильтр по позиции
-        heroes = heroes.filter(function(h) { return HERO_PRIMARY_POSITIONS[h.id] === _drafterPosFilter; });
     } else {
-        // "Все" без поиска — первые 30 по алфавиту
-        heroes = heroes.slice(0, 30);
+        // Фильтр по позиции (всегда 1-5)
+        heroes = heroes.filter(function(h) { return HERO_PRIMARY_POSITIONS[h.id] === _drafterPosFilter; });
     }
 
     // Уже выбранные
