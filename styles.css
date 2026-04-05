@@ -3342,7 +3342,7 @@ margin-top: 14px;
 }
 
 .dr-syn-total {
-  font-size: 30px;
+  font-size: 38px;
   font-weight: 900;
   font-family: 'Courier New', Courier, monospace;
   color: #50d29b;
@@ -3351,8 +3351,9 @@ margin-top: 14px;
 }
 
 .dr-syn-delta {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
+  font-family: 'Courier New', Courier, monospace;
   color: #50d29b;
   font-variant-numeric: tabular-nums;
   min-height: 20px;

@@ -3614,16 +3614,11 @@ function showDrafterResult(data) {
             slot.style.top  = (pts[i].y - SLOT_HALF) + 'px';
         });
 
-        // ── Hero entrance: stagger scale-in with glow ────────────────
-        gsap.set(slots, {scale: 0.3, opacity: 0});
+        // ── Hero entrance: simple fade-in with subtle scale ──────────
+        gsap.set(slots, {scale: 0.85, opacity: 0});
         for (var hi = 0; hi < slots.length; hi++) {
             if (_drafterSkip) return;
-            gsap.to(slots[hi], {scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(1.8)'});
-            gsap.fromTo(slots[hi],
-                {boxShadow: '0 0 0px rgba(156,92,247,0)'},
-                {boxShadow: '0 0 18px 4px rgba(156,92,247,0.7)', duration: 0.25,
-                 yoyo: true, repeat: 1, ease: 'power2.out'}
-            );
+            gsap.to(slots[hi], {scale: 1, opacity: 1, duration: 0.3, ease: 'power2.out'});
             await sleep(110);
         }
 
