@@ -3520,8 +3520,22 @@ function showDrafterResult(data) {
     // ── Шаг 2: Синергия команды ─────────────────────────────────────
     async function playSynergy() {
         var synPairs = data.synergy_pairs || [];
-        var allyIds  = data.ally_ids     || [];
-        if (!synPairs.length || allyIds.length < 2) return;
+        var allyIds  = (data.ally_ids    || []).slice();
+
+        // Fallback: derive ally hero list from duels if backend didn't return ally_ids
+        if (!allyIds.length && data.duels) {
+            var _seen = {};
+            data.duels.forEach(function(d) {
+                (d.ally_heroes || []).forEach(function(h) {
+                    if (!_seen[h.hero_id]) { _seen[h.hero_id] = true; allyIds.push(h.hero_id); }
+                });
+            });
+        }
+
+        if (!synPairs.length || allyIds.length < 2) {
+            if (!synPairs.length) console.warn('[synergy] synergy_pairs missing — restart backend to apply API update');
+            return;
+        }
 
         var synScreen = document.getElementById('dr-synergy-screen');
 
@@ -4001,13 +4015,14 @@ function showDrafterResult(data) {
         );
     }
 
-    // Skip button — visible for both battle and synergy screens
+    // Skip button — appended to body so position:fixed works regardless of
+    // parent transforms (GSAP shakes battle screen with translateX during impacts)
     var _skipBtn = document.createElement('button');
     _skipBtn.id = 'dr-skip-btn';
     _skipBtn.className = 'dr-skip-btn';
     _skipBtn.textContent = 'Пропустить →';
     _skipBtn.addEventListener('click', skipDrafterAnim);
-    document.getElementById('drafter-result').appendChild(_skipBtn);
+    document.body.appendChild(_skipBtn);
 
     runBattles();
 }

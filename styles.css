@@ -3411,30 +3411,33 @@ margin-top: 14px;
   margin-top: 2px;
 }
 
-/* Skip animation button */
+/* Skip animation button — appended to <body> so position:fixed is viewport-relative */
 .dr-skip-btn {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   width: 100%;
-  padding: 14px 0;
-  background: rgba(10,6,18,0.92);
+  /* safe-area bottom padding for iPhone notch/home indicator */
+  padding: 14px 0 max(14px, env(safe-area-inset-bottom, 0px));
+  background: rgba(10,6,18,0.94);
   border: none;
-  border-top: 1px solid rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.55);
+  border-top: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.5px;
   cursor: pointer;
-  z-index: 200;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: color 0.15s;
+  z-index: 9999;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .dr-skip-btn:active {
-  color: rgba(255,255,255,0.9);
+  color: #fff;
+  background: rgba(30,15,50,0.96);
 }
 
 /* Финальный экран — динамически строится в JS */
