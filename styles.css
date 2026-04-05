@@ -2689,7 +2689,48 @@ margin-top: 14px;
   z-index: 10;
   background: #0a0014;
   overflow-y: auto;
-  padding-bottom: 40px;
+  padding-bottom: 130px; /* tab bar 70px + sticky rank bar ~52px + gap */
+}
+
+/* ── Sticky плашка «Ваше место» ────────────────────────────────── */
+.drafter-lb-myrank {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #100020;
+  border-top: 1px solid rgba(139,92,246,0.25);
+  z-index: 20;
+  margin-top: 8px;
+}
+.drafter-lb-myrank-left {
+  font-size: 12px;
+  color: #a78bfa;
+  font-weight: 700;
+}
+.drafter-lb-myrank-rank {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  margin-left: 4px;
+}
+.drafter-lb-myrank-right {
+  text-align: right;
+}
+.drafter-lb-myrank-label {
+  font-size: 9px;
+  color: #6b7280;
+  letter-spacing: 0.5px;
+}
+.drafter-lb-myrank-score {
+  font-size: 18px;
+  font-weight: 800;
+  color: #a78bfa;
+  font-variant-numeric: tabular-nums;
 }
 
 .drafter-fp-header {
