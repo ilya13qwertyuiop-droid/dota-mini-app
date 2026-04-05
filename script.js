@@ -3251,7 +3251,7 @@ function _lbScoreColor(rank) {
     return '#c084fc';
 }
 
-function _renderLeaderboardRows(rows, page, PAGE_ID) {
+async function _renderLeaderboardRows(rows, page, PAGE_ID) {
     var rowsHtml = rows.length === 0
         ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников</div>'
         : rows.map(function(r) {
@@ -3298,6 +3298,30 @@ function _renderLeaderboardRows(rows, page, PAGE_ID) {
         '</div>' +
         '<div class="drafter-fp-content">' + rowsHtml + '</div>'
     );
+
+    // ── Sticky "Ваше место" плашка ──────────────────────────────────
+    var token = (typeof USER_TOKEN !== 'undefined' ? USER_TOKEN : '') || '';
+    if (!token) return;
+    try {
+        var meResp = await fetch(window.API_BASE_URL + '/draft/leaderboard/me?token=' + encodeURIComponent(token));
+        if (!meResp.ok) return;
+        var me = await meResp.json();
+        if (!me || me.rank === null) return;
+        // Если пользователь в топ-25 — плашка не нужна, он виден в списке
+        if (me.rank <= 25) return;
+        var bar = document.createElement('div');
+        bar.className = 'drafter-lb-myrank';
+        bar.innerHTML = (
+            '<div class="drafter-lb-myrank-left">' +
+                '\u0412\u0430\u0448\u0435 \u043c\u0435\u0441\u0442\u043e: <span class="drafter-lb-myrank-rank">#' + me.rank + '</span>' +
+            '</div>' +
+            '<div class="drafter-lb-myrank-right">' +
+                '<div class="drafter-lb-myrank-label">\u0421\u0427\u0401\u0422</div>' +
+                '<div class="drafter-lb-myrank-score">' + me.top5_sum + '</div>' +
+            '</div>'
+        );
+        page.appendChild(bar);
+    } catch (e) { /* ignore */ }
 }
 
 async function showDrafterLeaderboard() {
