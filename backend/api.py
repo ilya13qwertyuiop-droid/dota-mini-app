@@ -1427,7 +1427,7 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
         .all()
     )
     def _score_rank(score: float) -> str:
-        if score >= 90: return "SSS"
+        if score >= 85: return "SSS"
         if score >= 80: return "S"
         if score >= 65: return "A"
         if score >= 50: return "B"
