@@ -3827,13 +3827,13 @@ function showDrafterResult(data) {
 
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
-        if (total >= 95) {
+        if (total >= 90) {
             rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
         } else if (total >= 80) {
             rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
-        } else if (total >= 60) {
+        } else if (total >= 65) {
             rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';               rankGlow = false;
-        } else if (total >= 40) {
+        } else if (total >= 50) {
             rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
         } else {
             rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;

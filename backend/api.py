@@ -1257,10 +1257,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
         _lane_entry("Сложная линия", a_hard, e_hard),
     ]
 
-    # ── Компонент 1: Линии (0-25) — 8.33 за победу на линии ────────────────
-    lane_component = sum(25.0 / 3 if d["win"] else 0.0 for d in duels)
+    # ── Компонент 1: Линии (0-33.33) — 100/9 за победу на линии ────────────
+    lane_component = sum(100.0 / 9 if d["win"] else 0.0 for d in duels)
 
-    # ── Компонент 2: Синергия команды (0-25) — 10 пар союзников ────────────
+    # ── Компонент 2: Синергия команды (0-33.33) — 10 пар союзников ──────────
     synergy_pairs: list[tuple[int, int, float]] = []
     for i in range(len(ally_ids)):
         for j in range(i + 1, len(ally_ids)):
@@ -1269,9 +1269,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             synergy_pairs.append((a, b, float(val)))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(25.0, (avg_synergy + 5) / 10 * 25))
+    synergy_component = max(0.0, min(100.0 / 3, (avg_synergy + 5) / 10 * (100.0 / 3)))
 
-    # ── Компонент 3: Матчап против врагов (0-25) — 25 пар наш vs вражеский ─
+    # ── Компонент 3: Матчап против врагов (0-33.33) — 25 пар наш vs вражеский
     matchup_pairs: list[tuple[int, int, float]] = []
     for a in ally_ids:
         for e in enemy_ids:
@@ -1279,10 +1279,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             matchup_pairs.append((a, e, float(val)))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
-    matchup_component = max(0.0, min(25.0, (matchup_score + 5) / 10 * 25))
+    matchup_component = max(0.0, min(100.0 / 3, (matchup_score + 5) / 10 * (100.0 / 3)))
 
-    # ── Компонент 4: Позиции (0-25) — 5 за каждого героя на допустимой позиции ─
-    # Допустимая позиция: герой играется на ней в ≥15% матчей (flex-герои учтены)
+    # ── Компонент 4: Позиции — отключён от total_score, всегда 0 ────────────
+    # Предупреждения о неправильных позициях в comments сохранены.
     pos_scores: list[tuple[int, bool]] = []
     for h in data.ally:
         chosen = _pos_str_to_num(h.position)
@@ -1290,10 +1290,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
         on_valid = chosen is not None and chosen in valid_positions
         pos_scores.append((h.hero_id, on_valid))
 
-    position_component = sum(5.0 for _, ok in pos_scores if ok)
+    position_component = 0.0  # не влияет на total_score
 
-    # ── total_score = 4 компонента по 25 очков ──────────────────────────────
-    total_score = lane_component + synergy_component + matchup_component + position_component
+    # ── total_score = 3 компонента, макс 100 ────────────────────────────────
+    total_score = lane_component + synergy_component + matchup_component
 
     # ── comments ──────────────────────────────────────────────────────────
     comments: list[dict] = []
@@ -1427,10 +1427,10 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
         .all()
     )
     def _score_rank(score: float) -> str:
-        if score >= 95: return "SSS"
+        if score >= 90: return "SSS"
         if score >= 80: return "S"
-        if score >= 60: return "A"
-        if score >= 40: return "B"
+        if score >= 65: return "A"
+        if score >= 50: return "B"
         return "C"
 
     return [
