@@ -3517,7 +3517,7 @@ function showDrafterResult(data) {
         await sleep(600);
     }
 
-    // ── Шаг 2: Синергия команды ─────────────────────────────────────
+    // ── Шаг 2: Синергия команды — pentagon layout ───────────────────
     async function playSynergy() {
         var synPairs = data.synergy_pairs || [];
         var allyIds  = (data.ally_ids    || []).slice();
@@ -3538,253 +3538,273 @@ function showDrafterResult(data) {
         }
 
         var synScreen = document.getElementById('dr-synergy-screen');
+        var NS = 'http://www.w3.org/2000/svg';
 
-        var heroesHtml = allyIds.map(function(heroId, i) {
-            return '<div class="dr-syn-slot" id="dr-syn-slot-' + i + '">' +
-                '<img src="' + _icon(heroId) + '" class="dr-syn-av" onerror="this.style.opacity=0">' +
-            '</div>';
-        }).join('');
-
+        // ── Build DOM ────────────────────────────────────────────────
         var dotsHtml = synPairs.map(function(_, pi) {
-            return '<div class="dr-dot' + (pi === 0 ? ' dr-dot-active' : '') + '" id="dr-syn-dot-' + pi + '"></div>';
+            return '<div class="dr-dot" id="dr-syn-dot-' + pi + '"></div>';
         }).join('');
 
         synScreen.innerHTML = (
             '<div class="dr-syn-title">Командная синергия</div>' +
-            '<div class="dr-syn-wrap" id="dr-syn-wrap">' +
-                '<svg id="dr-syn-svg" class="dr-syn-svg"></svg>' +
-                '<div class="dr-syn-row" id="dr-syn-row">' + heroesHtml + '</div>' +
+            '<div class="dr-syn-penta" id="dr-syn-penta"></div>' +
+            '<div class="dr-syn-score-wrap">' +
+                '<div class="dr-syn-total" id="dr-syn-total">+0.0</div>' +
+                '<div class="dr-syn-delta" id="dr-syn-delta"></div>' +
             '</div>' +
-            '<div class="dr-syn-score" id="dr-syn-score">' +
-                '<span></span>' +
-                '<span class="dr-syn-total" id="dr-syn-total">+0.0</span>' +
-                '<span class="dr-syn-delta" id="dr-syn-delta" style="opacity:0;"></span>' +
-            '</div>' +
-            '<div class="dr-dots" style="margin-top:12px;">' + dotsHtml + '</div>'
+            '<div class="dr-dots" style="margin-top:8px;">' + dotsHtml + '</div>'
         );
 
-        var overlay = document.getElementById('dr-bg-overlay');
-        if (overlay) gsap.to(overlay, {opacity: 0.25, duration: 0.5, ease: 'power2.out'});
+        var penta   = document.getElementById('dr-syn-penta');
+        var totalEl = document.getElementById('dr-syn-total');
+        var deltaEl = document.getElementById('dr-syn-delta');
 
+        // SVG canvas (positioned absolute over penta, pointer-events:none)
+        var svgEl = document.createElementNS(NS, 'svg');
+        svgEl.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
+        penta.appendChild(svgEl);
+
+        // Hero slots — positioned by JS after layout
+        var SLOT_HALF = 25; // half of 50px slot
+        var slots = allyIds.map(function(heroId, i) {
+            var slot = document.createElement('div');
+            slot.id = 'dr-syn-slot-' + i;
+            slot.className = 'dr-syn-slot';
+            var img = document.createElement('img');
+            img.src = _icon(heroId);
+            img.className = 'dr-syn-av';
+            img.onerror = function() { this.style.opacity = 0; };
+            slot.appendChild(img);
+            penta.appendChild(slot);
+            return slot;
+        });
+
+        // ── Fade in screen ───────────────────────────────────────────
+        var overlay = document.getElementById('dr-bg-overlay');
+        if (overlay) gsap.to(overlay, {opacity: 0.2, duration: 0.5});
         synScreen.style.display = 'block';
         gsap.fromTo(synScreen, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power2.out'});
 
-        await sleep(400);
+        await sleep(200);
+        if (_drafterSkip) return;
 
-        var slots = Array.from(synScreen.querySelectorAll('.dr-syn-slot'));
-        gsap.fromTo(slots,
-            {y: 20, opacity: 0},
-            {y: 0, opacity: 1, duration: 0.35, stagger: 0.07, ease: 'power2.out'}
-        );
+        // ── Pentagon geometry ────────────────────────────────────────
+        var RADIUS   = 88;
+        var pentaW   = penta.offsetWidth || 300;
+        var cx       = pentaW / 2;
+        var cy       = RADIUS + 30;                            // top vertex at y=30
+        var bottomY  = cy + RADIUS * Math.sin(2 * Math.PI / 5); // ≈ cy+71
+        var pentaH   = Math.ceil(bottomY + SLOT_HALF + 10);   // bottom slot edge + padding
 
-        await sleep(650);
+        var pts = allyIds.map(function(_, i) {
+            return {
+                x: cx + RADIUS * Math.cos(i * 2 * Math.PI / 5 - Math.PI / 2),
+                y: cy + RADIUS * Math.sin(i * 2 * Math.PI / 5 - Math.PI / 2)
+            };
+        });
 
-        var svgEl   = document.getElementById('dr-syn-svg');
-        var totalEl = document.getElementById('dr-syn-total');
-        var deltaEl = document.getElementById('dr-syn-delta');
-        var running = 0;
+        // Apply geometry
+        penta.style.height = pentaH + 'px';
+        svgEl.setAttribute('width',   pentaW);
+        svgEl.setAttribute('height',  pentaH);
+        svgEl.setAttribute('viewBox', '0 0 ' + pentaW + ' ' + pentaH);
 
-        function syncSvg() {
-            var wrapEl = document.getElementById('dr-syn-wrap');
-            var wr = wrapEl.getBoundingClientRect();
-            svgEl.setAttribute('width',  wr.width);
-            svgEl.setAttribute('height', wr.height);
+        slots.forEach(function(slot, i) {
+            slot.style.left = (pts[i].x - SLOT_HALF) + 'px';
+            slot.style.top  = (pts[i].y - SLOT_HALF) + 'px';
+        });
+
+        // ── Hero entrance: stagger scale-in with glow ────────────────
+        gsap.set(slots, {scale: 0.3, opacity: 0});
+        for (var hi = 0; hi < slots.length; hi++) {
+            if (_drafterSkip) return;
+            gsap.to(slots[hi], {scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(1.8)'});
+            gsap.fromTo(slots[hi],
+                {boxShadow: '0 0 0px rgba(156,92,247,0)'},
+                {boxShadow: '0 0 18px 4px rgba(156,92,247,0.7)', duration: 0.25,
+                 yoyo: true, repeat: 1, ease: 'power2.out'}
+            );
+            await sleep(110);
         }
 
-        function heroCX(idx) {
-            var sr   = slots[idx].getBoundingClientRect();
-            var svgR = svgEl.getBoundingClientRect();
-            return sr.left + sr.width / 2 - svgR.left;
-        }
+        await sleep(240);
+        if (_drafterSkip) return;
 
-        function heroCY() {
-            var sr   = slots[0].getBoundingClientRect();
-            var svgR = svgEl.getBoundingClientRect();
-            return sr.top + sr.height / 2 - svgR.top;
-        }
-
-        function makeSvgEl(tag, attrs) {
-            var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        // ── SVG helpers ──────────────────────────────────────────────
+        function mkSvg(tag, attrs) {
+            var el = document.createElementNS(NS, tag);
             Object.keys(attrs).forEach(function(k) { el.setAttribute(k, attrs[k]); });
             return el;
         }
 
-        function buildArc(x1, x2, baseY, color, sw) {
-            var mx   = (x1 + x2) / 2;
-            var dist = Math.abs(x2 - x1);
-            var dy   = Math.min(55, Math.max(16, dist * 0.44));
-            var d    = 'M ' + x1 + ' ' + baseY + ' Q ' + mx + ' ' + (baseY - dy) + ' ' + x2 + ' ' + baseY;
-            var path = makeSvgEl('path', {
-                d: d, stroke: color, 'stroke-width': sw || '2.5',
-                fill: 'none', 'stroke-linecap': 'round', opacity: '0'
-            });
-            svgEl.appendChild(path);
-            var len = path.getTotalLength();
-            gsap.set(path, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
-            return {path: path, mx: mx, peakY: baseY - dy};
+        // Perimeter = adjacent vertices (index diff 1 or wraps 0↔n-1)
+        var N = allyIds.length;
+        function isPerimeter(i1, i2) {
+            var a = Math.min(i1, i2), b = Math.max(i1, i2);
+            return (b - a === 1) || (a === 0 && b === N - 1);
+        }
+
+        // Build two-layer bezier (glow + main), returns {glow, main}
+        function buildBezier(i1, i2, color, intensity) {
+            var p1 = pts[i1], p2 = pts[i2];
+            var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+            var dx = cx - mx, dy = cy - my;
+            var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            var ux = dx / dist, uy = dy / dist;
+            // Perimeter bends outward (negative = away from center)
+            // Diagonals bend inward (positive = toward center)
+            var off = isPerimeter(i1, i2)
+                ? -(28 + intensity * 14)
+                :  (22 + intensity * 10);
+            var cpx = mx + ux * off, cpy = my + uy * off;
+            var d = 'M ' + p1.x.toFixed(1) + ' ' + p1.y.toFixed(1)
+                  + ' Q ' + cpx.toFixed(1) + ' ' + cpy.toFixed(1)
+                  + ' ' + p2.x.toFixed(1) + ' ' + p2.y.toFixed(1);
+
+            var glow = mkSvg('path', {d: d, stroke: color, 'stroke-width': '7',
+                                      fill: 'none', 'stroke-linecap': 'round'});
+            glow.style.opacity = '0';
+            var main = mkSvg('path', {d: d, stroke: color, 'stroke-width': '2',
+                                      fill: 'none', 'stroke-linecap': 'round'});
+            main.style.opacity = '0';
+            svgEl.appendChild(glow);
+            svgEl.appendChild(main);
+
+            var len = main.getTotalLength();
+            gsap.set(main, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
+            gsap.set(glow, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
+            return {glow: glow, main: main};
         }
 
         // ── 10 пар ──────────────────────────────────────────────────
+        var running = 0;
+
         for (var pi = 0; pi < synPairs.length; pi++) {
+            if (_drafterSkip) return;
+
             var pair  = synPairs[pi];
             var idx1  = allyIds.indexOf(pair.hero_id1);
             var idx2  = allyIds.indexOf(pair.hero_id2);
             if (idx1 < 0 || idx2 < 0) continue;
-            var val   = pair.value;
-            var color = val >= 0 ? '#10b981' : '#ef4444';
 
-            // Dots
+            var val       = pair.value;
+            var intensity = Math.min(Math.abs(val) / 18, 1);
+            var lineColor = val > 0 ? '#50d29b' : '#dc5046';
+
+            // Progress dots
             if (pi > 0) {
-                var prevDot = document.getElementById('dr-syn-dot-' + (pi - 1));
-                if (prevDot) prevDot.className = 'dr-dot ' + (synPairs[pi-1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
+                var pd = document.getElementById('dr-syn-dot-' + (pi - 1));
+                if (pd) pd.className = 'dr-dot ' + (synPairs[pi-1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
             }
-            var curDot = document.getElementById('dr-syn-dot-' + pi);
-            if (curDot) curDot.className = 'dr-dot dr-dot-active';
+            var cd = document.getElementById('dr-syn-dot-' + pi);
+            if (cd) cd.className = 'dr-dot dr-dot-active';
 
-            // Highlight/dim heroes
+            // Highlight active pair, dim rest
             slots.forEach(function(sl, si) {
-                var active = si === idx1 || si === idx2;
-                gsap.to(sl, {opacity: active ? 1 : 0.18, scale: active ? 1.08 : 1, duration: 0.2, ease: 'power2.out'});
+                var on = si === idx1 || si === idx2;
+                gsap.to(sl, {opacity: on ? 1 : 0.2, scale: on ? 1.1 : 1,
+                             duration: 0.18, ease: 'power2.out'});
             });
 
-            await sleep(200);
+            await sleep(80);
+            if (_drafterSkip) return;
 
-            // Draw arc
+            // Draw bezier
             svgEl.innerHTML = '';
-            syncSvg();
-            var bY  = heroCY();
-            var ax1 = heroCX(idx1), ax2 = heroCX(idx2);
-            var arc = buildArc(ax1, ax2, bY, color);
+            var bez = buildBezier(idx1, idx2, lineColor, intensity);
 
             // Endpoint dots
-            [ax1, ax2].forEach(function(cx) {
-                svgEl.appendChild(makeSvgEl('circle', {cx: cx, cy: bY, r: '3.5', fill: color, opacity: '0.9'}));
+            [idx1, idx2].forEach(function(i) {
+                svgEl.appendChild(mkSvg('circle', {
+                    cx: pts[i].x.toFixed(1), cy: pts[i].y.toFixed(1),
+                    r: '4', fill: lineColor
+                }));
             });
 
-            gsap.to(arc.path, {attr: {'stroke-dashoffset': 0}, opacity: 1, duration: 0.3, ease: 'power2.out'});
+            gsap.to(bez.main, {attr: {'stroke-dashoffset': 0}, opacity: 1,
+                               duration: 0.35, ease: 'power2.inOut'});
+            gsap.to(bez.glow, {attr: {'stroke-dashoffset': 0}, opacity: 0.22,
+                               duration: 0.35, ease: 'power2.inOut'});
 
-            // Value label at arc peak
-            var lblEl = makeSvgEl('text', {
-                x: arc.mx, y: arc.peakY - 4, 'text-anchor': 'middle',
-                fill: color, 'font-size': '11', 'font-weight': '700',
-                'font-family': 'system-ui, sans-serif', opacity: '0'
-            });
-            lblEl.textContent = (val >= 0 ? '+' : '') + val.toFixed(1);
-            svgEl.appendChild(lblEl);
-            gsap.to(lblEl, {opacity: 1, duration: 0.25, delay: 0.12});
-
-            // Running score counter
+            // Score counter (total stays in place)
             var newRunning = running + val;
             (function(from, to) {
                 var obj = {v: from};
-                gsap.to(obj, {v: to, duration: 0.35, ease: 'power2.out', onUpdate: function() {
-                    var s = obj.v >= 0 ? '+' : '';
-                    totalEl.textContent = s + obj.v.toFixed(1);
-                    totalEl.style.color = obj.v >= 0 ? '#10b981' : '#ef4444';
-                }});
+                gsap.to(obj, {v: to, duration: 0.35, ease: 'power2.out',
+                    onUpdate: function() {
+                        var sign = obj.v > 0.05 ? '+' : (obj.v < -0.05 ? '' : '+');
+                        totalEl.textContent = sign + obj.v.toFixed(1);
+                        totalEl.style.color = obj.v > 0.5  ? '#50d29b'
+                                            : obj.v < -0.5 ? '#dc5046' : '#e5c875';
+                    }
+                });
             })(running, newRunning);
             running = newRunning;
 
-            // Delta badge
-            deltaEl.textContent = (val >= 0 ? '+' : '') + val.toFixed(1);
-            deltaEl.style.color = color;
-            gsap.fromTo(deltaEl, {opacity: 0, x: 8}, {opacity: 1, x: 0, duration: 0.25});
+            // Delta: slide up from below, then exit upward
+            var dSign = val >= 0 ? '+' : '';
+            deltaEl.textContent = dSign + val.toFixed(1);
+            deltaEl.style.color = lineColor;
+            gsap.fromTo(deltaEl, {opacity: 0, y: 12}, {opacity: 1, y: 0,
+                                  duration: 0.25, ease: 'power2.out'});
 
-            await sleep(620);
+            await sleep(480);
+            if (_drafterSkip) return;
 
-            gsap.to([arc.path, lblEl], {opacity: 0, duration: 0.18});
-            gsap.to(deltaEl, {opacity: 0, duration: 0.18});
+            gsap.to([bez.main, bez.glow], {opacity: 0, duration: 0.2});
+            gsap.to(deltaEl, {opacity: 0, y: -10, duration: 0.22, ease: 'power2.in'});
 
-            await sleep(220);
+            await sleep(160);
         }
 
         // Mark last dot
         var lastDot = document.getElementById('dr-syn-dot-' + (synPairs.length - 1));
         if (lastDot) {
-            lastDot.className = 'dr-dot ' + (synPairs[synPairs.length - 1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
+            lastDot.className = 'dr-dot ' + (synPairs[synPairs.length - 1].value >= 0
+                                             ? 'dr-dot-win' : 'dr-dot-loss');
         }
 
-        // Reset heroes
+        if (_drafterSkip) return;
+
+        // Reset all heroes, clear SVG
         slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1)'}); });
+        gsap.set(deltaEl, {opacity: 0, y: 0});
         svgEl.innerHTML = '';
 
-        await sleep(350);
+        await sleep(280);
+        if (_drafterSkip) return;
 
-        // ── Лучшая / худшая пара ──────────────────────────────────────
-        var sortedPairs = synPairs.slice().sort(function(a, b) { return b.value - a.value; });
-
-        async function revealPair(pairObj, accent, labelText) {
-            var ri1 = allyIds.indexOf(pairObj.hero_id1);
-            var ri2 = allyIds.indexOf(pairObj.hero_id2);
-            slots.forEach(function(sl, si) {
-                var active = si === ri1 || si === ri2;
-                gsap.to(sl, {opacity: active ? 1 : 0.1, scale: active ? 1.12 : 1, duration: 0.3, ease: 'power2.out'});
-            });
-            svgEl.innerHTML = '';
-            syncSvg();
-            var ry   = heroCY();
-            var rx1  = heroCX(ri1), rx2 = heroCX(ri2);
-            var rarc = buildArc(rx1, rx2, ry, accent, '3');
-            [rx1, rx2].forEach(function(cx) {
-                svgEl.appendChild(makeSvgEl('circle', {cx: cx, cy: ry, r: '5', fill: accent, opacity: '0.9'}));
-            });
-            gsap.to(rarc.path, {attr: {'stroke-dashoffset': 0}, opacity: 1, duration: 0.4, ease: 'power2.out'});
-
-            var titleEl = makeSvgEl('text', {
-                x: rarc.mx, y: rarc.peakY - 12, 'text-anchor': 'middle',
-                fill: accent, 'font-size': '9', 'font-weight': '700',
-                'letter-spacing': '1', 'font-family': 'system-ui, sans-serif', opacity: '0'
-            });
-            titleEl.textContent = labelText;
-            svgEl.appendChild(titleEl);
-
-            var rvalEl = makeSvgEl('text', {
-                x: rarc.mx, y: rarc.peakY - 1, 'text-anchor': 'middle',
-                fill: accent, 'font-size': '11', 'font-weight': '700',
-                'font-family': 'system-ui, sans-serif', opacity: '0'
-            });
-            rvalEl.textContent = (pairObj.value >= 0 ? '+' : '') + pairObj.value.toFixed(1);
-            svgEl.appendChild(rvalEl);
-
-            gsap.to(titleEl, {opacity: 1, duration: 0.3, delay: 0.25});
-            gsap.to(rvalEl,  {opacity: 1, duration: 0.3, delay: 0.35});
-
-            await sleep(950);
-        }
-
-        await revealPair(sortedPairs[0], '#10b981', 'ЛУЧШАЯ СВЯЗКА');
-        await revealPair(sortedPairs[sortedPairs.length - 1], '#ef4444', 'СЛАБОЕ ЗВЕНО');
-
-        // ── Итоговый счёт ────────────────────────────────────────────
-        slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3}); });
-        svgEl.innerHTML = '';
-
+        // ── Final score card ─────────────────────────────────────────
         var finalScore = data.synergy_score || 0;
-        var scoreColor = finalScore >= 17 ? '#10b981' : finalScore >= 10 ? '#f59e0b' : '#ef4444';
+        var cardColor  = finalScore >= 18 ? '#50d29b' : finalScore >= 12 ? '#e5c875' : '#dc5046';
 
-        var scoreDiv = document.createElement('div');
-        scoreDiv.className = 'dr-syn-final';
-        scoreDiv.innerHTML = (
-            '<span class="dr-syn-final-label">СИНЕРГИЯ</span>' +
-            '<span class="dr-syn-final-val" id="dr-syn-fval" style="color:' + scoreColor + ';">0.0</span>' +
-            '<span class="dr-syn-final-max">из 25 очков</span>'
+        var card = document.createElement('div');
+        card.className = 'dr-syn-card';
+        card.innerHTML = (
+            '<div class="dr-syn-card-label">СИНЕРГИЯ</div>' +
+            '<div class="dr-syn-card-val" id="dr-syn-fval" style="color:' + cardColor + ';">0.0</div>' +
+            '<div class="dr-syn-card-sub">из 25 очков</div>'
         );
-        synScreen.appendChild(scoreDiv);
-        gsap.fromTo(scoreDiv, {opacity: 0, y: 16}, {opacity: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
+        synScreen.appendChild(card);
+
+        gsap.fromTo(card, {opacity: 0, scale: 0.88, y: 8},
+                          {opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
 
         var fvalEl = document.getElementById('dr-syn-fval');
         var cnt = {v: 0};
-        gsap.to(cnt, {v: finalScore, duration: 0.75, ease: 'power2.out', onUpdate: function() {
-            fvalEl.textContent = cnt.v.toFixed(1);
-        }});
+        gsap.to(cnt, {v: finalScore, duration: 0.7, ease: 'power2.out',
+            onUpdate: function() { fvalEl.textContent = cnt.v.toFixed(1); }
+        });
 
-        await sleep(1400);
+        await sleep(2200);
+        if (_drafterSkip) return;
 
-        gsap.to(synScreen, {opacity: 0, duration: 0.35, ease: 'power2.in', onComplete: function() {
+        // Fade out and hand off to showFinal
+        gsap.to(synScreen, {opacity: 0, duration: 0.4, ease: 'power2.in', onComplete: function() {
             synScreen.style.display = 'none';
             gsap.set(synScreen, {opacity: 1});
         }});
-        await sleep(400);
+        await sleep(420);
     }
 
     async function runBattles() {
