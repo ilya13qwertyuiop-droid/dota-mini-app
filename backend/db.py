@@ -288,9 +288,9 @@ def count_matches_with_game_mode() -> int:
         return session.query(Match).filter(Match.game_mode.isnot(None)).count()
 
 
-def get_top_drafters(month: int, year: int, limit: int = 3, min_drafts: int = 5) -> list[dict]:
-    """Топ-N драфтеров за заданный месяц/год с минимум min_drafts драфтами."""
-    from sqlalchemy import func
+def get_top_drafters(month: int, year: int, limit: int = 3) -> list[dict]:
+    """Топ-N драфтеров за заданный месяц/год по сумме топ-5 результатов."""
+    from sqlalchemy import text
     month_start = datetime(year, month, 1, tzinfo=None)
     if month == 12:
         month_end = datetime(year + 1, 1, 1, tzinfo=None)
@@ -298,19 +298,29 @@ def get_top_drafters(month: int, year: int, limit: int = 3, min_drafts: int = 5)
         month_end = datetime(year, month + 1, 1, tzinfo=None)
 
     with SessionLocal() as session:
-        rows = (
-            session.query(
-                DraftResult.user_id,
-                func.avg(DraftResult.total_score).label("avg_score"),
-                func.count(DraftResult.id).label("draft_count"),
-            )
-            .filter(DraftResult.created_at >= month_start, DraftResult.created_at < month_end)
-            .group_by(DraftResult.user_id)
-            .having(func.count(DraftResult.id) >= min_drafts)
-            .order_by(func.avg(DraftResult.total_score).desc())
-            .limit(limit)
-            .all()
-        )
+        rows = session.execute(text("""
+            SELECT
+                d1.user_id,
+                (
+                    SELECT COALESCE(SUM(total_score), 0)
+                    FROM (
+                        SELECT total_score
+                        FROM draft_results d2
+                        WHERE d2.user_id = d1.user_id
+                          AND d2.created_at >= :month_start
+                          AND d2.created_at < :month_end
+                        ORDER BY total_score DESC
+                        LIMIT 5
+                    )
+                ) AS top5_sum,
+                COUNT(*) AS draft_count
+            FROM draft_results d1
+            WHERE d1.created_at >= :month_start
+              AND d1.created_at < :month_end
+            GROUP BY d1.user_id
+            ORDER BY top5_sum DESC
+            LIMIT :limit
+        """), {"month_start": month_start, "month_end": month_end, "limit": limit}).fetchall()
 
         user_ids = [r.user_id for r in rows]
         profiles = {
@@ -326,7 +336,7 @@ def get_top_drafters(month: int, year: int, limit: int = 3, min_drafts: int = 5)
                 "user_id": row.user_id,
                 "username": s.get("username"),
                 "first_name": s.get("first_name") or f"Игрок {row.user_id}",
-                "avg_score": round(row.avg_score, 1),
+                "top5_sum": round(row.top5_sum, 1),
                 "draft_count": row.draft_count,
             })
         return result
