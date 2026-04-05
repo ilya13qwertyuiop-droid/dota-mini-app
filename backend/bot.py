@@ -1543,7 +1543,7 @@ async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
 
     if not top:
         await update.message.reply_text(
-            f"🏆 Топ-3 драфтеров за {month_label}\n\nПока нет участников с 5+ драфтами."
+            f"🏆 Топ-3 драфтеров за {month_label}\n\nПока нет участников."
         )
         return
 
@@ -1554,7 +1554,7 @@ async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
         name = r["first_name"]
         display = f"{uname} ({name})" if r["username"] else name
         lines.append(
-            f"{medals[r['rank']]} {display} — {r['avg_score']} avg / {r['draft_count']} драфтов\n"
+            f"{medals[r['rank']]} {display} — топ-5 сумма: {r['top5_sum']} / {r['draft_count']} драфтов\n"
             f"   user_id: {r['user_id']}"
         )
 
