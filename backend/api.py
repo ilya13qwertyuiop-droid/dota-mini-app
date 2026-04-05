@@ -1412,6 +1412,58 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
     return result
 
 
+@app.get("/api/draft/leaderboard/me")
+async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db)):
+    """Место и счёт текущего пользователя среди всех участников.
+
+    Два быстрых запроса вместо одного RANK() OVER на весь стол:
+    1. Сумма топ-5 результатов пользователя — фильтр по user_id + LIMIT 5.
+    2. Количество пользователей с большей суммой → ранг = count + 1.
+    """
+    if not token:
+        return {"rank": None, "top5_sum": None}
+    user_id = get_user_id_by_token(token)
+    if not user_id:
+        return {"rank": None, "top5_sum": None}
+
+    from sqlalchemy import text
+
+    # ── Шаг 1: top5_sum пользователя (быстро: WHERE user_id + LIMIT 5) ──
+    sum_row = db.execute(text("""
+        SELECT COALESCE(SUM(total_score), 0) AS top5_sum
+        FROM (
+            SELECT total_score FROM draft_results
+            WHERE user_id = :uid
+            ORDER BY total_score DESC
+            LIMIT 5
+        )
+    """), {"uid": user_id}).fetchone()
+
+    my_sum = float(sum_row.top5_sum) if sum_row else 0.0
+    if my_sum == 0.0:
+        return {"rank": None, "top5_sum": None}
+
+    # ── Шаг 2: сколько пользователей лучше → ранг без RANK() OVER ───────
+    count_row = db.execute(text("""
+        SELECT COUNT(*) AS better_count
+        FROM (
+            SELECT user_id
+            FROM (
+                SELECT user_id, total_score,
+                       ROW_NUMBER() OVER (PARTITION BY user_id
+                                         ORDER BY total_score DESC) AS rn
+                FROM draft_results
+            ) t
+            WHERE rn <= 5
+            GROUP BY user_id
+            HAVING SUM(total_score) > :my_sum
+        )
+    """), {"my_sum": my_sum}).fetchone()
+
+    rank = int(count_row.better_count) + 1 if count_row else 1
+    return {"rank": rank, "top5_sum": round(my_sum, 1)}
+
+
 @app.get("/api/draft/history")
 async def api_draft_history(token: str, db: Session = Depends(get_db)):
     """Последние 10 драфтов пользователя."""
