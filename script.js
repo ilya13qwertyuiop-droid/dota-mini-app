@@ -3827,7 +3827,7 @@ function showDrafterResult(data) {
 
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
-        if (total >= 90) {
+        if (total >= 85) {
             rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
         } else if (total >= 80) {
             rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
@@ -3965,14 +3965,13 @@ function showDrafterResult(data) {
             var avatarsHtml = warnComment.hero_ids.map(function(hid) {
                 return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
             }).join('');
-            var warnPenalty = -(warnComment.hero_ids.length * 5);
             warnCardHtml = (
                 '<div class="matchup-card" style="border-left:2px solid #f59e0b;background:rgba(245,158,11,0.08);">' +
                     '<div class="mc-heroes">' + avatarsHtml + '</div>' +
                     '<div class="mc-info">' +
                         '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
                     '</div>' +
-                    '<div class="mc-val" style="color:#f59e0b;">' + warnPenalty + '</div>' +
+                    '<div class="mc-val" style="color:#f59e0b;">&#x26A0;</div>' +
                 '</div>'
             );
         }
