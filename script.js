@@ -3771,14 +3771,14 @@ function showDrafterResult(data) {
 
         // ── Final score card ─────────────────────────────────────────
         var finalScore = data.synergy_score || 0;
-        var cardColor  = finalScore >= 18 ? '#50d29b' : finalScore >= 12 ? '#e5c875' : '#dc5046';
+        var cardColor  = finalScore >= 24 ? '#50d29b' : finalScore >= 16 ? '#e5c875' : '#dc5046';
 
         var card = document.createElement('div');
         card.className = 'dr-syn-card';
         card.innerHTML = (
             '<div class="dr-syn-card-label">СИНЕРГИЯ</div>' +
             '<div class="dr-syn-card-val" id="dr-syn-fval" style="color:' + cardColor + ';">0.0</div>' +
-            '<div class="dr-syn-card-sub">из 25 очков</div>'
+            '<div class="dr-syn-card-sub">из 33 очков</div>'
         );
         synScreen.appendChild(card);
 
