@@ -1185,12 +1185,15 @@ class DraftEvaluateRequest(BaseModel):
 
 
 def _pos_str_to_num(pos) -> int | None:
-    """Convert 'pos 1'..'pos 5' or 'pos%201'..'pos%205' to 1..5. Accepts None."""
+    """Convert position to 1..5. Accepts None.
+
+    Supported formats: '1'..'5', 'pos 1'..'pos 5', 'pos%201'..'pos%205'.
+    """
     if not pos:
         return None
     s = str(pos).strip().replace("%20", " ").lower()
     for i in range(1, 6):
-        if s == f"pos {i}":
+        if s == str(i) or s == f"pos {i}":
             return i
     return None
 
