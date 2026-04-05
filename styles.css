@@ -3294,6 +3294,131 @@ margin-top: 14px;
 .dr-dot-win    { background: #4ade80; }
 .dr-dot-loss   { background: #f87171; }
 
+/* ── Синергия команды — pentagon layout ───────────────────────────── */
+
+#dr-synergy-screen {
+  padding: 16px 16px 20px;
+  position: relative;
+}
+
+.dr-syn-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+/* Pentagon container — heroes positioned absolutely via JS */
+.dr-syn-penta {
+  position: relative;
+  width: 100%;
+}
+
+.dr-syn-slot {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.dr-syn-av {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid #9c5cf7;
+  box-shadow: 0 0 8px rgba(156,92,247,0.3);
+  object-fit: cover;
+  display: block;
+}
+
+/* Score area below pentagon */
+.dr-syn-score-wrap {
+  text-align: center;
+  margin: 8px 0 4px;
+  min-height: 54px;
+}
+
+.dr-syn-total {
+  font-size: 38px;
+  font-weight: 900;
+  font-family: 'Courier New', Courier, monospace;
+  color: #50d29b;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.dr-syn-delta {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'Courier New', Courier, monospace;
+  color: #50d29b;
+  font-variant-numeric: tabular-nums;
+  min-height: 20px;
+  margin-top: 2px;
+}
+
+/* Final result card */
+.dr-syn-card {
+  margin: 8px 0 0;
+  padding: 14px 20px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(156,92,247,0.28);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.dr-syn-card-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.dr-syn-card-val {
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.dr-syn-card-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Skip animation button — small pill in the top-right corner.
+   drafter-main header is hidden during animations so this area is free. */
+.dr-skip-btn {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: 14px;
+  padding: 7px 14px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 20px;
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  z-index: 500;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+
+.dr-skip-btn:active {
+  color: #fff;
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.35);
+}
+
 /* Финальный экран — динамически строится в JS */
 
 #dr-final-screen {

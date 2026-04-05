@@ -3335,8 +3335,25 @@ function showDrafterResult(data) {
 
     var duels = data.duels || [];
 
+    var _drafterSkip = false;
+
     function sleep(ms) {
-        return new Promise(function(resolve) { setTimeout(resolve, ms); });
+        return new Promise(function(resolve) {
+            if (_drafterSkip) { resolve(); return; }
+            setTimeout(resolve, ms);
+        });
+    }
+
+    function skipDrafterAnim() {
+        if (_drafterSkip) return;
+        _drafterSkip = true;
+        gsap.set(battleScreen, {clearProps: 'x'});
+        battleScreen.style.display = 'none';
+        var synSc = document.getElementById('dr-synergy-screen');
+        if (synSc) { synSc.style.display = 'none'; gsap.set(synSc, {clearProps: 'opacity'}); }
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+        showFinal();
     }
 
     function _icon(id) { return _drafterHeroIcon(id) || ''; }
@@ -3500,29 +3517,323 @@ function showDrafterResult(data) {
         await sleep(600);
     }
 
+    // ── Шаг 2: Синергия команды — pentagon layout ───────────────────
+    async function playSynergy() {
+        var synPairs = data.synergy_pairs || [];
+        var allyIds  = (data.ally_ids    || []).slice();
+
+        // Fallback: derive ally hero list from duels if backend didn't return ally_ids
+        if (!allyIds.length && data.duels) {
+            var _seen = {};
+            data.duels.forEach(function(d) {
+                (d.ally_heroes || []).forEach(function(h) {
+                    if (!_seen[h.hero_id]) { _seen[h.hero_id] = true; allyIds.push(h.hero_id); }
+                });
+            });
+        }
+
+        if (!synPairs.length || allyIds.length < 2) {
+            if (!synPairs.length) console.warn('[synergy] synergy_pairs missing — restart backend to apply API update');
+            return;
+        }
+
+        var synScreen = document.getElementById('dr-synergy-screen');
+        var NS = 'http://www.w3.org/2000/svg';
+
+        // ── Build DOM ────────────────────────────────────────────────
+        var dotsHtml = synPairs.map(function(_, pi) {
+            return '<div class="dr-dot" id="dr-syn-dot-' + pi + '"></div>';
+        }).join('');
+
+        synScreen.innerHTML = (
+            '<div class="dr-syn-title">Командная синергия</div>' +
+            '<div class="dr-syn-penta" id="dr-syn-penta"></div>' +
+            '<div class="dr-syn-score-wrap">' +
+                '<div class="dr-syn-total" id="dr-syn-total">+0.0</div>' +
+                '<div class="dr-syn-delta" id="dr-syn-delta"></div>' +
+            '</div>' +
+            '<div class="dr-dots" style="margin-top:8px;">' + dotsHtml + '</div>'
+        );
+
+        var penta   = document.getElementById('dr-syn-penta');
+        var totalEl = document.getElementById('dr-syn-total');
+        var deltaEl = document.getElementById('dr-syn-delta');
+
+        // SVG canvas (positioned absolute over penta, pointer-events:none)
+        var svgEl = document.createElementNS(NS, 'svg');
+        svgEl.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
+        penta.appendChild(svgEl);
+
+        // Hero slots — positioned by JS after layout
+        var SLOT_HALF = 25; // half of 50px slot
+        var slots = allyIds.map(function(heroId, i) {
+            var slot = document.createElement('div');
+            slot.id = 'dr-syn-slot-' + i;
+            slot.className = 'dr-syn-slot';
+            var img = document.createElement('img');
+            img.src = _icon(heroId);
+            img.className = 'dr-syn-av';
+            img.onerror = function() { this.style.opacity = 0; };
+            slot.appendChild(img);
+            penta.appendChild(slot);
+            return slot;
+        });
+
+        // ── Fade in screen ───────────────────────────────────────────
+        var overlay = document.getElementById('dr-bg-overlay');
+        if (overlay) gsap.to(overlay, {opacity: 0.2, duration: 0.5});
+        synScreen.style.display = 'block';
+        gsap.fromTo(synScreen, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power2.out'});
+
+        await sleep(200);
+        if (_drafterSkip) return;
+
+        // ── Pentagon geometry ────────────────────────────────────────
+        var RADIUS   = 88;
+        var pentaW   = penta.offsetWidth || 300;
+        var cx       = pentaW / 2;
+        var cy       = RADIUS + 30;                            // top vertex at y=30
+        var bottomY  = cy + RADIUS * Math.sin(2 * Math.PI / 5); // ≈ cy+71
+        var pentaH   = Math.ceil(bottomY + SLOT_HALF + 10);   // bottom slot edge + padding
+
+        var pts = allyIds.map(function(_, i) {
+            return {
+                x: cx + RADIUS * Math.cos(i * 2 * Math.PI / 5 - Math.PI / 2),
+                y: cy + RADIUS * Math.sin(i * 2 * Math.PI / 5 - Math.PI / 2)
+            };
+        });
+
+        // Apply geometry
+        penta.style.height = pentaH + 'px';
+        svgEl.setAttribute('width',   pentaW);
+        svgEl.setAttribute('height',  pentaH);
+        svgEl.setAttribute('viewBox', '0 0 ' + pentaW + ' ' + pentaH);
+
+        slots.forEach(function(slot, i) {
+            slot.style.left = (pts[i].x - SLOT_HALF) + 'px';
+            slot.style.top  = (pts[i].y - SLOT_HALF) + 'px';
+        });
+
+        // ── Hero entrance: simple fade-in with subtle scale ──────────
+        gsap.set(slots, {scale: 0.85, opacity: 0});
+        for (var hi = 0; hi < slots.length; hi++) {
+            if (_drafterSkip) return;
+            gsap.to(slots[hi], {scale: 1, opacity: 1, duration: 0.3, ease: 'power2.out'});
+            await sleep(110);
+        }
+
+        await sleep(240);
+        if (_drafterSkip) return;
+
+        // ── SVG helpers ──────────────────────────────────────────────
+        function mkSvg(tag, attrs) {
+            var el = document.createElementNS(NS, tag);
+            Object.keys(attrs).forEach(function(k) { el.setAttribute(k, attrs[k]); });
+            return el;
+        }
+
+        // Perimeter = adjacent vertices (index diff 1 or wraps 0↔n-1)
+        var N = allyIds.length;
+        function isPerimeter(i1, i2) {
+            var a = Math.min(i1, i2), b = Math.max(i1, i2);
+            return (b - a === 1) || (a === 0 && b === N - 1);
+        }
+
+        // Build two-layer bezier (glow + main), returns {glow, main}
+        function buildBezier(i1, i2, color, intensity) {
+            var p1 = pts[i1], p2 = pts[i2];
+            var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+            var dx = cx - mx, dy = cy - my;
+            var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            var ux = dx / dist, uy = dy / dist;
+            // Perimeter bends outward (negative = away from center)
+            // Diagonals bend inward (positive = toward center)
+            var off = isPerimeter(i1, i2)
+                ? -(28 + intensity * 14)
+                :  (22 + intensity * 10);
+            var cpx = mx + ux * off, cpy = my + uy * off;
+            var d = 'M ' + p1.x.toFixed(1) + ' ' + p1.y.toFixed(1)
+                  + ' Q ' + cpx.toFixed(1) + ' ' + cpy.toFixed(1)
+                  + ' ' + p2.x.toFixed(1) + ' ' + p2.y.toFixed(1);
+
+            var glow = mkSvg('path', {d: d, stroke: color, 'stroke-width': '7',
+                                      fill: 'none', 'stroke-linecap': 'round'});
+            glow.style.opacity = '0';
+            var main = mkSvg('path', {d: d, stroke: color, 'stroke-width': '2',
+                                      fill: 'none', 'stroke-linecap': 'round'});
+            main.style.opacity = '0';
+            svgEl.appendChild(glow);
+            svgEl.appendChild(main);
+
+            var len = main.getTotalLength();
+            gsap.set(main, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
+            gsap.set(glow, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
+            return {glow: glow, main: main};
+        }
+
+        // ── 10 пар ──────────────────────────────────────────────────
+        var running = 0;
+
+        for (var pi = 0; pi < synPairs.length; pi++) {
+            if (_drafterSkip) return;
+
+            var pair  = synPairs[pi];
+            var idx1  = allyIds.indexOf(pair.hero_id1);
+            var idx2  = allyIds.indexOf(pair.hero_id2);
+            if (idx1 < 0 || idx2 < 0) continue;
+
+            var val       = pair.value;
+            var intensity = Math.min(Math.abs(val) / 18, 1);
+            var lineColor = val > 0 ? '#50d29b' : '#dc5046';
+
+            // Progress dots
+            if (pi > 0) {
+                var pd = document.getElementById('dr-syn-dot-' + (pi - 1));
+                if (pd) pd.className = 'dr-dot ' + (synPairs[pi-1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
+            }
+            var cd = document.getElementById('dr-syn-dot-' + pi);
+            if (cd) cd.className = 'dr-dot dr-dot-active';
+
+            // Highlight active pair, dim rest
+            slots.forEach(function(sl, si) {
+                var on = si === idx1 || si === idx2;
+                gsap.to(sl, {opacity: on ? 1 : 0.2, scale: on ? 1.1 : 1,
+                             duration: 0.18, ease: 'power2.out'});
+            });
+
+            await sleep(80);
+            if (_drafterSkip) return;
+
+            // Draw bezier
+            svgEl.innerHTML = '';
+            var bez = buildBezier(idx1, idx2, lineColor, intensity);
+
+            // Endpoint dots
+            [idx1, idx2].forEach(function(i) {
+                svgEl.appendChild(mkSvg('circle', {
+                    cx: pts[i].x.toFixed(1), cy: pts[i].y.toFixed(1),
+                    r: '4', fill: lineColor
+                }));
+            });
+
+            gsap.to(bez.main, {attr: {'stroke-dashoffset': 0}, opacity: 1,
+                               duration: 0.35, ease: 'power2.inOut'});
+            gsap.to(bez.glow, {attr: {'stroke-dashoffset': 0}, opacity: 0.22,
+                               duration: 0.35, ease: 'power2.inOut'});
+
+            // Score counter (total stays in place)
+            var newRunning = running + val;
+            (function(from, to) {
+                var obj = {v: from};
+                gsap.to(obj, {v: to, duration: 0.35, ease: 'power2.out',
+                    onUpdate: function() {
+                        var sign = obj.v > 0.05 ? '+' : (obj.v < -0.05 ? '' : '+');
+                        totalEl.textContent = sign + obj.v.toFixed(1);
+                        totalEl.style.color = obj.v > 0.5  ? '#50d29b'
+                                            : obj.v < -0.5 ? '#dc5046' : '#e5c875';
+                    }
+                });
+            })(running, newRunning);
+            running = newRunning;
+
+            // Delta: slide up from below, then exit upward
+            var dSign = val >= 0 ? '+' : '';
+            deltaEl.textContent = dSign + val.toFixed(1);
+            deltaEl.style.color = lineColor;
+            gsap.fromTo(deltaEl, {opacity: 0, y: 12}, {opacity: 1, y: 0,
+                                  duration: 0.25, ease: 'power2.out'});
+
+            await sleep(480);
+            if (_drafterSkip) return;
+
+            gsap.to([bez.main, bez.glow], {opacity: 0, duration: 0.2});
+            gsap.to(deltaEl, {opacity: 0, y: -10, duration: 0.22, ease: 'power2.in'});
+
+            await sleep(160);
+        }
+
+        // Mark last dot
+        var lastDot = document.getElementById('dr-syn-dot-' + (synPairs.length - 1));
+        if (lastDot) {
+            lastDot.className = 'dr-dot ' + (synPairs[synPairs.length - 1].value >= 0
+                                             ? 'dr-dot-win' : 'dr-dot-loss');
+        }
+
+        if (_drafterSkip) return;
+
+        // Reset all heroes, clear SVG
+        slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1)'}); });
+        gsap.set(deltaEl, {opacity: 0, y: 0});
+        svgEl.innerHTML = '';
+
+        await sleep(280);
+        if (_drafterSkip) return;
+
+        // ── Final score card ─────────────────────────────────────────
+        var finalScore = data.synergy_score || 0;
+        var cardColor  = finalScore >= 18 ? '#50d29b' : finalScore >= 12 ? '#e5c875' : '#dc5046';
+
+        var card = document.createElement('div');
+        card.className = 'dr-syn-card';
+        card.innerHTML = (
+            '<div class="dr-syn-card-label">СИНЕРГИЯ</div>' +
+            '<div class="dr-syn-card-val" id="dr-syn-fval" style="color:' + cardColor + ';">0.0</div>' +
+            '<div class="dr-syn-card-sub">из 25 очков</div>'
+        );
+        synScreen.appendChild(card);
+
+        gsap.fromTo(card, {opacity: 0, scale: 0.88, y: 8},
+                          {opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
+
+        var fvalEl = document.getElementById('dr-syn-fval');
+        var cnt = {v: 0};
+        gsap.to(cnt, {v: finalScore, duration: 0.7, ease: 'power2.out',
+            onUpdate: function() { fvalEl.textContent = cnt.v.toFixed(1); }
+        });
+
+        await sleep(2200);
+        if (_drafterSkip) return;
+
+        // Fade out and hand off to showFinal
+        gsap.to(synScreen, {opacity: 0, duration: 0.4, ease: 'power2.in', onComplete: function() {
+            synScreen.style.display = 'none';
+            gsap.set(synScreen, {opacity: 1});
+        }});
+        await sleep(420);
+    }
+
     async function runBattles() {
         for (var i = 0; i < duels.length; i++) {
+            if (_drafterSkip) return;
             await playBattle(i, duels[i]);
         }
+        if (_drafterSkip) return;
         gsap.set(battleScreen, {clearProps: 'x'});
         battleScreen.style.display = 'none';
+        await playSynergy();
+        if (_drafterSkip) return;
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
         showFinal();
     }
 
     // ── Шаг 2: финальный экран ───────────────────────────────────────────
     function showFinal() {
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+
         var _sfOverlay = document.getElementById('dr-bg-overlay');
         if (_sfOverlay) gsap.to(_sfOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
 
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
-        if (total >= 95) {
+        if (total >= 90) {
             rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
         } else if (total >= 80) {
             rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
-        } else if (total >= 60) {
+        } else if (total >= 65) {
             rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';               rankGlow = false;
-        } else if (total >= 40) {
+        } else if (total >= 50) {
             rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
         } else {
             rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
@@ -3718,6 +4029,15 @@ function showDrafterResult(data) {
             {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
         );
     }
+
+    // Skip button — top-right pill, appended to body so position:fixed is viewport-relative
+    var _skipBtn = document.createElement('button');
+    _skipBtn.id = 'dr-skip-btn';
+    _skipBtn.className = 'dr-skip-btn';
+    _skipBtn.textContent = 'Пропустить';
+    _skipBtn.addEventListener('click', skipDrafterAnim);
+    document.body.appendChild(_skipBtn);
+    gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.5, ease: 'power2.out'});
 
     runBattles();
 }
