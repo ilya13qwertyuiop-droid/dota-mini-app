@@ -1113,25 +1113,33 @@ _DOTA_POS_URL_TO_NUM: dict[str, int] = {
 }
 
 
-def _hero_primary_pos_num(hero_id: int) -> int | None:
-    """Return primary position number (1-5) from dota_builds.json for a hero, or None."""
+def _hero_valid_pos_nums(hero_id: int, threshold: float = 0.15) -> set[int]:
+    """Return set of valid position numbers (1-5) for a hero from dota_builds.json.
+
+    A position is valid if the hero plays >= threshold fraction of their matches there.
+    Returns empty set if no data is available.
+    """
     raw = _load_dota_builds_file()
     if not raw:
-        return None
+        return set()
     hero_data = raw.get(str(hero_id))
     if not isinstance(hero_data, dict):
-        return None
-    best_key: str | None = None
-    best_nm = -1
-    for pk in _DOTA_POS_URL_TO_NUM:
+        return set()
+
+    pos_matches: dict[int, int] = {}
+    for pk, pos_num in _DOTA_POS_URL_TO_NUM.items():
         pos_data = hero_data.get(pk)
         if not isinstance(pos_data, dict):
             continue
         nm = pos_data.get("num_matches") or 0
-        if nm > best_nm:
-            best_nm = nm
-            best_key = pk
-    return _DOTA_POS_URL_TO_NUM.get(best_key) if best_key else None
+        if nm > 0:
+            pos_matches[pos_num] = nm
+
+    total = sum(pos_matches.values())
+    if total == 0:
+        return set()
+
+    return {pos_num for pos_num, nm in pos_matches.items() if nm / total >= threshold}
 
 
 
@@ -1253,7 +1261,7 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             synergy_pairs.append((a, b, float(val)))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(25.0, (avg_synergy + 10) / 20 * 25))
+    synergy_component = max(0.0, min(25.0, (avg_synergy + 5) / 10 * 25))
 
     # ── Компонент 3: Матчап против врагов (0-25) — 25 пар наш vs вражеский ─
     matchup_pairs: list[tuple[int, int, float]] = []
@@ -1263,15 +1271,16 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             matchup_pairs.append((a, e, float(val)))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
-    matchup_component = max(0.0, min(25.0, (matchup_score + 10) / 20 * 25))
+    matchup_component = max(0.0, min(25.0, (matchup_score + 5) / 10 * 25))
 
-    # ── Компонент 4: Позиции (0-25) — 5 за каждого героя на основной ────────
+    # ── Компонент 4: Позиции (0-25) — 5 за каждого героя на допустимой позиции ─
+    # Допустимая позиция: герой играется на ней в ≥15% матчей (flex-герои учтены)
     pos_scores: list[tuple[int, bool]] = []
     for h in data.ally:
         chosen = _pos_str_to_num(h.position)
-        primary = _hero_primary_pos_num(h.hero_id)
-        on_primary = chosen is not None and primary is not None and chosen == primary
-        pos_scores.append((h.hero_id, on_primary))
+        valid_positions = _hero_valid_pos_nums(h.hero_id)
+        on_valid = chosen is not None and chosen in valid_positions
+        pos_scores.append((h.hero_id, on_valid))
 
     position_component = sum(5.0 for _, ok in pos_scores if ok)
 
@@ -1336,26 +1345,33 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
 
 @app.get("/api/draft/leaderboard")
 async def api_draft_leaderboard(db: Session = Depends(get_db)):
-    """Топ-25 пользователей по среднему total_score (минимум 5 драфтов)."""
+    """Топ-25 пользователей по сумме топ-5 результатов."""
     global _leaderboard_cache, _leaderboard_cache_ts
 
     if _leaderboard_cache is not None and time.time() - _leaderboard_cache_ts < 300:
         return _leaderboard_cache
 
-    from sqlalchemy import func
+    from sqlalchemy import text
 
-    rows = (
-        db.query(
-            DBDraftResult.user_id,
-            func.avg(DBDraftResult.total_score).label("avg_score"),
-            func.count(DBDraftResult.id).label("draft_count"),
-        )
-        .group_by(DBDraftResult.user_id)
-        .having(func.count(DBDraftResult.id) >= 5)
-        .order_by(func.avg(DBDraftResult.total_score).desc())
-        .limit(25)
-        .all()
-    )
+    rows = db.execute(text("""
+        SELECT
+            d1.user_id,
+            (
+                SELECT COALESCE(SUM(total_score), 0)
+                FROM (
+                    SELECT total_score
+                    FROM draft_results d2
+                    WHERE d2.user_id = d1.user_id
+                    ORDER BY total_score DESC
+                    LIMIT 5
+                )
+            ) AS top5_sum,
+            COUNT(*) AS draft_count
+        FROM draft_results d1
+        GROUP BY d1.user_id
+        ORDER BY top5_sum DESC
+        LIMIT 25
+    """)).fetchall()
 
     user_ids = [r.user_id for r in rows]
     profiles = {
@@ -1374,7 +1390,7 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
             "user_id": row.user_id,
             "username": username,
             "photo_url": photo_url,
-            "avg_score": round(row.avg_score, 1),
+            "top5_sum": round(row.top5_sum, 1),
             "draft_count": row.draft_count,
         })
 

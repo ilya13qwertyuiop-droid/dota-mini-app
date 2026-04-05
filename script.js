@@ -3253,7 +3253,7 @@ function _lbScoreColor(rank) {
 
 function _renderLeaderboardRows(rows, page, PAGE_ID) {
     var rowsHtml = rows.length === 0
-        ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников (нужно минимум 5 драфтов)</div>'
+        ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников</div>'
         : rows.map(function(r) {
             var placeIcon = r.rank === 1 ? _LB_ICON_1 : r.rank === 2 ? _LB_ICON_2 : r.rank === 3 ? _LB_ICON_3
                 : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
@@ -3274,7 +3274,7 @@ function _renderLeaderboardRows(rows, page, PAGE_ID) {
                         '<div class="drafter-lb-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + displayName + '</div>' +
                         '<div class="drafter-lb-count">' + r.draft_count + ' \u0434\u0440\u0430\u0444\u0442\u043e\u0432</div>' +
                     '</div>' +
-                    '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.avg_score + '</div>' +
+                    '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.top5_sum + '</div>' +
                 '</div>'
             );
         }).join('');
@@ -3294,7 +3294,7 @@ function _renderLeaderboardRows(rows, page, PAGE_ID) {
         '</div>' +
         '<div class="lb-note">' +
             '<span class="lb-note-icon">\u2139</span> ' +
-            '\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u044b \u0443\u0447\u0438\u0442\u044b\u0432\u0430\u044e\u0442\u0441\u044f \u043f\u043e\u0441\u043b\u0435 <b>5 \u0441\u044b\u0433\u0440\u0430\u043d\u043d\u044b\u0445 \u0434\u0440\u0430\u0444\u0442\u043e\u0432</b>' +
+            '\u0421\u0447\u0451\u0442 \u043f\u043e \u0441\u0443\u043c\u043c\u0435 <b>\u043b\u0443\u0447\u0448\u0438\u0445 5 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u043e\u0432</b>' +
         '</div>' +
         '<div class="drafter-fp-content">' + rowsHtml + '</div>'
     );

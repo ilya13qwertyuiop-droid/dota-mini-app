@@ -2,3 +2,6 @@ backend/.env
 ARCHITECTURE.md
 .claude/
 stratz_data.json
+dota_builds.json
+hero_matchups.json
+draft_matches.json
