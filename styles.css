@@ -2684,18 +2684,18 @@ margin-top: 14px;
 
 /* ── Полноэкранные страницы (история / топ драфтеров) ─────────── */
 .drafter-fullpage {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 10;
   background: #0a0014;
   overflow-y: auto;
-  padding-bottom: 130px; /* tab bar 70px + sticky rank bar ~52px + gap */
+  padding-bottom: 145px; /* tab bar 70px + myrank bar ~52px + gap */
 }
 
-/* ── Sticky плашка «Ваше место» ────────────────────────────────── */
+/* ── Fixed плашка «Ваше место» — всегда видна над таббаром ─────── */
 .drafter-lb-myrank {
-  position: sticky;
-  bottom: 0;
+  position: fixed;
+  bottom: 70px;   /* высота таббара */
   left: 0;
   right: 0;
   display: flex;
@@ -2704,8 +2704,7 @@ margin-top: 14px;
   padding: 10px 16px;
   background: #100020;
   border-top: 1px solid rgba(139,92,246,0.25);
-  z-index: 20;
-  margin-top: 8px;
+  z-index: 25;
 }
 .drafter-lb-myrank-left {
   font-size: 12px;
