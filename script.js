@@ -3500,12 +3500,271 @@ function showDrafterResult(data) {
         await sleep(600);
     }
 
+    // ── Шаг 2: Синергия команды ─────────────────────────────────────
+    async function playSynergy() {
+        var synPairs = data.synergy_pairs || [];
+        var allyIds  = data.ally_ids     || [];
+        if (!synPairs.length || allyIds.length < 2) return;
+
+        var synScreen = document.getElementById('dr-synergy-screen');
+
+        var heroesHtml = allyIds.map(function(heroId, i) {
+            return '<div class="dr-syn-slot" id="dr-syn-slot-' + i + '">' +
+                '<img src="' + _icon(heroId) + '" class="dr-syn-av" onerror="this.style.opacity=0">' +
+            '</div>';
+        }).join('');
+
+        var dotsHtml = synPairs.map(function(_, pi) {
+            return '<div class="dr-dot' + (pi === 0 ? ' dr-dot-active' : '') + '" id="dr-syn-dot-' + pi + '"></div>';
+        }).join('');
+
+        synScreen.innerHTML = (
+            '<div class="dr-b-header">' +
+                '<div class="dr-b-num">АНАЛИЗ КОМАНДЫ</div>' +
+                '<div class="dr-b-name">СИНЕРГИЯ</div>' +
+            '</div>' +
+            '<div class="dr-syn-wrap" id="dr-syn-wrap">' +
+                '<svg id="dr-syn-svg" class="dr-syn-svg"></svg>' +
+                '<div class="dr-syn-row" id="dr-syn-row">' + heroesHtml + '</div>' +
+            '</div>' +
+            '<div class="dr-syn-score" id="dr-syn-score">' +
+                '<span class="dr-syn-total" id="dr-syn-total">+0.0</span>' +
+                '<span class="dr-syn-delta" id="dr-syn-delta" style="opacity:0;"></span>' +
+            '</div>' +
+            '<div class="dr-dots" style="margin-top:12px;">' + dotsHtml + '</div>'
+        );
+
+        var overlay = document.getElementById('dr-bg-overlay');
+        if (overlay) gsap.to(overlay, {opacity: 0.25, duration: 0.5, ease: 'power2.out'});
+
+        synScreen.style.display = 'block';
+        gsap.fromTo(synScreen, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power2.out'});
+
+        await sleep(400);
+
+        var slots = Array.from(synScreen.querySelectorAll('.dr-syn-slot'));
+        gsap.fromTo(slots,
+            {y: 20, opacity: 0},
+            {y: 0, opacity: 1, duration: 0.35, stagger: 0.07, ease: 'power2.out'}
+        );
+
+        await sleep(650);
+
+        var svgEl   = document.getElementById('dr-syn-svg');
+        var totalEl = document.getElementById('dr-syn-total');
+        var deltaEl = document.getElementById('dr-syn-delta');
+        var running = 0;
+
+        function syncSvg() {
+            var wrapEl = document.getElementById('dr-syn-wrap');
+            var wr = wrapEl.getBoundingClientRect();
+            svgEl.setAttribute('width',  wr.width);
+            svgEl.setAttribute('height', wr.height);
+        }
+
+        function heroCX(idx) {
+            var sr   = slots[idx].getBoundingClientRect();
+            var svgR = svgEl.getBoundingClientRect();
+            return sr.left + sr.width / 2 - svgR.left;
+        }
+
+        function heroCY() {
+            var sr   = slots[0].getBoundingClientRect();
+            var svgR = svgEl.getBoundingClientRect();
+            return sr.top + sr.height / 2 - svgR.top;
+        }
+
+        function makeSvgEl(tag, attrs) {
+            var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            Object.keys(attrs).forEach(function(k) { el.setAttribute(k, attrs[k]); });
+            return el;
+        }
+
+        function buildArc(x1, x2, baseY, color, sw) {
+            var mx   = (x1 + x2) / 2;
+            var dist = Math.abs(x2 - x1);
+            var dy   = Math.min(55, Math.max(16, dist * 0.44));
+            var d    = 'M ' + x1 + ' ' + baseY + ' Q ' + mx + ' ' + (baseY - dy) + ' ' + x2 + ' ' + baseY;
+            var path = makeSvgEl('path', {
+                d: d, stroke: color, 'stroke-width': sw || '2.5',
+                fill: 'none', 'stroke-linecap': 'round', opacity: '0'
+            });
+            svgEl.appendChild(path);
+            var len = path.getTotalLength();
+            gsap.set(path, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
+            return {path: path, mx: mx, peakY: baseY - dy};
+        }
+
+        // ── 10 пар ──────────────────────────────────────────────────
+        for (var pi = 0; pi < synPairs.length; pi++) {
+            var pair  = synPairs[pi];
+            var idx1  = allyIds.indexOf(pair.hero_id1);
+            var idx2  = allyIds.indexOf(pair.hero_id2);
+            if (idx1 < 0 || idx2 < 0) continue;
+            var val   = pair.value;
+            var color = val >= 0 ? '#10b981' : '#ef4444';
+
+            // Dots
+            if (pi > 0) {
+                var prevDot = document.getElementById('dr-syn-dot-' + (pi - 1));
+                if (prevDot) prevDot.className = 'dr-dot ' + (synPairs[pi-1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
+            }
+            var curDot = document.getElementById('dr-syn-dot-' + pi);
+            if (curDot) curDot.className = 'dr-dot dr-dot-active';
+
+            // Highlight/dim heroes
+            slots.forEach(function(sl, si) {
+                var active = si === idx1 || si === idx2;
+                gsap.to(sl, {opacity: active ? 1 : 0.18, scale: active ? 1.08 : 1, duration: 0.2, ease: 'power2.out'});
+            });
+
+            await sleep(200);
+
+            // Draw arc
+            svgEl.innerHTML = '';
+            syncSvg();
+            var bY  = heroCY();
+            var ax1 = heroCX(idx1), ax2 = heroCX(idx2);
+            var arc = buildArc(ax1, ax2, bY, color);
+
+            // Endpoint dots
+            [ax1, ax2].forEach(function(cx) {
+                svgEl.appendChild(makeSvgEl('circle', {cx: cx, cy: bY, r: '3.5', fill: color, opacity: '0.9'}));
+            });
+
+            gsap.to(arc.path, {attr: {'stroke-dashoffset': 0}, opacity: 1, duration: 0.3, ease: 'power2.out'});
+
+            // Value label at arc peak
+            var lblEl = makeSvgEl('text', {
+                x: arc.mx, y: arc.peakY - 4, 'text-anchor': 'middle',
+                fill: color, 'font-size': '11', 'font-weight': '700',
+                'font-family': 'system-ui, sans-serif', opacity: '0'
+            });
+            lblEl.textContent = (val >= 0 ? '+' : '') + val.toFixed(1);
+            svgEl.appendChild(lblEl);
+            gsap.to(lblEl, {opacity: 1, duration: 0.25, delay: 0.12});
+
+            // Running score counter
+            var newRunning = running + val;
+            (function(from, to) {
+                var obj = {v: from};
+                gsap.to(obj, {v: to, duration: 0.35, ease: 'power2.out', onUpdate: function() {
+                    var s = obj.v >= 0 ? '+' : '';
+                    totalEl.textContent = s + obj.v.toFixed(1);
+                    totalEl.style.color = obj.v >= 0 ? '#10b981' : '#ef4444';
+                }});
+            })(running, newRunning);
+            running = newRunning;
+
+            // Delta badge
+            deltaEl.textContent = (val >= 0 ? '+' : '') + val.toFixed(1);
+            deltaEl.style.color = color;
+            gsap.fromTo(deltaEl, {opacity: 0, x: 8}, {opacity: 1, x: 0, duration: 0.25});
+
+            await sleep(620);
+
+            gsap.to([arc.path, lblEl], {opacity: 0, duration: 0.18});
+            gsap.to(deltaEl, {opacity: 0, duration: 0.18});
+
+            await sleep(220);
+        }
+
+        // Mark last dot
+        var lastDot = document.getElementById('dr-syn-dot-' + (synPairs.length - 1));
+        if (lastDot) {
+            lastDot.className = 'dr-dot ' + (synPairs[synPairs.length - 1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
+        }
+
+        // Reset heroes
+        slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1)'}); });
+        svgEl.innerHTML = '';
+
+        await sleep(350);
+
+        // ── Лучшая / худшая пара ──────────────────────────────────────
+        var sortedPairs = synPairs.slice().sort(function(a, b) { return b.value - a.value; });
+
+        async function revealPair(pairObj, accent, labelText) {
+            var ri1 = allyIds.indexOf(pairObj.hero_id1);
+            var ri2 = allyIds.indexOf(pairObj.hero_id2);
+            slots.forEach(function(sl, si) {
+                var active = si === ri1 || si === ri2;
+                gsap.to(sl, {opacity: active ? 1 : 0.1, scale: active ? 1.12 : 1, duration: 0.3, ease: 'power2.out'});
+            });
+            svgEl.innerHTML = '';
+            syncSvg();
+            var ry   = heroCY();
+            var rx1  = heroCX(ri1), rx2 = heroCX(ri2);
+            var rarc = buildArc(rx1, rx2, ry, accent, '3');
+            [rx1, rx2].forEach(function(cx) {
+                svgEl.appendChild(makeSvgEl('circle', {cx: cx, cy: ry, r: '5', fill: accent, opacity: '0.9'}));
+            });
+            gsap.to(rarc.path, {attr: {'stroke-dashoffset': 0}, opacity: 1, duration: 0.4, ease: 'power2.out'});
+
+            var titleEl = makeSvgEl('text', {
+                x: rarc.mx, y: rarc.peakY - 12, 'text-anchor': 'middle',
+                fill: accent, 'font-size': '9', 'font-weight': '700',
+                'letter-spacing': '1', 'font-family': 'system-ui, sans-serif', opacity: '0'
+            });
+            titleEl.textContent = labelText;
+            svgEl.appendChild(titleEl);
+
+            var rvalEl = makeSvgEl('text', {
+                x: rarc.mx, y: rarc.peakY - 1, 'text-anchor': 'middle',
+                fill: accent, 'font-size': '11', 'font-weight': '700',
+                'font-family': 'system-ui, sans-serif', opacity: '0'
+            });
+            rvalEl.textContent = (pairObj.value >= 0 ? '+' : '') + pairObj.value.toFixed(1);
+            svgEl.appendChild(rvalEl);
+
+            gsap.to(titleEl, {opacity: 1, duration: 0.3, delay: 0.25});
+            gsap.to(rvalEl,  {opacity: 1, duration: 0.3, delay: 0.35});
+
+            await sleep(950);
+        }
+
+        await revealPair(sortedPairs[0], '#10b981', 'ЛУЧШАЯ СВЯЗКА');
+        await revealPair(sortedPairs[sortedPairs.length - 1], '#ef4444', 'СЛАБОЕ ЗВЕНО');
+
+        // ── Итоговый счёт ────────────────────────────────────────────
+        slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3}); });
+        svgEl.innerHTML = '';
+
+        var finalScore = data.synergy_score || 0;
+        var scoreColor = finalScore >= 17 ? '#10b981' : finalScore >= 10 ? '#f59e0b' : '#ef4444';
+
+        var scoreDiv = document.createElement('div');
+        scoreDiv.className = 'dr-syn-final';
+        scoreDiv.innerHTML = (
+            '<span class="dr-syn-final-label">СИНЕРГИЯ</span>' +
+            '<span class="dr-syn-final-val" id="dr-syn-fval" style="color:' + scoreColor + ';">0.0</span>' +
+            '<span class="dr-syn-final-max"> / 25</span>'
+        );
+        synScreen.appendChild(scoreDiv);
+        gsap.fromTo(scoreDiv, {opacity: 0, y: 16}, {opacity: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
+
+        var fvalEl = document.getElementById('dr-syn-fval');
+        var cnt = {v: 0};
+        gsap.to(cnt, {v: finalScore, duration: 0.75, ease: 'power2.out', onUpdate: function() {
+            fvalEl.textContent = cnt.v.toFixed(1);
+        }});
+
+        await sleep(1400);
+
+        gsap.to(synScreen, {opacity: 0, duration: 0.35, ease: 'power2.in', onComplete: function() {
+            synScreen.style.display = 'none';
+            gsap.set(synScreen, {opacity: 1});
+        }});
+        await sleep(400);
+    }
+
     async function runBattles() {
         for (var i = 0; i < duels.length; i++) {
             await playBattle(i, duels[i]);
         }
         gsap.set(battleScreen, {clearProps: 'x'});
         battleScreen.style.display = 'none';
+        await playSynergy();
         showFinal();
     }
 

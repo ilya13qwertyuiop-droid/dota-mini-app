@@ -3294,6 +3294,104 @@ margin-top: 14px;
 .dr-dot-win    { background: #4ade80; }
 .dr-dot-loss   { background: #f87171; }
 
+/* ── Синергия команды ─────────────────────────────────────────────── */
+
+#dr-synergy-screen {
+  padding: 16px 16px 20px;
+  position: relative;
+}
+
+.dr-syn-wrap {
+  position: relative;
+  width: 100%;
+  margin: 8px 0 10px;
+}
+
+.dr-syn-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 68px;
+}
+
+.dr-syn-slot {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.dr-syn-av {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  border: 2px solid #9c5cf7;
+  box-shadow: 0 0 8px rgba(156,92,247,0.3);
+  object-fit: cover;
+  display: block;
+}
+
+.dr-syn-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.dr-syn-score {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 14px;
+  min-height: 30px;
+  margin: 4px 0 2px;
+}
+
+.dr-syn-total {
+  font-size: 24px;
+  font-weight: 900;
+  color: #10b981;
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+  text-align: center;
+}
+
+.dr-syn-delta {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 50px;
+}
+
+.dr-syn-final {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.dr-syn-final-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  align-self: center;
+}
+
+.dr-syn-final-val {
+  font-size: 38px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.dr-syn-final-max {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
 /* Финальный экран — динамически строится в JS */
 
 #dr-final-screen {
