@@ -1412,6 +1412,38 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
     return result
 
 
+@app.get("/api/draft/leaderboard/me")
+async def api_draft_leaderboard_me(token: str, db: Session = Depends(get_db)):
+    """Место и счёт текущего пользователя среди всех участников."""
+    user_id = get_user_id_by_token(token) if token else None
+    if not user_id:
+        return {"rank": None, "top5_sum": None}
+
+    from sqlalchemy import text
+
+    row = db.execute(text("""
+        SELECT rank, top5_sum FROM (
+            SELECT user_id,
+                   SUM(top_score) AS top5_sum,
+                   RANK() OVER (ORDER BY SUM(top_score) DESC) AS rank
+            FROM (
+                SELECT user_id, total_score AS top_score,
+                       ROW_NUMBER() OVER (PARTITION BY user_id
+                                         ORDER BY total_score DESC) AS rn
+                FROM draft_results
+            ) t
+            WHERE rn <= 5
+            GROUP BY user_id
+        ) ranked
+        WHERE user_id = :user_id
+    """), {"user_id": user_id}).fetchone()
+
+    if not row:
+        return {"rank": None, "top5_sum": None}
+
+    return {"rank": int(row.rank), "top5_sum": round(float(row.top5_sum), 1)}
+
+
 @app.get("/api/draft/history")
 async def api_draft_history(token: str, db: Session = Depends(get_db)):
     """Последние 10 драфтов пользователя."""
