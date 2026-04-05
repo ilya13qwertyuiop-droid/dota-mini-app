@@ -3297,8 +3297,17 @@ margin-top: 14px;
 /* ── Синергия команды ─────────────────────────────────────────────── */
 
 #dr-synergy-screen {
-  padding: 16px 16px 20px;
+  padding: 16px 16px 76px; /* bottom padding for skip button */
   position: relative;
+}
+
+.dr-syn-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-align: center;
+  margin-bottom: 4px;
 }
 
 .dr-syn-wrap {
@@ -3310,7 +3319,7 @@ margin-top: 14px;
 .dr-syn-row {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  gap: 14px;
   padding-top: 68px;
 }
 
@@ -3338,58 +3347,92 @@ margin-top: 14px;
   overflow: visible;
 }
 
+/* Score row: total perfectly centred, delta appears in its own column to the right */
 .dr-syn-score {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: baseline;
-  justify-content: center;
-  gap: 14px;
-  min-height: 30px;
+  width: 100%;
+  min-height: 36px;
   margin: 4px 0 2px;
 }
 
 .dr-syn-total {
-  font-size: 24px;
+  grid-column: 2;
+  font-size: 28px;
   font-weight: 900;
   color: #10b981;
   font-variant-numeric: tabular-nums;
-  min-width: 64px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .dr-syn-delta {
-  font-size: 16px;
+  grid-column: 3;
+  font-size: 17px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  min-width: 50px;
+  padding-left: 10px;
+  white-space: nowrap;
+  align-self: baseline;
 }
 
+/* Final score card below the progress dots */
 .dr-syn-final {
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 18px;
+  padding: 14px 20px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .dr-syn-final-label {
   font-size: 10px;
   color: var(--text-muted);
-  letter-spacing: 2px;
+  letter-spacing: 2.5px;
   text-transform: uppercase;
-  align-self: center;
 }
 
 .dr-syn-final-val {
-  font-size: 38px;
+  font-size: 52px;
   font-weight: 900;
   line-height: 1;
 }
 
 .dr-syn-final-max {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Skip animation button */
+.dr-skip-btn {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  padding: 14px 0;
+  background: rgba(10,6,18,0.92);
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  z-index: 200;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: color 0.15s;
+}
+
+.dr-skip-btn:active {
+  color: rgba(255,255,255,0.9);
 }
 
 /* Финальный экран — динамически строится в JS */

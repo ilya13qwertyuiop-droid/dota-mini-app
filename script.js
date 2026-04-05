@@ -3335,8 +3335,25 @@ function showDrafterResult(data) {
 
     var duels = data.duels || [];
 
+    var _drafterSkip = false;
+
     function sleep(ms) {
-        return new Promise(function(resolve) { setTimeout(resolve, ms); });
+        return new Promise(function(resolve) {
+            if (_drafterSkip) { resolve(); return; }
+            setTimeout(resolve, ms);
+        });
+    }
+
+    function skipDrafterAnim() {
+        if (_drafterSkip) return;
+        _drafterSkip = true;
+        gsap.set(battleScreen, {clearProps: 'x'});
+        battleScreen.style.display = 'none';
+        var synSc = document.getElementById('dr-synergy-screen');
+        if (synSc) { synSc.style.display = 'none'; gsap.set(synSc, {clearProps: 'opacity'}); }
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+        showFinal();
     }
 
     function _icon(id) { return _drafterHeroIcon(id) || ''; }
@@ -3519,15 +3536,13 @@ function showDrafterResult(data) {
         }).join('');
 
         synScreen.innerHTML = (
-            '<div class="dr-b-header">' +
-                '<div class="dr-b-num">АНАЛИЗ КОМАНДЫ</div>' +
-                '<div class="dr-b-name">СИНЕРГИЯ</div>' +
-            '</div>' +
+            '<div class="dr-syn-title">Командная синергия</div>' +
             '<div class="dr-syn-wrap" id="dr-syn-wrap">' +
                 '<svg id="dr-syn-svg" class="dr-syn-svg"></svg>' +
                 '<div class="dr-syn-row" id="dr-syn-row">' + heroesHtml + '</div>' +
             '</div>' +
             '<div class="dr-syn-score" id="dr-syn-score">' +
+                '<span></span>' +
                 '<span class="dr-syn-total" id="dr-syn-total">+0.0</span>' +
                 '<span class="dr-syn-delta" id="dr-syn-delta" style="opacity:0;"></span>' +
             '</div>' +
@@ -3738,7 +3753,7 @@ function showDrafterResult(data) {
         scoreDiv.innerHTML = (
             '<span class="dr-syn-final-label">СИНЕРГИЯ</span>' +
             '<span class="dr-syn-final-val" id="dr-syn-fval" style="color:' + scoreColor + ';">0.0</span>' +
-            '<span class="dr-syn-final-max"> / 25</span>'
+            '<span class="dr-syn-final-max">из 25 очков</span>'
         );
         synScreen.appendChild(scoreDiv);
         gsap.fromTo(scoreDiv, {opacity: 0, y: 16}, {opacity: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
@@ -3760,16 +3775,24 @@ function showDrafterResult(data) {
 
     async function runBattles() {
         for (var i = 0; i < duels.length; i++) {
+            if (_drafterSkip) return;
             await playBattle(i, duels[i]);
         }
+        if (_drafterSkip) return;
         gsap.set(battleScreen, {clearProps: 'x'});
         battleScreen.style.display = 'none';
         await playSynergy();
+        if (_drafterSkip) return;
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
         showFinal();
     }
 
     // ── Шаг 2: финальный экран ───────────────────────────────────────────
     function showFinal() {
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+
         var _sfOverlay = document.getElementById('dr-bg-overlay');
         if (_sfOverlay) gsap.to(_sfOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
 
@@ -3977,6 +4000,14 @@ function showDrafterResult(data) {
             {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
         );
     }
+
+    // Skip button — visible for both battle and synergy screens
+    var _skipBtn = document.createElement('button');
+    _skipBtn.id = 'dr-skip-btn';
+    _skipBtn.className = 'dr-skip-btn';
+    _skipBtn.textContent = 'Пропустить →';
+    _skipBtn.addEventListener('click', skipDrafterAnim);
+    document.getElementById('drafter-result').appendChild(_skipBtn);
 
     runBattles();
 }
