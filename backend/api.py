@@ -1184,9 +1184,11 @@ class DraftEvaluateRequest(BaseModel):
     token: str | None = None
 
 
-def _pos_str_to_num(pos: str) -> int | None:
-    """Convert 'pos 1'..'pos 5' or 'pos%201'..'pos%205' to 1..5."""
-    s = pos.strip().replace("%20", " ").lower()
+def _pos_str_to_num(pos) -> int | None:
+    """Convert 'pos 1'..'pos 5' or 'pos%201'..'pos%205' to 1..5. Accepts None."""
+    if not pos:
+        return None
+    s = str(pos).strip().replace("%20", " ").lower()
     for i in range(1, 6):
         if s == f"pos {i}":
             return i
@@ -1202,15 +1204,18 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     enemy_ids = [h.hero_id for h in data.enemy]
 
     # ── position maps ──────────────────────────────────────────────────────
+    # Keys are normalised to "pos N" so lookups work regardless of input format
     ally_by_pos: dict[str, int] = {}
     for h in data.ally:
-        if h.position:
-            ally_by_pos[h.position] = h.hero_id
+        num = _pos_str_to_num(h.position)
+        if num is not None:
+            ally_by_pos[f"pos {num}"] = h.hero_id
 
     enemy_by_pos: dict[str, int] = {}
     for h in data.enemy:
-        if h.position:
-            enemy_by_pos[h.position] = h.hero_id
+        num = _pos_str_to_num(h.position)
+        if num is not None:
+            enemy_by_pos[f"pos {num}"] = h.hero_id
 
     # ── helpers ───────────────────────────────────────────────────────────
     def _vs(ally_id: int | None, enemy_id: int | None) -> float:
