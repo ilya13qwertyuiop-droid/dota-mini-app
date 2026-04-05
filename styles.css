@@ -3297,7 +3297,7 @@ margin-top: 14px;
 /* ── Синергия команды ─────────────────────────────────────────────── */
 
 #dr-synergy-screen {
-  padding: 16px 16px 76px; /* bottom padding for skip button */
+  padding: 16px 16px 20px;
   position: relative;
 }
 
@@ -3411,33 +3411,33 @@ margin-top: 14px;
   margin-top: 2px;
 }
 
-/* Skip animation button — appended to <body> so position:fixed is viewport-relative */
+/* Skip animation button — small pill in the top-right corner.
+   drafter-main header is hidden during animations so this area is free. */
 .dr-skip-btn {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  width: 100%;
-  /* safe-area bottom padding for iPhone notch/home indicator */
-  padding: 14px 0 max(14px, env(safe-area-inset-bottom, 0px));
-  background: rgba(10,6,18,0.94);
-  border: none;
-  border-top: 1px solid rgba(255,255,255,0.12);
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: 14px;
+  padding: 7px 14px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 20px;
   color: rgba(255,255,255,0.6);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  z-index: 9999;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: color 0.15s, background 0.15s;
+  z-index: 500;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
   -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
 }
 
 .dr-skip-btn:active {
   color: #fff;
-  background: rgba(30,15,50,0.96);
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.35);
 }
 
 /* Финальный экран — динамически строится в JS */

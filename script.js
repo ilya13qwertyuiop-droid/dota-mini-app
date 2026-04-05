@@ -4015,14 +4015,14 @@ function showDrafterResult(data) {
         );
     }
 
-    // Skip button — appended to body so position:fixed works regardless of
-    // parent transforms (GSAP shakes battle screen with translateX during impacts)
+    // Skip button — top-right pill, appended to body so position:fixed is viewport-relative
     var _skipBtn = document.createElement('button');
     _skipBtn.id = 'dr-skip-btn';
     _skipBtn.className = 'dr-skip-btn';
-    _skipBtn.textContent = 'Пропустить →';
+    _skipBtn.textContent = 'Пропустить';
     _skipBtn.addEventListener('click', skipDrafterAnim);
     document.body.appendChild(_skipBtn);
+    gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.5, ease: 'power2.out'});
 
     runBattles();
 }
