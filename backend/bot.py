@@ -170,14 +170,15 @@ async def is_subscriber(bot: Bot, user_id: int) -> bool:
     except Exception as e:
         logger.warning("[is_subscriber] error for user %s (main channel): %s", user_id, e)
         return False
-    if SPONSOR_CHAT_ID:
-        try:
-            sponsor_member = await bot.get_chat_member(chat_id=SPONSOR_CHAT_ID, user_id=user_id)
-            if sponsor_member.status not in ("member", "administrator", "creator"):
-                return False
-        except Exception as e:
-            logger.warning("[is_subscriber] error for user %s (sponsor channel): %s", user_id, e)
-            return False
+    # TEMPORARILY DISABLED: sponsor channel check
+    # if SPONSOR_CHAT_ID:
+    #     try:
+    #         sponsor_member = await bot.get_chat_member(chat_id=SPONSOR_CHAT_ID, user_id=user_id)
+    #         if sponsor_member.status not in ("member", "administrator", "creator"):
+    #             return False
+    #     except Exception as e:
+    #         logger.warning("[is_subscriber] error for user %s (sponsor channel): %s", user_id, e)
+    #         return False
     return True
 
 
