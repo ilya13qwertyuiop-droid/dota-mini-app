@@ -95,6 +95,8 @@ class DraftResult(Base):
         BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
     )
     total_score = Column(Float, nullable=False)
+    ally_heroes = Column(JSON, nullable=True)
+    enemy_heroes = Column(JSON, nullable=True)
     created_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
