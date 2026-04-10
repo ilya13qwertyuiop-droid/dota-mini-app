@@ -2671,8 +2671,11 @@ margin-top: 14px;
 .app-toast {
   position: fixed;
   bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%) translateY(12px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  box-sizing: border-box;
+  transform: translateY(12px);
   background: rgba(30, 10, 50, 0.96);
   border: 1px solid rgba(239,68,68,0.4);
   border-radius: 12px;
@@ -2680,7 +2683,7 @@ margin-top: 14px;
   color: #fca5a5;
   font-size: 13px;
   font-weight: 600;
-  white-space: nowrap;
+  text-align: center;
   pointer-events: none;
   z-index: 9999;
   opacity: 0;
@@ -2688,7 +2691,7 @@ margin-top: 14px;
 }
 .app-toast.app-toast--visible {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
 }
 
 /* ========== ДРАФТЕР ========== */
