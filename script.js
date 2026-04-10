@@ -3230,11 +3230,30 @@ async function showDrafterHistory() {
                 var color = _draftRankColor(r.rank);
                 var cardStyle = _rankCardStyle(r.rank);
                 var dt = _draftFormatDate(r.created_at);
+                var heroIconStyle = 'width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;';
+                var heroesHtml = '';
+                if (r.ally_heroes && r.enemy_heroes) {
+                    var enemyIcons = r.enemy_heroes.map(function(id) {
+                        var url = _drafterHeroIcon(id);
+                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #ef4444;">' : '';
+                    }).join('');
+                    var allyIcons = r.ally_heroes.map(function(id) {
+                        var url = _drafterHeroIcon(id);
+                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #10b981;">' : '';
+                    }).join('');
+                    heroesHtml = (
+                        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + enemyIcons + '</div>' +
+                        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + allyIcons + '</div>'
+                    );
+                }
                 return (
-                    '<div class="drafter-hist-card" style="' + cardStyle + '">' +
-                        '<div style="font-size:24px;font-weight:900;color:' + color + ';width:40px;text-align:center;flex-shrink:0;line-height:1;">' + r.rank + '</div>' +
-                        '<div style="flex:1;font-size:12px;color:#6b7280;">' + dt + '</div>' +
-                        '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
+                    '<div class="drafter-hist-card" style="' + cardStyle + 'flex-direction:column;align-items:stretch;gap:0;">' +
+                        '<div style="display:flex;align-items:center;">' +
+                            '<div style="font-size:24px;font-weight:900;color:' + color + ';width:40px;text-align:center;flex-shrink:0;line-height:1;">' + r.rank + '</div>' +
+                            '<div style="flex:1;font-size:12px;color:#6b7280;">' + dt + '</div>' +
+                            '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
+                        '</div>' +
+                        heroesHtml +
                     '</div>'
                 );
             }).join('');
