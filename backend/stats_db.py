@@ -167,6 +167,18 @@ def init_stats_tables() -> None:
             )
         """))
 
+    # Migration 8: add ally_heroes / enemy_heroes to draft_results.
+    for col_name, ddl in [
+        ("ally_heroes",  "ALTER TABLE draft_results ADD COLUMN ally_heroes JSON"),
+        ("enemy_heroes", "ALTER TABLE draft_results ADD COLUMN enemy_heroes JSON"),
+    ]:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+            logger.info("[stats_db] Migration applied: added %s to draft_results", col_name)
+        except Exception:
+            pass  # column already exists
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""

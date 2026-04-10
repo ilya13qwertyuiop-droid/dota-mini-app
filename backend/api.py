@@ -1396,7 +1396,12 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     # ── Сохраняем результат если передан токен ───────────────────────────────
     uid = get_user_id_by_token(data.token) if data.token else None
     if uid:
-        db.add(DBDraftResult(user_id=uid, total_score=round(total_score, 1)))
+        db.add(DBDraftResult(
+            user_id=uid,
+            total_score=round(total_score, 1),
+            ally_heroes=ally_ids,
+            enemy_heroes=enemy_ids,
+        ))
         db.commit()
 
     return {
@@ -1549,6 +1554,8 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
             "total_score": r.total_score,
             "rank": _score_rank(r.total_score),
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            "ally_heroes": r.ally_heroes,
+            "enemy_heroes": r.enemy_heroes,
         }
         for r in rows
     ]
