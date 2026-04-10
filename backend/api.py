@@ -33,9 +33,53 @@ _leaderboard_cache: list | None = None
 _leaderboard_cache_ts: float = 0.0
 
 # /api/draft/evaluate — rate limiting: max 30 requests per 10 min per user_id
+# Uses SQLite (shared across all uvicorn workers) instead of in-memory dict.
 _EVALUATE_RL_WINDOW = 600   # seconds
 _EVALUATE_RL_LIMIT  = 30
-_evaluate_rl: dict[int, list[float]] = {}  # {user_id: [timestamp, ...]}
+
+
+def _init_rl_table() -> None:
+    """Create rate_limit_evaluate table if it doesn't exist."""
+    from sqlalchemy import text as _text
+    with engine.begin() as conn:
+        conn.execute(_text("""
+            CREATE TABLE IF NOT EXISTS rate_limit_evaluate (
+                user_id   INTEGER NOT NULL,
+                ts        REAL    NOT NULL
+            )
+        """))
+        conn.execute(_text(
+            "CREATE INDEX IF NOT EXISTS idx_rle_user_ts ON rate_limit_evaluate(user_id, ts)"
+        ))
+
+
+def _rl_check_and_record(user_id: int) -> tuple[bool, int]:
+    """Returns (allowed, current_count).
+
+    Uses SQLite as shared store so all uvicorn workers see the same counters.
+    Deletes expired rows for this user, counts remaining, inserts new row.
+    All in one BEGIN…COMMIT so concurrent workers don't race.
+    """
+    from sqlalchemy import text as _text
+    now = time.time()
+    window_start = now - _EVALUATE_RL_WINDOW
+    with engine.begin() as conn:
+        # Clean up expired rows for this user
+        conn.execute(_text(
+            "DELETE FROM rate_limit_evaluate WHERE user_id = :uid AND ts <= :ws"
+        ), {"uid": user_id, "ws": window_start})
+        # Count remaining rows in window
+        row = conn.execute(_text(
+            "SELECT COUNT(*) FROM rate_limit_evaluate WHERE user_id = :uid"
+        ), {"uid": user_id}).fetchone()
+        count = row[0] if row else 0
+        if count >= _EVALUATE_RL_LIMIT:
+            return False, count
+        # Record this request
+        conn.execute(_text(
+            "INSERT INTO rate_limit_evaluate (user_id, ts) VALUES (:uid, :ts)"
+        ), {"uid": user_id, "ts": now})
+        return True, count + 1
 
 # /api/check-subscription — TTL 600s per user_id
 _subscription_cache: dict[int, float] = {}
@@ -104,7 +148,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 
 # --- Shared DB layer (единая точка подключения) ---
-from backend.database import get_db, create_all_tables
+from backend.database import get_db, create_all_tables, engine
 from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
 from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
@@ -138,6 +182,7 @@ if not CHECK_CHAT_ID:
 # --- DB init (idempotent; Alembic is the authoritative source for PostgreSQL) ---
 create_all_tables()       # creates all tables if they don't exist (SQLite convenience)
 init_stats_tables()       # migration: adds rank_bucket column if missing
+_init_rl_table()          # rate limiting table for /api/draft/evaluate
 # --- DB init end ---
 
 
@@ -1207,17 +1252,13 @@ def _pos_str_to_num(pos) -> int | None:
 async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)):
     """Evaluates a draft based on synergy, matchups, and position fit."""
     # ── Rate limiting: 30 req / 10 min per authenticated user ───────────────
+    # Uses SQLite so all uvicorn workers share the same counters.
     rl_user_id = get_user_id_by_token(data.token) if data.token else None
     if rl_user_id:
-        now = time.time()
-        window_start = now - _EVALUATE_RL_WINDOW
-        timestamps = _evaluate_rl.get(rl_user_id, [])
-        timestamps = [t for t in timestamps if t > window_start]
-        if len(timestamps) >= _EVALUATE_RL_LIMIT:
-            _evaluate_rl[rl_user_id] = timestamps
+        allowed, count = _rl_check_and_record(rl_user_id)
+        logger.info("[rate_limit] user_id=%s window_count=%d allowed=%s", rl_user_id, count, allowed)
+        if not allowed:
             raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите немного.")
-        timestamps.append(now)
-        _evaluate_rl[rl_user_id] = timestamps
 
     matchups = _load_hero_matchups_file() or {}
 
