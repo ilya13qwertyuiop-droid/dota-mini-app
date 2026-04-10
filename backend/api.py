@@ -32,6 +32,11 @@ _build_cache: dict[int, tuple[float, dict]] = {}  # {hero_id: (timestamp, data)}
 _leaderboard_cache: list | None = None
 _leaderboard_cache_ts: float = 0.0
 
+# /api/draft/evaluate — rate limiting: max 30 requests per 10 min per user_id
+_EVALUATE_RL_WINDOW = 600   # seconds
+_EVALUATE_RL_LIMIT  = 30
+_evaluate_rl: dict[int, list[float]] = {}  # {user_id: [timestamp, ...]}
+
 # /api/check-subscription — TTL 600s per user_id
 _subscription_cache: dict[int, float] = {}
 
@@ -1201,6 +1206,19 @@ def _pos_str_to_num(pos) -> int | None:
 @app.post("/api/draft/evaluate")
 async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)):
     """Evaluates a draft based on synergy, matchups, and position fit."""
+    # ── Rate limiting: 30 req / 10 min per authenticated user ───────────────
+    rl_user_id = get_user_id_by_token(data.token) if data.token else None
+    if rl_user_id:
+        now = time.time()
+        window_start = now - _EVALUATE_RL_WINDOW
+        timestamps = _evaluate_rl.get(rl_user_id, [])
+        timestamps = [t for t in timestamps if t > window_start]
+        if len(timestamps) >= _EVALUATE_RL_LIMIT:
+            _evaluate_rl[rl_user_id] = timestamps
+            raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите немного.")
+        timestamps.append(now)
+        _evaluate_rl[rl_user_id] = timestamps
+
     matchups = _load_hero_matchups_file() or {}
 
     ally_ids = [h.hero_id for h in data.ally]
