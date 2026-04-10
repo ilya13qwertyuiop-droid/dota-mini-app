@@ -3101,6 +3101,23 @@ function selectDrafterHero(heroId) {
     }
 }
 
+var _toastTimer = null;
+function showToast(msg) {
+    var el = document.getElementById('app-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'app-toast';
+        el.className = 'app-toast';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('app-toast--visible');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function() {
+        el.classList.remove('app-toast--visible');
+    }, 3500);
+}
+
 async function submitDraft() {
     var ally = _drafterAllyPick.filter(Boolean);
     var enemy = _drafterEnemyPick.filter(function(h) { return h && h.hero_id; });
@@ -3114,6 +3131,10 @@ async function submitDraft() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ally: ally, enemy: enemy, token: USER_TOKEN || null })
         });
+        if (resp.status === 429) {
+            showToast('Слишком много драфтов! Подождите немного и попробуйте снова.');
+            return;
+        }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
         showDrafterResult(data);
