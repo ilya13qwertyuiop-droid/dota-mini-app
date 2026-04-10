@@ -2715,7 +2715,7 @@ function _renderMeta(data) {
     var posContainer = document.getElementById('meta-positions');
     if (!posContainer) return;
 
-    var patch = data.patch || '7.41';
+    var patch = data.patch || '7.41B';
     var positions = data.positions || {};
     var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
 
