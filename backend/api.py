@@ -1320,12 +1320,16 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     lane_component = sum(100.0 / 9 if d["win"] else 0.0 for d in duels)
 
     # ── Компонент 2: Синергия команды (0-33.33) — 10 пар союзников ──────────
+    # Усредняем обе стороны, чтобы результат не зависел от порядка ввода героев:
+    # поле "with" асимметрично (дельта от базового WR у каждого героя своя).
     synergy_pairs: list[tuple[int, int, float]] = []
     for i in range(len(ally_ids)):
         for j in range(i + 1, len(ally_ids)):
             a, b = ally_ids[i], ally_ids[j]
-            val = (matchups.get(str(a)) or {}).get("with", {}).get(str(b), {}).get("synergy", 0.0)
-            synergy_pairs.append((a, b, float(val)))
+            v1 = (matchups.get(str(a)) or {}).get("with", {}).get(str(b), {}).get("synergy", 0.0)
+            v2 = (matchups.get(str(b)) or {}).get("with", {}).get(str(a), {}).get("synergy", 0.0)
+            val = (float(v1) + float(v2)) / 2
+            synergy_pairs.append((a, b, val))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
     synergy_component = max(0.0, min(100.0 / 3, (avg_synergy + 5) / 10 * (100.0 / 3)))
