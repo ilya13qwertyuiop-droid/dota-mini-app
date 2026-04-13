@@ -714,6 +714,7 @@ async def api_hero_synergy(
             "wins":      int(round(wr_vs * match_count)),
             "wr_vs":     round(wr_vs, 4),
             "delta":     round(delta, 4),
+            "advantage": round(delta, 4),
             "raw_delta": round(delta, 4),
         })
 
