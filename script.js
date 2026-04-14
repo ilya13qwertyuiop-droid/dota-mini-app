@@ -2795,6 +2795,8 @@ var _drafterActiveSlot = 0;
 var _drafterMatchLoaded = false;
 var _drafterPosFilter = 0;           // 0 = все, 1-5 = позиция
 var _drafterLeaderboardCache = null;
+var _drafterEnemyManualMode = false; // true = пользователь сам выбирает врагов
+var _drafterActiveEnemySlot = -1;    // -1 = клик по герою идёт в союзный слот
 
 function _drafterHeroName(heroId) {
     if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
@@ -2835,6 +2837,7 @@ function initDrafter() {
         loadDrafterMatch();
     } else {
         _renderPosFilterBtns();
+        _updateManualBtn();
         renderDrafterSlots();
         renderDrafterGrid();
     }
@@ -2846,6 +2849,9 @@ async function loadDrafterMatch() {
     _drafterActiveSlot = 0;
     _drafterEnemyPick = [];
     _drafterPosFilter = 1;
+    _drafterEnemyManualMode = false;
+    _drafterActiveEnemySlot = -1;
+    _updateManualBtn();
 
     var _ldrOverlay = document.getElementById('dr-bg-overlay');
     if (_ldrOverlay) gsap.to(_ldrOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
@@ -2930,10 +2936,13 @@ function _renderEnemySlots() {
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = _drafterEnemyPick[i] || { hero_id: 0 };
+        var isActive = _drafterEnemyManualMode && (i === _drafterActiveEnemySlot);
         var cls = 'drafter-slot drafter-slot--enemy';
         if (hero.hero_id) cls += ' drafter-slot--filled';
+        if (isActive) cls += ' drafter-slot--enemy-active';
+        var clickAttr = _drafterEnemyManualMode ? ' onclick="drafterEnemySlotClick(' + i + ')"' : '';
         html += '<div class="drafter-slot-wrap">';
-        html += '<div class="' + cls + '">';
+        html += '<div class="' + cls + '" id="drafter-enemy-slot-' + i + '"' + clickAttr + '>';
         if (hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
             if (iconUrl) {
@@ -2941,12 +2950,61 @@ function _renderEnemySlots() {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
+        } else if (_drafterEnemyManualMode) {
+            html += '<span class="drafter-slot-plus">+</span>';
         }
         html += '</div>';
         html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
+}
+
+function _updateManualBtn() {
+    var btn = document.getElementById('drafter-manual-btn');
+    if (!btn) return;
+    btn.classList.toggle('drafter-manual-btn--active', !!_drafterEnemyManualMode);
+}
+
+function enableEnemyManualMode() {
+    _drafterEnemyManualMode = true;
+    _drafterEnemyPick = [
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' }
+    ];
+    _drafterActiveEnemySlot = 0;
+    _drafterPosFilter = 1;
+    _drafterMatchLoaded = true;
+    var searchEl = document.getElementById('drafter-search');
+    if (searchEl) searchEl.value = '';
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = '1';
+    _renderPosFilterBtns();
+    _updateManualBtn();
+    renderDrafterSlots();
+    renderDrafterGrid();
+}
+
+function drafterEnemySlotClick(slotIndex) {
+    if (!_drafterEnemyManualMode) return;
+    if (_drafterEnemyPick[slotIndex] && _drafterEnemyPick[slotIndex].hero_id) {
+        _drafterEnemyPick[slotIndex] = { hero_id: 0, position: '' };
+        _drafterActiveEnemySlot = slotIndex;
+        renderDrafterSlots();
+        renderDrafterGrid();
+        return;
+    }
+    _drafterActiveEnemySlot = slotIndex;
+    var searchVal = (document.getElementById('drafter-search') || {}).value || '';
+    if (!searchVal.trim()) {
+        _drafterPosFilter = slotIndex + 1;
+        _renderPosFilterBtns();
+    }
+    _renderEnemySlots();
+    renderDrafterGrid();
 }
 
 function _updateEvaluateBtn() {
@@ -2970,6 +3028,8 @@ function _updateEvaluateBtn() {
 }
 
 function drafterSlotClick(slotIndex) {
+    // Switch focus from enemy back to ally side
+    _drafterActiveEnemySlot = -1;
     // If slot is filled — clear it and make it active
     if (_drafterAllyPick[slotIndex]) {
         _drafterAllyPick[slotIndex] = null;
@@ -2985,7 +3045,7 @@ function drafterSlotClick(slotIndex) {
         _drafterPosFilter = slotIndex + 1;
         _renderPosFilterBtns();
     }
-    _renderAllySlots();
+    renderDrafterSlots();
     renderDrafterGrid();
 }
 
@@ -3066,6 +3126,39 @@ function renderDrafterGrid() {
 }
 
 function selectDrafterHero(heroId) {
+    // Manual enemy selection: a free enemy slot is focused
+    if (_drafterEnemyManualMode && _drafterActiveEnemySlot >= 0 && _drafterActiveEnemySlot < 5) {
+        var enemySlot = _drafterActiveEnemySlot;
+        _drafterEnemyPick[enemySlot] = {
+            hero_id: heroId,
+            position: 'pos ' + (enemySlot + 1)
+        };
+
+        if (navigator.vibrate) navigator.vibrate(25);
+
+        var nextE = -1;
+        for (var ei = enemySlot + 1; ei < 5; ei++) {
+            if (!_drafterEnemyPick[ei] || !_drafterEnemyPick[ei].hero_id) { nextE = ei; break; }
+        }
+        if (nextE === -1) {
+            for (var ej = 0; ej < enemySlot; ej++) {
+                if (!_drafterEnemyPick[ej] || !_drafterEnemyPick[ej].hero_id) { nextE = ej; break; }
+            }
+        }
+        _drafterActiveEnemySlot = nextE;
+
+        renderDrafterSlots();
+        renderDrafterGrid();
+
+        var enemyEl = document.getElementById('drafter-enemy-slot-' + enemySlot);
+        if (enemyEl) {
+            enemyEl.style.transition = 'transform 0.15s ease';
+            enemyEl.style.transform = 'scale(0.85)';
+            setTimeout(function() { enemyEl.style.transform = 'scale(1)'; }, 150);
+        }
+        return;
+    }
+
     if (_drafterActiveSlot >= 5) return;
 
     var filledSlot = _drafterActiveSlot;
