@@ -142,7 +142,7 @@ load_env()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
-SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "-1002906189070")  # chat_id канала спонсора
+SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "-1002005211472")  # chat_id канала спонсора
 
 # Telegram user_id администраторов — имеют доступ к /admin_feedback
 ADMIN_IDS: frozenset[int] = frozenset({556944111})
@@ -170,15 +170,14 @@ async def is_subscriber(bot: Bot, user_id: int) -> bool:
     except Exception as e:
         logger.warning("[is_subscriber] error for user %s (main channel): %s", user_id, e)
         return False
-    # TEMPORARILY DISABLED: sponsor channel check
-    # if SPONSOR_CHAT_ID:
-    #     try:
-    #         sponsor_member = await bot.get_chat_member(chat_id=SPONSOR_CHAT_ID, user_id=user_id)
-    #         if sponsor_member.status not in ("member", "administrator", "creator"):
-    #             return False
-    #     except Exception as e:
-    #         logger.warning("[is_subscriber] error for user %s (sponsor channel): %s", user_id, e)
-    #         return False
+    if SPONSOR_CHAT_ID:
+        try:
+            sponsor_member = await bot.get_chat_member(chat_id=SPONSOR_CHAT_ID, user_id=user_id)
+            if sponsor_member.status not in ("member", "administrator", "creator"):
+                return False
+        except Exception as e:
+            logger.warning("[is_subscriber] error for user %s (sponsor channel): %s", user_id, e)
+            return False
     return True
 
 
@@ -212,7 +211,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+lTjBDHnRjwQyY2Qy"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
             ]
         ])
         await update.message.reply_text(
@@ -318,7 +317,7 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+lTjBDHnRjwQyY2Qy"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
             ]
         ])
         await update.message.reply_text(
@@ -611,7 +610,7 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+lTjBDHnRjwQyY2Qy"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
             ]
         ])
         await update.message.reply_text(
@@ -1010,7 +1009,7 @@ async def counters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+lTjBDHnRjwQyY2Qy"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
             ]
         ])
         await update.message.reply_text(
@@ -1047,7 +1046,7 @@ async def synergy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+lTjBDHnRjwQyY2Qy"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
             ]
         ])
         await update.message.reply_text(
@@ -1326,7 +1325,7 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+lTjBDHnRjwQyY2Qy"),
+                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
             ]
         ])
         await update.message.reply_text(
