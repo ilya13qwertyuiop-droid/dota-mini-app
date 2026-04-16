@@ -3252,13 +3252,13 @@ function _drafterFpError(title, backId) {
             '<div class="drafter-fp-title">' + title + '</div>' +
             '<div class="drafter-fp-spacer"></div>' +
         '</div>' +
-        '<div class="drafter-fp-content"><div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div></div>'
+        '<div class="drafter-fp-content"><div style="color:#e5534b;font-size:13px;">Ошибка загрузки</div></div>'
     );
 }
 
 function _draftRankColor(rank) {
-    return rank === 'SSS' || rank === 'S' ? '#fbbf24'
-         : rank === 'A' ? '#a78bfa'
+    return rank === 'SSS' || rank === 'S' ? '#d29922'
+         : rank === 'A' ? '#7b8bb8'
          : rank === 'B' ? '#60a5fa'
          : '#9ca3af';
 }
@@ -3278,7 +3278,7 @@ function _draftFormatDate(isoStr) {
 }
 
 function _rankCardStyle(rank) {
-    if (rank === 'SSS' || rank === 'S') return 'background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);';
+    if (rank === 'SSS' || rank === 'S') return 'background:rgba(251,191,36,0.06);border:1px solid rgba(210,153,34,0.12);';
     if (rank === 'A') return 'background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);';
     if (rank === 'B') return 'background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);';
     return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);';
@@ -3316,11 +3316,11 @@ async function showDrafterHistory() {
                 if (r.ally_heroes && r.enemy_heroes) {
                     var enemyIcons = r.enemy_heroes.map(function(id) {
                         var url = _drafterHeroIcon(id);
-                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #ef4444;">' : '';
+                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #e5534b;">' : '';
                     }).join('');
                     var allyIcons = r.ally_heroes.map(function(id) {
                         var url = _drafterHeroIcon(id);
-                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #10b981;">' : '';
+                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #3db87a;">' : '';
                     }).join('');
                     heroesHtml = (
                         '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + enemyIcons + '</div>' +
@@ -3354,22 +3354,22 @@ async function showDrafterHistory() {
     }
 }
 
-var _LB_ICON_1 = '<span style="color:#fbbf24;font-size:14px;">&#9733;</span>';
+var _LB_ICON_1 = '<span style="color:#d29922;font-size:14px;">&#9733;</span>';
 var _LB_ICON_2 = '<span style="color:#94a3b8;font-size:12px;font-weight:700;">2</span>';
 var _LB_ICON_3 = '<span style="color:#b45309;font-size:12px;font-weight:700;">3</span>';
 
 function _lbAvatarColors(rank) {
-    if (rank === 1) return { bg: 'rgba(251,191,36,0.2)',  text: '#fbbf24' };
+    if (rank === 1) return { bg: 'rgba(210,153,34,0.12)',  text: '#d29922' };
     if (rank === 2) return { bg: 'rgba(148,163,184,0.2)', text: '#94a3b8' };
     if (rank === 3) return { bg: 'rgba(180,83,9,0.2)',    text: '#b45309' };
     return { bg: 'rgba(255,255,255,0.05)', text: '#6b7280' };
 }
 
 function _lbScoreColor(rank) {
-    if (rank === 1) return '#fbbf24';
+    if (rank === 1) return '#d29922';
     if (rank === 2) return '#94a3b8';
     if (rank === 3) return '#b45309';
-    return '#c084fc';
+    return '#8d9bc6';
 }
 
 async function _renderLeaderboardRows(rows, page, PAGE_ID) {
@@ -3509,8 +3509,8 @@ function showDrafterResult(data) {
     function _icon(id) { return _drafterHeroIcon(id) || ''; }
     function _name(id) { return _drafterHeroName(id) || ('Герой #' + id); }
 
-    var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#10b981" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
-    var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>';
+    var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#3db87a" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#3db87a" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
+    var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(229,83,75,0.15)" stroke="#e5534b" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#e5534b" stroke-width="3" stroke-linecap="round"/></svg>';
 
     function spawnParticles(win) {
         var canvas = document.getElementById('dr-particles-canvas');
@@ -3834,7 +3834,7 @@ function showDrafterResult(data) {
 
             var val       = pair.value;
             var intensity = Math.min(Math.abs(val) / 18, 1);
-            var lineColor = val > 0 ? '#50d29b' : '#dc5046';
+            var lineColor = val > 0 ? '#3db87a' : '#e5534b';
 
             // Progress dots
             if (pi > 0) {
@@ -3879,8 +3879,8 @@ function showDrafterResult(data) {
                     onUpdate: function() {
                         var sign = obj.v > 0.05 ? '+' : (obj.v < -0.05 ? '' : '+');
                         totalEl.textContent = sign + obj.v.toFixed(1);
-                        totalEl.style.color = obj.v > 0.5  ? '#50d29b'
-                                            : obj.v < -0.5 ? '#dc5046' : '#e5c875';
+                        totalEl.style.color = obj.v > 0.5  ? '#3db87a'
+                                            : obj.v < -0.5 ? '#e5534b' : '#d29922';
                     }
                 });
             })(running, newRunning);
@@ -3921,7 +3921,7 @@ function showDrafterResult(data) {
 
         // ── Final score card ─────────────────────────────────────────
         var finalScore = data.synergy_score || 0;
-        var cardColor  = finalScore >= 24 ? '#50d29b' : finalScore >= 16 ? '#e5c875' : '#dc5046';
+        var cardColor  = finalScore >= 24 ? '#3db87a' : finalScore >= 16 ? '#d29922' : '#e5534b';
 
         var card = document.createElement('div');
         card.className = 'dr-syn-card';
@@ -3978,11 +3978,11 @@ function showDrafterResult(data) {
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc, rankGlow;
         if (total >= 85) {
-            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
+            rank = 'SSS'; rankColor = '#d29922'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
         } else if (total >= 80) {
-            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
+            rank = 'S';   rankColor = '#d29922'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
         } else if (total >= 65) {
-            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';               rankGlow = false;
+            rank = 'A';   rankColor = '#7b8bb8'; rankDesc = 'Хороший драфт!';               rankGlow = false;
         } else if (total >= 50) {
             rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
         } else {
@@ -3999,7 +3999,7 @@ function showDrafterResult(data) {
 
         // ── Битвы линий ──────────────────────────────────────────────────
         var laneCardsHtml = duels.map(function(duel) {
-            var synColor = duel.win ? '#10b981' : '#ef4444';
+            var synColor = duel.win ? '#3db87a' : '#e5534b';
             var absSyn   = Math.abs(duel.synergy || 0);
             var pct      = Math.min(95, Math.max(15, 50 + absSyn * 4));
             var pctRound = Math.round(pct);
@@ -4013,16 +4013,16 @@ function showDrafterResult(data) {
 
             // Победившая половина: наша (левая) если win, вражеская (правая) если нет
             var allyFillHtml  = duel.win
-                ? '<div class="lane-ally-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#10b981;"></div>'
+                ? '<div class="lane-ally-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#3db87a;"></div>'
                 : '';
             var enemyFillHtml = !duel.win
-                ? '<div class="lane-enemy-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#ef4444;"></div>'
+                ? '<div class="lane-enemy-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#e5534b;"></div>'
                 : '';
 
             // Подпись: одно число, прижатое к победившей стороне
             var labelHtml = duel.win
-                ? '<span class="lane-bar-val" style="color:#10b981;">' + pctRound + '%</span><span></span>'
-                : '<span></span><span class="lane-bar-val" style="color:#ef4444;text-align:right;">' + pctRound + '%</span>';
+                ? '<span class="lane-bar-val" style="color:#3db87a;">' + pctRound + '%</span><span></span>'
+                : '<span></span><span class="lane-bar-val" style="color:#e5534b;text-align:right;">' + pctRound + '%</span>';
 
             return (
                 '<div class="lane-card">' +
@@ -4057,7 +4057,7 @@ function showDrafterResult(data) {
                 var n2   = _name(c.hero_id2);
                 var sign = c.value >= 0 ? '+' : '';
                 return (
-                    '<div class="matchup-card" style="border-left:2px solid #8b5cf6;background:rgba(139,92,246,0.08);">' +
+                    '<div class="matchup-card" style="border:1px solid rgba(123,139,184,0.15);background:rgba(123,139,184,0.04);">' +
                         '<div class="mc-heroes">' +
                             '<div class="mc-av"><img src="' + _icon(c.hero_id1) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
                             '<span class="mc-sep">+</span>' +
@@ -4076,7 +4076,7 @@ function showDrafterResult(data) {
                 var enemyName = _name(c.enemy_hero_id);
                 if (c.value > 0) {
                     return (
-                        '<div class="matchup-card" style="border-left:2px solid #10b981;background:rgba(16,185,129,0.08);">' +
+                        '<div class="matchup-card" style="border:1px solid rgba(61,184,122,0.20);background:rgba(61,184,122,0.04);">' +
                             '<div class="mc-heroes">' +
                                 '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
                                 '<span class="mc-sep">vs</span>' +
@@ -4084,14 +4084,14 @@ function showDrafterResult(data) {
                             '</div>' +
                             '<div class="mc-info">' +
                                 '<div class="mc-text">' + allyName + ' \u043a\u043e\u043d\u0442\u0440\u0438\u0442</div>' +
-                                '<div style="font-size:8px;color:#10b981;">' + enemyName + '</div>' +
+                                '<div style="font-size:8px;color:#3db87a;">' + enemyName + '</div>' +
                             '</div>' +
-                            '<div class="mc-val" style="color:#10b981;">+' + c.value.toFixed(1) + '</div>' +
+                            '<div class="mc-val" style="color:#3db87a;">+' + c.value.toFixed(1) + '</div>' +
                         '</div>'
                     );
                 } else {
                     return (
-                        '<div class="matchup-card" style="border-left:2px solid #ef4444;background:rgba(239,68,68,0.08);">' +
+                        '<div class="matchup-card" style="border:1px solid rgba(229,83,75,0.20);background:rgba(229,83,75,0.04);">' +
                             '<div class="mc-heroes">' +
                                 '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
                                 '<span class="mc-sep">vs</span>' +
@@ -4099,9 +4099,9 @@ function showDrafterResult(data) {
                             '</div>' +
                             '<div class="mc-info">' +
                                 '<div class="mc-text">' + allyName + ' \u043f\u0440\u043e\u0438\u0433\u0440\u044b\u0432\u0430\u0435\u0442</div>' +
-                                '<div style="font-size:8px;color:#ef4444;">' + enemyName + '</div>' +
+                                '<div style="font-size:8px;color:#e5534b;">' + enemyName + '</div>' +
                             '</div>' +
-                            '<div class="mc-val" style="color:#ef4444;">' + c.value.toFixed(1) + '</div>' +
+                            '<div class="mc-val" style="color:#e5534b;">' + c.value.toFixed(1) + '</div>' +
                         '</div>'
                     );
                 }
@@ -4116,7 +4116,7 @@ function showDrafterResult(data) {
                 return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
             }).join('');
             warnCardHtml = (
-                '<div class="matchup-card" style="border-left:2px solid #f59e0b;background:rgba(245,158,11,0.08);">' +
+                '<div class="matchup-card" style="border:1px solid rgba(210,153,34,0.20);background:rgba(210,153,34,0.04);">' +
                     '<div class="mc-heroes">' + avatarsHtml + '</div>' +
                     '<div class="mc-info">' +
                         '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
