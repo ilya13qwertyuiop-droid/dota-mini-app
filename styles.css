@@ -77,6 +77,30 @@ html {
 --tracking-wide: 0.04em;
 --tracking-wider: 0.08em;
 
+/* ─── Spacing — 4pt scale ─────────────────────────── */
+--space-0: 0;
+--space-1: 4px;    /* микро, внутри плотных групп */
+--space-2: 8px;    /* tight sibling gap */
+--space-3: 12px;   /* default gap внутри карточки */
+--space-4: 16px;   /* card padding, section gap */
+--space-5: 20px;   /* просторный card padding */
+--space-6: 24px;   /* между разнородными группами */
+--space-8: 32px;   /* между секциями */
+--space-10: 40px;  /* крупные отступы */
+--space-12: 48px;  /* между страничными блоками */
+--space-16: 64px;  /* hero/display spacing */
+
+/* ─── Radii ──────────────────────────────────────── */
+--radius-sm: 6px;
+--radius-md: 10px;
+--radius-lg: 14px;
+--radius-xl: 18px;
+
+/* ─── Shadow scale ───────────────────────────────── */
+--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35);
+--shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45);
+
 /* Legacy aliases — will remove over time */
 --bg-main: var(--bg-base);
 --glass-bg: var(--bg-surface);
@@ -143,6 +167,68 @@ th {
   color: var(--text-tertiary);
 }
 
+/* ─── Progressive disclosure (native <details>) ───── */
+/* Использование: <details class="disclose"><summary>Подробнее</summary>…</details> */
+.disclose {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.disclose > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  padding: var(--space-1) 0;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.disclose > summary::-webkit-details-marker { display: none; }
+.disclose > summary::marker { content: none; }
+
+.disclose > summary:hover {
+  color: var(--text-primary);
+}
+
+.disclose > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  opacity: 0.6;
+  margin-bottom: 3px;
+}
+
+.disclose[open] > summary::after {
+  transform: rotate(-135deg);
+  margin-top: 3px;
+  margin-bottom: 0;
+}
+
+.disclose[open] > summary {
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.disclose-body {
+  padding-top: var(--space-2);
+  animation: discloseIn 0.18s ease;
+}
+
+@keyframes discloseIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .app-container {
 max-width: 620px;
 margin: 0 auto;
@@ -152,7 +238,7 @@ position: relative;
 
 .page {
 display: none;
-padding: 20px;
+padding: var(--space-5) var(--space-4);
 animation: fadeIn 0.3s ease;
 }
 
@@ -191,56 +277,70 @@ transform: translateY(0);
 }
 
 .dashboard-header {
-text-align: center;
-margin-bottom: 24px;
+text-align: left;
+margin-bottom: var(--space-6);
+padding-top: var(--space-2);
 }
 
 .dashboard-header h1 {
-font-size: 26px;
-font-weight: 700;
-margin-bottom: 6px;
-line-height: 1.25;
+font-size: var(--text-2xl);
+font-weight: var(--font-bold);
+letter-spacing: var(--tracking-tight);
+line-height: var(--leading-tight);
+margin-bottom: var(--space-1);
 }
 
 #page-home .dashboard-header h1 {
-font-size: 20px;
-font-weight: 500;
+font-size: var(--text-xl);
+font-weight: var(--font-medium);
 }
 
 .dashboard-header p {
-font-size: 14px;
-color: var(--text-muted);
+font-size: var(--text-sm);
+color: var(--text-secondary);
+line-height: var(--leading-normal);
 }
 
 .card {
-background: var(--glass-bg);
-border-radius: 20px;
-padding: 20px;
-margin-bottom: 16px;
-border: 1px solid var(--glass-border);
-box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+background: var(--bg-surface);
+border-radius: var(--radius-lg);
+padding: var(--space-5);
+margin-bottom: var(--space-3);
+border: 1px solid var(--border-subtle);
+}
+
+/* Вложенные карточки не имеют своего фона/рамки — только отступы */
+.card .card {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
 }
 
 .card-header {
 display: flex;
 align-items: center;
-gap: 10px;
-margin-bottom: 12px;
+gap: var(--space-2);
+margin-bottom: var(--space-4);
 }
 
 .card-icon {
-font-size: 24px;
+font-size: var(--text-lg);
+color: var(--text-secondary);
 }
 
 .card-title {
-font-size: 16px;
-font-weight: 600;
+font-size: var(--text-md);
+font-weight: var(--font-semibold);
+letter-spacing: var(--tracking-tight);
+color: var(--text-primary);
 }
 
 .card-content {
-font-size: 14px;
-color: var(--text-muted);
-line-height: 1.6;
+font-size: var(--text-sm);
+color: var(--text-secondary);
+line-height: var(--leading-normal);
 }
 
 .position-result {
@@ -310,10 +410,11 @@ margin-top: 16px;
 }
 
 .hero-header-text {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-main);
-  text-align: center;
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  text-align: left;
+  letter-spacing: var(--tracking-tight);
 }
 
 /* старые hero-item можно оставить, но они больше не используются для hero-quiz */
@@ -436,27 +537,22 @@ color: var(--text-muted);
 }
 
 .quiz-container {
-background: var(--glass-bg);
-border-radius: 20px;
-box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-padding: 28px 20px 26px;
-border: 1px solid var(--glass-border);
+background: var(--bg-surface);
+border-radius: var(--radius-lg);
+padding: var(--space-5) var(--space-5) var(--space-6);
+border: 1px solid var(--border-subtle);
 }
 
-h1 {
-font-size: 22px;
-color: var(--text-main);
-margin-bottom: 6px;
-font-weight: 700;
-letter-spacing: 0.02em;
-text-align: center;
+.quiz-container h1 {
+font-size: var(--text-xl);
+margin-bottom: var(--space-1);
 }
 
 .subtitle {
-font-size: 14px;
-color: var(--text-muted);
-margin-bottom: 22px;
-text-align: center;
+font-size: var(--text-sm);
+color: var(--text-secondary);
+margin-bottom: var(--space-5);
+line-height: var(--leading-normal);
 }
 
 .progress-bar {
@@ -804,52 +900,49 @@ bottom: 0;
 left: 0;
 right: 0;
 height: var(--nav-height);
-background: var(--bg-elevated);
-backdrop-filter: blur(20px) saturate(180%);
--webkit-backdrop-filter: blur(20px) saturate(180%);
-border-top: 1px solid rgba(255, 255, 255, 0.08);
+background: var(--bg-base);
+border-top: 1px solid var(--border-subtle);
 display: flex;
 justify-content: space-between;
 align-items: center;
-padding: 0 8px;
+padding: 0 var(--space-1);
 z-index: 1000;
-box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
 }
 
 .nav-item {
 display: flex;
 flex-direction: column;
 align-items: center;
-gap: 4px;
-padding: 8px 4px;
+gap: var(--space-1);
+padding: var(--space-2) var(--space-1);
 cursor: pointer;
-transition: all 0.2s ease;
-border-radius: 12px;
-color: var(--text-muted);
+transition: color 0.15s ease;
+color: var(--text-tertiary);
 flex: 1;
 }
 
 .nav-item:hover {
-background: rgba(255, 255, 255, 0.05);
+color: var(--text-secondary);
 }
 
 .nav-item.active {
-color: var(--accent-hover);
+color: var(--text-primary);
 }
 
 .nav-icon {
-font-size: 24px;
-transition: transform 0.2s ease;
+font-size: var(--text-lg);
+opacity: 0.85;
+transition: opacity 0.15s ease;
 }
 
 .nav-item.active .nav-icon {
-transform: scale(1.1);
+opacity: 1;
 }
 
 .nav-label {
-font-size: 11px;
-font-weight: 500;
-letter-spacing: 0.02em;
+font-size: var(--text-2xs);
+font-weight: var(--font-medium);
+letter-spacing: var(--tracking-normal);
 }
 
 .placeholder {
@@ -1113,12 +1206,11 @@ margin-top: 14px;
 
 /* Карточки результатов */
 .profile-card {
-  background: var(--glass-bg);
-  border-radius: 20px;
-  padding: 20px;
-  margin-bottom: 16px;
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border-subtle);
 }
 
 .profile-card-header {
@@ -1555,11 +1647,10 @@ margin-top: 14px;
 /* ---- Секция (обёртка блока с заголовком + табами + списком) ---- */
 .matchup-section {
   background: var(--bg-surface);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 14px;
-  margin-bottom: 14px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .matchup-section-title {
