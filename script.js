@@ -855,22 +855,23 @@
             showResult() {
                 document.getElementById('hero-questions').style.display = 'none';
 
-                // Считаем немедленно, параллельно с экраном загрузки
                 const topHeroes = this.calculateTopHeroes().slice(0, 6);
 
+                // Brief loading indicator (1.2s) — just enough to feel intentional,
+                // not so long that it wastes the user's time
                 this._startHeroLoading();
 
                 setTimeout(() => {
                     const loading = document.getElementById('hero-loading');
-                    loading.style.transition = 'opacity 0.4s ease';
+                    loading.style.transition = 'opacity 0.3s ease';
                     loading.style.opacity = '0';
                     setTimeout(() => {
                         loading.style.display = 'none';
                         loading.style.opacity = '';
                         loading.style.transition = '';
                         this._renderResult(topHeroes);
-                    }, 400);
-                }, 5500);
+                    }, 300);
+                }, 1200);
             },
 
             _startHeroLoading() {
@@ -878,9 +879,9 @@
                 loading.style.display = 'flex';
                 loading.style.opacity = '1';
 
-                // Иконки — хаотичный дрейф по всему экрану
+                // A few hero icons drift subtly in the background
                 const heroNames = Object.keys(window.dotaHeroImages || {});
-                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 14);
+                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 6);
 
                 const container = loading.querySelector('.hlo-orbits-wrap');
                 container.innerHTML = '';
@@ -907,8 +908,8 @@
 
                 shuffled.forEach((heroName, i) => {
                     const size = 32 + Math.floor(Math.random() * 16); // 32–47px
-                    const dur  = (12 + Math.random() * 8).toFixed(1); // 12–20s
-                    const delay = (2 + i * 0.18).toFixed(2); // первые 2с — только фон и панель
+                    const dur  = (8 + Math.random() * 6).toFixed(1);  // 8–14s
+                    const delay = (0.1 + i * 0.08).toFixed(2);        // appear quickly
 
                     const img = document.createElement('img');
                     img.className = 'hlo-icon';
@@ -922,29 +923,16 @@
                     container.appendChild(img);
                 });
 
-                // Звёздное поле
+                // Clear star field (not needed for brief loading)
                 const starsEl = document.getElementById('hloStars');
                 starsEl.innerHTML = '';
-                for (let i = 0; i < 25; i++) {
-                    const s = document.createElement('div');
-                    s.className = 'hlo-star';
-                    const sz = [2, 3, 4][Math.floor(Math.random() * 3)];
-                    s.style.cssText = `
-                        width:${sz}px; height:${sz}px;
-                        top:${Math.random() * 100}%;
-                        left:${Math.random() * 100}%;
-                        --dur:${(1.5 + Math.random() * 2).toFixed(2)}s;
-                        --delay:-${(Math.random() * 3).toFixed(2)}s;
-                    `;
-                    starsEl.appendChild(s);
-                }
 
-                // Прогресс-бар 0 → 100% за 5.5с
+                // Прогресс-бар 0 → 100% за 1.2с
                 const fill = document.getElementById('hloProgressFill');
                 fill.style.transition = 'none';
                 fill.style.width = '0%';
                 requestAnimationFrame(() => requestAnimationFrame(() => {
-                    fill.style.transition = 'width 5.5s linear';
+                    fill.style.transition = 'width 1.2s ease-out';
                     fill.style.width = '100%';
                 }));
             },
