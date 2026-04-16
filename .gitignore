@@ -8,3 +8,7 @@ draft_matches.json
 CLAUDE.md
 .impeccable.md
 .gitignore
+
+# Skill plugins (taste-skill via npx skills add)
+.agents/
+skills-lock.json

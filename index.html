@@ -16,8 +16,14 @@
       href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap"
     />
 
+    <!-- Иконки — Phosphor Icons (regular) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
+    />
+
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=78" />
+    <link rel="stylesheet" href="styles.css?v=79" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -31,7 +37,7 @@
       <!-- Главная страница (Dashboard) -->
       <div id="page-home" class="page active">
         <div class="dashboard-header">
-          <h1>🎮 Добро пожаловать в Dota 2 Helper</h1>
+          <h1><i class="h1-icon ph ph-game-controller" aria-hidden="true"></i>Добро пожаловать в Dota 2 Helper</h1>
         </div>
 
         <!-- Мета патча -->
@@ -42,11 +48,11 @@
         <!-- Поддержать / Предложить — одна строка -->
         <div class="home-action-row">
           <button class="feedback-entry-btn home-half-btn donate-entry-btn" onclick="goToDonate()">
-            <span class="feedback-entry-icon">❤️</span>
+            <i class="feedback-entry-icon ph ph-heart" aria-hidden="true"></i>
             <span class="feedback-entry-text">Поддержать автора</span>
           </button>
           <button class="feedback-entry-btn home-half-btn" onclick="goToFeedback()">
-            <span class="feedback-entry-icon">💬</span>
+            <i class="feedback-entry-icon ph ph-chat-circle" aria-hidden="true"></i>
             <span class="feedback-entry-text">Предложить улучшения</span>
           </button>
         </div>
@@ -56,7 +62,7 @@
       <div id="page-feedback" class="page">
 
         <div class="dashboard-header">
-          <h1>📖 Предложить улучшения</h1>
+          <h1><i class="h1-icon ph ph-book-open-text" aria-hidden="true"></i>Предложить улучшения</h1>
           <p class="feedback-intro">
             Я делаю этот мини‑апп для дотеров. Напиши честно, что стоит
             улучшить — я читаю всё лично.
@@ -88,7 +94,7 @@
         <!-- Блок 2: Теги -->
         <div class="card">
           <div class="card-header">
-            <span class="card-icon">🎯</span>
+            <i class="card-icon ph ph-target" aria-hidden="true"></i>
             <span class="card-title">Что именно оцениваешь?</span>
           </div>
           <div class="feedback-tags-row">
@@ -110,7 +116,7 @@
         <!-- Блок 3: Комментарий -->
         <div class="card">
           <div class="card-header">
-            <span class="card-icon">✏️</span>
+            <i class="card-icon ph ph-pencil-simple" aria-hidden="true"></i>
             <span class="card-title">Твой комментарий</span>
           </div>
           <textarea
@@ -136,7 +142,7 @@
       <!-- Страница доната -->
       <div id="page-donate" class="page">
         <div class="dashboard-header">
-          <h1>❤️ Поддержать автора</h1>
+          <h1><i class="h1-icon ph ph-heart" aria-hidden="true"></i>Поддержать автора</h1>
         </div>
 
         <div class="card donate-card">
@@ -162,14 +168,14 @@
         <!-- Список доступных квизов -->
         <div id="quiz-list">
           <div class="dashboard-header">
-            <h1>🎯 Квизы</h1>
+            <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Квизы</h1>
             <p>Узнай больше о своём игровом стиле</p>
           </div>
 
           <!-- Квиз по позициям -->
           <div class="card">
             <div class="card-header">
-              <span class="card-icon">🎮</span>
+              <i class="card-icon ph ph-game-controller" aria-hidden="true"></i>
               <span class="card-title">Какая твоя позиция?</span>
             </div>
             <div class="card-content" style="margin-bottom: 16px;">
@@ -188,7 +194,7 @@
           <!-- Квиз по героям -->
           <div class="card">
             <div class="card-header">
-              <span class="card-icon">🦸</span>
+              <i class="card-icon ph ph-user-focus" aria-hidden="true"></i>
               <span class="card-title">Подбор идеального героя</span>
             </div>
             <div class="card-content" style="margin-bottom: 16px;">
@@ -207,7 +213,7 @@
           <!-- Последний результат (если есть) -->
           <div class="card" id="quizPageLastResult" style="display: none;">
             <div class="card-header">
-              <span class="card-icon">📊</span>
+              <i class="card-icon ph ph-chart-bar" aria-hidden="true"></i>
               <span class="card-title">Твой последний результат</span>
             </div>
             <div class="position-result">
@@ -236,7 +242,7 @@
         <div id="quiz-content-container" style="display: none;">
           <div class="quiz-container">
             <div class="quiz-content">
-              <h1>🎮 Какая твоя позиция в Dota 2?</h1>
+              <h1><i class="h1-icon ph ph-game-controller" aria-hidden="true"></i>Какая твоя позиция в Dota 2?</h1>
               <p class="subtitle">
                 Пройди тест и узнай, на какой роли ты раскроешься лучше всего
               </p>
@@ -257,7 +263,7 @@
             </div>
 
             <div class="result" id="result">
-              <div class="result-header">🎯</div>
+              <i class="result-header ph ph-target" aria-hidden="true"></i>
               <div class="result-title">Твоя позиция</div>
 
               <div class="position-primary" id="positionPrimary"></div>
@@ -289,7 +295,7 @@
           <div class="quiz-container">
             <!-- Стартовый экран -->
             <div id="hero-start">
-              <h1>🦸 Подбор идеального героя</h1>
+              <h1><i class="h1-icon ph ph-user-focus" aria-hidden="true"></i>Подбор идеального героя</h1>
               <p class="subtitle">
                 Узнай, какие герои подходят под твой стиль игры
               </p>
@@ -300,7 +306,7 @@
                   id="useSavedPositionBtn"
                   onclick="heroQuiz.useSavedPosition()"
                 >
-                  <span class="emoji">📊</span>
+                  <i class="emoji ph ph-chart-bar" aria-hidden="true"></i>
                   <span class="text" id="savedPositionText"
                     >Сначала пройди тест по позициям</span
                   >
@@ -309,7 +315,7 @@
                   class="answer-btn"
                   onclick="heroQuiz.showPositionSelect()"
                 >
-                  <span class="emoji">🎯</span>
+                  <i class="emoji ph ph-target" aria-hidden="true"></i>
                   <span class="text">Выбрать позицию вручную</span>
                 </button>
               </div>
@@ -325,7 +331,7 @@
 
             <!-- Ручной выбор позиции -->
             <div id="hero-position-select" style="display: none;">
-              <h1>🎯 Выбери позицию</h1>
+              <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Выбери позицию</h1>
               <p class="subtitle">
                 На какой позиции ты хочешь играть?
               </p>
@@ -374,7 +380,7 @@
 
             <!-- Вопросы -->
             <div id="hero-questions" style="display: none;">
-                <h1>🦸 Подбор героя</h1>
+                <h1><i class="h1-icon ph ph-user-focus" aria-hidden="true"></i>Подбор героя</h1>
                 <p class="subtitle" id="heroQuizSubtitle">
                   Ответь на несколько вопросов
                 </p>
@@ -399,7 +405,7 @@
             <!-- Результат -->
             <div id="hero-result" style="display: none;">
               <div class="hero-result-header">
-                <div class="hero-header-icon">★</div>
+                <i class="hero-header-icon ph ph-star" aria-hidden="true"></i>
                 <div class="hero-header-text" id="heroResultPosition">
                   Герои для мидера
                 </div>
@@ -519,12 +525,12 @@
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
           <div class="dashboard-header">
-            <h1>⚔️ Герои</h1>
+            <h1><i class="h1-icon ph ph-sword" aria-hidden="true"></i>Герои</h1>
             <p>Сборки, матчапы и синергии для каждого героя</p>
           </div>
 
           <div class="stats-warning">
-            <span>⚠️</span>
+            <i class="ph ph-warning" aria-hidden="true"></i>
             <span>Статистика может быть неточной — обработано мало матчей. Данные будут улучшаться со временем.</span>
           </div>
 
@@ -568,8 +574,8 @@
             <div class="matchup-section">
               <div class="matchup-section-title">Контрпики</div>
               <div class="matchup-tabs">
-                <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')">✅ Кого контрит</button>
-                <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')">❌ Кто контрит его</button>
+                <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')"><i class="ph ph-check-circle" aria-hidden="true"></i>Кого контрит</button>
+                <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')"><i class="ph ph-x-circle" aria-hidden="true"></i>Кто контрит его</button>
               </div>
               <div class="matchup-block" id="counters-list">
                 <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
@@ -580,8 +586,8 @@
             <div class="matchup-section">
               <div class="matchup-section-title">Синергия с союзниками</div>
               <div class="matchup-tabs">
-                <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')">🤝 Лучшие союзники</button>
-                <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')">💀 Худшие союзники</button>
+                <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')"><i class="ph ph-handshake" aria-hidden="true"></i>Лучшие союзники</button>
+                <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')"><i class="ph ph-skull" aria-hidden="true"></i>Худшие союзники</button>
               </div>
               <div class="matchup-block" id="synergy-list">
                 <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
@@ -593,7 +599,7 @@
           <div id="hero-tab-build">
             <div id="build-content">
               <div class="hero-tab-placeholder">
-                <div class="hero-tab-placeholder-icon">⚔️</div>
+                <i class="hero-tab-placeholder-icon ph ph-sword" aria-hidden="true"></i>
                 <div class="hero-tab-placeholder-text">Выбери героя</div>
               </div>
             </div>
@@ -621,7 +627,7 @@
             <!-- Если квиз пройден -->
             <div id="profile-position-result" style="display: none;">
               <div class="status-row">
-                <div class="status-icon">🎯</div>
+                <i class="status-icon ph ph-target" aria-hidden="true"></i>
                 <div class="status-main">
                   <div id="profile-position-main-name" class="status-main-title"></div>
                   <div id="profile-position-extra-name" class="status-main-sub"></div>
@@ -636,7 +642,7 @@
             <div id="profile-position-empty" style="display: none;">
               <p class="profile-empty-text">Ты ещё не проходил квиз по позициям</p>
               <button class="profile-action-btn" onclick="goToPositionQuiz()">
-                🎯 Пройти квиз по позиции
+<i class="ph ph-target" aria-hidden="true"></i>Пройти квиз по позиции
               </button>
             </div>
           </div>
@@ -644,7 +650,7 @@
           <!-- Результат квиза по героям -->
           <div class="profile-card">
             <div class="profile-card-header">
-              <span class="profile-card-icon">⚔️</span>
+              <i class="profile-card-icon ph ph-sword" aria-hidden="true"></i>
               <span class="profile-card-title" id="profile-heroes-title">Твои герои</span>
             </div>
 
@@ -677,7 +683,7 @@
             <div id="profile-heroes-empty" style="display: none;">
               <p class="profile-empty-text">Ты ещё не проходил квиз по героям для этой позиции</p>
               <button class="profile-action-btn" onclick="goToHeroQuiz()">
-                ⚔️ Пройти квиз по героям
+<i class="ph ph-sword" aria-hidden="true"></i>Пройти квиз по героям
               </button>
             </div>
           </div>
@@ -686,28 +692,28 @@
 
 
       <!-- Нижняя навигация -->
-      <div class="bottom-nav">
+      <nav class="bottom-nav" aria-label="Основная навигация">
         <div class="nav-item active" onclick="switchPage('home', event)">
-          <div class="nav-icon">🏠</div>
+          <i class="nav-icon ph ph-house" aria-hidden="true"></i>
           <div class="nav-label">Главная</div>
         </div>
         <div class="nav-item" onclick="switchPage('quiz', event)">
-          <div class="nav-icon">🎯</div>
+          <i class="nav-icon ph ph-target" aria-hidden="true"></i>
           <div class="nav-label">Квизы</div>
         </div>
         <div class="nav-item" onclick="switchPage('drafter', event)">
-          <div class="nav-icon">⚔️</div>
+          <i class="nav-icon ph ph-strategy" aria-hidden="true"></i>
           <div class="nav-label">Драфтер</div>
         </div>
         <div class="nav-item" onclick="switchPage('database', event)">
-          <div class="nav-icon">🛡️</div>
+          <i class="nav-icon ph ph-shield" aria-hidden="true"></i>
           <div class="nav-label">Герои</div>
         </div>
         <div class="nav-item" onclick="switchPage('profile', event)">
-          <div class="nav-icon">⚙️</div>
+          <i class="nav-icon ph ph-user" aria-hidden="true"></i>
           <div class="nav-label">Профиль</div>
         </div>
-      </div>
+      </nav>
     </div>
 
     <!-- Инициализация Telegram WebApp -->
