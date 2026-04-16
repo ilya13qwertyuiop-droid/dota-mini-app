@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=79" />
+    <link rel="stylesheet" href="styles.css?v=80" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -36,24 +36,71 @@
     <div class="app-container">
       <!-- Главная страница (Dashboard) -->
       <div id="page-home" class="page active">
-        <div class="dashboard-header">
-          <h1><i class="h1-icon ph ph-game-controller" aria-hidden="true"></i>Добро пожаловать в Dota 2 Helper</h1>
-        </div>
-
-        <!-- Мета патча -->
-        <div class="card meta-block">
-          <div id="meta-positions"></div>
-        </div>
-
-        <!-- Поддержать / Предложить — одна строка -->
-        <div class="home-action-row">
-          <button class="feedback-entry-btn home-half-btn donate-entry-btn" onclick="goToDonate()">
-            <i class="feedback-entry-icon ph ph-heart" aria-hidden="true"></i>
-            <span class="feedback-entry-text">Поддержать автора</span>
+        <!-- Шапка -->
+        <header class="home-top">
+          <div class="home-top-avatar" id="home-avatar">
+            <i class="ph ph-user" aria-hidden="true"></i>
+          </div>
+          <div class="home-top-title">D2Helper</div>
+          <button class="home-top-menu" aria-label="Меню" onclick="goToFeedback()">
+            <i class="ph ph-dots-three-vertical" aria-hidden="true"></i>
           </button>
-          <button class="feedback-entry-btn home-half-btn" onclick="goToFeedback()">
-            <i class="feedback-entry-icon ph ph-chat-circle" aria-hidden="true"></i>
-            <span class="feedback-entry-text">Предложить улучшения</span>
+        </header>
+
+        <!-- Мета патча: карусель -->
+        <section class="home-card home-meta" aria-label="Мета патча">
+          <div class="home-meta-head">
+            <span class="section-eyebrow">Мета патча</span>
+            <span class="home-meta-patch" id="home-meta-patch">—</span>
+          </div>
+          <div class="home-meta-carousel" id="home-meta-carousel" role="group" aria-roledescription="carousel">
+            <div class="home-meta-skeleton" aria-hidden="true"></div>
+          </div>
+          <div class="home-meta-dots" id="home-meta-dots" role="tablist" aria-label="Навигация по мете"></div>
+        </section>
+
+        <!-- Виджеты: последний герой + последний драфт -->
+        <div class="home-grid">
+          <button class="home-card home-widget" id="home-hero-widget" onclick="homeHeroWidgetClick()" disabled>
+            <div class="home-widget-head">
+              <span class="section-eyebrow">Последний герой</span>
+            </div>
+            <div class="home-widget-body home-hero-body" id="home-hero-body">
+              <div class="home-hero-placeholder">Открой любого героя</div>
+            </div>
+            <div class="home-widget-cta">Сборка <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
+          </button>
+
+          <button class="home-card home-widget" id="home-draft-widget" onclick="homeDraftWidgetClick()">
+            <div class="home-widget-head">
+              <span class="section-eyebrow">Последний драфт</span>
+            </div>
+            <div class="home-widget-body home-draft-body" id="home-draft-body">
+              <div class="home-draft-placeholder">Сыграй свой первый драфт</div>
+            </div>
+            <div class="home-widget-cta" id="home-draft-cta">Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
+          </button>
+        </div>
+
+        <!-- Новость -->
+        <button class="home-news" onclick="homeNewsClick()">
+          <span class="home-news-dot" aria-hidden="true"></span>
+          <span class="home-news-text" id="home-news-text">Матчапы и мета обновлены</span>
+          <span class="home-news-meta">
+            <span class="home-news-date" id="home-news-date">сегодня</span>
+            <i class="ph ph-arrow-right home-news-arrow" aria-hidden="true"></i>
+          </span>
+        </button>
+
+        <!-- Действия -->
+        <div class="home-actions">
+          <button class="home-action" onclick="goToFeedback()">
+            <i class="ph ph-chat-circle" aria-hidden="true"></i>
+            <span>Отзыв</span>
+          </button>
+          <button class="home-action home-action-support" onclick="goToDonate()">
+            <i class="ph ph-heart" aria-hidden="true"></i>
+            <span>Поддержать</span>
           </button>
         </div>
       </div>
@@ -750,6 +797,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=99"></script>
+    <script src="script.js?v=100"></script>
   </body>
 </html>

@@ -330,7 +330,8 @@
 
 
             if (pageName === 'home') {
-                loadMeta();
+                if (typeof initHomeScreen === 'function') initHomeScreen();
+                else loadMeta();
             }
             if (pageName === 'quiz') {
                 document.getElementById('quiz-list').style.display = 'block';
@@ -2650,29 +2651,51 @@ function openDonationAlerts() {
     }
 }
 
-// ========== МЕТА ПАТЧА ==========
+// ========== HOME SCREEN — МЕТА / ВИДЖЕТЫ ==========
 
 var _metaCache = null;
 
 var _META_POS_LABELS = {
-    'POSITION_1': 'КЕРРИ',
-    'POSITION_2': 'МИД',
-    'POSITION_3': 'ОФФЛЕЙН',
-    'POSITION_4': 'ЧЕТВЁРКА',
-    'POSITION_5': 'ПЯТЁРКА',
+    'POSITION_1': 'Керри',
+    'POSITION_2': 'Мидер',
+    'POSITION_3': 'Оффлейн',
+    'POSITION_4': 'Саппорт 4',
+    'POSITION_5': 'Саппорт 5',
 };
 
-var _META_POS_IMG = {
-    'POSITION_1': '/images/positions/pos_1.png',
-    'POSITION_2': '/images/positions/pos_2.png',
-    'POSITION_3': '/images/positions/pos_3.png',
-    'POSITION_4': '/images/positions/pos_4.png',
-    'POSITION_5': '/images/positions/pos_5.png',
+var _META_POS_ICON = {
+    'POSITION_1': 'ph-sword',
+    'POSITION_2': 'ph-crosshair',
+    'POSITION_3': 'ph-shield',
+    'POSITION_4': 'ph-coffee',
+    'POSITION_5': 'ph-handshake',
 };
+
+var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
+
+function _metaHeroClick(heroName) {
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-database').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    var navItems = document.querySelectorAll('.nav-item');
+    if (navItems[3]) navItems[3].classList.add('active');
+    _heroPageActiveTab = 'build';
+    matchupPage.selectHero(heroName);
+}
+
+function _escHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 function loadMeta() {
     if (_metaCache) {
-        _renderMeta(_metaCache);
+        _renderHomeMeta(_metaCache);
         return;
     }
     var API = window.API_BASE_URL || '/api';
@@ -2680,72 +2703,442 @@ function loadMeta() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             _metaCache = data;
-            _renderMeta(data);
+            _renderHomeMeta(data);
         })
         .catch(function(e) {
             console.warn('[meta] failed to load:', e);
         });
 }
 
-function _metaHeroClick(heroName) {
-    // Navigate to database page
-    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
-    document.getElementById('page-database').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
-    var navItems = document.querySelectorAll('.nav-item');
-    if (navItems[2]) navItems[2].classList.add('active');
-    // Open build tab for the hero
-    _heroPageActiveTab = 'build';
-    matchupPage.selectHero(heroName);
-}
+// ── META: carousel ───────────────────────────────────────────────────
+var _metaSlides = [];
+var _metaActiveIdx = 0;
+var _metaAutoTimer = null;
+var _metaInteracted = false;
+var _metaReducedMotion = false;
+var _metaDragStartX = 0;
+var _metaDragActive = false;
+var _metaDragDX = 0;
 
-function _renderMeta(data) {
-    var posContainer = document.getElementById('meta-positions');
-    if (!posContainer) return;
+function _renderHomeMeta(data) {
+    var carousel = document.getElementById('home-meta-carousel');
+    var dots = document.getElementById('home-meta-dots');
+    var patchEl = document.getElementById('home-meta-patch');
+    if (!carousel || !dots) return;
 
-    var patch = data.patch || '7.41B';
-    var positions = data.positions || {};
-    var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
+    if (patchEl) patchEl.textContent = data && data.patch ? data.patch : '—';
 
-    var html = '<div class="meta-top-bar">';
-    html += '<div class="meta-top-title">МЕТА ПАТЧА</div>';
-    html += '<div class="meta-top-patch">' + patch + '</div>';
-    html += '</div>';
-
-    posOrder.forEach(function(posKey, posIdx) {
-        var heroes = positions[posKey];
-        if (!heroes || !heroes.length) return;
-
-        var label = _META_POS_LABELS[posKey] || posKey;
-        var imgSrc = _META_POS_IMG[posKey] || '';
-
-        html += '<div class="meta-pos-block">';
-        html += '<div class="meta-pos-header">';
-        html += '<img src="' + imgSrc + '" class="meta-pos-icon" alt="">';
-        html += '<div class="meta-pos-label">' + label + '</div>';
-        html += '</div>';
-        html += '<div class="meta-heroes-row">';
-
-        heroes.slice(0, 5).forEach(function(hero) {
-            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[hero.hero_id]) || ('Hero #' + hero.hero_id);
-            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
-            var wrPct = Math.round(hero.win_rate * 100);
-            var escapedName = heroName.replace(/'/g, "\\'");
-
-            html += '<div class="meta-hero-item" onclick="_metaHeroClick(\'' + escapedName + '\')">';
-            html += '<div class="meta-hero-avatar"><img src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
-            html += '<div class="meta-hero-wr">' + wrPct + '%</div>';
-            html += '</div>';
-        });
-
-        html += '</div></div>';
-
-        if (posIdx < posOrder.length - 1) {
-            html += '<div class="meta-divider"></div>';
-        }
+    var positions = (data && data.positions) || {};
+    var slides = [];
+    _HOME_POS_ORDER.forEach(function(posKey) {
+        var arr = positions[posKey];
+        if (!arr || !arr.length) return;
+        var top = arr[0];
+        slides.push({ posKey: posKey, hero: top });
     });
 
-    posContainer.innerHTML = html;
+    if (!slides.length) {
+        carousel.innerHTML = '<div class="home-meta-skeleton"></div>';
+        dots.innerHTML = '';
+        return;
+    }
+
+    _metaSlides = slides;
+    _metaActiveIdx = 0;
+
+    var slidesHtml = slides.map(function(s, i) {
+        var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[s.hero.hero_id]) || ('Hero #' + s.hero.hero_id);
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+        var wrPct = Math.round(s.hero.win_rate * 100);
+        var posIcon = _META_POS_ICON[s.posKey] || 'ph-sword';
+        var posLabel = _META_POS_LABELS[s.posKey] || '';
+        var cls = 'home-meta-slide' + (i === 0 ? ' is-active' : '');
+        return (
+            '<div class="' + cls + '" data-idx="' + i + '" data-hero-name="' + _escHtml(heroName) + '" role="tabpanel">' +
+                '<img class="home-meta-slide-img" src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'">' +
+                '<div class="home-meta-slide-grad"></div>' +
+                '<div class="home-meta-slide-body">' +
+                    '<div class="home-meta-slide-info">' +
+                        '<div class="home-meta-slide-pos"><i class="ph ' + posIcon + '" aria-hidden="true"></i>' + _escHtml(posLabel) + '</div>' +
+                        '<div class="home-meta-slide-name">' + _escHtml(heroName) + '</div>' +
+                    '</div>' +
+                    '<div class="home-meta-slide-wr">' + wrPct + '%</div>' +
+                '</div>' +
+            '</div>'
+        );
+    }).join('');
+
+    carousel.innerHTML = slidesHtml;
+
+    var dotsHtml = slides.map(function(_, i) {
+        return '<button class="home-meta-dot' + (i === 0 ? ' is-active' : '') +
+               '" data-idx="' + i + '" role="tab" aria-label="Слайд ' + (i + 1) + '"></button>';
+    }).join('');
+    dots.innerHTML = dotsHtml;
+
+    _bindHomeMetaInteractions(carousel, dots);
+    _startHomeMetaAutoplay();
+}
+
+function _bindHomeMetaInteractions(carousel, dots) {
+    _metaReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    dots.querySelectorAll('.home-meta-dot').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var idx = parseInt(btn.getAttribute('data-idx'), 10);
+            _metaInteracted = true;
+            _stopHomeMetaAutoplay();
+            _setMetaSlide(idx);
+        });
+    });
+
+    carousel.querySelectorAll('.home-meta-slide').forEach(function(slide) {
+        slide.addEventListener('click', function() {
+            if (Math.abs(_metaDragDX) > 6) return;
+            var name = slide.getAttribute('data-hero-name');
+            if (name) _metaHeroClick(name);
+        });
+    });
+
+    var onDown = function(e) {
+        _metaDragActive = true;
+        _metaDragDX = 0;
+        _metaDragStartX = (e.touches ? e.touches[0].clientX : e.clientX);
+        _metaInteracted = true;
+        _stopHomeMetaAutoplay();
+    };
+    var onMove = function(e) {
+        if (!_metaDragActive) return;
+        var x = (e.touches ? e.touches[0].clientX : e.clientX);
+        _metaDragDX = x - _metaDragStartX;
+    };
+    var onUp = function() {
+        if (!_metaDragActive) return;
+        _metaDragActive = false;
+        var threshold = 32;
+        if (_metaDragDX <= -threshold) _setMetaSlide(_metaActiveIdx + 1);
+        else if (_metaDragDX >= threshold) _setMetaSlide(_metaActiveIdx - 1);
+        setTimeout(function() { _metaDragDX = 0; }, 50);
+    };
+
+    carousel.addEventListener('touchstart', onDown, { passive: true });
+    carousel.addEventListener('touchmove', onMove, { passive: true });
+    carousel.addEventListener('touchend', onUp);
+    carousel.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+}
+
+function _setMetaSlide(idx) {
+    if (!_metaSlides.length) return;
+    var n = _metaSlides.length;
+    var next = ((idx % n) + n) % n;
+    if (next === _metaActiveIdx) return;
+
+    var carousel = document.getElementById('home-meta-carousel');
+    var dots = document.getElementById('home-meta-dots');
+    if (!carousel || !dots) return;
+
+    var slides = carousel.querySelectorAll('.home-meta-slide');
+    slides.forEach(function(el, i) {
+        el.classList.remove('is-active', 'is-prev');
+        if (i === next) el.classList.add('is-active');
+        else if (i === _metaActiveIdx) el.classList.add('is-prev');
+    });
+    dots.querySelectorAll('.home-meta-dot').forEach(function(b, i) {
+        b.classList.toggle('is-active', i === next);
+    });
+    _metaActiveIdx = next;
+}
+
+function _startHomeMetaAutoplay() {
+    _stopHomeMetaAutoplay();
+    if (_metaReducedMotion) return;
+    _metaAutoTimer = setInterval(function() {
+        if (_metaInteracted) return;
+        if (document.hidden) return;
+        var homePage = document.getElementById('page-home');
+        if (!homePage || !homePage.classList.contains('active')) return;
+        _setMetaSlide(_metaActiveIdx + 1);
+    }, 3800);
+}
+
+function _stopHomeMetaAutoplay() {
+    if (_metaAutoTimer) { clearInterval(_metaAutoTimer); _metaAutoTimer = null; }
+}
+
+// ── Аватар пользователя ──────────────────────────────────────────────
+function _renderHomeAvatar() {
+    var el = document.getElementById('home-avatar');
+    if (!el) return;
+    try {
+        var tg = window.Telegram && window.Telegram.WebApp;
+        var user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+        var url = user && user.photo_url;
+        if (url) {
+            el.innerHTML = '<img src="' + _escHtml(url) + '" alt="">';
+        }
+    } catch (e) {}
+}
+
+// ── Виджет: последний герой ──────────────────────────────────────────
+var _JUNK_ITEM_IDS = { 0:1, 44:1, 45:1, 46:1, 42:1, 43:1, 185:1, 145:1, 244:1 };
+
+function _getLastHeroId() {
+    try {
+        var list = JSON.parse(localStorage.getItem('recent_heroes') || '[]');
+        return (list && list.length) ? list[0] : null;
+    } catch (e) { return null; }
+}
+
+function _loadHomeHeroWidget() {
+    var body = document.getElementById('home-hero-body');
+    var widget = document.getElementById('home-hero-widget');
+    if (!body || !widget) return;
+
+    var heroId = _getLastHeroId();
+    if (!heroId) {
+        widget.disabled = true;
+        body.innerHTML = '<div class="home-hero-placeholder">Открой любого героя</div>';
+        return;
+    }
+
+    widget.disabled = false;
+    widget.dataset.heroId = heroId;
+    var API = window.API_BASE_URL || '/api';
+    fetch(API + '/hero/' + heroId + '/build')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) {
+                body.innerHTML = '<div class="home-hero-placeholder">Данные недоступны</div>';
+                return;
+            }
+            _renderHomeHeroWidget(heroId, data);
+        })
+        .catch(function(e) {
+            console.warn('[home hero] failed:', e);
+            body.innerHTML = '<div class="home-hero-placeholder">Нет подключения</div>';
+        });
+}
+
+function _renderHomeHeroWidget(heroId, build) {
+    var body = document.getElementById('home-hero-body');
+    if (!body) return;
+
+    var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('Hero #' + heroId);
+    var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+
+    var topPosKey = null;
+    var wrPct = null;
+    var db = build && build.dota_builds;
+    if (db) {
+        var best = null;
+        Object.keys(db).forEach(function(k) {
+            var entry = db[k] || {};
+            var nm = entry.num_matches || 0;
+            if (!best || nm > best.nm) best = { key: k, nm: nm, wr: entry.win_rate };
+        });
+        if (best) {
+            topPosKey = best.key;
+            if (typeof best.wr === 'number') wrPct = Math.round(best.wr * 100);
+        }
+    }
+
+    var posNum = 1;
+    if (topPosKey) {
+        var m = topPosKey.match(/(\d)/);
+        if (m) posNum = parseInt(m[1], 10);
+    }
+    var posKey = 'POSITION_' + posNum;
+    var posIcon = _META_POS_ICON[posKey] || 'ph-sword';
+    var posLabel = _META_POS_LABELS[posKey] || '';
+
+    var cores = (build && build.items && build.items.core_items) || [];
+    var itemSlots = [];
+    for (var i = 0; i < 4; i++) {
+        var it = cores[i];
+        if (it && it.icon_url) {
+            itemSlots.push('<div class="home-hero-item"><img src="' + _escHtml(it.icon_url) + '" alt="' + _escHtml(it.name || '') + '" onerror="this.style.display=\'none\'"></div>');
+        } else {
+            itemSlots.push('<div class="home-hero-item"></div>');
+        }
+    }
+
+    var wrHtml = wrPct != null ? '<div class="home-hero-wr">' + wrPct + '%</div>' : '';
+
+    body.innerHTML =
+        '<div class="home-hero-head">' +
+            '<div class="home-hero-icon"><img src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'"></div>' +
+            '<div class="home-hero-text">' +
+                '<div class="home-hero-name">' + _escHtml(heroName) + '</div>' +
+                '<div class="home-hero-pos"><i class="ph ' + posIcon + '" aria-hidden="true"></i>' + _escHtml(posLabel) + '</div>' +
+            '</div>' +
+        '</div>' +
+        wrHtml +
+        '<div class="home-hero-items">' + itemSlots.join('') + '</div>';
+}
+
+function homeHeroWidgetClick() {
+    var widget = document.getElementById('home-hero-widget');
+    if (!widget || widget.disabled) return;
+    var heroId = parseInt(widget.dataset.heroId || '0', 10);
+    if (!heroId) return;
+    var name = window.dotaHeroIdToName && window.dotaHeroIdToName[heroId];
+    if (name) _metaHeroClick(name);
+}
+
+// ── Виджет: последний драфт ──────────────────────────────────────────
+var _HOME_DRAFT_CACHE_KEY = 'home_last_draft_eval';
+
+function cacheLastDraftEval(data) {
+    try {
+        localStorage.setItem(_HOME_DRAFT_CACHE_KEY, JSON.stringify({
+            total_score: data.total_score,
+            lane_score: data.lane_score,
+            synergy_score: data.synergy_score,
+            matchup_score: data.matchup_score,
+            saved_at: Date.now(),
+        }));
+    } catch (e) {}
+}
+
+function _scoreRank(score) {
+    if (score >= 85) return 'SSS';
+    if (score >= 80) return 'S';
+    if (score >= 65) return 'A';
+    if (score >= 50) return 'B';
+    return 'C';
+}
+
+function _formatDraftDate(iso) {
+    if (!iso) return '';
+    try {
+        var d = new Date(iso);
+        var now = new Date();
+        var sameDay = d.toDateString() === now.toDateString();
+        if (sameDay) {
+            return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        }
+        return d.getDate().toString().padStart(2, '0') + '.' + (d.getMonth() + 1).toString().padStart(2, '0');
+    } catch (e) { return ''; }
+}
+
+function _loadHomeDraftWidget() {
+    var body = document.getElementById('home-draft-body');
+    if (!body) return;
+
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem(_HOME_DRAFT_CACHE_KEY) || 'null'); } catch (e) {}
+
+    var token = (typeof USER_TOKEN !== 'undefined' && USER_TOKEN) ? USER_TOKEN : null;
+    if (!token) {
+        if (cached) _renderHomeDraftWidget(cached, null);
+        else _renderHomeDraftEmpty();
+        return;
+    }
+
+    var API = window.API_BASE_URL || '/api';
+    fetch(API + '/draft/history?token=' + encodeURIComponent(token))
+        .then(function(r) { return r.ok ? r.json() : []; })
+        .then(function(list) {
+            var last = (list && list.length) ? list[0] : null;
+            _renderHomeDraftWidget(cached, last);
+        })
+        .catch(function(e) {
+            console.warn('[home draft] failed:', e);
+            if (cached) _renderHomeDraftWidget(cached, null);
+            else _renderHomeDraftEmpty();
+        });
+}
+
+function _renderHomeDraftEmpty() {
+    var body = document.getElementById('home-draft-body');
+    var cta = document.getElementById('home-draft-cta');
+    if (!body) return;
+    body.innerHTML = '<div class="home-draft-placeholder">Оцени свой первый драфт</div>';
+    if (cta) cta.innerHTML = 'Оценить драфт <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+}
+
+function _renderHomeDraftWidget(cached, lastHistory) {
+    var body = document.getElementById('home-draft-body');
+    var cta = document.getElementById('home-draft-cta');
+    if (!body) return;
+
+    var total = lastHistory ? lastHistory.total_score : (cached ? cached.total_score : null);
+    if (total == null) { _renderHomeDraftEmpty(); return; }
+
+    var rank = lastHistory ? lastHistory.rank : _scoreRank(total);
+
+    // Sub-scores: если локальный кэш относится к тому же (или близкому) total — используем его.
+    // Иначе показываем только total и нулевые bar'ы (визуально указывает на отсутствие детализации).
+    var lane = null, syn = null, mu = null;
+    if (cached && Math.abs((cached.total_score || 0) - total) < 0.5) {
+        lane = cached.lane_score || 0;
+        syn = cached.synergy_score || 0;
+        mu = cached.matchup_score || 0;
+    }
+
+    var totalRounded = Math.round(total);
+    // Каждая из 3 компонент — 0..33.33
+    var lanePct = lane != null ? Math.min(100, Math.round((lane / 33.33) * 100)) : null;
+    var synPct = syn != null ? Math.min(100, Math.round((syn / 33.33) * 100)) : null;
+    var muPct = mu != null ? Math.min(100, Math.round((mu / 33.33) * 100)) : null;
+
+    body.innerHTML =
+        '<div class="home-draft-top">' +
+            '<div class="home-draft-score">' + totalRounded + '<span class="home-draft-score-max">/100</span></div>' +
+            '<div class="home-draft-rank" data-rank="' + _escHtml(rank) + '">' + _escHtml(rank) + '</div>' +
+        '</div>' +
+        '<div class="home-draft-bars">' +
+            _draftBarRow('Линии', 'accent', lanePct) +
+            _draftBarRow('Синергия', 'positive', synPct) +
+            _draftBarRow('Матчапы', 'warning', muPct) +
+        '</div>';
+
+    if (cta) cta.innerHTML = 'Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+}
+
+function _draftBarRow(label, tone, pct) {
+    var width = (pct == null ? 0 : pct) + '%';
+    return (
+        '<div class="home-draft-bar-row">' +
+            '<div class="home-draft-bar-label">' + label + '</div>' +
+            '<div class="home-draft-bar-track"><div class="home-draft-bar-fill home-draft-bar-fill--' + tone + '" style="width:' + width + '"></div></div>' +
+        '</div>'
+    );
+}
+
+function homeDraftWidgetClick() {
+    switchPage('drafter');
+}
+
+// ── Новость ──────────────────────────────────────────────────────────
+function _renderHomeNews() {
+    var textEl = document.getElementById('home-news-text');
+    var dateEl = document.getElementById('home-news-date');
+    if (!textEl || !dateEl) return;
+    var patch = (_metaCache && _metaCache.patch) || null;
+    if (patch) {
+        textEl.textContent = 'Мета и матчапы обновлены';
+        dateEl.textContent = 'патч ' + patch;
+    } else {
+        textEl.textContent = 'Матчапы и мета обновлены';
+        dateEl.textContent = 'сегодня';
+    }
+}
+
+function homeNewsClick() {
+    switchPage('database');
+}
+
+// ── Инициализация главной ────────────────────────────────────────────
+function initHomeScreen() {
+    _renderHomeAvatar();
+    loadMeta();
+    _loadHomeHeroWidget();
+    _loadHomeDraftWidget();
+    setTimeout(_renderHomeNews, 400);
 }
 
 // ── items_db: загружаем один раз при старте, используем во всём приложении ──
@@ -2764,9 +3157,9 @@ async function _loadItemsDb() {
 // Загружаем мету и items_db при старте (главная открыта по умолчанию)
 (function() {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() { loadMeta(); _loadItemsDb(); });
+        document.addEventListener('DOMContentLoaded', function() { initHomeScreen(); _loadItemsDb(); });
     } else {
-        loadMeta();
+        initHomeScreen();
         _loadItemsDb();
     }
 }());
@@ -3218,6 +3611,7 @@ async function submitDraft() {
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
+        if (typeof cacheLastDraftEval === 'function') cacheLastDraftEval(data);
         showDrafterResult(data);
     } catch (e) {
         console.error('[drafter] submitDraft error:', e);
