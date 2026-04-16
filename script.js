@@ -3221,7 +3221,15 @@ async function submitDraft() {
         showDrafterResult(data);
     } catch (e) {
         console.error('[drafter] submitDraft error:', e);
-        alert('Ошибка при оценке драфта');
+        const msg = 'Не удалось оценить драфт. Проверь подключение и попробуй снова.';
+        const tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.showAlert === 'function') {
+            tg.showAlert(msg);
+        } else if (typeof showToast === 'function') {
+            showToast(msg);
+        } else {
+            console.warn(msg);
+        }
     } finally {
         if (btn) btn.disabled = false;
     }
