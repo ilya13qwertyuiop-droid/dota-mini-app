@@ -2440,8 +2440,13 @@ function switchSynergyTab(tab) {
     window.getRecentHeroes = readList;
 
     window.addRecentHero = function (heroId, position) {
-        console.log('[addRecentHero] called', { heroId: heroId, position: position, before: readList() });
-        if (!heroId) { console.log('[addRecentHero] aborted: no heroId'); return; }
+        if (!heroId) return;
+        if (!position && window.dota_builds && window.dota_builds[heroId]) {
+            var entries = Object.entries(window.dota_builds[heroId])
+                .filter(function (e) { return e[0].indexOf('pos') === 0; })
+                .sort(function (a, b) { return (b[1].num_matches || 0) - (a[1].num_matches || 0); });
+            if (entries.length) position = entries[0][0];
+        }
         var list = readList();
         var existing = list.find(function (e) { return e.id === heroId; });
         var pos = position || (existing && existing.pos) || null;
@@ -2449,7 +2454,6 @@ function switchSynergyTab(tab) {
         list.unshift({ id: heroId, pos: pos });
         if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
         writeList(list);
-        console.log('[addRecentHero] done', { heroId: heroId, savedPos: pos, after: list });
     };
 
     window.setRecentHeroPosition = function (heroId, position) {
@@ -2766,53 +2770,11 @@ var _metaDragStartX = 0;
 var _metaDragActive = false;
 var _metaDragDX = 0;
 
+// PATCH VERSION — обновлять вручную при выходе нового патча
+const CURRENT_PATCH = '7.41b';
+
 function _resolveMetaPatch(data) {
-    console.log('[home meta] resolving patch. Sources:',
-        'window.dotaBuildsPatch=', window.dotaBuildsPatch,
-        '| window.dota_builds?.patch=', (window.dota_builds && window.dota_builds.patch),
-        '| data?.patch=', (data && data.patch));
-
-    if (window.dotaBuildsPatch) {
-        console.log('[home meta] step 1: using window.dotaBuildsPatch =', window.dotaBuildsPatch);
-        return window.dotaBuildsPatch;
-    }
-    console.log('[home meta] step 1: window.dotaBuildsPatch empty, trying window.dota_builds.patch');
-
-    var global = window.dota_builds;
-    if (global && typeof global === 'object' && global.patch) {
-        console.log('[home meta] step 2: using window.dota_builds.patch =', global.patch);
-        return global.patch;
-    }
-    console.log('[home meta] step 2: window.dota_builds.patch empty, trying /api/meta response');
-
-    if (data && data.patch) {
-        console.log('[home meta] step 3: using /api/meta data.patch =', data.patch);
-        return data.patch;
-    }
-    console.log('[home meta] step 3: no patch in any source — async fallback fetch will run');
-    return '';
-}
-
-// Explicit fallback: re-fetch /api/meta and set the patch text directly.
-// Runs only when _resolveMetaPatch exhausted all sources.
-function _fetchPatchDirect() {
-    var API = window.API_BASE_URL || '/api';
-    console.log('[home meta] fallback: fetching', API + '/meta', 'for patch only');
-    fetch(API + '/meta')
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-            console.log('[home meta] fallback response:', data);
-            var patchEl = document.getElementById('home-meta-patch');
-            if (patchEl && data && data.patch) {
-                console.log('[home meta] fallback: patch =', data.patch);
-                patchEl.textContent = data.patch;
-            } else {
-                console.log('[home meta] fallback: /api/meta still has no patch field');
-            }
-        })
-        .catch(function(e) {
-            console.warn('[home meta] fallback fetch failed:', e);
-        });
+    return CURRENT_PATCH;
 }
 
 function _renderHomeMeta(data) {
@@ -2823,10 +2785,6 @@ function _renderHomeMeta(data) {
 
     var patch = _resolveMetaPatch(data);
     if (patchEl) patchEl.textContent = patch || '—';
-    if (!patch) {
-        console.log('[home meta] all sync sources empty — invoking _fetchPatchDirect()');
-        _fetchPatchDirect();
-    }
 
     var positions = (data && data.positions) || {};
     var slides = [];
