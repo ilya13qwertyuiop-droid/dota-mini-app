@@ -2184,7 +2184,15 @@ function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
             '</div>';
     }
 
-    var html = '';
+    var baseWrLabel = (baseWr != null) ? 'vs ' + Math.round(baseWr * 100) + '%' : '\u0394';
+    var html =
+        '<div class="matchup-list-header">' +
+            '<span class="matchup-list-header-spacer"></span>' +
+            '<span class="matchup-list-header-delta">' + baseWrLabel + '</span>' +
+            '<span class="matchup-list-header-abswr">WR</span>' +
+            '<span class="matchup-list-header-games">игр</span>' +
+        '</div>';
+
     for (var i = 0; i < pos.length; i++) {
         html += renderRow(pos[i], i === 0, 'positive', i >= TOP);
     }
@@ -2196,8 +2204,10 @@ function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
     }
 
     var extra = Math.max(0, pos.length - TOP) + Math.max(0, neg.length - TOP);
+    var collapsedLabel = 'показать ещё ' + extra + ' \u2192';
+    var expandedLabel  = 'свернуть \u2191';
     if (extra > 0) {
-        html += '<button class="matchup-expand-btn" type="button">показать ещё ' + extra + ' \u2192</button>';
+        html += '<button class="matchup-expand-btn" type="button">' + collapsedLabel + '</button>';
     }
 
     container.classList.remove('expanded');
@@ -2206,7 +2216,8 @@ function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
     var btn = container.querySelector('.matchup-expand-btn');
     if (btn) {
         btn.addEventListener('click', function () {
-            container.classList.add('expanded');
+            var isExpanded = container.classList.toggle('expanded');
+            btn.textContent = isExpanded ? expandedLabel : collapsedLabel;
         });
     }
 }
@@ -2266,17 +2277,6 @@ async function loadHeroMatchups(heroId) {
 
         _countersData = data;
         renderMatchupList('counters-list', data.victims, data.counters, data.base_winrate);
-
-        var ctxEl = document.getElementById('counters-section-context');
-        if (ctxEl) {
-            if (data.base_winrate != null) {
-                var wrPct = Math.round(data.base_winrate * 100);
-                var gamesPart = data.data_games != null ? ' \u00b7 ' + data.data_games.toLocaleString('ru-RU') + ' игр' : '';
-                ctxEl.textContent = 'Базовый WR ' + wrPct + '%' + gamesPart;
-            } else {
-                ctxEl.textContent = '';
-            }
-        }
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -2322,17 +2322,6 @@ async function loadHeroSynergy(heroId) {
 
         _synergyData = data;
         renderMatchupList('synergy-list', data.best_allies, data.worst_allies, data.base_winrate);
-
-        var ctxEl = document.getElementById('synergy-section-context');
-        if (ctxEl) {
-            if (data.base_winrate != null) {
-                var wrPct = Math.round(data.base_winrate * 100);
-                var gamesPart = data.data_games != null ? ' \u00b7 ' + data.data_games.toLocaleString('ru-RU') + ' игр' : '';
-                ctxEl.textContent = 'Базовый WR ' + wrPct + '%' + gamesPart;
-            } else {
-                ctxEl.textContent = '';
-            }
-        }
     } catch (err) {
         console.error('[synergy] loadHeroSynergy error:', err);
         showSynergyError();
