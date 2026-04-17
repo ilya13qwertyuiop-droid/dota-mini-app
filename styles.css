@@ -2398,28 +2398,9 @@ margin-top: 14px;
   font-weight: var(--font-medium);
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
-  text-align: center;
+  text-align: left;
   flex: 1;
 }
-
-.home-top-menu {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  border: none;
-  color: var(--text-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background-color 0.15s;
-  font-family: inherit;
-  flex-shrink: 0;
-}
-
-.home-top-menu:hover { color: var(--text-primary); background: var(--bg-hover); }
 
 /* Общий контейнер-карточка главной страницы */
 .home-card {
@@ -2506,9 +2487,12 @@ margin-top: 14px;
   font-weight: var(--font-medium);
 }
 
-.home-meta-slide-pos i {
-  font-size: 11px;
-  color: var(--text-tertiary);
+.home-meta-pos-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
 }
 
 .home-meta-grid {
@@ -2683,7 +2667,13 @@ margin-top: 14px;
   gap: 4px;
 }
 
-.home-hero-pos i { font-size: 11px; }
+.home-hero-pos-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+}
 
 .home-hero-wr {
   font-family: var(--font-mono);
@@ -2694,16 +2684,17 @@ margin-top: 14px;
 }
 
 .home-hero-items {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 3px;
+  display: flex;
+  gap: 4px;
 }
 
 .home-hero-item {
-  aspect-ratio: 1;
-  border-radius: 4px;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
   background: var(--bg-elevated);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .home-hero-item img {
@@ -2896,55 +2887,6 @@ margin-top: 14px;
 
 .home-action-support i { color: var(--negative); }
 
-/* ── Меню (иконка dots-three в хедере) ─────────────────────────────── */
-.home-menu-sheet {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 52px var(--space-3) 0;
-}
-
-.home-menu-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.home-menu-card {
-  position: relative;
-  background: var(--bg-surface);
-  border: 0.5px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 6px;
-  min-width: 180px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
-}
-
-.home-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color 0.12s;
-}
-
-.home-menu-item:hover { background: var(--bg-elevated); }
-
-.home-menu-item i { font-size: 14px; color: var(--text-secondary); }
 
 /* ========== DONATE ========== */
 

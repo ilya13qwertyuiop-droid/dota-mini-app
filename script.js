@@ -2696,12 +2696,12 @@ var _META_POS_LABELS = {
     'POSITION_5': 'Саппорт 5',
 };
 
-var _META_POS_ICON = {
-    'POSITION_1': 'ph-sword',
-    'POSITION_2': 'ph-crosshair',
-    'POSITION_3': 'ph-shield',
-    'POSITION_4': 'ph-coffee',
-    'POSITION_5': 'ph-handshake',
+var _META_POS_IMG = {
+    'POSITION_1': '/images/positions/pos_1.png',
+    'POSITION_2': '/images/positions/pos_2.png',
+    'POSITION_3': '/images/positions/pos_3.png',
+    'POSITION_4': '/images/positions/pos_4.png',
+    'POSITION_5': '/images/positions/pos_5.png',
 };
 
 var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
@@ -2753,13 +2753,31 @@ var _metaDragStartX = 0;
 var _metaDragActive = false;
 var _metaDragDX = 0;
 
+function _resolveMetaPatch(data) {
+    if (window.dotaBuildsPatch) {
+        console.log('[home meta] patch from window.dotaBuildsPatch:', window.dotaBuildsPatch);
+        return window.dotaBuildsPatch;
+    }
+    var global = window.dota_builds;
+    if (global && typeof global === 'object' && global.patch) {
+        console.log('[home meta] patch from window.dota_builds.patch:', global.patch);
+        return global.patch;
+    }
+    if (data && data.patch) {
+        console.log('[home meta] patch from /api/meta:', data.patch);
+        return data.patch;
+    }
+    console.log('[home meta] patch not found in any source');
+    return '';
+}
+
 function _renderHomeMeta(data) {
     var slidesEl = document.getElementById('home-meta-slides');
     var dots = document.getElementById('home-meta-dots');
     var patchEl = document.getElementById('home-meta-patch');
     if (!slidesEl || !dots) return;
 
-    var patch = (data && data.patch) || (window.dotaBuildsPatch || '');
+    var patch = _resolveMetaPatch(data);
     if (patchEl) patchEl.textContent = patch || '—';
 
     var positions = (data && data.positions) || {};
@@ -2780,7 +2798,7 @@ function _renderHomeMeta(data) {
     _metaActiveIdx = 0;
 
     var slidesHtml = slides.map(function(s, i) {
-        var posIcon = _META_POS_ICON[s.posKey] || 'ph-sword';
+        var posImg = _META_POS_IMG[s.posKey] || '';
         var posLabel = _META_POS_LABELS[s.posKey] || '';
         var cls = 'home-meta-slide' + (i === 0 ? ' is-active' : '');
         var heroesHtml = s.heroes.map(function(h) {
@@ -2798,7 +2816,10 @@ function _renderHomeMeta(data) {
         }).join('');
         return (
             '<div class="' + cls + '" data-idx="' + i + '" role="tabpanel">' +
-                '<div class="home-meta-slide-pos"><i class="ph ' + posIcon + '" aria-hidden="true"></i>' + _escHtml(posLabel) + '</div>' +
+                '<div class="home-meta-slide-pos">' +
+                    '<img class="home-meta-pos-icon" src="' + _escHtml(posImg) + '" alt="" onerror="this.style.display=\'none\'">' +
+                    _escHtml(posLabel) +
+                '</div>' +
                 '<div class="home-meta-grid">' + heroesHtml + '</div>' +
             '</div>'
         );
@@ -2967,12 +2988,19 @@ function _loadHomeHeroWidget() {
 
 // Pick dota_builds position key (pos%20N): saved recent pos first, else max num_matches.
 // savedPos may be in dota format ("pos%201") or stratz format ("POSITION_1").
-function _pickHomeHeroDotaPos(dotaBuilds, savedPos) {
+function _pickHomeHeroDotaPos(heroId, dotaBuilds, savedPos) {
     if (!dotaBuilds) return null;
     if (savedPos) {
-        if (dotaBuilds[savedPos]) return savedPos;
+        if (dotaBuilds[savedPos]) {
+            console.log('[home hero]', heroId, 'position from recent_heroes:', savedPos);
+            return savedPos;
+        }
         var mapped = _STRATZ_POS_TO_DOTA[savedPos];
-        if (mapped && dotaBuilds[mapped]) return mapped;
+        if (mapped && dotaBuilds[mapped]) {
+            console.log('[home hero]', heroId, 'position from recent_heroes (mapped):', savedPos, '->', mapped);
+            return mapped;
+        }
+        console.log('[home hero]', heroId, 'saved pos', savedPos, 'not in dota_builds, falling back');
     }
     var best = null;
     Object.keys(dotaBuilds).forEach(function(k) {
@@ -2980,7 +3008,12 @@ function _pickHomeHeroDotaPos(dotaBuilds, savedPos) {
         var nm = entry.num_matches || 0;
         if (!best || nm > best.nm) best = { key: k, nm: nm };
     });
-    return best ? best.key : null;
+    if (best) {
+        console.log('[home hero]', heroId, 'position from max num_matches:', best.key, '(' + best.nm + ' matches)');
+        return best.key;
+    }
+    console.log('[home hero]', heroId, 'no position resolved — dota_builds empty');
+    return null;
 }
 
 function _renderHomeHeroWidget(heroId, build) {
@@ -2993,7 +3026,7 @@ function _renderHomeHeroWidget(heroId, build) {
     var db = build && build.dota_builds;
     var entry = _getLastHeroEntry();
     var savedPos = (entry && entry.id === heroId) ? entry.pos : null;
-    var dotaPosKey = _pickHomeHeroDotaPos(db, savedPos);
+    var dotaPosKey = _pickHomeHeroDotaPos(heroId, db, savedPos);
     var posData = dotaPosKey && db ? db[dotaPosKey] : null;
 
     var posNum = 1;
@@ -3002,7 +3035,7 @@ function _renderHomeHeroWidget(heroId, build) {
         if (m) posNum = parseInt(m[1], 10);
     }
     var posKey = 'POSITION_' + posNum;
-    var posIcon = _META_POS_ICON[posKey] || 'ph-sword';
+    var posImg = _META_POS_IMG[posKey] || '';
     var posLabel = _META_POS_LABELS[posKey] || '';
     var wrPct = (posData && typeof posData.win_rate === 'number') ? Math.round(posData.win_rate * 100) : null;
 
@@ -3026,7 +3059,10 @@ function _renderHomeHeroWidget(heroId, build) {
             '<div class="home-hero-icon"><img src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'"></div>' +
             '<div class="home-hero-text">' +
                 '<div class="home-hero-name">' + _escHtml(heroName) + '</div>' +
-                '<div class="home-hero-pos"><i class="ph ' + posIcon + '" aria-hidden="true"></i>' + _escHtml(posLabel) + '</div>' +
+                '<div class="home-hero-pos">' +
+                    '<img class="home-hero-pos-icon" src="' + _escHtml(posImg) + '" alt="" onerror="this.style.display=\'none\'">' +
+                    _escHtml(posLabel) +
+                '</div>' +
             '</div>' +
         '</div>' +
         wrHtml +
@@ -3168,45 +3204,54 @@ function homeDraftWidgetClick() {
 }
 
 // ── Новость ──────────────────────────────────────────────────────────
-// Блок новостей скрыт по умолчанию (атрибут hidden в HTML). Пока нет
-// реального эндпоинта /api/news — просто оставляем скрытым, никакой
-// заглушки не показываем.
-function homeNewsClick() {
-    switchPage('database');
+var _HOME_NEWS_LINK = null;
+
+function _formatNewsDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var now = new Date();
+    var startOfDay = function(date) {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    };
+    var diffDays = Math.floor((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays <= 0) return 'сегодня';
+    if (diffDays === 1) return 'вчера';
+    return diffDays + ' дн. назад';
 }
 
-// ── Меню (иконка dots-three в шапке) ────────────────────────────────
-function homeOpenMenu() {
-    var existing = document.getElementById('home-menu-sheet');
-    if (existing) { existing.remove(); return; }
-
-    var sheet = document.createElement('div');
-    sheet.id = 'home-menu-sheet';
-    sheet.className = 'home-menu-sheet';
-    sheet.innerHTML =
-        '<div class="home-menu-backdrop"></div>' +
-        '<div class="home-menu-card">' +
-            '<button class="home-menu-item" data-action="feedback">' +
-                '<i class="ph ph-chat-circle" aria-hidden="true"></i>' +
-                '<span>Отзыв</span>' +
-            '</button>' +
-            '<button class="home-menu-item" data-action="donate">' +
-                '<i class="ph ph-heart" aria-hidden="true"></i>' +
-                '<span>Поддержать</span>' +
-            '</button>' +
-        '</div>';
-    document.body.appendChild(sheet);
-
-    var close = function() { sheet.remove(); };
-    sheet.querySelector('.home-menu-backdrop').addEventListener('click', close);
-    sheet.querySelectorAll('.home-menu-item').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var action = btn.getAttribute('data-action');
-            close();
-            if (action === 'feedback') goToFeedback();
-            else if (action === 'donate') goToDonate();
+function _loadHomeNews() {
+    var block = document.getElementById('home-news');
+    if (!block) return;
+    var API = window.API_BASE_URL || '/api';
+    fetch(API + '/news')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data || !data.title) { block.hidden = true; return; }
+            var textEl = document.getElementById('home-news-text');
+            var dateEl = document.getElementById('home-news-date');
+            if (textEl) textEl.textContent = data.title;
+            if (dateEl) dateEl.textContent = _formatNewsDate(data.published_at);
+            _HOME_NEWS_LINK = data.link || null;
+            block.hidden = false;
+        })
+        .catch(function(e) {
+            console.warn('[home news] failed:', e);
+            block.hidden = true;
         });
-    });
+}
+
+function homeNewsClick() {
+    if (_HOME_NEWS_LINK) {
+        var tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.openLink === 'function') {
+            tg.openLink(_HOME_NEWS_LINK);
+        } else {
+            window.open(_HOME_NEWS_LINK, '_blank', 'noopener');
+        }
+        return;
+    }
+    switchPage('database');
 }
 
 // ── Инициализация главной ────────────────────────────────────────────
@@ -3215,6 +3260,7 @@ function initHomeScreen() {
     loadMeta();
     _loadHomeHeroWidget();
     _loadHomeDraftWidget();
+    _loadHomeNews();
 }
 
 // ── items_db: загружаем один раз при старте, используем во всём приложении ──
