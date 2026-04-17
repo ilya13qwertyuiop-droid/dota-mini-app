@@ -2756,26 +2756,24 @@ margin-top: 14px;
 
 .home-hero-items {
   display: grid;
-  grid-template-columns: repeat(3, 28px);
+  grid-template-columns: repeat(3, auto);
   grid-auto-rows: 28px;
-  row-gap: 4px;
-  justify-content: space-between;
+  gap: 4px;
+  justify-content: start;
   margin-top: auto;
 }
 
 .home-hero-item {
-  width: 28px;
   height: 28px;
-  border-radius: 6px;
+  min-width: 28px;
+  border-radius: 4px;
   background: var(--bg-elevated);
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 .home-hero-item img {
-  width: 100%;
+  width: auto;
   height: 100%;
-  object-fit: cover;
   display: block;
 }
 
@@ -2854,9 +2852,13 @@ margin-top: 14px;
 .home-draft-bar-label {
   font-size: 10px;
   color: var(--text-tertiary);
-  width: 48px;
+  width: 60px;
   flex-shrink: 0;
+  flex-grow: 0;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .home-draft-bar-track {
