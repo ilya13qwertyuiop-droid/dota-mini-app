@@ -2431,12 +2431,39 @@ margin-top: 14px;
 .home-meta-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
 
 .home-meta-head .section-eyebrow span {
   color: var(--text-secondary);
   font-weight: var(--font-medium);
+}
+
+.home-meta-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-meta-nav-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 120ms ease;
+}
+
+.home-meta-nav-btn:hover {
+  color: var(--text-primary);
 }
 
 .home-meta-slides {

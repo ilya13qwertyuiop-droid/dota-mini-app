@@ -2707,10 +2707,10 @@ var _metaCache = null;
 
 var _META_POS_LABELS = {
     'POSITION_1': 'Керри',
-    'POSITION_2': 'Мидер',
+    'POSITION_2': 'Мид',
     'POSITION_3': 'Оффлейн',
-    'POSITION_4': 'Саппорт 4',
-    'POSITION_5': 'Саппорт 5',
+    'POSITION_4': 'Четвёрка',
+    'POSITION_5': 'Пятёрка',
 };
 
 var _META_POS_IMG = {
@@ -2892,6 +2892,14 @@ function _bindHomeMetaInteractions(slidesEl, dots) {
     slidesEl.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+}
+
+function _metaNavClick(dir) {
+    if (!_metaSlides.length) return;
+    _metaInteracted = true;
+    _stopHomeMetaAutoplay();
+    _setMetaSlide(_metaActiveIdx + (dir > 0 ? 1 : -1));
+    _startHomeMetaAutoplay();
 }
 
 function _setMetaSlide(idx) {
