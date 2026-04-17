@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=105" />
+    <link rel="stylesheet" href="styles.css?v=106" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -814,21 +814,22 @@
 
     <!-- Полноэкранный каталог героев (открывается из поиска) -->
     <div id="heroes-catalog-overlay" class="heroes-catalog-overlay" hidden aria-hidden="true">
-      <div class="heroes-catalog-panel" role="dialog" aria-labelledby="heroes-catalog-title">
-        <div class="heroes-catalog-header">
-          <div class="heroes-catalog-titles">
-            <div class="heroes-catalog-title" id="heroes-catalog-title">Каталог</div>
-            <div class="heroes-catalog-count" id="heroes-catalog-count">—</div>
+      <div class="heroes-catalog-panel" id="heroes-catalog-panel" role="dialog" aria-labelledby="heroes-catalog-title">
+        <div class="heroes-catalog-dragzone" id="heroes-catalog-dragzone">
+          <div class="heroes-catalog-grip" aria-hidden="true"></div>
+          <div class="heroes-catalog-header">
+            <div class="heroes-catalog-titles">
+              <div class="heroes-catalog-title" id="heroes-catalog-title">Каталог</div>
+              <div class="heroes-catalog-count" id="heroes-catalog-count">—</div>
+            </div>
+            <button type="button" class="heroes-catalog-close" id="heroes-catalog-close" aria-label="Закрыть каталог">
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                <path d="M2 2 L12 12 M12 2 L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+            </button>
           </div>
-          <button type="button" class="heroes-catalog-close" id="heroes-catalog-close" aria-label="Закрыть каталог">
-            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-              <path d="M2 2 L12 12 M12 2 L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-          </button>
         </div>
-        <div class="heroes-catalog-body" id="heroes-catalog-body">
-          <div class="heroes-catalog-skeleton" aria-hidden="true"></div>
-        </div>
+        <div class="heroes-catalog-body" id="heroes-catalog-body"></div>
       </div>
     </div>
 
@@ -837,6 +838,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=130"></script>
+    <script src="script.js?v=131"></script>
   </body>
 </html>
