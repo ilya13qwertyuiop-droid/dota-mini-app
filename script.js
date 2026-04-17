@@ -1816,8 +1816,8 @@ function _buildTalentsHtml(dotaPos, data) {
         rows = sorted.map(function (t) {
             var leftPopular  = t.choice === 'lt';
             var rightPopular = t.choice === 'rt';
-            var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
-            var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
+            var leftCls  = 'build-talent-cell build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
+            var rightCls = 'build-talent-cell build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
             var leftNum   = _extractTalentNum((t.left  || {}).displayName);
             var rightNum  = _extractTalentNum((t.right || {}).displayName);
             var leftRu    = ruMap[(t.left  || {}).name] || (t.left  || {}).displayName || '';
@@ -1825,8 +1825,9 @@ function _buildTalentsHtml(dotaPos, data) {
             var leftName  = _applyTalentNum(leftRu,  leftNum);
             var rightName = _applyTalentNum(rightRu, rightNum);
             return '<div class="build-talent-row">' +
-                '<div class="' + leftCls  + '">' + leftName  + '</div>' +
                 '<div class="build-talent-level-badge">' + (t.lvl || '') + '</div>' +
+                '<div class="' + leftCls  + '">' + leftName  + '</div>' +
+                '<div class="build-talent-sep">·</div>' +
                 '<div class="' + rightCls + '">' + rightName + '</div>' +
                 '</div>';
         }).join('');
@@ -1835,11 +1836,12 @@ function _buildTalentsHtml(dotaPos, data) {
         if (!talents.length) return '';
         var sortedFb = talents.slice().sort(function (a, b) { return (a.level || 0) - (b.level || 0); });
         rows = sortedFb.map(function (t) {
-            var leftCls  = 'build-talent-card build-talent-left';
-            var rightCls = 'build-talent-card build-talent-right';
+            var leftCls  = 'build-talent-cell build-talent-left';
+            var rightCls = 'build-talent-cell build-talent-right';
             return '<div class="build-talent-row">' +
-                '<div class="' + leftCls  + '">' + (t.left_display || t.left  || '') + '</div>' +
                 '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
+                '<div class="' + leftCls  + '">' + (t.left_display || t.left  || '') + '</div>' +
+                '<div class="build-talent-sep">·</div>' +
                 '<div class="' + rightCls + '">' + (t.right_display || t.right || '') + '</div>' +
                 '</div>';
         }).join('');
@@ -2016,24 +2018,30 @@ function renderBuildTab(data) {
             ? '<span class="build-pos-winrate">' + (posData.win_rate * 100).toFixed(1) + '%</span>'
             : '';
         return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
-            '<img src="' + imgSrc + '" style="width:24px;height:24px;object-fit:contain;" onerror="this.style.display=\'none\'">' +
+            '<img src="' + imgSrc + '" class="build-pos-icon" onerror="this.style.display=\'none\'">' +
             '<span class="build-filter-name">' + label + '</span>' +
             wrStr +
             '</button>';
     }).join('');
 
+    var talentsHtml = _buildTalentsHtml(dotaPos, data);
+    var talentsSection = talentsHtml
+        ? '<div class="build-section-divider"></div>' +
+          '<div class="build-section">' +
+              '<div class="build-section-label">ТАЛАНТЫ</div>' +
+              talentsHtml +
+          '</div>'
+        : '';
+
     el.innerHTML =
         '<div class="build-filters">' +
-            '<div class="build-filter-section">' +
-                '<div class="build-filter-label">ПОПУЛЯРНЫЕ ПОЗИЦИИ</div>' +
-                '<div class="build-filter-segmented">' + posButtons + '</div>' +
-            '</div>' +
+            '<div class="build-filter-segmented">' + posButtons + '</div>' +
         '</div>' +
         '<div class="build-section">' +
             '<div class="build-section-label">ПРОКАЧКА</div>' +
             _buildSkillRowHtml(dotaPos, data) +
-            _buildTalentsHtml(dotaPos, data) +
         '</div>' +
+        talentsSection +
         '<div class="build-section-divider"></div>' +
         '<div class="build-section">' +
             '<div class="build-section-label">ПРЕДМЕТЫ</div>' +
