@@ -3221,10 +3221,12 @@ function _renderHomeDraftWidget(cached, lastHistory) {
 
 function _draftBarRow(label, tone, pct) {
     var width = (pct == null ? 0 : pct) + '%';
+    var valueText = pct == null ? '—' : (pct + '%');
     return (
         '<div class="home-draft-bar-row">' +
             '<div class="home-draft-bar-label">' + label + '</div>' +
             '<div class="home-draft-bar-track"><div class="home-draft-bar-fill home-draft-bar-fill--' + tone + '" style="width:' + width + '"></div></div>' +
+            '<div class="home-draft-bar-value">' + valueText + '</div>' +
         '</div>'
     );
 }

@@ -2758,7 +2758,9 @@ margin-top: 14px;
   display: grid;
   grid-template-columns: repeat(3, 28px);
   grid-auto-rows: 28px;
-  gap: 4px;
+  row-gap: 4px;
+  justify-content: space-between;
+  margin-top: auto;
 }
 
 .home-hero-item {
@@ -2837,7 +2839,10 @@ margin-top: 14px;
 .home-draft-bars {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: var(--space-2);
+  flex: 1;
+  justify-content: space-around;
+  margin-top: auto;
 }
 
 .home-draft-bar-row {
@@ -2849,16 +2854,27 @@ margin-top: 14px;
 .home-draft-bar-label {
   font-size: 10px;
   color: var(--text-tertiary);
-  width: 54px;
+  width: 48px;
   flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
 .home-draft-bar-track {
   flex: 1;
-  height: 2px;
+  height: 3px;
   border-radius: 1px;
   background: var(--bg-elevated);
   overflow: hidden;
+}
+
+.home-draft-bar-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .home-draft-bar-fill {
