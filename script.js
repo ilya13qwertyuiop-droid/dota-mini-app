@@ -1567,6 +1567,7 @@ const matchupPage = {
             suggestions.style.display = 'none';
         }
         if (window.renderRecentHeroes) window.renderRecentHeroes();
+        if (typeof loadHeroesSearchMeta === 'function') loadHeroesSearchMeta();
     },
 
     showHero: function (heroName) {
@@ -2741,6 +2742,74 @@ function loadMeta() {
         .catch(function(e) {
             console.warn('[meta] failed to load:', e);
         });
+}
+
+// ── Heroes-tab meta: "Сильные сейчас" ─────────────────────────────
+function loadHeroesSearchMeta() {
+    var rowsEl = document.getElementById('heroes-meta-rows');
+    var patchEl = document.getElementById('heroes-meta-patch');
+    if (!rowsEl) return;
+
+    function render(data) {
+        var patch = _resolveMetaPatch(data);
+        if (patchEl) patchEl.textContent = 'патч ' + (patch || '—');
+
+        var positions = (data && data.positions) || {};
+        var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
+        var blocks = [];
+        posOrder.forEach(function (posKey) {
+            var heroes = (positions[posKey] || []).slice(0, 2);
+            if (!heroes.length) return;
+            var posLabel = _META_POS_LABELS[posKey] || '';
+            var heroesHtml = heroes.map(function (h) {
+                var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.hero_id]) || ('Hero #' + h.hero_id);
+                var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+                var wrPct = Math.round((h.win_rate || 0) * 100);
+                return (
+                    '<button type="button" class="heroes-meta-hero" data-hero-name="' + _escHtml(heroName) + '">' +
+                        '<img class="heroes-meta-hero-icon" src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'">' +
+                        '<span class="heroes-meta-hero-name">' + _escHtml(heroName) + '</span>' +
+                        '<span class="heroes-meta-hero-wr">' + wrPct + '%</span>' +
+                    '</button>'
+                );
+            }).join('');
+            blocks.push(
+                '<div class="heroes-meta-pos">' +
+                    '<div class="heroes-meta-pos-label">' + _escHtml(posLabel) + '</div>' +
+                    '<div class="heroes-meta-pos-heroes">' + heroesHtml + '</div>' +
+                '</div>'
+            );
+        });
+
+        if (!blocks.length) {
+            rowsEl.innerHTML = '<div class="heroes-meta-skeleton" aria-hidden="true"></div>';
+            return;
+        }
+
+        rowsEl.innerHTML = blocks.join('');
+
+        rowsEl.querySelectorAll('.heroes-meta-hero').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var name = btn.getAttribute('data-hero-name');
+                if (name && matchupPage && typeof matchupPage.selectHero === 'function') {
+                    matchupPage.selectHero(name);
+                }
+            });
+        });
+    }
+
+    if (_metaCache) {
+        render(_metaCache);
+        return;
+    }
+    var API = window.API_BASE_URL || '/api';
+    fetch(API + '/meta')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            _metaCache = data;
+            render(data);
+        })
+        .catch(function (e) { console.warn('[heroes-meta] failed:', e); });
 }
 
 // ── META: carousel ───────────────────────────────────────────────────
