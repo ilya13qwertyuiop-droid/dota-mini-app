@@ -3057,7 +3057,9 @@ function _renderHomeHeroWidget(heroId, build) {
 
     var posNum = 1;
     if (dotaPosKey) {
-        var m = dotaPosKey.match(/(\d)/);
+        // Keys look like "pos%201" — %20 is a URL-encoded space, so /(\d)/
+        // matches the "2" in "%20" first. Match the trailing position digit.
+        var m = dotaPosKey.match(/(\d)$/);
         if (m) posNum = parseInt(m[1], 10);
     }
     var posKey = 'POSITION_' + posNum;
