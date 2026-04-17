@@ -2124,9 +2124,12 @@ function showSynergyError(msg) {
     if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Недостаточно матчей для оценки синергии.') + '</p>';
 }
 
-function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
+function renderMatchupList(containerId, positiveItems, negativeItems, baseWr, labels) {
     var container = document.getElementById(containerId);
     if (!container) return;
+
+    var posLabel = (labels && labels.positive) || 'сильнее';
+    var negLabel = (labels && labels.negative) || 'избегать';
 
     function enrichAndSort(list, desc) {
         var out = [];
@@ -2167,8 +2170,7 @@ function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
         var cssClass = polarity;
         if (Math.abs(deltaPct) <= 2) cssClass = 'neutral';
         var deltaStr = sign + Math.round(deltaPct) + '%';
-        var absWrStr = Math.round(item.entry.wr_vs * 100) + '%';
-        var gamesStr = formatGames(item.entry.games);
+        var gamesStr = formatGames(item.entry.games) + ' игр';
         var topCls = isTop ? ' matchup-item--top' : '';
         var extraCls = isExtra ? ' matchup-item--extra' : '';
         return '<div class="matchup-item ' + cssClass + topCls + extraCls + '">' +
@@ -2178,26 +2180,20 @@ function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
                 '</div>' +
                 '<div class="matchup-item-right">' +
                     '<span class="matchup-item-delta">' + deltaStr + '</span>' +
-                    '<span class="matchup-item-abswr">' + absWrStr + '</span>' +
                     '<span class="matchup-item-games">' + gamesStr + '</span>' +
                 '</div>' +
             '</div>';
     }
 
-    var baseWrLabel = (baseWr != null) ? 'vs ' + Math.round(baseWr * 100) + '%' : '\u0394';
-    var html =
-        '<div class="matchup-list-header">' +
-            '<span class="matchup-list-header-spacer"></span>' +
-            '<span class="matchup-list-header-delta">' + baseWrLabel + '</span>' +
-            '<span class="matchup-list-header-abswr">WR</span>' +
-            '<span class="matchup-list-header-games">игр</span>' +
-        '</div>';
-
-    for (var i = 0; i < pos.length; i++) {
-        html += renderRow(pos[i], i === 0, 'positive', i >= TOP);
+    var html = '';
+    if (pos.length > 0) {
+        html += '<div class="matchup-signed-divider"><span>' + posLabel + '</span></div>';
+        for (var i = 0; i < pos.length; i++) {
+            html += renderRow(pos[i], i === 0, 'positive', i >= TOP);
+        }
     }
     if (neg.length > 0) {
-        html += '<div class="matchup-signed-divider"><span>избегать</span></div>';
+        html += '<div class="matchup-signed-divider"><span>' + negLabel + '</span></div>';
         for (var j = 0; j < neg.length; j++) {
             html += renderRow(neg[j], j === 0, 'negative', j >= TOP);
         }
@@ -2276,7 +2272,8 @@ async function loadHeroMatchups(heroId) {
         }
 
         _countersData = data;
-        renderMatchupList('counters-list', data.victims, data.counters, data.base_winrate);
+        renderMatchupList('counters-list', data.victims, data.counters, data.base_winrate,
+            { positive: 'контрить', negative: 'избегать' });
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -2321,7 +2318,8 @@ async function loadHeroSynergy(heroId) {
         }
 
         _synergyData = data;
-        renderMatchupList('synergy-list', data.best_allies, data.worst_allies, data.base_winrate);
+        renderMatchupList('synergy-list', data.best_allies, data.worst_allies, data.base_winrate,
+            { positive: 'брать', negative: 'избегать' });
     } catch (err) {
         console.error('[synergy] loadHeroSynergy error:', err);
         showSynergyError();
