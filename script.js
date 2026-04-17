@@ -1568,7 +1568,7 @@ const matchupPage = {
         }
         if (window.renderRecentHeroes) window.renderRecentHeroes();
         if (typeof loadHeroesSearchMeta === 'function') loadHeroesSearchMeta();
-        if (typeof initHeroesDirectory === 'function') initHeroesDirectory();
+        if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
     },
 
     showHero: function (heroName) {
@@ -2813,58 +2813,170 @@ function loadHeroesSearchMeta() {
         .catch(function (e) { console.warn('[heroes-meta] failed:', e); });
 }
 
-// ── Heroes-tab directory: "Все герои" (expandable full grid) ────────
-var _heroesDirectoryRendered = false;
+// ── Полноэкранный каталог героев по атрибутам (OpenDota) ─────────────
+var _openDotaHeroesCache = null;
+var _heroesCatalogBound = false;
+var _catalogLastFocus = null;
 
-function initHeroesDirectory() {
-    var container = document.getElementById('heroes-directory');
-    var toggle = document.getElementById('heroes-directory-toggle');
-    var grid = document.getElementById('heroes-directory-grid');
-    var countEl = document.getElementById('heroes-directory-count');
-    if (!container || !toggle || !grid) return;
+var _CATALOG_ATTR_ORDER = ['str', 'agi', 'int', 'all'];
+var _CATALOG_ATTR_LABELS = {
+    'str': 'Сила',
+    'agi': 'Ловкость',
+    'int': 'Интеллект',
+    'all': 'Универсал',
+};
 
-    var names = Object.keys(window.dotaHeroImages || {});
-    if (countEl) countEl.textContent = names.length + ' героев';
+function initHeroesCatalog() {
+    var input = document.getElementById('matchup-hero-input');
+    if (input && window.dotaHeroImages) {
+        var count = Object.keys(window.dotaHeroImages).length;
+        input.setAttribute('placeholder', 'Найти среди ' + count + ' героев');
+    }
 
-    if (toggle.dataset.bound === '1') return;
-    toggle.dataset.bound = '1';
+    if (_heroesCatalogBound) return;
+    _heroesCatalogBound = true;
 
-    function renderGrid() {
-        if (_heroesDirectoryRendered) return;
-        var sorted = names.slice().sort(function (a, b) {
-            return a.toLowerCase().localeCompare(b.toLowerCase());
+    var openBtn = document.getElementById('matchup-search-catalog-btn');
+    var closeBtn = document.getElementById('heroes-catalog-close');
+    var overlay = document.getElementById('heroes-catalog-overlay');
+
+    if (openBtn) {
+        openBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openHeroesCatalog();
         });
-        var html = sorted.map(function (name) {
-            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+    }
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeHeroesCatalog();
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) closeHeroesCatalog();
+        });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+            var ov = document.getElementById('heroes-catalog-overlay');
+            if (ov && !ov.hasAttribute('hidden')) closeHeroesCatalog();
+        }
+    });
+}
+
+function openHeroesCatalog() {
+    var overlay = document.getElementById('heroes-catalog-overlay');
+    if (!overlay) return;
+    _catalogLastFocus = document.activeElement;
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    renderHeroesCatalog();
+    var closeBtn = document.getElementById('heroes-catalog-close');
+    if (closeBtn) closeBtn.focus();
+}
+
+function closeHeroesCatalog() {
+    var overlay = document.getElementById('heroes-catalog-overlay');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    if (_catalogLastFocus && typeof _catalogLastFocus.focus === 'function') {
+        try { _catalogLastFocus.focus(); } catch (e) {}
+    }
+    _catalogLastFocus = null;
+}
+
+function renderHeroesCatalog() {
+    var bodyEl = document.getElementById('heroes-catalog-body');
+    var countEl = document.getElementById('heroes-catalog-count');
+    if (!bodyEl) return;
+
+    function render(heroes) {
+        var groups = { str: [], agi: [], int: [], all: [] };
+        var total = 0;
+
+        (heroes || []).forEach(function (h) {
+            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.id]) || h.localized_name;
+            if (!heroName) return;
+            if (!window.dotaHeroImages || !window.dotaHeroImages[heroName]) return;
+            var attr = h.primary_attr;
+            if (!groups[attr]) return;
+            groups[attr].push(heroName);
+            total += 1;
+        });
+
+        if (countEl) countEl.textContent = total ? total + ' героев' : '—';
+
+        var sectionsHtml = _CATALOG_ATTR_ORDER.map(function (attr) {
+            var names = groups[attr] || [];
+            if (!names.length) return '';
+            names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
+            var label = _CATALOG_ATTR_LABELS[attr] || attr;
+            var tilesHtml = names.map(function (name) {
+                var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+                return (
+                    '<button type="button" class="heroes-catalog-tile" data-hero-name="' + _escHtml(name) + '">' +
+                        '<span class="heroes-catalog-tile-icon">' +
+                            '<img src="' + _escHtml(iconUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                        '</span>' +
+                        '<span class="heroes-catalog-tile-name">' + _escHtml(name) + '</span>' +
+                    '</button>'
+                );
+            }).join('');
             return (
-                '<button type="button" class="heroes-directory-tile" data-hero-name="' + _escHtml(name) + '">' +
-                    '<img class="heroes-directory-tile-icon" src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'">' +
-                    '<span class="heroes-directory-tile-name">' + _escHtml(name) + '</span>' +
-                '</button>'
+                '<section class="heroes-catalog-section">' +
+                    '<header class="heroes-catalog-section-header">' +
+                        '<div class="heroes-catalog-section-title">' + _escHtml(label) + '</div>' +
+                        '<div class="heroes-catalog-section-count">' + names.length + '</div>' +
+                    '</header>' +
+                    '<div class="heroes-catalog-grid">' + tilesHtml + '</div>' +
+                '</section>'
             );
         }).join('');
-        grid.innerHTML = html;
-        grid.querySelectorAll('.heroes-directory-tile').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var name = btn.getAttribute('data-hero-name');
-                if (name && matchupPage && typeof matchupPage.selectHero === 'function') {
+
+        if (!sectionsHtml) {
+            bodyEl.innerHTML = '<div class="heroes-catalog-empty">Не удалось загрузить каталог</div>';
+            return;
+        }
+
+        bodyEl.innerHTML = sectionsHtml;
+
+        bodyEl.querySelectorAll('.heroes-catalog-tile').forEach(function (tile) {
+            tile.addEventListener('click', function () {
+                var name = tile.getAttribute('data-hero-name');
+                if (!name) return;
+                closeHeroesCatalog();
+                if (matchupPage && typeof matchupPage.selectHero === 'function') {
                     matchupPage.selectHero(name);
                 }
             });
         });
-        _heroesDirectoryRendered = true;
     }
 
-    toggle.addEventListener('click', function () {
-        var expanded = container.classList.toggle('is-expanded');
-        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        if (expanded) {
-            renderGrid();
-            grid.hidden = false;
-        } else {
-            grid.hidden = true;
-        }
-    });
+    if (_openDotaHeroesCache) {
+        render(_openDotaHeroesCache);
+        return;
+    }
+
+    bodyEl.innerHTML = '<div class="heroes-catalog-skeleton" aria-hidden="true"></div>';
+
+    fetch('https://api.opendota.com/api/heroes')
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (data) {
+            _openDotaHeroesCache = data;
+            render(data);
+        })
+        .catch(function (e) {
+            console.warn('[heroes-catalog] failed:', e);
+            bodyEl.innerHTML = '<div class="heroes-catalog-empty">Не удалось загрузить каталог</div>';
+        });
 }
 
 // ── META: carousel ───────────────────────────────────────────────────
