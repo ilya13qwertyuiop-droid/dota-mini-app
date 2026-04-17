@@ -2813,9 +2813,141 @@ function loadHeroesSearchMeta() {
         .catch(function (e) { console.warn('[heroes-meta] failed:', e); });
 }
 
-// ── Полноэкранный каталог героев по атрибутам (OpenDota) ─────────────
-var _openDotaHeroesCache = null;
+// ── Полноэкранный каталог героев по атрибутам ────────────────────────
+// Статический снапшот OpenDota /api/heroes (зафиксировано 2026-04-18).
+// Никаких сетевых запросов — каталог открывается мгновенно.
+var _HEROES_CATALOG_DATA = [
+    { id: 1,   primary_attr: 'agi', localized_name: 'Anti-Mage' },
+    { id: 2,   primary_attr: 'str', localized_name: 'Axe' },
+    { id: 3,   primary_attr: 'all', localized_name: 'Bane' },
+    { id: 4,   primary_attr: 'agi', localized_name: 'Bloodseeker' },
+    { id: 5,   primary_attr: 'int', localized_name: 'Crystal Maiden' },
+    { id: 6,   primary_attr: 'agi', localized_name: 'Drow Ranger' },
+    { id: 7,   primary_attr: 'str', localized_name: 'Earthshaker' },
+    { id: 8,   primary_attr: 'agi', localized_name: 'Juggernaut' },
+    { id: 9,   primary_attr: 'agi', localized_name: 'Mirana' },
+    { id: 10,  primary_attr: 'agi', localized_name: 'Morphling' },
+    { id: 11,  primary_attr: 'agi', localized_name: 'Shadow Fiend' },
+    { id: 12,  primary_attr: 'agi', localized_name: 'Phantom Lancer' },
+    { id: 13,  primary_attr: 'int', localized_name: 'Puck' },
+    { id: 14,  primary_attr: 'str', localized_name: 'Pudge' },
+    { id: 15,  primary_attr: 'agi', localized_name: 'Razor' },
+    { id: 16,  primary_attr: 'all', localized_name: 'Sand King' },
+    { id: 17,  primary_attr: 'int', localized_name: 'Storm Spirit' },
+    { id: 18,  primary_attr: 'str', localized_name: 'Sven' },
+    { id: 19,  primary_attr: 'str', localized_name: 'Tiny' },
+    { id: 20,  primary_attr: 'agi', localized_name: 'Vengeful Spirit' },
+    { id: 21,  primary_attr: 'all', localized_name: 'Windranger' },
+    { id: 22,  primary_attr: 'int', localized_name: 'Zeus' },
+    { id: 23,  primary_attr: 'str', localized_name: 'Kunkka' },
+    { id: 25,  primary_attr: 'int', localized_name: 'Lina' },
+    { id: 26,  primary_attr: 'int', localized_name: 'Lion' },
+    { id: 27,  primary_attr: 'int', localized_name: 'Shadow Shaman' },
+    { id: 28,  primary_attr: 'str', localized_name: 'Slardar' },
+    { id: 29,  primary_attr: 'str', localized_name: 'Tidehunter' },
+    { id: 30,  primary_attr: 'int', localized_name: 'Witch Doctor' },
+    { id: 31,  primary_attr: 'int', localized_name: 'Lich' },
+    { id: 32,  primary_attr: 'agi', localized_name: 'Riki' },
+    { id: 33,  primary_attr: 'all', localized_name: 'Enigma' },
+    { id: 34,  primary_attr: 'int', localized_name: 'Tinker' },
+    { id: 35,  primary_attr: 'agi', localized_name: 'Sniper' },
+    { id: 36,  primary_attr: 'int', localized_name: 'Necrophos' },
+    { id: 37,  primary_attr: 'int', localized_name: 'Warlock' },
+    { id: 38,  primary_attr: 'all', localized_name: 'Beastmaster' },
+    { id: 39,  primary_attr: 'int', localized_name: 'Queen of Pain' },
+    { id: 40,  primary_attr: 'all', localized_name: 'Venomancer' },
+    { id: 41,  primary_attr: 'agi', localized_name: 'Faceless Void' },
+    { id: 42,  primary_attr: 'str', localized_name: 'Wraith King' },
+    { id: 43,  primary_attr: 'all', localized_name: 'Death Prophet' },
+    { id: 44,  primary_attr: 'agi', localized_name: 'Phantom Assassin' },
+    { id: 45,  primary_attr: 'int', localized_name: 'Pugna' },
+    { id: 46,  primary_attr: 'agi', localized_name: 'Templar Assassin' },
+    { id: 47,  primary_attr: 'agi', localized_name: 'Viper' },
+    { id: 48,  primary_attr: 'agi', localized_name: 'Luna' },
+    { id: 49,  primary_attr: 'str', localized_name: 'Dragon Knight' },
+    { id: 50,  primary_attr: 'all', localized_name: 'Dazzle' },
+    { id: 51,  primary_attr: 'str', localized_name: 'Clockwerk' },
+    { id: 52,  primary_attr: 'int', localized_name: 'Leshrac' },
+    { id: 53,  primary_attr: 'all', localized_name: "Nature's Prophet" },
+    { id: 54,  primary_attr: 'str', localized_name: 'Lifestealer' },
+    { id: 55,  primary_attr: 'int', localized_name: 'Dark Seer' },
+    { id: 56,  primary_attr: 'agi', localized_name: 'Clinkz' },
+    { id: 57,  primary_attr: 'str', localized_name: 'Omniknight' },
+    { id: 58,  primary_attr: 'int', localized_name: 'Enchantress' },
+    { id: 59,  primary_attr: 'str', localized_name: 'Huskar' },
+    { id: 60,  primary_attr: 'str', localized_name: 'Night Stalker' },
+    { id: 61,  primary_attr: 'agi', localized_name: 'Broodmother' },
+    { id: 62,  primary_attr: 'agi', localized_name: 'Bounty Hunter' },
+    { id: 63,  primary_attr: 'agi', localized_name: 'Weaver' },
+    { id: 64,  primary_attr: 'int', localized_name: 'Jakiro' },
+    { id: 65,  primary_attr: 'all', localized_name: 'Batrider' },
+    { id: 66,  primary_attr: 'int', localized_name: 'Chen' },
+    { id: 67,  primary_attr: 'agi', localized_name: 'Spectre' },
+    { id: 68,  primary_attr: 'int', localized_name: 'Ancient Apparition' },
+    { id: 69,  primary_attr: 'str', localized_name: 'Doom' },
+    { id: 70,  primary_attr: 'agi', localized_name: 'Ursa' },
+    { id: 71,  primary_attr: 'str', localized_name: 'Spirit Breaker' },
+    { id: 72,  primary_attr: 'agi', localized_name: 'Gyrocopter' },
+    { id: 73,  primary_attr: 'str', localized_name: 'Alchemist' },
+    { id: 74,  primary_attr: 'int', localized_name: 'Invoker' },
+    { id: 75,  primary_attr: 'int', localized_name: 'Silencer' },
+    { id: 76,  primary_attr: 'int', localized_name: 'Outworld Destroyer' },
+    { id: 77,  primary_attr: 'str', localized_name: 'Lycan' },
+    { id: 78,  primary_attr: 'all', localized_name: 'Brewmaster' },
+    { id: 79,  primary_attr: 'int', localized_name: 'Shadow Demon' },
+    { id: 80,  primary_attr: 'agi', localized_name: 'Lone Druid' },
+    { id: 81,  primary_attr: 'str', localized_name: 'Chaos Knight' },
+    { id: 82,  primary_attr: 'agi', localized_name: 'Meepo' },
+    { id: 83,  primary_attr: 'str', localized_name: 'Treant Protector' },
+    { id: 84,  primary_attr: 'str', localized_name: 'Ogre Magi' },
+    { id: 85,  primary_attr: 'str', localized_name: 'Undying' },
+    { id: 86,  primary_attr: 'int', localized_name: 'Rubick' },
+    { id: 87,  primary_attr: 'int', localized_name: 'Disruptor' },
+    { id: 88,  primary_attr: 'all', localized_name: 'Nyx Assassin' },
+    { id: 89,  primary_attr: 'agi', localized_name: 'Naga Siren' },
+    { id: 90,  primary_attr: 'int', localized_name: 'Keeper of the Light' },
+    { id: 91,  primary_attr: 'all', localized_name: 'Io' },
+    { id: 92,  primary_attr: 'all', localized_name: 'Visage' },
+    { id: 93,  primary_attr: 'agi', localized_name: 'Slark' },
+    { id: 94,  primary_attr: 'agi', localized_name: 'Medusa' },
+    { id: 95,  primary_attr: 'agi', localized_name: 'Troll Warlord' },
+    { id: 96,  primary_attr: 'str', localized_name: 'Centaur Warrunner' },
+    { id: 97,  primary_attr: 'all', localized_name: 'Magnus' },
+    { id: 98,  primary_attr: 'str', localized_name: 'Timbersaw' },
+    { id: 99,  primary_attr: 'str', localized_name: 'Bristleback' },
+    { id: 100, primary_attr: 'str', localized_name: 'Tusk' },
+    { id: 101, primary_attr: 'int', localized_name: 'Skywrath Mage' },
+    { id: 102, primary_attr: 'all', localized_name: 'Abaddon' },
+    { id: 103, primary_attr: 'str', localized_name: 'Elder Titan' },
+    { id: 104, primary_attr: 'str', localized_name: 'Legion Commander' },
+    { id: 105, primary_attr: 'all', localized_name: 'Techies' },
+    { id: 106, primary_attr: 'agi', localized_name: 'Ember Spirit' },
+    { id: 107, primary_attr: 'str', localized_name: 'Earth Spirit' },
+    { id: 108, primary_attr: 'str', localized_name: 'Underlord' },
+    { id: 109, primary_attr: 'agi', localized_name: 'Terrorblade' },
+    { id: 110, primary_attr: 'str', localized_name: 'Phoenix' },
+    { id: 111, primary_attr: 'int', localized_name: 'Oracle' },
+    { id: 112, primary_attr: 'int', localized_name: 'Winter Wyvern' },
+    { id: 113, primary_attr: 'all', localized_name: 'Arc Warden' },
+    { id: 114, primary_attr: 'agi', localized_name: 'Monkey King' },
+    { id: 119, primary_attr: 'int', localized_name: 'Dark Willow' },
+    { id: 120, primary_attr: 'all', localized_name: 'Pangolier' },
+    { id: 121, primary_attr: 'int', localized_name: 'Grimstroke' },
+    { id: 123, primary_attr: 'agi', localized_name: 'Hoodwink' },
+    { id: 126, primary_attr: 'all', localized_name: 'Void Spirit' },
+    { id: 128, primary_attr: 'all', localized_name: 'Snapfire' },
+    { id: 129, primary_attr: 'str', localized_name: 'Mars' },
+    { id: 131, primary_attr: 'int', localized_name: 'Ringmaster' },
+    { id: 135, primary_attr: 'str', localized_name: 'Dawnbreaker' },
+    { id: 136, primary_attr: 'all', localized_name: 'Marci' },
+    { id: 137, primary_attr: 'str', localized_name: 'Primal Beast' },
+    { id: 138, primary_attr: 'int', localized_name: 'Muerta' },
+    { id: 145, primary_attr: 'agi', localized_name: 'Kez' },
+    { id: 155, primary_attr: 'str', localized_name: 'Largo' },
+];
+
 var _heroesCatalogBound = false;
+var _heroesCatalogRendered = false;
 var _catalogLastFocus = null;
 
 var _CATALOG_ATTR_ORDER = ['str', 'agi', 'int', 'all'];
@@ -2869,11 +3001,14 @@ function initHeroesCatalog() {
 function openHeroesCatalog() {
     var overlay = document.getElementById('heroes-catalog-overlay');
     if (!overlay) return;
+    if (!_heroesCatalogRendered) {
+        renderHeroesCatalog();
+        _heroesCatalogRendered = true;
+    }
     _catalogLastFocus = document.activeElement;
     overlay.hidden = false;
     overlay.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
-    renderHeroesCatalog();
     var closeBtn = document.getElementById('heroes-catalog-close');
     if (closeBtn) closeBtn.focus();
 }
@@ -2895,88 +3030,65 @@ function renderHeroesCatalog() {
     var countEl = document.getElementById('heroes-catalog-count');
     if (!bodyEl) return;
 
-    function render(heroes) {
-        var groups = { str: [], agi: [], int: [], all: [] };
-        var total = 0;
+    var groups = { str: [], agi: [], int: [], all: [] };
+    var total = 0;
 
-        (heroes || []).forEach(function (h) {
-            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.id]) || h.localized_name;
-            if (!heroName) return;
-            if (!window.dotaHeroImages || !window.dotaHeroImages[heroName]) return;
-            var attr = h.primary_attr;
-            if (!groups[attr]) return;
-            groups[attr].push(heroName);
-            total += 1;
-        });
+    _HEROES_CATALOG_DATA.forEach(function (h) {
+        var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.id]) || h.localized_name;
+        if (!heroName) return;
+        if (!window.dotaHeroImages || !window.dotaHeroImages[heroName]) return;
+        var attr = h.primary_attr;
+        if (!groups[attr]) return;
+        groups[attr].push(heroName);
+        total += 1;
+    });
 
-        if (countEl) countEl.textContent = total ? total + ' героев' : '—';
+    if (countEl) countEl.textContent = total ? total + ' героев' : '—';
 
-        var sectionsHtml = _CATALOG_ATTR_ORDER.map(function (attr) {
-            var names = groups[attr] || [];
-            if (!names.length) return '';
-            names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
-            var label = _CATALOG_ATTR_LABELS[attr] || attr;
-            var tilesHtml = names.map(function (name) {
-                var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
-                return (
-                    '<button type="button" class="heroes-catalog-tile" data-hero-name="' + _escHtml(name) + '">' +
-                        '<span class="heroes-catalog-tile-icon">' +
-                            '<img src="' + _escHtml(iconUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
-                        '</span>' +
-                        '<span class="heroes-catalog-tile-name">' + _escHtml(name) + '</span>' +
-                    '</button>'
-                );
-            }).join('');
+    var sectionsHtml = _CATALOG_ATTR_ORDER.map(function (attr) {
+        var names = groups[attr] || [];
+        if (!names.length) return '';
+        names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
+        var label = _CATALOG_ATTR_LABELS[attr] || attr;
+        var tilesHtml = names.map(function (name) {
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
             return (
-                '<section class="heroes-catalog-section">' +
-                    '<header class="heroes-catalog-section-header">' +
-                        '<div class="heroes-catalog-section-title">' + _escHtml(label) + '</div>' +
-                        '<div class="heroes-catalog-section-count">' + names.length + '</div>' +
-                    '</header>' +
-                    '<div class="heroes-catalog-grid">' + tilesHtml + '</div>' +
-                '</section>'
+                '<button type="button" class="heroes-catalog-tile" data-hero-name="' + _escHtml(name) + '">' +
+                    '<span class="heroes-catalog-tile-icon">' +
+                        '<img src="' + _escHtml(iconUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                    '</span>' +
+                    '<span class="heroes-catalog-tile-name">' + _escHtml(name) + '</span>' +
+                '</button>'
             );
         }).join('');
+        return (
+            '<section class="heroes-catalog-section">' +
+                '<header class="heroes-catalog-section-header">' +
+                    '<div class="heroes-catalog-section-title">' + _escHtml(label) + '</div>' +
+                    '<div class="heroes-catalog-section-count">' + names.length + '</div>' +
+                '</header>' +
+                '<div class="heroes-catalog-grid">' + tilesHtml + '</div>' +
+            '</section>'
+        );
+    }).join('');
 
-        if (!sectionsHtml) {
-            bodyEl.innerHTML = '<div class="heroes-catalog-empty">Не удалось загрузить каталог</div>';
-            return;
-        }
-
-        bodyEl.innerHTML = sectionsHtml;
-
-        bodyEl.querySelectorAll('.heroes-catalog-tile').forEach(function (tile) {
-            tile.addEventListener('click', function () {
-                var name = tile.getAttribute('data-hero-name');
-                if (!name) return;
-                closeHeroesCatalog();
-                if (matchupPage && typeof matchupPage.selectHero === 'function') {
-                    matchupPage.selectHero(name);
-                }
-            });
-        });
-    }
-
-    if (_openDotaHeroesCache) {
-        render(_openDotaHeroesCache);
+    if (!sectionsHtml) {
+        bodyEl.innerHTML = '<div class="heroes-catalog-empty">Каталог пуст</div>';
         return;
     }
 
-    bodyEl.innerHTML = '<div class="heroes-catalog-skeleton" aria-hidden="true"></div>';
+    bodyEl.innerHTML = sectionsHtml;
 
-    fetch('https://api.opendota.com/api/heroes')
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (data) {
-            _openDotaHeroesCache = data;
-            render(data);
-        })
-        .catch(function (e) {
-            console.warn('[heroes-catalog] failed:', e);
-            bodyEl.innerHTML = '<div class="heroes-catalog-empty">Не удалось загрузить каталог</div>';
+    bodyEl.querySelectorAll('.heroes-catalog-tile').forEach(function (tile) {
+        tile.addEventListener('click', function () {
+            var name = tile.getAttribute('data-hero-name');
+            if (!name) return;
+            closeHeroesCatalog();
+            if (matchupPage && typeof matchupPage.selectHero === 'function') {
+                matchupPage.selectHero(name);
+            }
         });
+    });
 }
 
 // ── META: carousel ───────────────────────────────────────────────────
