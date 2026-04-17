@@ -2996,33 +2996,121 @@ function initHeroesCatalog() {
             if (ov && !ov.hasAttribute('hidden')) closeHeroesCatalog();
         }
     });
+
+    _bindCatalogSwipeToClose();
+}
+
+function _bindCatalogSwipeToClose() {
+    var dragzone = document.getElementById('heroes-catalog-dragzone');
+    var panel = document.getElementById('heroes-catalog-panel');
+    if (!dragzone || !panel) return;
+
+    var startY = 0;
+    var deltaY = 0;
+    var startedAt = 0;
+    var dragging = false;
+    var CLOSE_THRESHOLD = 80;
+    var VELOCITY_THRESHOLD = 0.5;
+
+    dragzone.addEventListener('touchstart', function (e) {
+        if (e.target.closest('.heroes-catalog-close')) return;
+        if (e.touches.length !== 1) return;
+        dragging = true;
+        startY = e.touches[0].clientY;
+        deltaY = 0;
+        startedAt = Date.now();
+        panel.classList.remove('is-open');
+        panel.style.transition = 'none';
+    }, { passive: true });
+
+    dragzone.addEventListener('touchmove', function (e) {
+        if (!dragging) return;
+        var dy = e.touches[0].clientY - startY;
+        if (dy < 0) dy = 0;
+        deltaY = dy;
+        panel.style.transform = 'translateY(' + dy + 'px)';
+    }, { passive: true });
+
+    function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        var elapsed = Date.now() - startedAt;
+        var velocity = elapsed > 0 ? deltaY / elapsed : 0;
+        panel.style.transition = '';
+        if (deltaY > CLOSE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+            closeHeroesCatalog();
+        } else {
+            panel.style.transform = '';
+            panel.classList.add('is-open');
+        }
+    }
+
+    dragzone.addEventListener('touchend', endDrag);
+    dragzone.addEventListener('touchcancel', endDrag);
 }
 
 function openHeroesCatalog() {
     var overlay = document.getElementById('heroes-catalog-overlay');
+    var panel = document.getElementById('heroes-catalog-panel');
     if (!overlay) return;
     if (!_heroesCatalogRendered) {
         renderHeroesCatalog();
         _heroesCatalogRendered = true;
     }
     _catalogLastFocus = document.activeElement;
+
     overlay.hidden = false;
     overlay.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
-    var closeBtn = document.getElementById('heroes-catalog-close');
-    if (closeBtn) closeBtn.focus();
+
+    if (panel) {
+        panel.classList.remove('is-closing');
+        panel.style.transform = '';
+        panel.style.transition = '';
+        // force reflow so transition runs from translateY(100%) → 0
+        void panel.offsetWidth;
+        requestAnimationFrame(function () {
+            panel.classList.add('is-open');
+        });
+    }
 }
 
 function closeHeroesCatalog() {
     var overlay = document.getElementById('heroes-catalog-overlay');
+    var panel = document.getElementById('heroes-catalog-panel');
     if (!overlay) return;
-    overlay.hidden = true;
-    overlay.setAttribute('aria-hidden', 'true');
-    document.body.style.overflow = '';
-    if (_catalogLastFocus && typeof _catalogLastFocus.focus === 'function') {
-        try { _catalogLastFocus.focus(); } catch (e) {}
+
+    function finalize() {
+        overlay.hidden = true;
+        overlay.setAttribute('aria-hidden', 'true');
+        if (panel) {
+            panel.classList.remove('is-open', 'is-closing');
+            panel.style.transform = '';
+            panel.style.transition = '';
+        }
+        document.body.style.overflow = '';
+        if (_catalogLastFocus && typeof _catalogLastFocus.focus === 'function') {
+            try { _catalogLastFocus.focus(); } catch (e) {}
+        }
+        _catalogLastFocus = null;
     }
-    _catalogLastFocus = null;
+
+    if (panel) {
+        panel.style.transform = '';
+        panel.classList.remove('is-open');
+        panel.classList.add('is-closing');
+        var done = false;
+        var onEnd = function () {
+            if (done) return;
+            done = true;
+            panel.removeEventListener('transitionend', onEnd);
+            finalize();
+        };
+        panel.addEventListener('transitionend', onEnd);
+        setTimeout(onEnd, 320);
+    } else {
+        finalize();
+    }
 }
 
 function renderHeroesCatalog() {
