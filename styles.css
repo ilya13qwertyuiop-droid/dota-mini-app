@@ -40,7 +40,7 @@ a:active {
 
 :root {
 /* Surface system — minimal contrast between layers */
---bg-base: #09090b;
+--bg-base: #0d0d10;
 --bg-surface: #111113;
 --bg-elevated: #19191e;
 --bg-hover: #222228;
@@ -2827,6 +2827,15 @@ margin-top: 14px;
 .home-draft-bar-fill--warning { background: var(--warning); }
 
 /* ── Новость ─────────────────────────────────────────────────────── */
+.home-news-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: var(--space-2);
+}
+
 .home-news {
   display: flex;
   align-items: center;
