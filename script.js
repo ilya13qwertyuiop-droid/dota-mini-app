@@ -2273,7 +2273,7 @@ async function loadHeroMatchups(heroId) {
 
         _countersData = data;
         renderMatchupList('counters-list', data.victims, data.counters, data.base_winrate,
-            { positive: 'контрить', negative: 'избегать' });
+            { positive: 'силён против', negative: 'слаб против' });
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -2319,7 +2319,7 @@ async function loadHeroSynergy(heroId) {
 
         _synergyData = data;
         renderMatchupList('synergy-list', data.best_allies, data.worst_allies, data.base_winrate,
-            { positive: 'брать', negative: 'избегать' });
+            { positive: 'силён с', negative: 'слаб с' });
     } catch (err) {
         console.error('[synergy] loadHeroSynergy error:', err);
         showSynergyError();
