@@ -1825,9 +1825,8 @@ function _buildTalentsHtml(dotaPos, data) {
             var leftName  = _applyTalentNum(leftRu,  leftNum);
             var rightName = _applyTalentNum(rightRu, rightNum);
             return '<div class="build-talent-row">' +
-                '<div class="build-talent-level-badge">' + (t.lvl || '') + '</div>' +
                 '<div class="' + leftCls  + '">' + leftName  + '</div>' +
-                '<div class="build-talent-sep">·</div>' +
+                '<div class="build-talent-level-badge">' + (t.lvl || '') + '</div>' +
                 '<div class="' + rightCls + '">' + rightName + '</div>' +
                 '</div>';
         }).join('');
@@ -1839,9 +1838,8 @@ function _buildTalentsHtml(dotaPos, data) {
             var leftCls  = 'build-talent-cell build-talent-left';
             var rightCls = 'build-talent-cell build-talent-right';
             return '<div class="build-talent-row">' +
-                '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
                 '<div class="' + leftCls  + '">' + (t.left_display || t.left  || '') + '</div>' +
-                '<div class="build-talent-sep">·</div>' +
+                '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
                 '<div class="' + rightCls + '">' + (t.right_display || t.right || '') + '</div>' +
                 '</div>';
         }).join('');

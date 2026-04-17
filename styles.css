@@ -1950,22 +1950,25 @@ margin-top: 14px;
   padding: 0;
   width: 100%;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  align-items: stretch;
 }
 
 .build-pos-btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 6px;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 10px 4px;
   border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   transition: color 0.18s ease, border-color 0.18s ease;
@@ -1974,12 +1977,16 @@ margin-top: 14px;
   margin-bottom: -1px;
 }
 
+.build-pos-btn:last-child {
+  border-right: none;
+}
+
 .build-pos-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   flex-shrink: 0;
-  opacity: 0.75;
+  opacity: 0.7;
   transition: opacity 0.18s ease;
 }
 
@@ -1994,6 +2001,11 @@ margin-top: 14px;
 
 .build-filter-name {
   line-height: 1.2;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  display: block;
+  max-width: 100%;
 }
 
 /* ---- Section blocks ---- */
@@ -2069,11 +2081,11 @@ margin-top: 14px;
 
 .build-talent-row {
   display: grid;
-  grid-template-columns: 24px 1fr 10px 1fr;
+  grid-template-columns: 1fr 28px 1fr;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-height: 28px;
-  padding: 4px 0;
+  padding: 5px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
@@ -2093,10 +2105,12 @@ margin-top: 14px;
 
 .build-talent-cell {
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
+  opacity: 0.55;
   line-height: 1.3;
   word-break: break-word;
   overflow-wrap: break-word;
+  transition: color 0.18s ease, opacity 0.18s ease;
 }
 
 .build-talent-left {
@@ -2107,16 +2121,9 @@ margin-top: 14px;
   text-align: left;
 }
 
-.build-talent-sep {
-  color: var(--text-tertiary);
-  opacity: 0.35;
-  text-align: center;
-  font-size: 10px;
-  line-height: 1;
-}
-
 .build-talent-cell.build-talent-popular {
-  color: var(--text-primary);
+  color: var(--accent);
+  opacity: 1;
   font-weight: 500;
 }
 
@@ -2192,12 +2199,18 @@ margin-top: 14px;
 /* ---- Position win-rate badge ---- */
 .build-pos-winrate {
   display: block;
-  font-size: var(--text-xs);
-  color: rgba(200, 220, 255, 0.65);
+  font-size: 10px;
+  color: var(--text-tertiary);
   line-height: 1;
-  margin-top: 2px;
+  margin-top: 1px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.build-pos-btn.active .build-pos-winrate {
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 /* ---- Anchor item stats row (pick-rate left, time right) ---- */
