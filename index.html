@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=83" />
+    <link rel="stylesheet" href="styles.css?v=84" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -48,6 +48,18 @@
         <section class="home-card home-meta" aria-label="Мета патча">
           <div class="home-meta-head">
             <span class="section-eyebrow">Мета патча · <span id="home-meta-patch">—</span></span>
+            <div class="home-meta-nav">
+              <button type="button" class="home-meta-nav-btn" id="home-meta-prev" aria-label="Предыдущий слайд" onclick="_metaNavClick(-1)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <button type="button" class="home-meta-nav-btn" id="home-meta-next" aria-label="Следующий слайд" onclick="_metaNavClick(1)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M6 4L10 8L6 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="home-meta-slides" id="home-meta-slides" role="group" aria-roledescription="carousel">
             <div class="home-meta-skeleton" aria-hidden="true"></div>
@@ -793,6 +805,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=105"></script>
+    <script src="script.js?v=106"></script>
   </body>
 </html>
