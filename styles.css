@@ -2755,13 +2755,15 @@ margin-top: 14px;
 }
 
 .home-hero-items {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  grid-auto-rows: 28px;
   gap: 4px;
 }
 
 .home-hero-item {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   background: var(--bg-elevated);
   overflow: hidden;
@@ -2958,7 +2960,7 @@ margin-top: 14px;
   gap: 6px;
   padding: 10px var(--space-3);
   background: transparent;
-  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   color: var(--text-secondary);
   font-size: 12px;
