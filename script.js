@@ -3252,29 +3252,22 @@ function _formatNewsDate(iso) {
 
 function _loadHomeNews() {
     var block = document.getElementById('home-news');
-    var label = document.getElementById('home-news-label');
     if (!block) return;
     var API = window.API_BASE_URL || '/api';
     fetch(API + '/news')
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
-            if (!data || !data.title) {
-                block.hidden = true;
-                if (label) label.hidden = true;
-                return;
-            }
+            if (!data || !data.title) { block.hidden = true; return; }
             var textEl = document.getElementById('home-news-text');
             var dateEl = document.getElementById('home-news-date');
             if (textEl) textEl.textContent = data.title;
             if (dateEl) dateEl.textContent = _formatNewsDate(data.published_at);
             _HOME_NEWS_LINK = data.link || null;
             block.hidden = false;
-            if (label) label.hidden = false;
         })
         .catch(function(e) {
             console.warn('[home news] failed:', e);
             block.hidden = true;
-            if (label) label.hidden = true;
         });
 }
 
