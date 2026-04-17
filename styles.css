@@ -1773,11 +1773,17 @@ margin-top: 14px;
 
 /* ---- Секция (обёртка блока с заголовком + табами + списком) ---- */
 .matchup-section {
-  background: var(--bg-surface);
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  padding: var(--space-4);
-  margin-bottom: var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.matchup-section + .matchup-section {
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .matchup-section-title {
@@ -1786,8 +1792,18 @@ margin-top: 14px;
   color: rgba(255, 255, 255, 0.38);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  padding: 0 2px;
+}
+
+.matchup-section-context {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   margin-bottom: 10px;
   padding: 0 2px;
+  min-height: 14px;
 }
 
 /* ---- Переключатель вкладок (один горизонтальный ряд) ---- */
@@ -1837,27 +1853,30 @@ margin-top: 14px;
 .matchup-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   transition: background 0.15s ease;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .matchup-item:last-child {
   border-bottom: none;
-  padding-bottom: 0;
 }
 
 .matchup-item:hover,
 .matchup-item:active {
-  background: rgba(123, 139, 184, 0.06);
+  background: rgba(123, 139, 184, 0.05);
+}
+
+.matchup-item--top {
+  padding: 11px 2px;
 }
 
 .matchup-item-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
   min-width: 0;
 }
@@ -1871,6 +1890,11 @@ margin-top: 14px;
   border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
+.matchup-item--top .matchup-item-icon {
+  width: 48px;
+  height: 28px;
+}
+
 .matchup-item-name {
   font-size: 13px;
   font-weight: 500;
@@ -1880,33 +1904,40 @@ margin-top: 14px;
   text-overflow: ellipsis;
 }
 
-.matchup-item-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
-  min-width: 96px;
+.matchup-item--top .matchup-item-name {
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.matchup-item-stat {
+.matchup-item-right {
   display: flex;
   align-items: baseline;
-  gap: 3px;
+  gap: 10px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .matchup-item-delta {
   font-size: 13px;
   font-weight: 700;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  min-width: 42px;
+  text-align: right;
+}
+
+.matchup-item-abswr {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  min-width: 34px;
+  text-align: right;
 }
 
 .matchup-item-games {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  min-width: 38px;
+  text-align: right;
 }
 
 /* Цвет дельты по знаку */
@@ -1914,24 +1945,53 @@ margin-top: 14px;
 .matchup-item.negative .matchup-item-delta { color: var(--negative); }
 .matchup-item.neutral  .matchup-item-delta { color: var(--text-muted); }
 
-/* Прогресс-бар */
-.matchup-item-bar-wrap {
-  width: 96px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  overflow: hidden;
+/* ---- Signed-list разделитель ---- */
+.matchup-signed-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 2px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
-.matchup-item-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.35s ease;
+.matchup-signed-divider::before,
+.matchup-signed-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.matchup-item.positive .matchup-item-bar-fill { background: var(--positive); }
-.matchup-item.negative .matchup-item-bar-fill { background: var(--negative); }
-.matchup-item.neutral  .matchup-item-bar-fill { background: rgba(255, 255, 255, 0.2); }
+/* ---- Скрытые (расширяемые) строки ---- */
+.matchup-item--extra { display: none; }
+.matchup-block.expanded .matchup-item--extra { display: flex; }
+
+.matchup-expand-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 8px;
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.18s ease;
+}
+
+.matchup-expand-btn:hover {
+  color: var(--text-secondary);
+}
+
+.matchup-block.expanded .matchup-expand-btn { display: none; }
 
 /* ========== BUILD TAB ========== */
 

@@ -2124,89 +2124,91 @@ function showSynergyError(msg) {
     if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Недостаточно матчей для оценки синергии.') + '</p>';
 }
 
-function renderMatchupList(containerId, items, type, baseWr) {
+function renderMatchupList(containerId, positiveItems, negativeItems, baseWr) {
     var container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!items || items.length === 0) {
+    function enrichAndSort(list, desc) {
+        var out = [];
+        if (!list) return out;
+        for (var i = 0; i < list.length; i++) {
+            var entry = list[i];
+            var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.hero_id];
+            if (!heroName) continue;
+            var base = (baseWr != null) ? baseWr : 0.5;
+            var delta = entry.wr_vs - base;
+            out.push({ entry: entry, heroName: heroName, delta: delta });
+        }
+        out.sort(function (a, b) { return desc ? b.delta - a.delta : a.delta - b.delta; });
+        return out;
+    }
+
+    var pos = enrichAndSort(positiveItems, true);
+    var neg = enrichAndSort(negativeItems, false);
+
+    if (pos.length === 0 && neg.length === 0) {
+        container.classList.remove('expanded');
         container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
         return;
     }
 
-    // Обогащаем каждую запись дельтой относительно базового винрейта
-    var enriched = [];
-    for (var i = 0; i < items.length; i++) {
-        var entry = items[i];
-        var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.hero_id];
-        if (!heroName) {
-            console.warn('[matchups] skip opponent: no name mapping for id =', entry.hero_id);
-            continue;
-        }
-        var base = (baseWr != null) ? baseWr : 0.5;
-        var delta = entry.wr_vs - base; // дробное значение, например 0.12
-        enriched.push({ entry: entry, heroName: heroName, delta: delta });
+    var TOP = 3;
+
+    function formatGames(n) {
+        if (n >= 10000) return Math.round(n / 1000) + 'k';
+        if (n >= 1000)  return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        return n.toLocaleString('ru-RU');
     }
 
-    if (enriched.length === 0) {
-        container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
-        return;
-    }
-
-    // Сортировка: «кого контрит» — по убыванию delta; «кто контрит» — по возрастанию
-    if (type === 'strong') {
-        enriched.sort(function (a, b) { return b.delta - a.delta; });
-    } else {
-        enriched.sort(function (a, b) { return a.delta - b.delta; });
-    }
-
-    // Масштаб прогресс-бара: по максимальному |delta| в списке (минимум 0.10)
-    var maxAbsDelta = 0.10;
-    for (var j = 0; j < enriched.length; j++) {
-        if (Math.abs(enriched[j].delta) > maxAbsDelta) {
-            maxAbsDelta = Math.abs(enriched[j].delta);
-        }
-    }
-
-    var rendered = [];
-    for (var k = 0; k < enriched.length; k++) {
-        var item = enriched[k];
+    function renderRow(item, isTop, polarity, isExtra) {
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(item.heroName) : '';
         var deltaPct = item.delta * 100;
-        var absDeltaPct = Math.abs(deltaPct);
-        var barWidth = Math.min(Math.round((absDeltaPct / (maxAbsDelta * 100)) * 100), 100);
-
-        var sign = '';
-        var cssClass = 'neutral';
-        if (deltaPct > 2) {
-            sign = '+';
-            cssClass = 'positive';
-        } else if (deltaPct < -2) {
-            cssClass = 'negative';
-        }
-
+        var sign = deltaPct > 0 ? '+' : '';
+        var cssClass = polarity;
+        if (Math.abs(deltaPct) <= 2) cssClass = 'neutral';
         var deltaStr = sign + Math.round(deltaPct) + '%';
-        var gamesStr = item.entry.games + '\u00a0игр';
-
-        rendered.push(
-            '<div class="matchup-item ' + cssClass + '">' +
+        var absWrStr = Math.round(item.entry.wr_vs * 100) + '%';
+        var gamesStr = formatGames(item.entry.games);
+        var topCls = isTop ? ' matchup-item--top' : '';
+        var extraCls = isExtra ? ' matchup-item--extra' : '';
+        return '<div class="matchup-item ' + cssClass + topCls + extraCls + '">' +
                 '<div class="matchup-item-left">' +
                     '<img src="' + iconUrl + '" alt="" class="matchup-item-icon" onerror="this.style.display=\'none\'">' +
                     '<span class="matchup-item-name">' + item.heroName + '</span>' +
                 '</div>' +
                 '<div class="matchup-item-right">' +
-                    '<div class="matchup-item-stat">' +
-                        '<span class="matchup-item-delta">' + deltaStr + '</span>' +
-                        '<span class="matchup-item-games">\u00b7\u00a0' + gamesStr + '</span>' +
-                    '</div>' +
-                    '<div class="matchup-item-bar-wrap">' +
-                        '<div class="matchup-item-bar-fill" style="width:' + barWidth + '%"></div>' +
-                    '</div>' +
+                    '<span class="matchup-item-delta">' + deltaStr + '</span>' +
+                    '<span class="matchup-item-abswr">' + absWrStr + '</span>' +
+                    '<span class="matchup-item-games">' + gamesStr + '</span>' +
                 '</div>' +
-            '</div>'
-        );
+            '</div>';
     }
 
-    container.innerHTML = rendered.join('');
+    var html = '';
+    for (var i = 0; i < pos.length; i++) {
+        html += renderRow(pos[i], i === 0, 'positive', i >= TOP);
+    }
+    if (neg.length > 0) {
+        html += '<div class="matchup-signed-divider"><span>избегать</span></div>';
+        for (var j = 0; j < neg.length; j++) {
+            html += renderRow(neg[j], j === 0, 'negative', j >= TOP);
+        }
+    }
+
+    var extra = Math.max(0, pos.length - TOP) + Math.max(0, neg.length - TOP);
+    if (extra > 0) {
+        html += '<button class="matchup-expand-btn" type="button">показать ещё ' + extra + ' \u2192</button>';
+    }
+
+    container.classList.remove('expanded');
+    container.innerHTML = html;
+
+    var btn = container.querySelector('.matchup-expand-btn');
+    if (btn) {
+        btn.addEventListener('click', function () {
+            container.classList.add('expanded');
+        });
+    }
 }
 
 async function loadHeroMatchups(heroId) {
@@ -2263,9 +2265,18 @@ async function loadHeroMatchups(heroId) {
         }
 
         _countersData = data;
-        var items = _activeCountersTab === 'strong' ? data.victims : data.counters;
-        var type  = _activeCountersTab === 'strong' ? 'strong' : 'weak';
-        renderMatchupList('counters-list', items, type, data.base_winrate);
+        renderMatchupList('counters-list', data.victims, data.counters, data.base_winrate);
+
+        var ctxEl = document.getElementById('counters-section-context');
+        if (ctxEl) {
+            if (data.base_winrate != null) {
+                var wrPct = Math.round(data.base_winrate * 100);
+                var gamesPart = data.data_games != null ? ' \u00b7 ' + data.data_games.toLocaleString('ru-RU') + ' игр' : '';
+                ctxEl.textContent = 'Базовый WR ' + wrPct + '%' + gamesPart;
+            } else {
+                ctxEl.textContent = '';
+            }
+        }
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -2310,9 +2321,18 @@ async function loadHeroSynergy(heroId) {
         }
 
         _synergyData = data;
-        var items = _activeSynergyTab === 'best' ? data.best_allies : data.worst_allies;
-        var type  = _activeSynergyTab === 'best' ? 'strong' : 'weak';
-        renderMatchupList('synergy-list', items, type, data.base_winrate);
+        renderMatchupList('synergy-list', data.best_allies, data.worst_allies, data.base_winrate);
+
+        var ctxEl = document.getElementById('synergy-section-context');
+        if (ctxEl) {
+            if (data.base_winrate != null) {
+                var wrPct = Math.round(data.base_winrate * 100);
+                var gamesPart = data.data_games != null ? ' \u00b7 ' + data.data_games.toLocaleString('ru-RU') + ' игр' : '';
+                ctxEl.textContent = 'Базовый WR ' + wrPct + '%' + gamesPart;
+            } else {
+                ctxEl.textContent = '';
+            }
+        }
     } catch (err) {
         console.error('[synergy] loadHeroSynergy error:', err);
         showSynergyError();
