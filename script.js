@@ -2921,13 +2921,14 @@ function _setMetaSlide(idx) {
 function _startHomeMetaAutoplay() {
     _stopHomeMetaAutoplay();
     if (_metaReducedMotion) return;
-    _metaAutoTimer = setInterval(function() {
-        if (_metaInteracted) return;
-        if (document.hidden) return;
-        var homePage = document.getElementById('page-home');
-        if (!homePage || !homePage.classList.contains('active')) return;
-        _setMetaSlide(_metaActiveIdx + 1);
-    }, 3800);
+    // Autoplay disabled — manual nav only (arrows + swipe).
+    // _metaAutoTimer = setInterval(function() {
+    //     if (_metaInteracted) return;
+    //     if (document.hidden) return;
+    //     var homePage = document.getElementById('page-home');
+    //     if (!homePage || !homePage.classList.contains('active')) return;
+    //     _setMetaSlide(_metaActiveIdx + 1);
+    // }, 3800);
 }
 
 function _stopHomeMetaAutoplay() {
@@ -3034,12 +3035,21 @@ function _renderHomeHeroWidget(heroId, build) {
     var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
     var db = build && build.dota_builds;
+    // Backend-sorted list of pos keys by num_matches desc (uses sixslot sum fallback
+    // for entries without a top-level num_matches field). First element = top pos.
+    var sortedPositions = (build && build.positions) || [];
     var dotaPosKey = null;
-    if (db) {
+    if (sortedPositions.length && db && db[sortedPositions[0]]) {
+        dotaPosKey = sortedPositions[0];
+    } else if (db) {
         var bestNm = -1;
         Object.keys(db).forEach(function (k) {
             if (k.indexOf('pos') !== 0) return;
-            var nm = (db[k] && db[k].num_matches) || 0;
+            var entry = db[k] || {};
+            var nm = entry.num_matches || 0;
+            if (!nm && Array.isArray(entry.sixslot)) {
+                nm = entry.sixslot.reduce(function (s, e) { return s + (e.num_matches || 0); }, 0);
+            }
             if (nm > bestNm) { bestNm = nm; dotaPosKey = k; }
         });
     }
@@ -3055,7 +3065,9 @@ function _renderHomeHeroWidget(heroId, build) {
     var posLabel = _META_POS_LABELS[posKey] || '';
     var wrPct = (posData && typeof posData.win_rate === 'number') ? Math.round(posData.win_rate * 100) : null;
 
-    var sixslot = (posData && posData.sixslot) || [];
+    var sixslot = ((posData && posData.sixslot) || [])
+        .slice()
+        .sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
     var itemSlots = [];
     for (var i = 0; i < 4; i++) {
         var slot = sixslot[i];
