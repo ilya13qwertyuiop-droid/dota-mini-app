@@ -1799,12 +1799,32 @@ margin-top: 14px;
 .matchup-section-context {
   font-size: 11px;
   color: var(--text-tertiary);
+  margin-bottom: 12px;
+  padding: 0 2px;
+  line-height: 1.4;
+}
+
+/* ---- Column header row ---- */
+.matchup-list-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  margin-bottom: 10px;
-  padding: 0 2px;
-  min-height: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  margin-bottom: 4px;
 }
+
+.matchup-list-header-spacer { flex: 1; }
+.matchup-list-header-delta  { min-width: 42px; text-align: right; }
+.matchup-list-header-abswr  { min-width: 34px; text-align: right; }
+.matchup-list-header-games  { min-width: 38px; text-align: right; }
 
 /* ---- Переключатель вкладок (один горизонтальный ряд) ---- */
 .matchup-tabs {
@@ -1990,8 +2010,6 @@ margin-top: 14px;
 .matchup-expand-btn:hover {
   color: var(--text-secondary);
 }
-
-.matchup-block.expanded .matchup-expand-btn { display: none; }
 
 /* ========== BUILD TAB ========== */
 
