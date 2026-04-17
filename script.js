@@ -2441,12 +2441,6 @@ function switchSynergyTab(tab) {
 
     window.addRecentHero = function (heroId, position) {
         if (!heroId) return;
-        if (!position && window.dota_builds && window.dota_builds[heroId]) {
-            var entries = Object.entries(window.dota_builds[heroId])
-                .filter(function (e) { return e[0].indexOf('pos') === 0; })
-                .sort(function (a, b) { return (b[1].num_matches || 0) - (a[1].num_matches || 0); });
-            if (entries.length) position = entries[0][0];
-        }
         var list = readList();
         var existing = list.find(function (e) { return e.id === heroId; });
         var pos = position || (existing && existing.pos) || null;
@@ -3040,9 +3034,24 @@ function _renderHomeHeroWidget(heroId, build) {
     var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
     var db = build && build.dota_builds;
+    console.log('[_renderHomeHeroWidget] heroId =', heroId, 'heroName =', heroName);
+    console.log('[_renderHomeHeroWidget] raw localStorage recent_heroes =', localStorage.getItem('recent_heroes'));
     var entry = _getLastHeroEntry();
     var savedPos = (entry && entry.id === heroId) ? entry.pos : null;
+    console.log('[_renderHomeHeroWidget] entry =', entry, 'savedPos =', savedPos);
+    if (db) {
+        console.log('[_renderHomeHeroWidget] dotaBuilds keys + num_matches:',
+            Object.keys(db).map(function(k){ return [k, (db[k] && db[k].num_matches) || 0]; }));
+    } else {
+        console.log('[_renderHomeHeroWidget] dotaBuilds MISSING in build response');
+    }
     var dotaPosKey = _pickHomeHeroDotaPos(heroId, db, savedPos);
+    console.log('[_renderHomeHeroWidget] _pickHomeHeroDotaPos ->', dotaPosKey);
+    // If we had no saved pos and resolved one from the fetched dota_builds,
+    // persist it so the next render has it cached without re-resolution.
+    if (!savedPos && dotaPosKey && typeof window.setRecentHeroPosition === 'function') {
+        window.setRecentHeroPosition(heroId, dotaPosKey);
+    }
     var posData = dotaPosKey && db ? db[dotaPosKey] : null;
 
     var posNum = 1;
@@ -3053,6 +3062,7 @@ function _renderHomeHeroWidget(heroId, build) {
     var posKey = 'POSITION_' + posNum;
     var posImg = _META_POS_IMG[posKey] || '';
     var posLabel = _META_POS_LABELS[posKey] || '';
+    console.log('[_renderHomeHeroWidget] posNum =', posNum, 'posKey =', posKey, '_META_POS_LABELS[posKey] =', _META_POS_LABELS[posKey], 'final posLabel ->', posLabel);
     var wrPct = (posData && typeof posData.win_rate === 'number') ? Math.round(posData.win_rate * 100) : null;
 
     var sixslot = (posData && posData.sixslot) || [];
