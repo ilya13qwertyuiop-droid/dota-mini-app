@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -150,7 +151,7 @@ from sqlalchemy.orm.attributes import flag_modified
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables, engine
 from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
-from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback
+from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
@@ -1114,6 +1115,24 @@ async def api_meta():
     _meta_cache = {"patch": patch, "positions": result_positions}
     _meta_cache_time = time.time()
     return _meta_cache
+
+
+@app.get("/api/news")
+async def api_news():
+    """Returns the most recent Dota 2 news item from the dota_news table.
+
+    Response: {"title": str, "link": str, "published_at": str|null} or {} when empty.
+    """
+    rows = await asyncio.to_thread(get_latest_news_guids, 1)
+    if not rows:
+        return {}
+    row = rows[0]
+    published = row.get("published_at")
+    return {
+        "title": row.get("title") or "",
+        "link": row.get("link") or "",
+        "published_at": published.isoformat() if published is not None else None,
+    }
 
 
 class FeedbackRequest(BaseModel):
