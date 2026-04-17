@@ -3071,7 +3071,7 @@ function _renderHomeHeroWidget(heroId, build) {
         .slice()
         .sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
     var itemSlots = [];
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 6; i++) {
         var slot = sixslot[i];
         var itemId = slot && slot.item_id;
         var info = (itemId != null && _itemsDb) ? _itemsDb[String(itemId)] : null;
