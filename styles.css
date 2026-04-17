@@ -4,6 +4,14 @@ padding: 0;
 box-sizing: border-box;
 }
 
+html, body {
+  background: radial-gradient(
+    ellipse 80% 40% at 50% 0%,
+    rgba(107, 125, 179, 0.07) 0%,
+    transparent 70%
+  ), #0a0a0f;
+}
+
 html {
   margin: 0;
   padding: 0;
@@ -160,7 +168,6 @@ font-feature-settings: 'cv11', 'ss01', 'ss03';
 -webkit-font-smoothing: antialiased;
 -moz-osx-font-smoothing: grayscale;
 text-rendering: optimizeLegibility;
-background: var(--bg-base);
 min-height: 100dvh;
 color: var(--text-main);
 padding-bottom: var(--nav-height);
@@ -422,14 +429,6 @@ font-weight: var(--font-bold);
 letter-spacing: var(--tracking-tight);
 line-height: var(--leading-tight);
 margin-bottom: var(--space-1);
-}
-
-#page-home {
-  background: radial-gradient(
-    ellipse 80% 40% at 50% 0%,
-    rgba(107, 125, 179, 0.07) 0%,
-    transparent 70%
-  ), #0a0a0f;
 }
 
 #page-home .dashboard-header h1 {
