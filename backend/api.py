@@ -166,6 +166,7 @@ from backend.stats_db import (
     get_hero_build_cache,
     get_app_cache_value,
     set_hero_build_cache,
+    get_latest_match_patch,
 )
 from backend.config import BAYESIAN_SMOOTHING_C
 
@@ -1060,7 +1061,16 @@ async def api_meta():
     if raw is None:
         raise HTTPException(status_code=503, detail="dota_builds.json not found")
 
-    patch = raw.get("patch", "")
+    patch = raw.get("patch") or ""
+    if not patch:
+        fallback_patch = get_latest_match_patch()
+        if fallback_patch:
+            patch = fallback_patch
+            logger.info("[meta] patch from matches table: %s", patch)
+        else:
+            logger.info("[meta] patch unavailable (neither dota_builds nor matches)")
+    else:
+        logger.info("[meta] patch from dota_builds.json: %s", patch)
 
     pos_keys = ["pos%201", "pos%202", "pos%203", "pos%204", "pos%205"]
     # _DOTA_TO_STRATZ_POS: "pos%20N" -> "POSITION_N"

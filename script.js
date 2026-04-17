@@ -1632,6 +1632,7 @@ const matchupPage = {
             showMatchupsError('Матчапы для этого героя пока недоступны');
             return;
         }
+        console.log('[matchups.selectHero] calling addRecentHero with heroId only (no position)', heroId);
         if (window.addRecentHero) window.addRecentHero(heroId);
         loadHeroBuild(heroId);
         loadHeroMatchups(heroId);
@@ -1700,9 +1701,12 @@ function _showBuildLoading() {
 }
 
 function selectBuildPosition(pos) {
+    console.log('[selectBuildPosition] user clicked position', { pos: pos, _buildHeroId: _buildHeroId });
     _buildPosition = pos;
     if (_buildHeroId && typeof window.setRecentHeroPosition === 'function') {
         window.setRecentHeroPosition(_buildHeroId, pos);
+    } else {
+        console.log('[selectBuildPosition] NOT persisting — _buildHeroId:', _buildHeroId, 'setRecentHeroPosition:', typeof window.setRecentHeroPosition);
     }
     if (_buildData) renderBuildTab(_buildData);
 }
@@ -2001,11 +2005,16 @@ function renderBuildTab(data) {
     if (!el) return;
 
     var topPositions = _getTopPositionsFromBuilds(data);
+    console.log('[renderBuildTab] topPositions =', topPositions, 'current _buildPosition =', _buildPosition, '_buildHeroId =', _buildHeroId);
     if (topPositions.length && topPositions.indexOf(_buildPosition) === -1) {
         _buildPosition = topPositions[0];
+        console.log('[renderBuildTab] auto-picked _buildPosition =', _buildPosition);
     }
     if (_buildHeroId && _buildPosition && typeof window.setRecentHeroPosition === 'function') {
+        console.log('[renderBuildTab] persisting position for hero', _buildHeroId, '=', _buildPosition);
         window.setRecentHeroPosition(_buildHeroId, _buildPosition);
+    } else {
+        console.log('[renderBuildTab] NOT persisting — _buildHeroId:', _buildHeroId, '_buildPosition:', _buildPosition);
     }
 
     var dotaPos = data.dota_builds && _buildPosition && data.dota_builds[_buildPosition];
@@ -2431,7 +2440,8 @@ function switchSynergyTab(tab) {
     window.getRecentHeroes = readList;
 
     window.addRecentHero = function (heroId, position) {
-        if (!heroId) return;
+        console.log('[addRecentHero] called', { heroId: heroId, position: position, before: readList() });
+        if (!heroId) { console.log('[addRecentHero] aborted: no heroId'); return; }
         var list = readList();
         var existing = list.find(function (e) { return e.id === heroId; });
         var pos = position || (existing && existing.pos) || null;
@@ -2439,15 +2449,18 @@ function switchSynergyTab(tab) {
         list.unshift({ id: heroId, pos: pos });
         if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
         writeList(list);
+        console.log('[addRecentHero] done', { heroId: heroId, savedPos: pos, after: list });
     };
 
     window.setRecentHeroPosition = function (heroId, position) {
-        if (!heroId || !position) return;
+        console.log('[setRecentHeroPosition] called', { heroId: heroId, position: position, before: readList() });
+        if (!heroId || !position) { console.log('[setRecentHeroPosition] aborted: missing heroId or position'); return; }
         var list = readList();
         var idx = list.findIndex(function (e) { return e.id === heroId; });
-        if (idx === -1) return;
+        if (idx === -1) { console.log('[setRecentHeroPosition] aborted: hero not in list'); return; }
         list[idx] = { id: heroId, pos: position };
         writeList(list);
+        console.log('[setRecentHeroPosition] done', { heroId: heroId, savedPos: position, after: list });
     };
 
     window.renderRecentHeroes = function () {
@@ -2754,21 +2767,52 @@ var _metaDragActive = false;
 var _metaDragDX = 0;
 
 function _resolveMetaPatch(data) {
+    console.log('[home meta] resolving patch. Sources:',
+        'window.dotaBuildsPatch=', window.dotaBuildsPatch,
+        '| window.dota_builds?.patch=', (window.dota_builds && window.dota_builds.patch),
+        '| data?.patch=', (data && data.patch));
+
     if (window.dotaBuildsPatch) {
-        console.log('[home meta] patch from window.dotaBuildsPatch:', window.dotaBuildsPatch);
+        console.log('[home meta] step 1: using window.dotaBuildsPatch =', window.dotaBuildsPatch);
         return window.dotaBuildsPatch;
     }
+    console.log('[home meta] step 1: window.dotaBuildsPatch empty, trying window.dota_builds.patch');
+
     var global = window.dota_builds;
     if (global && typeof global === 'object' && global.patch) {
-        console.log('[home meta] patch from window.dota_builds.patch:', global.patch);
+        console.log('[home meta] step 2: using window.dota_builds.patch =', global.patch);
         return global.patch;
     }
+    console.log('[home meta] step 2: window.dota_builds.patch empty, trying /api/meta response');
+
     if (data && data.patch) {
-        console.log('[home meta] patch from /api/meta:', data.patch);
+        console.log('[home meta] step 3: using /api/meta data.patch =', data.patch);
         return data.patch;
     }
-    console.log('[home meta] patch not found in any source');
+    console.log('[home meta] step 3: no patch in any source — async fallback fetch will run');
     return '';
+}
+
+// Explicit fallback: re-fetch /api/meta and set the patch text directly.
+// Runs only when _resolveMetaPatch exhausted all sources.
+function _fetchPatchDirect() {
+    var API = window.API_BASE_URL || '/api';
+    console.log('[home meta] fallback: fetching', API + '/meta', 'for patch only');
+    fetch(API + '/meta')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            console.log('[home meta] fallback response:', data);
+            var patchEl = document.getElementById('home-meta-patch');
+            if (patchEl && data && data.patch) {
+                console.log('[home meta] fallback: patch =', data.patch);
+                patchEl.textContent = data.patch;
+            } else {
+                console.log('[home meta] fallback: /api/meta still has no patch field');
+            }
+        })
+        .catch(function(e) {
+            console.warn('[home meta] fallback fetch failed:', e);
+        });
 }
 
 function _renderHomeMeta(data) {
@@ -2779,6 +2823,10 @@ function _renderHomeMeta(data) {
 
     var patch = _resolveMetaPatch(data);
     if (patchEl) patchEl.textContent = patch || '—';
+    if (!patch) {
+        console.log('[home meta] all sync sources empty — invoking _fetchPatchDirect()');
+        _fetchPatchDirect();
+    }
 
     var positions = (data && data.positions) || {};
     var slides = [];
@@ -2945,7 +2993,9 @@ var _JUNK_ITEM_IDS = { 0:1, 44:1, 45:1, 46:1, 42:1, 43:1, 185:1, 145:1, 244:1 };
 
 function _getLastHeroEntry() {
     var list = (typeof window.getRecentHeroes === 'function') ? window.getRecentHeroes() : [];
-    return (list && list.length) ? list[0] : null;
+    var head = (list && list.length) ? list[0] : null;
+    console.log('[_getLastHeroEntry] recent_heroes =', list, 'head =', head);
+    return head;
 }
 
 function _getLastHeroId() {
