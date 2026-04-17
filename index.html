@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=101" />
+    <link rel="stylesheet" href="styles.css?v=102" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -586,13 +586,7 @@
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
           <div class="dashboard-header">
-            <h1><i class="h1-icon ph ph-sword" aria-hidden="true"></i>Герои</h1>
-            <p>Сборки, матчапы и синергии для каждого героя</p>
-          </div>
-
-          <div class="stats-warning">
-            <i class="ph ph-warning" aria-hidden="true"></i>
-            <span>Статистика может быть неточной — обработано мало матчей. Данные будут улучшаться со временем.</span>
+            <h1>Герои</h1>
           </div>
 
           <div class="matchup-search-wrap">
@@ -610,6 +604,18 @@
             <div class="recent-heroes-title">Недавние герои</div>
             <div id="recent-heroes-list" class="recent-heroes-list"></div>
           </div>
+
+          <div class="heroes-meta-block" id="heroes-meta-block">
+            <div class="heroes-meta-header">
+              <div class="heroes-meta-title">Сильные сейчас</div>
+              <div class="heroes-meta-patch" id="heroes-meta-patch">—</div>
+            </div>
+            <div class="heroes-meta-rows" id="heroes-meta-rows">
+              <div class="heroes-meta-skeleton" aria-hidden="true"></div>
+            </div>
+          </div>
+
+          <div class="heroes-data-footer">Топ по винрейту · минимум 200 матчей на позицию</div>
         </div>
 
         <!-- Экран конкретного героя -->
@@ -803,6 +809,6 @@
     <script src="heroes-offlane.js?v=1"></script>
     <script src="heroes-pos45.js?v=1"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=125"></script>
+    <script src="script.js?v=126"></script>
   </body>
 </html>
