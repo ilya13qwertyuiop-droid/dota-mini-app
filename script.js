@@ -1626,13 +1626,10 @@ const matchupPage = {
         this.showHero(heroName);
 
         const heroId = window.dotaHeroIds && window.dotaHeroIds[heroName];
-        console.log('[matchups] selected heroName =', heroName, 'heroId =', heroId);
         if (!heroId) {
-            console.warn('[matchups] no heroId for heroName =', heroName);
             showMatchupsError('Матчапы для этого героя пока недоступны');
             return;
         }
-        console.log('[matchups.selectHero] calling addRecentHero with heroId only (no position)', heroId);
         if (window.addRecentHero) window.addRecentHero(heroId);
         loadHeroBuild(heroId);
         loadHeroMatchups(heroId);
@@ -1701,12 +1698,9 @@ function _showBuildLoading() {
 }
 
 function selectBuildPosition(pos) {
-    console.log('[selectBuildPosition] user clicked position', { pos: pos, _buildHeroId: _buildHeroId });
     _buildPosition = pos;
     if (_buildHeroId && typeof window.setRecentHeroPosition === 'function') {
         window.setRecentHeroPosition(_buildHeroId, pos);
-    } else {
-        console.log('[selectBuildPosition] NOT persisting — _buildHeroId:', _buildHeroId, 'setRecentHeroPosition:', typeof window.setRecentHeroPosition);
     }
     if (_buildData) renderBuildTab(_buildData);
 }
@@ -1796,7 +1790,6 @@ function _applyTalentNum(ruName, num) {
     if (ruName.indexOf('?') !== -1) {
         var qIdx = ruName.indexOf('?');
         var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
-        console.log('talent debug:', { charBefore: charBefore, numSign: num[0], num: num, ruName: ruName });
         var isMinus = charBefore === '-' || charBefore === '\u2013' || charBefore === '\u2014';
         var numToInsert = ((charBefore === '+' && num[0] === '+') || (isMinus && num[0] === '-'))
             ? num.slice(1) : num;
@@ -2005,16 +1998,11 @@ function renderBuildTab(data) {
     if (!el) return;
 
     var topPositions = _getTopPositionsFromBuilds(data);
-    console.log('[renderBuildTab] topPositions =', topPositions, 'current _buildPosition =', _buildPosition, '_buildHeroId =', _buildHeroId);
     if (topPositions.length && topPositions.indexOf(_buildPosition) === -1) {
         _buildPosition = topPositions[0];
-        console.log('[renderBuildTab] auto-picked _buildPosition =', _buildPosition);
     }
     if (_buildHeroId && _buildPosition && typeof window.setRecentHeroPosition === 'function') {
-        console.log('[renderBuildTab] persisting position for hero', _buildHeroId, '=', _buildPosition);
         window.setRecentHeroPosition(_buildHeroId, _buildPosition);
-    } else {
-        console.log('[renderBuildTab] NOT persisting — _buildHeroId:', _buildHeroId, '_buildPosition:', _buildPosition);
     }
 
     var dotaPos = data.dota_builds && _buildPosition && data.dota_builds[_buildPosition];
@@ -2219,7 +2207,6 @@ async function loadHeroMatchups(heroId) {
     var LIMIT = 5;
 
     async function fetchCounters(minGames) {
-        console.log('Loading counters from ' + window.API_BASE_URL + '/hero/' + heroId + '/counters?min_games=' + minGames);
         var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var text = await response.text().catch(function () { return ''; });
@@ -2258,11 +2245,6 @@ async function loadHeroMatchups(heroId) {
             }
         }
 
-        console.log('[matchups] API response victims.length =', data.victims && data.victims.length,
-                    'counters.length =', data.counters && data.counters.length);
-        console.log('[matchups] API sample victims[0] =', data.victims && data.victims[0]);
-        console.log('[matchups] API sample counters[0] =', data.counters && data.counters[0]);
-
         var wrEl = document.getElementById('matchup-hero-winrate');
         if (wrEl) {
             if (data.base_winrate != null) {
@@ -2288,7 +2270,6 @@ async function loadHeroSynergy(heroId) {
     var LIMIT = 5;
 
     async function fetchSynergy(minGames) {
-        console.log('[synergy] fetching ' + window.API_BASE_URL + '/hero/' + heroId + '/synergy?min_games=' + minGames);
         var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var error = new Error('HTTP ' + response.status);
@@ -2321,9 +2302,6 @@ async function loadHeroSynergy(heroId) {
                 console.warn('[synergy] Sparse-retry failed, keeping previous data:', retryErr);
             }
         }
-
-        console.log('[synergy] best_allies=', (data.best_allies || []).length,
-                    'worst_allies=', (data.worst_allies || []).length);
 
         _synergyData = data;
         var items = _activeSynergyTab === 'best' ? data.best_allies : data.worst_allies;
@@ -2451,14 +2429,12 @@ function switchSynergyTab(tab) {
     };
 
     window.setRecentHeroPosition = function (heroId, position) {
-        console.log('[setRecentHeroPosition] called', { heroId: heroId, position: position, before: readList() });
-        if (!heroId || !position) { console.log('[setRecentHeroPosition] aborted: missing heroId or position'); return; }
+        if (!heroId || !position) return;
         var list = readList();
         var idx = list.findIndex(function (e) { return e.id === heroId; });
-        if (idx === -1) { console.log('[setRecentHeroPosition] aborted: hero not in list'); return; }
+        if (idx === -1) return;
         list[idx] = { id: heroId, pos: position };
         writeList(list);
-        console.log('[setRecentHeroPosition] done', { heroId: heroId, savedPos: position, after: list });
     };
 
     window.renderRecentHeroes = function () {

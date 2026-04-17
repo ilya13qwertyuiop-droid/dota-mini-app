@@ -1599,26 +1599,19 @@ margin-top: 14px;
 .matchup-search-input {
   width: 100%;
   padding: 14px 18px;
-  /* Явные значения вместо CSS-переменных — надёжнее в desktop-клиентах Telegram */
   background: rgba(15, 15, 20, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
+  border-radius: 8px;
   color: var(--text-primary);
   font-size: 15px;
   font-family: var(--font-sans);
   outline: none;
   box-sizing: border-box;
   display: block;
-  /* Сбрасываем браузерные стили input — ключ к единому виду на desktop */
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  /* Лёгкое постоянное свечение */
-  box-shadow:
-    0 0 0 1px rgba(123, 139, 184, 0.06),
-    0 0 14px rgba(123, 139, 184, 0.04),
-    0 6px 20px rgba(0, 0, 0, 0.55);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 
 .matchup-search-input::placeholder {
@@ -1627,10 +1620,6 @@ margin-top: 14px;
 
 .matchup-search-input:focus {
   border-color: var(--accent-border);
-  box-shadow:
-    0 0 0 2px rgba(123, 139, 184, 0.10),
-    0 0 20px rgba(123, 139, 184, 0.08),
-    0 8px 24px rgba(0, 0, 0, 0.55);
 }
 
 .matchup-suggestions {
@@ -1641,12 +1630,9 @@ margin-top: 14px;
   right: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
-  border-radius: 18px;
+  border-radius: 8px;
   overflow: hidden;
   z-index: 200;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 .matchup-suggestion-item {
@@ -1671,7 +1657,7 @@ margin-top: 14px;
 .matchup-suggestion-icon {
   width: 44px;
   height: 25px;
-  border-radius: 6px;
+  border-radius: 4px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
@@ -1690,9 +1676,8 @@ margin-top: 14px;
   gap: 14px;
   padding: 16px 18px;
   background: var(--bg-surface);
-  border-radius: 18px;
+  border-radius: 8px;
   border: 1px solid var(--border-default);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   margin-bottom: 12px;
   margin-top: 8px;
 }
@@ -1700,11 +1685,10 @@ margin-top: 14px;
 .matchup-hero-avatar {
   width: 80px;
   height: 46px;
-  border-radius: 10px;
+  border-radius: 4px;
   object-fit: cover;
   border: 1px solid var(--accent-border);
   flex-shrink: 0;
-  box-shadow: none;
 }
 
 .matchup-hero-info {
@@ -1730,6 +1714,8 @@ margin-top: 14px;
   color: rgba(255, 255, 255, 0.45);
   font-weight: 400;
   line-height: 1.3;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Верхние табы страницы героя ---- */
@@ -1737,7 +1723,7 @@ margin-top: 14px;
   display: flex;
   gap: 6px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 4px;
   margin-bottom: 14px;
 }
@@ -1746,7 +1732,7 @@ margin-top: 14px;
   flex: 1;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   font-size: 14px;
@@ -1761,7 +1747,6 @@ margin-top: 14px;
   background: var(--border-default);
   border-color: rgba(123, 139, 184, 0.40);
   color: var(--text-primary);
-  box-shadow: 0 0 8px rgba(123, 139, 184, 0.15);
 }
 
 .hero-tab-placeholder {
@@ -1788,7 +1773,7 @@ margin-top: 14px;
 /* ---- Секция (обёртка блока с заголовком + табами + списком) ---- */
 .matchup-section {
   background: var(--bg-surface);
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   border: 1px solid var(--border-subtle);
   padding: var(--space-4);
   margin-bottom: var(--space-3);
@@ -1809,7 +1794,7 @@ margin-top: 14px;
   display: flex;
   gap: 6px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 4px;
   margin-bottom: 10px;
 }
@@ -1818,7 +1803,7 @@ margin-top: 14px;
   flex: 1;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   font-size: 12px;
@@ -1855,7 +1840,7 @@ margin-top: 14px;
   padding: 8px 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   transition: background 0.15s ease;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .matchup-item:last-child {
@@ -1879,7 +1864,7 @@ margin-top: 14px;
 .matchup-item-icon {
   width: 38px;
   height: 22px;
-  border-radius: 5px;
+  border-radius: 4px;
   object-fit: cover;
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -1912,11 +1897,15 @@ margin-top: 14px;
 .matchup-item-delta {
   font-size: 13px;
   font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .matchup-item-games {
   font-size: var(--text-xs);
   color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Цвет дельты по знаку */
@@ -1973,7 +1962,7 @@ margin-top: 14px;
   display: flex;
   gap: 4px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 4px;
   width: 100%;
 }
@@ -1987,7 +1976,7 @@ margin-top: 14px;
   gap: 3px;
   padding: 8px 6px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   font-size: 11px;
@@ -2008,7 +1997,6 @@ margin-top: 14px;
   background: var(--border-default);
   border-color: rgba(123, 139, 184, 0.40);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .build-filter-name {
@@ -2056,6 +2044,8 @@ margin-top: 14px;
   color: var(--text-muted);
   font-weight: 600;
   line-height: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .build-ability-icon {
@@ -2163,7 +2153,7 @@ margin-top: 14px;
   flex: 1;
   padding: 6px 4px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   font-size: 11px;
@@ -2178,7 +2168,6 @@ margin-top: 14px;
   background: var(--border-default);
   border-color: rgba(123, 139, 184, 0.40);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .build-items-panel {
@@ -2231,6 +2220,8 @@ margin-top: 14px;
   color: rgba(200, 220, 255, 0.65);
   line-height: 1;
   margin-top: 2px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Anchor item stats row (pick-rate left, time right) ---- */
@@ -2248,12 +2239,16 @@ margin-top: 14px;
   color: rgba(100, 180, 255, 0.9);
   line-height: 1;
   font-weight: 500;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .build-item-anchor-time {
   font-size: var(--text-2xs);
   color: rgba(255, 255, 255, 0.7);
   line-height: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Mid-late items grid (4×2) ---- */
@@ -2271,7 +2266,7 @@ margin-top: 14px;
   gap: 2px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px 2px;
 }
 
@@ -2283,7 +2278,7 @@ margin-top: 14px;
 .build-item-icon--mid-late {
   width: 36px;
   height: 26px;
-  border-radius: 3px;
+  border-radius: 4px;
   object-fit: cover;
   background: rgba(0, 0, 0, 0.4);
 }
@@ -2293,6 +2288,8 @@ margin-top: 14px;
   color: var(--text-muted);
   text-align: center;
   line-height: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .build-item-time {
@@ -2300,6 +2297,8 @@ margin-top: 14px;
   color: rgba(150, 160, 180, 0.55);
   text-align: center;
   line-height: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Neutral items grid (5 in a row) ---- */
@@ -2317,14 +2316,14 @@ margin-top: 14px;
   gap: 2px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px 2px;
 }
 
 .build-item-icon--neutral {
   width: 36px;
   height: 26px;
-  border-radius: 3px;
+  border-radius: 4px;
   object-fit: cover;
   background: rgba(0, 0, 0, 0.4);
 }
@@ -2334,6 +2333,8 @@ margin-top: 14px;
   color: rgba(180, 190, 210, 0.6);
   text-align: center;
   line-height: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .build-placeholder {
@@ -3385,7 +3386,7 @@ margin-top: 14px;
 .recent-hero-icon-wrap {
   width: 56px;
   height: 56px;
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
