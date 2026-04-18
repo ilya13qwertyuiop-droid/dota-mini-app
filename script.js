@@ -3601,12 +3601,13 @@ function _renderHomeDraftWidget(cached, lastHistory) {
     var muPct  = mu  != null ? Math.min(100, Math.round((mu  / 50) * 100)) : null;
 
     var allyIds = (lastHistory && Array.isArray(lastHistory.ally_heroes)) ? lastHistory.ally_heroes.slice(0, 5) : [];
+    var enemyIds = (lastHistory && Array.isArray(lastHistory.enemy_heroes)) ? lastHistory.enemy_heroes.slice(0, 5) : [];
     var heroesHtml = '';
-    if (allyIds.length) {
-        heroesHtml = '<div class="home-draft-heroes">' + allyIds.map(function(id) {
-            var url = _drafterHeroIcon(id);
-            return '<div class="home-draft-hero">' + (url ? '<img src="' + _escHtml(url) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div>';
-        }).join('') + '</div>';
+    if (allyIds.length || enemyIds.length) {
+        heroesHtml = '<div class="home-draft-heroes">' +
+            _draftTeamRow(allyIds) +
+            _draftTeamRow(enemyIds) +
+        '</div>';
     }
 
     body.innerHTML =
@@ -3621,6 +3622,16 @@ function _renderHomeDraftWidget(cached, lastHistory) {
         '</div>';
 
     if (cta) cta.innerHTML = 'Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+}
+
+function _draftTeamRow(heroIds) {
+    var cells = [];
+    for (var i = 0; i < 5; i++) {
+        var id = heroIds[i];
+        var url = id ? _drafterHeroIcon(id) : '';
+        cells.push('<div class="home-draft-hero">' + (url ? '<img src="' + _escHtml(url) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div>');
+    }
+    return '<div class="home-draft-team">' + cells.join('') + '</div>';
 }
 
 function _draftBarRow(label, tone, pct) {
