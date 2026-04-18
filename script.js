@@ -4472,8 +4472,14 @@ function showDrafterResult(data) {
     _skipBtn.className = 'dr-skip-btn';
     _skipBtn.textContent = 'Пропустить';
     _skipBtn.addEventListener('click', skipAnim);
-    document.body.appendChild(_skipBtn);
-    gsap.fromTo(_skipBtn, {opacity: 0}, {opacity: 1, duration: 0.35, delay: 0.4, ease: 'power2.out'});
+    // Append to <html> so no body-level wrapper, transform, or overflow can
+    // break position: fixed in mobile WebViews.
+    document.documentElement.appendChild(_skipBtn);
+    _skipBtn.style.opacity = '0';
+    setTimeout(function() {
+        _skipBtn.style.transition = 'opacity 0.35s ease-out';
+        _skipBtn.style.opacity = '1';
+    }, 400);
 
     // ─── STEP 1 · ПРОТИВОСТОЯНИЕ (1А сильнейший → 1Б слабейший) ─────
     async function playConfront() {
@@ -4666,7 +4672,7 @@ function showDrafterResult(data) {
             '</div>'
         );
 
-        synergyScreen.style.display = 'block';
+        synergyScreen.style.display = 'flex';
 
         var stepEl   = synergyScreen.querySelector('.dr-step-label');
         var stage    = synergyScreen.querySelector('.dr-syn-stage');
