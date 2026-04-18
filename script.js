@@ -4558,81 +4558,252 @@ async function showDrafterHistory() {
     }
 }
 
-var _LB_ICON_1 = '<span style="color:#d29922;font-size:14px;">&#9733;</span>';
-var _LB_ICON_2 = '<span style="color:#94a3b8;font-size:12px;font-weight:700;">2</span>';
-var _LB_ICON_3 = '<span style="color:#b45309;font-size:12px;font-weight:700;">3</span>';
+function _lbBuildHeader(PAGE_ID) {
+    var header = document.createElement('div');
+    header.className = 'drafter-fp-header';
 
-function _lbAvatarColors(rank) {
-    if (rank === 1) return { bg: 'rgba(210,153,34,0.12)',  text: '#d29922' };
-    if (rank === 2) return { bg: 'rgba(148,163,184,0.2)', text: '#94a3b8' };
-    if (rank === 3) return { bg: 'rgba(180,83,9,0.2)',    text: '#b45309' };
-    return { bg: 'rgba(255,255,255,0.05)', text: '#6b7280' };
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'drafter-fp-back';
+    back.setAttribute('aria-label', 'Назад');
+    back.textContent = '← Назад';
+    back.addEventListener('click', function() { hideDrafterFullpage(PAGE_ID); });
+    header.appendChild(back);
+
+    var title = document.createElement('div');
+    title.className = 'drafter-fp-title';
+    title.textContent = 'Топ драфтеров';
+    header.appendChild(title);
+
+    var spacer = document.createElement('div');
+    spacer.className = 'drafter-fp-spacer';
+    header.appendChild(spacer);
+
+    return header;
 }
 
-function _lbScoreColor(rank) {
-    if (rank === 1) return '#d29922';
-    if (rank === 2) return '#94a3b8';
-    if (rank === 3) return '#b45309';
-    return '#8d9bc6';
+function _lbBuildPrizeBanner() {
+    var banner = document.createElement('div');
+    banner.className = 'lb-prize-banner';
+
+    var img = document.createElement('img');
+    img.src = '/images/arcana.gif';
+    img.className = 'lb-prize-gif';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.setAttribute('aria-hidden', 'true');
+    banner.appendChild(img);
+
+    var info = document.createElement('div');
+    info.className = 'lb-prize-info';
+
+    var title = document.createElement('div');
+    title.className = 'lb-prize-title';
+    title.textContent = 'Арканы каждый месяц';
+    info.appendChild(title);
+
+    var sub = document.createElement('div');
+    sub.className = 'lb-prize-sub';
+    sub.textContent = 'Топ-3 получают аркану на выбор в конце месяца';
+    info.appendChild(sub);
+
+    var month = document.createElement('div');
+    month.className = 'lb-prize-month';
+    month.textContent = 'апрель 2026';
+    info.appendChild(month);
+
+    banner.appendChild(info);
+    return banner;
 }
 
-async function _renderLeaderboardRows(rows, page, PAGE_ID) {
-    var rowsHtml = rows.length === 0
-        ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников</div>'
-        : rows.map(function(r) {
-            var placeIcon = r.rank === 1 ? _LB_ICON_1 : r.rank === 2 ? _LB_ICON_2 : r.rank === 3 ? _LB_ICON_3
-                : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
-            var rowCls = 'drafter-lb-row' + (r.rank === 1 ? ' drafter-lb-row--top1' : r.rank === 2 ? ' drafter-lb-row--top2' : r.rank === 3 ? ' drafter-lb-row--top3' : '');
-            var ac = _lbAvatarColors(r.rank);
-            var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
-            var firstChar = displayName.charAt(0).toUpperCase();
-            var letterDiv = '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>';
-            var avatarHtml = r.photo_url
-                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
-                  '<div class="drafter-lb-avatar-letter" style="display:none;background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>'
-                : letterDiv;
-            return (
-                '<div class="' + rowCls + '" style="display:flex;align-items:center;gap:8px">' +
-                    '<div class="drafter-lb-place">' + placeIcon + '</div>' +
-                    avatarHtml +
-                    '<div style="flex:1;min-width:0">' +
-                        '<div class="drafter-lb-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + displayName + '</div>' +
-                        '<div class="drafter-lb-count">' + r.draft_count + ' \u0434\u0440\u0430\u0444\u0442\u043e\u0432</div>' +
-                    '</div>' +
-                    '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.top5_sum + '</div>' +
-                '</div>'
-            );
-        }).join('');
-    page.innerHTML = (
-        '<div class="drafter-fp-header">' +
-            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← \u041d\u0430\u0437\u0430\u0434</button>' +
-            '<div class="drafter-fp-title">\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412</div>' +
-            '<div class="drafter-fp-spacer"></div>' +
-        '</div>' +
-        '<div class="lb-prize-banner">' +
-            '<img src="/images/arcana.gif" class="lb-prize-gif" alt="arcana">' +
-            '<div class="lb-prize-info">' +
-                '<div class="lb-prize-title">\u0410\u0440\u043a\u0430\u043d\u044b \u043a\u0430\u0436\u0434\u044b\u0439 \u043c\u0435\u0441\u044f\u0446</div>' +
-                '<div class="lb-prize-sub">\u0422\u043e\u043f-3 \u043f\u043e\u043b\u0443\u0447\u0430\u044e\u0442 \u0430\u0440\u043a\u0430\u043d\u0443 \u043d\u0430 \u0432\u044b\u0431\u043e\u0440 \u0432 \u043a\u043e\u043d\u0446\u0435 \u043c\u0435\u0441\u044f\u0446\u0430</div>' +
-                '<div class="lb-prize-month">\u0430\u043f\u0440\u0435\u043b\u044c 2026</div>' +
-            '</div>' +
-        '</div>' +
-        '<div class="lb-note">' +
-            '<span class="lb-note-icon">\u2139</span> ' +
-            '\u0421\u0447\u0451\u0442 \u043f\u043e \u0441\u0443\u043c\u043c\u0435 <b>\u043b\u0443\u0447\u0448\u0438\u0445 5 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u043e\u0432</b>' +
-        '</div>' +
-        '<div class="drafter-fp-content">' + rowsHtml + '</div>'
-    );
+function _lbBuildNote() {
+    var note = document.createElement('div');
+    note.className = 'lb-note';
+    var icon = document.createElement('span');
+    icon.className = 'lb-note-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'ℹ';
+    note.appendChild(icon);
+    note.appendChild(document.createTextNode(' Счёт по сумме '));
+    var b = document.createElement('b');
+    b.textContent = 'лучших 5 результатов';
+    note.appendChild(b);
+    return note;
+}
 
-    // ── Fixed плашка «Ваше место» — показываем сразу, данные подгружаем ──
+function _lbBuildSkeletonRows(count) {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < count; i++) {
+        var row = document.createElement('div');
+        row.className = 'drafter-lb-skel-row';
+        row.setAttribute('aria-hidden', 'true');
+
+        var place = document.createElement('div');
+        place.className = 'drafter-lb-skel-shape drafter-lb-skel-place';
+        row.appendChild(place);
+
+        var avatar = document.createElement('div');
+        avatar.className = 'drafter-lb-skel-shape drafter-lb-skel-avatar';
+        row.appendChild(avatar);
+
+        var info = document.createElement('div');
+        info.style.flex = '1';
+        info.style.minWidth = '0';
+        var name = document.createElement('div');
+        name.className = 'drafter-lb-skel-shape drafter-lb-skel-name';
+        var sub = document.createElement('div');
+        sub.className = 'drafter-lb-skel-shape drafter-lb-skel-sub';
+        info.appendChild(name);
+        info.appendChild(sub);
+        row.appendChild(info);
+
+        var score = document.createElement('div');
+        score.className = 'drafter-lb-skel-shape drafter-lb-skel-score';
+        row.appendChild(score);
+
+        frag.appendChild(row);
+    }
+    return frag;
+}
+
+function _lbBuildEmpty() {
+    var wrap = document.createElement('div');
+    wrap.className = 'drafter-lb-empty';
+    var title = document.createElement('div');
+    title.className = 'drafter-lb-empty-title';
+    title.textContent = 'Пока нет участников';
+    wrap.appendChild(title);
+    var text = document.createElement('div');
+    text.className = 'drafter-lb-empty-text';
+    text.textContent = 'Сыграй драфт, чтобы попасть в топ';
+    wrap.appendChild(text);
+    return wrap;
+}
+
+function _lbBuildError(onRetry) {
+    var wrap = document.createElement('div');
+    wrap.className = 'drafter-lb-empty';
+    wrap.setAttribute('role', 'alert');
+
+    var title = document.createElement('div');
+    title.className = 'drafter-lb-empty-title';
+    title.textContent = 'Не удалось загрузить топ';
+    wrap.appendChild(title);
+
+    var text = document.createElement('div');
+    text.className = 'drafter-lb-empty-text';
+    text.textContent = 'Проверь соединение и попробуй ещё раз';
+    wrap.appendChild(text);
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'drafter-lb-retry';
+    btn.textContent = 'Повторить';
+    btn.addEventListener('click', onRetry);
+    wrap.appendChild(btn);
+    return wrap;
+}
+
+function _lbBuildRow(r) {
+    var row = document.createElement('div');
+    var cls = 'drafter-lb-row';
+    if (r.rank === 1) cls += ' drafter-lb-row--top1';
+    else if (r.rank === 2) cls += ' drafter-lb-row--top2';
+    else if (r.rank === 3) cls += ' drafter-lb-row--top3';
+    row.className = cls;
+
+    var place = document.createElement('div');
+    place.className = 'drafter-lb-place';
+    place.textContent = r.rank;
+    row.appendChild(place);
+
+    var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
+    var firstChar = displayName.charAt(0).toUpperCase();
+
+    if (r.photo_url) {
+        var img = document.createElement('img');
+        img.className = 'drafter-lb-avatar';
+        img.src = r.photo_url;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.setAttribute('aria-hidden', 'true');
+
+        var fallback = document.createElement('div');
+        fallback.className = 'drafter-lb-avatar-letter';
+        fallback.style.display = 'none';
+        fallback.textContent = firstChar;
+
+        img.addEventListener('error', function() {
+            img.style.display = 'none';
+            fallback.style.display = 'flex';
+        });
+
+        row.appendChild(img);
+        row.appendChild(fallback);
+    } else {
+        var letter = document.createElement('div');
+        letter.className = 'drafter-lb-avatar-letter';
+        letter.textContent = firstChar;
+        row.appendChild(letter);
+    }
+
+    var info = document.createElement('div');
+    info.className = 'drafter-lb-info';
+
+    var name = document.createElement('div');
+    name.className = 'drafter-lb-name';
+    name.textContent = displayName;
+    info.appendChild(name);
+
+    var count = document.createElement('div');
+    count.className = 'drafter-lb-count';
+    count.textContent = r.draft_count + ' драфтов';
+    info.appendChild(count);
+
+    row.appendChild(info);
+
+    var score = document.createElement('div');
+    score.className = 'drafter-lb-score';
+    score.textContent = r.top5_sum;
+    row.appendChild(score);
+
+    return row;
+}
+
+function _lbRenderRowsInto(content, rows) {
+    content.textContent = '';
+    if (!rows || rows.length === 0) {
+        content.appendChild(_lbBuildEmpty());
+        return;
+    }
+    var frag = document.createDocumentFragment();
+    rows.forEach(function(r) { frag.appendChild(_lbBuildRow(r)); });
+    content.appendChild(frag);
+}
+
+function _lbBuildScaffold(PAGE_ID) {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(_lbBuildHeader(PAGE_ID));
+    frag.appendChild(_lbBuildPrizeBanner());
+    frag.appendChild(_lbBuildNote());
+    var content = document.createElement('div');
+    content.className = 'drafter-fp-content';
+    frag.appendChild(content);
+    return { frag: frag, content: content };
+}
+
+async function _lbAttachMyrankBar(page) {
     var token = (typeof USER_TOKEN !== 'undefined' ? USER_TOKEN : '') || '';
     if (!token) return;
 
-    // Показываем плашку-заглушку сразу (чтобы не прыгал контент)
     var bar = document.createElement('div');
     bar.id = 'drafter-lb-myrank-bar';
     bar.className = 'drafter-lb-myrank';
-    bar.style.display = 'none'; // скрыта до получения данных
+    bar.setAttribute('role', 'status');
+    bar.setAttribute('aria-label', 'Ваша позиция в лидерборде');
+    bar.style.display = 'none';
     page.appendChild(bar);
 
     try {
@@ -4640,16 +4811,29 @@ async function _renderLeaderboardRows(rows, page, PAGE_ID) {
         if (!meResp.ok) return;
         var me = await meResp.json();
         if (!me || me.rank === null) return;
-        if (me.rank <= 25) return; // виден в списке — плашка не нужна
-        bar.innerHTML = (
-            '<div class="drafter-lb-myrank-left">' +
-                '\u0412\u0430\u0448\u0435 \u043c\u0435\u0441\u0442\u043e: <span class="drafter-lb-myrank-rank">#' + me.rank + '</span>' +
-            '</div>' +
-            '<div class="drafter-lb-myrank-right">' +
-                '<div class="drafter-lb-myrank-label">\u0421\u0427\u0401\u0422</div>' +
-                '<div class="drafter-lb-myrank-score">' + me.top5_sum + '</div>' +
-            '</div>'
-        );
+        if (me.rank <= 25) return;
+
+        var left = document.createElement('div');
+        left.className = 'drafter-lb-myrank-left';
+        left.appendChild(document.createTextNode('Ваше место: '));
+        var rank = document.createElement('span');
+        rank.className = 'drafter-lb-myrank-rank';
+        rank.textContent = '#' + me.rank;
+        left.appendChild(rank);
+        bar.appendChild(left);
+
+        var right = document.createElement('div');
+        right.className = 'drafter-lb-myrank-right';
+        var label = document.createElement('div');
+        label.className = 'drafter-lb-myrank-label';
+        label.textContent = 'Счёт';
+        right.appendChild(label);
+        var score = document.createElement('div');
+        score.className = 'drafter-lb-myrank-score';
+        score.textContent = me.top5_sum;
+        right.appendChild(score);
+        bar.appendChild(right);
+
         bar.style.display = 'flex';
     } catch (e) { /* ignore */ }
 }
@@ -4658,22 +4842,30 @@ async function showDrafterLeaderboard() {
     var PAGE_ID = 'drafter-leaderboard-page';
     var page = document.getElementById(PAGE_ID);
     page.style.display = 'block';
+    page.textContent = '';
+
+    var scaffold = _lbBuildScaffold(PAGE_ID);
+    page.appendChild(scaffold.frag);
+    var content = scaffold.content;
 
     if (_drafterLeaderboardCache) {
-        _renderLeaderboardRows(_drafterLeaderboardCache, page, PAGE_ID);
+        _lbRenderRowsInto(content, _drafterLeaderboardCache);
+        _lbAttachMyrankBar(page);
         return;
     }
 
-    page.innerHTML = _drafterFpSkeleton('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+    content.appendChild(_lbBuildSkeletonRows(6));
 
     try {
         var resp = await fetch(window.API_BASE_URL + '/draft/leaderboard');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
         _drafterLeaderboardCache = rows;
-        _renderLeaderboardRows(rows, page, PAGE_ID);
+        _lbRenderRowsInto(content, rows);
+        _lbAttachMyrankBar(page);
     } catch (e) {
-        page.innerHTML = _drafterFpError('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+        content.textContent = '';
+        content.appendChild(_lbBuildError(function() { showDrafterLeaderboard(); }));
     }
 }
 
