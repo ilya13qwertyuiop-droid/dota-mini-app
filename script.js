@@ -1190,12 +1190,67 @@
         });
 // ========== ПРОФИЛЬ ==========
 
+function _profileSetLoadingState() {
+    // Показываем skeleton, прячем result/empty, прячем error
+    const show = id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = false;
+    };
+    const hide = id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+    };
+    show('profile-position-skeleton');
+    show('profile-heroes-skeleton');
+    hide('profile-position-result');
+    hide('profile-position-empty');
+    hide('profile-heroes-result');
+    hide('profile-heroes-empty');
+    hide('profile-error');
+    const statsEl = document.getElementById('profile-stats');
+    if (statsEl) statsEl.hidden = false;
+}
+
+function _profileHideSkeletons() {
+    const pos = document.getElementById('profile-position-skeleton');
+    const heroes = document.getElementById('profile-heroes-skeleton');
+    if (pos) pos.hidden = true;
+    if (heroes) heroes.hidden = true;
+}
+
+function _profileShowError() {
+    _profileHideSkeletons();
+    const error = document.getElementById('profile-error');
+    const stats = document.getElementById('profile-stats');
+    const posCard = document.getElementById('profile-position-card');
+    const heroesCard = document.getElementById('profile-heroes-card');
+    if (error) error.hidden = false;
+    if (stats) stats.hidden = true;
+    if (posCard) posCard.hidden = true;
+    if (heroesCard) heroesCard.hidden = true;
+}
+
+function _profileHideError() {
+    const error = document.getElementById('profile-error');
+    const posCard = document.getElementById('profile-position-card');
+    const heroesCard = document.getElementById('profile-heroes-card');
+    if (error) error.hidden = true;
+    if (posCard) posCard.hidden = false;
+    if (heroesCard) heroesCard.hidden = false;
+}
+
 async function initProfile() {
     console.log('[PROFILE] Загрузка профиля...');
 
+    _profileHideError();
+    _profileSetLoadingState();
+    updateProfileHeader(null, /*loading*/ true);
+
     if (!USER_TOKEN) {
         console.error('[PROFILE] Токен отсутствует');
+        _profileHideSkeletons();
         updateProfileHeader(null);
+        updateProfileStats(null);
         showEmptyProfile();
         return;
     }
@@ -1234,21 +1289,59 @@ async function initProfile() {
             }
         }
 
+        _profileHideSkeletons();
         updateProfileHeader(profile);
+        updateProfileStats(profile);
         displayPositionResult(profile);
         displayHeroesResult(profile);
 
     } catch (error) {
         console.error('[PROFILE] Ошибка загрузки:', error);
         updateProfileHeader(null);
-        showEmptyProfile();
+        _profileShowError();
     }
 }
 
-function updateProfileHeader(profile) {
+function _renderAvatar(avatarEl, userData) {
+    // Полный reset: убираем любые старые image / инициалы
+    avatarEl.innerHTML = '';
+
+    const photoUrl = userData && userData.photo_url;
+    if (photoUrl) {
+        const img = document.createElement('img');
+        img.src = photoUrl;
+        img.alt = '';
+        img.decoding = 'async';
+        img.loading = 'lazy';
+        img.onerror = () => {
+            // Сетевая ошибка — падаем на локальный инициал, без внешних сервисов
+            avatarEl.innerHTML = '';
+            avatarEl.textContent = _avatarInitial(userData);
+        };
+        avatarEl.appendChild(img);
+        return;
+    }
+
+    avatarEl.textContent = _avatarInitial(userData);
+}
+
+function _avatarInitial(userData) {
+    const source = (userData && (userData.first_name || userData.username)) || '';
+    const ch = source.trim().charAt(0);
+    return ch || '·';
+}
+
+function updateProfileHeader(profile, loading = false) {
     const avatar = document.getElementById('profile-avatar');
     const nameEl = document.getElementById('profile-name');
     const usernameEl = document.getElementById('profile-username');
+
+    if (loading) {
+        nameEl.textContent = 'Загрузка…';
+        usernameEl.textContent = '';
+        avatar.innerHTML = '';
+        return;
+    }
 
     let userData = null;
 
@@ -1266,25 +1359,80 @@ function updateProfileHeader(profile) {
     if (userData) {
         const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim();
         nameEl.textContent = fullName || 'Пользователь';
-        if (userData.username) {
-            usernameEl.textContent = `@${userData.username}`;
-        } else {
-            usernameEl.textContent = '';
-        }
-        if (userData.photo_url) {
-            avatar.src = userData.photo_url;
-        } else {
-            avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
-        }
+        usernameEl.textContent = userData.username ? `@${userData.username}` : '';
     } else {
         nameEl.textContent = 'Пользователь';
         usernameEl.textContent = '';
-        avatar.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
     }
 
-    avatar.onerror = function () {
-        this.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
-    };
+    _renderAvatar(avatar, userData);
+}
+
+function _formatRelativeDate(iso) {
+    if (!iso) return '—';
+    const then = new Date(iso);
+    if (isNaN(then.getTime())) return '—';
+    const now = new Date();
+    const diffMs = now - then;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'только что';
+    if (diffMin < 60) return `${diffMin} мин`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} ч`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay === 1) return 'вчера';
+    if (diffDay < 7) return `${diffDay} дн`;
+    if (diffDay < 30) {
+        const w = Math.floor(diffDay / 7);
+        return `${w} нед`;
+    }
+    const diffMo = Math.floor(diffDay / 30);
+    if (diffMo < 12) return `${diffMo} мес`;
+    const diffYr = Math.floor(diffMo / 12);
+    return `${diffYr} г`;
+}
+
+function _countStudiedPositions(profile) {
+    const positions = new Set();
+    const history = (profile && profile.quiz_history) || [];
+    for (const quiz of history) {
+        const res = quiz && quiz.result;
+        if (!res) continue;
+        if (res.hero_quiz_by_position && typeof res.hero_quiz_by_position === 'object') {
+            for (const key of Object.keys(res.hero_quiz_by_position)) {
+                const entry = res.hero_quiz_by_position[key];
+                if (entry && entry.topHeroes && entry.topHeroes.length > 0) {
+                    positions.add(String(key));
+                }
+            }
+        }
+        // Legacy: одиночный hero_quiz с heroPositionIndex
+        const legacy = res.hero_quiz;
+        if (legacy && legacy.topHeroes && legacy.topHeroes.length > 0 && legacy.heroPositionIndex !== undefined) {
+            positions.add(String(legacy.heroPositionIndex));
+        }
+        if (res.type === 'hero_quiz' && res.topHeroes && res.topHeroes.length > 0 && res.heroPositionIndex !== undefined) {
+            positions.add(String(res.heroPositionIndex));
+        }
+    }
+    return positions.size;
+}
+
+function updateProfileStats(profile) {
+    const quizzesEl = document.getElementById('profile-stat-quizzes');
+    const positionsEl = document.getElementById('profile-stat-positions');
+    const lastEl = document.getElementById('profile-stat-last');
+
+    if (!profile) {
+        if (quizzesEl) quizzesEl.textContent = '0';
+        if (positionsEl) positionsEl.textContent = '0';
+        if (lastEl) lastEl.textContent = '—';
+        return;
+    }
+
+    if (quizzesEl) quizzesEl.textContent = String(profile.total_quizzes || 0);
+    if (positionsEl) positionsEl.textContent = String(_countStudiedPositions(profile));
+    if (lastEl) lastEl.textContent = _formatRelativeDate(profile.last_quiz_date);
 }
 
 function displayPositionResult(profile) {
@@ -1312,8 +1460,8 @@ function displayPositionResult(profile) {
     }
 
     if (!positionData) {
-        posResult.style.display = 'none';
-        posEmpty.style.display = 'block';
+        posResult.hidden = true;
+        posEmpty.hidden = false;
         // ✅ БАГ-ФИХ: Сбрасываем lastPositionResult и обновляем кнопку hero-квиза
         lastPositionResult = null;
         updateHeroQuizStart();
@@ -1335,8 +1483,8 @@ function displayPositionResult(profile) {
     updateHeroQuizStart();
     console.log('[PROFILE] lastPositionResult синхронизирован:', lastPositionResult);
 
-    posResult.style.display = 'block';
-    posEmpty.style.display = 'none';
+    posResult.hidden = false;
+    posEmpty.hidden = true;
 
     const mainNameEl = document.getElementById('profile-position-main-name');
     const extraNameEl = document.getElementById('profile-position-extra-name');
@@ -1432,15 +1580,15 @@ function displayHeroesResult(profile) {
 
     // Показываем героев или заглушку
     if (heroData) {
-        heroesResult.style.display = 'block';
-        heroesEmpty.style.display = 'none';
+        heroesResult.hidden = false;
+        heroesEmpty.hidden = true;
         renderProfileHeroes(heroesList, heroData.topHeroes);
         return;
     }
 
     // Иначе показываем заглушку
-    heroesResult.style.display = 'none';
-    heroesEmpty.style.display = 'block';
+    heroesResult.hidden = true;
+    heroesEmpty.hidden = false;
 }
 
 function renderProfileHeroes(container, heroes) {
@@ -1451,34 +1599,114 @@ function renderProfileHeroes(container, heroes) {
         const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
         const row = document.createElement('a');
-        row.className = 'hero-row' + (index === 0 ? ' hero-row-main' : '');
+        row.className = 'hero-row';
         row.href = getDota2ProTrackerUrl(heroName);
         row.target = '_blank';
         row.rel = 'noopener noreferrer';
 
-        row.innerHTML = `
-            <div class="hero-row-rank">${index + 1}</div>
-            <div class="hero-row-img">
-                <img src="${heroIconUrl}" alt="${heroName}" style="width:100%; height:100%; object-fit:cover; border-radius:6px;" onerror="this.style.display='none'">
-            </div>
-            <div class="hero-row-main-text">
-                <div class="hero-row-name">${heroName}</div>
-                <div class="hero-row-sub">
-                    ${index === 0 ? 'Лучший мэтч' : 'Совпадение'} • ${matchPercent}%
-                </div>
-            </div>
-        `;
+        const rank = document.createElement('div');
+        rank.className = 'hero-row-rank';
+        rank.textContent = String(index + 1);
+
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'hero-row-img';
+        if (heroIconUrl) {
+            const img = document.createElement('img');
+            img.src = heroIconUrl;
+            img.alt = heroName;
+            img.decoding = 'async';
+            img.loading = 'lazy';
+            img.onerror = () => { img.style.display = 'none'; };
+            imgWrap.appendChild(img);
+        }
+
+        const text = document.createElement('div');
+        text.className = 'hero-row-main-text';
+
+        const name = document.createElement('div');
+        name.className = 'hero-row-name';
+        name.textContent = heroName;
+
+        const sub = document.createElement('div');
+        sub.className = 'hero-row-sub';
+        sub.textContent = `${index === 0 ? 'Лучший мэтч' : 'Совпадение'} · ${matchPercent}%`;
+
+        text.appendChild(name);
+        text.appendChild(sub);
+
+        row.appendChild(rank);
+        row.appendChild(imgWrap);
+        row.appendChild(text);
 
         container.appendChild(row);
     });
 }
 
 function showEmptyProfile() {
-    document.getElementById('profile-position-result').style.display = 'none';
-    document.getElementById('profile-position-empty').style.display = 'block';
-    document.getElementById('profile-heroes-result').style.display = 'none';
-    document.getElementById('profile-heroes-empty').style.display = 'block';
+    document.getElementById('profile-position-result').hidden = true;
+    document.getElementById('profile-position-empty').hidden = false;
+    document.getElementById('profile-heroes-result').hidden = true;
+    document.getElementById('profile-heroes-empty').hidden = false;
 }
+
+// ─── Обработчики кнопок профиля ──────────────────────────────────────
+function _profileConfirmRedo(message, action) {
+    // Telegram WebApp showConfirm асинхронный через callback; fallback на window.confirm
+    const tgApp = window.Telegram && window.Telegram.WebApp;
+    if (tgApp && typeof tgApp.showConfirm === 'function') {
+        try {
+            tgApp.showConfirm(message, (ok) => { if (ok) action(); });
+            return;
+        } catch (e) {
+            console.warn('[PROFILE] showConfirm failed, fallback:', e);
+        }
+    }
+    if (window.confirm(message)) action();
+}
+
+function _profileBindActions() {
+    const retryBtn = document.getElementById('profile-retry-btn');
+    if (retryBtn && !retryBtn.dataset.bound) {
+        retryBtn.addEventListener('click', () => initProfile());
+        retryBtn.dataset.bound = '1';
+    }
+
+    const posRedo = document.getElementById('profile-position-redo-btn');
+    if (posRedo && !posRedo.dataset.bound) {
+        posRedo.addEventListener('click', () => {
+            _profileConfirmRedo(
+                'Пройти квиз по позиции заново? Текущий результат будет перезаписан.',
+                () => goToPositionQuiz()
+            );
+        });
+        posRedo.dataset.bound = '1';
+    }
+
+    const posStart = document.getElementById('profile-position-start-btn');
+    if (posStart && !posStart.dataset.bound) {
+        posStart.addEventListener('click', () => goToPositionQuiz());
+        posStart.dataset.bound = '1';
+    }
+
+    const heroesRedo = document.getElementById('profile-heroes-redo-btn');
+    if (heroesRedo && !heroesRedo.dataset.bound) {
+        heroesRedo.addEventListener('click', () => {
+            _profileConfirmRedo(
+                'Пройти квиз по героям заново? Текущий топ-5 будет перезаписан.',
+                () => goToHeroQuiz()
+            );
+        });
+        heroesRedo.dataset.bound = '1';
+    }
+
+    const heroesStart = document.getElementById('profile-heroes-start-btn');
+    if (heroesStart && !heroesStart.dataset.bound) {
+        heroesStart.addEventListener('click', () => goToHeroQuiz());
+        heroesStart.dataset.bound = '1';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', _profileBindActions);
 
 const _originalSwitchPage = switchPage;
 switchPage = function (pageName, event) {

@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=116" />
+    <link rel="stylesheet" href="styles.css?v=117" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -691,75 +691,99 @@
 
           <!-- Шапка профиля -->
           <div class="profile-header">
-            <img id="profile-avatar" src="" alt="" class="profile-avatar">
+            <div id="profile-avatar" class="profile-avatar" aria-hidden="true"></div>
             <div class="profile-info">
-              <h2 id="profile-name">Загрузка...</h2>
+              <h2 id="profile-name">Загрузка…</h2>
               <p id="profile-username"></p>
             </div>
           </div>
 
+          <!-- Статистика — тактический stat-row -->
+          <div class="profile-stats" id="profile-stats">
+            <div class="profile-stat">
+              <span class="profile-stat-label">Квизов</span>
+              <span class="profile-stat-value" id="profile-stat-quizzes">—</span>
+            </div>
+            <div class="profile-stat">
+              <span class="profile-stat-label">Позиций</span>
+              <span class="profile-stat-value">
+                <span id="profile-stat-positions">—</span><span class="profile-stat-denom">/5</span>
+              </span>
+            </div>
+            <div class="profile-stat">
+              <span class="profile-stat-label">Последний</span>
+              <span class="profile-stat-value" id="profile-stat-last">—</span>
+            </div>
+          </div>
+
+          <!-- Error-state — показывается при ошибке fetch -->
+          <div class="profile-card profile-error" id="profile-error" hidden>
+            <p class="profile-error-text">Не удалось загрузить профиль</p>
+            <button class="profile-action-btn" id="profile-retry-btn" type="button">
+              <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>Попробовать снова
+            </button>
+          </div>
+
           <!-- Результат квиза по позиции -->
-          <div class="profile-card">
+          <div class="profile-card" id="profile-position-card">
+            <span class="section-eyebrow">Позиция</span>
+
+            <!-- Skeleton загрузки -->
+            <div id="profile-position-skeleton">
+              <div class="profile-skeleton-line" style="width: 60%;"></div>
+              <div class="profile-skeleton-line" style="width: 35%;"></div>
+            </div>
+
             <!-- Если квиз пройден -->
-            <div id="profile-position-result" style="display: none;">
+            <div id="profile-position-result" hidden>
               <div class="status-row">
                 <i class="status-icon ph ph-target" aria-hidden="true"></i>
                 <div class="status-main">
                   <div id="profile-position-main-name" class="status-main-title"></div>
                   <div id="profile-position-extra-name" class="status-main-sub"></div>
                 </div>
-                <button class="profile-status-btn" onclick="goToPositionQuiz()">
-                  Пройти заново
+                <button class="profile-redo-btn" id="profile-position-redo-btn" type="button">
+                  Заново
                 </button>
               </div>
             </div>
 
             <!-- Если квиз НЕ пройден -->
-            <div id="profile-position-empty" style="display: none;">
+            <div id="profile-position-empty" hidden>
               <p class="profile-empty-text">Ты ещё не проходил квиз по позициям</p>
-              <button class="profile-action-btn" onclick="goToPositionQuiz()">
-<i class="ph ph-target" aria-hidden="true"></i>Пройти квиз по позиции
+              <button class="profile-action-btn" id="profile-position-start-btn" type="button">
+                <i class="ph ph-target" aria-hidden="true"></i>Пройти квиз по позиции
               </button>
             </div>
           </div>
 
           <!-- Результат квиза по героям -->
-          <div class="profile-card">
-            <div class="profile-card-header">
-              <i class="profile-card-icon ph ph-sword" aria-hidden="true"></i>
-              <span class="profile-card-title" id="profile-heroes-title">Твои герои</span>
+          <div class="profile-card" id="profile-heroes-card">
+            <span class="section-eyebrow" id="profile-heroes-title">Твои герои</span>
+
+            <!-- Skeleton загрузки -->
+            <div id="profile-heroes-skeleton">
+              <div class="profile-skeleton-line" style="width: 80%;"></div>
+              <div class="profile-skeleton-line" style="width: 70%;"></div>
+              <div class="profile-skeleton-line" style="width: 75%;"></div>
             </div>
 
             <!-- Если квиз пройден -->
-            <div id="profile-heroes-result" style="display: none;">
-              <div id="profile-heroes-list" class="heroes-list">
-                <!-- сюда JS рендерит 5 .hero-row -->
-                <!-- пример одной строки, для ориентира структуры:
-
-                <a class="hero-row hero-row-main" href="https://d2pt.com/hero/clinkz" target="_blank" rel="noopener noreferrer">
-                  <div class="hero-row-rank">1</div>
-                  <div class="hero-row-img"></div>
-                  <div class="hero-row-main-text">
-                    <div class="hero-row-name">Clinkz</div>
-                    <div class="hero-row-sub">Лучший матч • 78%</div>
-                  </div>
-                </a>
-
-                -->
-              </div>
+            <div id="profile-heroes-result" hidden>
+              <div id="profile-heroes-list" class="heroes-list"></div>
               <div class="heroes-footer">
                 <span class="muted">Нажми на героя, чтобы открыть гайд</span>
-                <button class="btn-outline btn-outline-sm" type="button" onclick="goToHeroQuiz()">
-                  Пройти заново
+                <button class="profile-redo-btn" id="profile-heroes-redo-btn" type="button">
+                  Заново
                 </button>
               </div>
             </div>
 
             <!-- Если квиз НЕ пройден -->
-            <div id="profile-heroes-empty" style="display: none;">
+            <div id="profile-heroes-empty" hidden>
               <p class="profile-empty-text">Ты ещё не проходил квиз по героям для этой позиции</p>
-              <button class="profile-action-btn" onclick="goToHeroQuiz()">
-<i class="ph ph-sword" aria-hidden="true"></i>Пройти квиз по героям
+              <button class="profile-action-btn" id="profile-heroes-start-btn" type="button">
+                <i class="ph ph-sword" aria-hidden="true"></i>Пройти квиз по героям
               </button>
             </div>
           </div>
@@ -844,6 +868,6 @@
     <script src="heroes-offlane.js?v=2"></script>
     <script src="heroes-pos45.js?v=2"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=140"></script>
+    <script src="script.js?v=141"></script>
   </body>
 </html>
