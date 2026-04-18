@@ -4090,17 +4090,30 @@ margin-top: 14px;
   display: block;
 }
 
-/* Тонкий номер позиции в углу пустого слота */
-.drafter-slot-num {
+/* Иконка позиции — крупная по центру для пустого слота, бейдж в углу для занятого */
+.drafter-slot-pos-icon {
   position: absolute;
-  top: 3px;
-  left: 5px;
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  opacity: 0.55;
   pointer-events: none;
+}
+.drafter-slot-pos-icon--badge {
+  top: auto;
+  left: auto;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  transform: none;
+  opacity: 1;
+  background: rgba(10, 10, 15, 0.78);
+  border-radius: 3px;
+  padding: 1px;
+  box-sizing: content-box;
 }
 
 .drafter-picker {
@@ -4134,9 +4147,10 @@ margin-top: 14px;
 
 .drafter-pos-btn {
   flex: 1;
-  padding: 6px 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
+  min-width: 0;
+  padding: 6px 4px;
+  font-family: inherit;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-tertiary);
   background: transparent;
@@ -4148,7 +4162,6 @@ margin-top: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 

@@ -554,11 +554,10 @@
           <div class="drafter-picker">
             <input type="text" id="drafter-search" class="drafter-search" placeholder="Найти любого героя..." oninput="onDrafterSearch()">
             <div class="drafter-pos-filters" id="drafter-pos-filters">
-              <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)">1</button>
-              <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)">2</button>
-              <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)">3</button>
-              <button class="drafter-pos-btn" data-pos="4" onclick="setDrafterPosFilter(4)">4</button>
-              <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)">5</button>
+              <button class="drafter-pos-btn" data-attr="str" onclick="setDrafterAttrFilter('str')">Сила</button>
+              <button class="drafter-pos-btn" data-attr="agi" onclick="setDrafterAttrFilter('agi')">Ловкость</button>
+              <button class="drafter-pos-btn" data-attr="int" onclick="setDrafterAttrFilter('int')">Интеллект</button>
+              <button class="drafter-pos-btn" data-attr="all" onclick="setDrafterAttrFilter('all')">Универсал</button>
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
           </div>
