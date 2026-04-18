@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=108" />
+    <link rel="stylesheet" href="styles.css?v=109" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -305,8 +305,11 @@
             <div class="quiz-content">
               <h1><i class="h1-icon ph ph-game-controller" aria-hidden="true"></i>Какая твоя позиция в Dota 2?</h1>
 
-              <div class="progress-bar">
-                <div class="progress-fill" id="progressBar"></div>
+              <div class="quiz-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="progressBar"></div>
+                </div>
+                <span class="quiz-progress-counter" id="positionQuestionCounter">Вопрос 1 из 5</span>
               </div>
 
               <div class="question" id="question"></div>
@@ -443,11 +446,14 @@
                   Ответь на несколько вопросов
                 </p>
 
-                <div class="progress-bar">
-                  <div
-                    class="progress-fill"
-                    id="heroProgressBar"
-                  ></div>
+                <div class="quiz-progress">
+                  <div class="progress-bar">
+                    <div
+                      class="progress-fill"
+                      id="heroProgressBar"
+                    ></div>
+                  </div>
+                  <span class="quiz-progress-counter" id="heroQuestionCounter">Вопрос 1 из 5</span>
                 </div>
 
                 <div class="question" id="heroQuestion"></div>
@@ -843,6 +849,6 @@
     <script src="heroes-offlane.js?v=2"></script>
     <script src="heroes-pos45.js?v=2"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=134"></script>
+    <script src="script.js?v=135"></script>
   </body>
 </html>
