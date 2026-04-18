@@ -2543,7 +2543,7 @@ function _clearFeedbackStatus() {
 function _setFeedbackStatus(text, type) {
     var el = document.getElementById('feedback-status');
     if (!el) return;
-    el.textContent = text;
+    el.innerHTML = text;
     el.className = 'feedback-status ' + (type || '');
 }
 
@@ -2584,13 +2584,13 @@ async function submitFeedback() {
     var ta  = document.getElementById('feedback-message');
 
     if (!_feedbackRating) {
-        _setFeedbackStatus('Выбери оценку 👆', 'hint');
+        _setFeedbackStatus('Выбери оценку <i class="ph ph-hand-pointing" aria-hidden="true"></i>', 'hint');
         return;
     }
 
     var message = (ta ? ta.value : '').trim();
     if (!message) {
-        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии 🙏', 'hint');
+        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии <i class="ph ph-hands-praying" aria-hidden="true"></i>', 'hint');
         return;
     }
 
@@ -2615,7 +2615,7 @@ async function submitFeedback() {
         });
 
         if (resp.ok) {
-            _setFeedbackStatus('Спасибо за отзыв ❤️', 'ok');
+            _setFeedbackStatus('Спасибо за отзыв <i class="ph ph-heart" aria-hidden="true"></i>', 'ok');
             _feedbackRating = null;
             _feedbackTags.clear();
             document.querySelectorAll('.feedback-rating-btn').forEach(function(b) { b.classList.remove('selected'); });
