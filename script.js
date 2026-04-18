@@ -3600,11 +3600,21 @@ function _renderHomeDraftWidget(cached, lastHistory) {
     var synPct = syn != null ? Math.min(100, Math.round((syn / 50) * 100)) : null;
     var muPct  = mu  != null ? Math.min(100, Math.round((mu  / 50) * 100)) : null;
 
+    var allyIds = (lastHistory && Array.isArray(lastHistory.ally_heroes)) ? lastHistory.ally_heroes.slice(0, 5) : [];
+    var heroesHtml = '';
+    if (allyIds.length) {
+        heroesHtml = '<div class="home-draft-heroes">' + allyIds.map(function(id) {
+            var url = _drafterHeroIcon(id);
+            return '<div class="home-draft-hero">' + (url ? '<img src="' + _escHtml(url) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div>';
+        }).join('') + '</div>';
+    }
+
     body.innerHTML =
         '<div class="home-draft-top">' +
             '<div class="home-draft-score">' + totalRounded + '<span class="home-draft-score-max">/100</span></div>' +
             '<div class="home-draft-rank" data-rank="' + _escHtml(rank) + '">' + _escHtml(rank) + '</div>' +
         '</div>' +
+        heroesHtml +
         '<div class="home-draft-bars">' +
             _draftBarRow('Синергия', 'positive', synPct) +
             _draftBarRow('Матчапы', 'warning', muPct) +
