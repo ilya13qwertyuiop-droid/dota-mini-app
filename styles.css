@@ -4371,9 +4371,10 @@ margin-top: 14px;
 
 /* ── Skip button — top-right pill ─────────────────────────────── */
 .dr-skip-btn {
-  position: fixed;
+  position: fixed !important;
   top: max(12px, env(safe-area-inset-top, 12px));
   right: 14px;
+  transform: none;
   padding: 5px 11px;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.14);
@@ -4609,11 +4610,13 @@ margin-top: 14px;
 }
 
 .dr-syn-summary {
-  display: inline-flex;
+  display: flex;
+  align-self: center;
   align-items: baseline;
   justify-content: center;
   gap: 10px;
-  margin: 18px auto 0;
+  width: fit-content;
+  margin-top: 18px;
   padding: 8px 14px;
   background: var(--bg-surface);
   border: 1px solid rgba(255,255,255,0.08);
