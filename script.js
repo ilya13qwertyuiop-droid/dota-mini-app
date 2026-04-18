@@ -2949,6 +2949,7 @@ var _HEROES_CATALOG_DATA = [
 var _heroesCatalogBound = false;
 var _heroesCatalogRendered = false;
 var _catalogLastFocus = null;
+var _catalogContext = 'matchup';
 
 var _CATALOG_ATTR_ORDER = ['str', 'agi', 'int', 'all'];
 var _CATALOG_ATTR_LABELS = {
@@ -2975,27 +2976,33 @@ function initHeroesCatalog() {
     _heroesCatalogBound = true;
 
     var openBtn = document.getElementById('matchup-search-catalog-btn');
+    var drafterOpenBtn = document.getElementById('drafter-search-catalog-btn');
     var closeBtn = document.getElementById('heroes-catalog-close');
     var overlay = document.getElementById('heroes-catalog-overlay');
 
-    if (openBtn) {
-        // iOS-обход: когда инпут сфокусирован и клавиатура поднята,
-        // первый touchend уходит на dismiss keyboard и click не фирится.
-        // Ловим touchend напрямую и блёрим инпут заранее.
-        var lastCatalogOpenAt = 0;
-        var catalogOpenHandler = function (e) {
+    function _bindCatalogOpener(btn, inputId, contextName) {
+        if (!btn) return;
+        var lastOpenAt = 0;
+        var handler = function (e) {
             var now = Date.now();
-            if (now - lastCatalogOpenAt < 500) return;
-            lastCatalogOpenAt = now;
+            if (now - lastOpenAt < 500) return;
+            lastOpenAt = now;
             if (e && typeof e.preventDefault === 'function') e.preventDefault();
             if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
-            var input = document.getElementById('matchup-hero-input');
-            if (input && typeof input.blur === 'function') input.blur();
+            var inputEl = inputId ? document.getElementById(inputId) : null;
+            if (inputEl && typeof inputEl.blur === 'function') inputEl.blur();
+            _catalogContext = contextName;
             openHeroesCatalog();
         };
-        openBtn.addEventListener('touchend', catalogOpenHandler);
-        openBtn.addEventListener('click', catalogOpenHandler);
+        btn.addEventListener('touchend', handler);
+        btn.addEventListener('click', handler);
     }
+
+    // iOS-обход: когда инпут сфокусирован и клавиатура поднята,
+    // первый touchend уходит на dismiss keyboard и click не фирится.
+    // Ловим touchend напрямую и блёрим инпут заранее.
+    _bindCatalogOpener(openBtn, 'matchup-hero-input', 'matchup');
+    _bindCatalogOpener(drafterOpenBtn, 'drafter-search', 'drafter');
     if (closeBtn) {
         closeBtn.addEventListener('click', function (e) {
             e.preventDefault();
@@ -3142,6 +3149,13 @@ function renderHeroesCatalog() {
             var name = tile.getAttribute('data-hero-name');
             if (!name) return;
             closeHeroesCatalog();
+            if (_catalogContext === 'drafter') {
+                var hid = window.dotaHeroIds && window.dotaHeroIds[name];
+                if (hid && typeof selectDrafterHero === 'function') {
+                    selectDrafterHero(hid);
+                }
+                return;
+            }
             if (matchupPage && typeof matchupPage.selectHero === 'function') {
                 matchupPage.selectHero(name);
             }
@@ -3731,7 +3745,7 @@ var _drafterEnemyPick = [];          // [{hero_id, position}]
 var _drafterAllyPick = [null, null, null, null, null]; // null = пусто
 var _drafterActiveSlot = 0;
 var _drafterMatchLoaded = false;
-var _drafterAttrFilter = 'str';      // 'str' | 'agi' | 'int' | 'all'
+var _drafterPosFilter = 1;           // 1..5 — основная позиция героя
 var _drafterLeaderboardCache = null;
 var _drafterEnemyManualMode = false; // true = пользователь сам выбирает врагов
 var _drafterActiveEnemySlot = -1;    // -1 = клик по герою идёт в союзный слот
@@ -3756,6 +3770,9 @@ function initDrafter() {
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
 
+    // Bind catalog button (idempotent — guarded by _heroesCatalogBound)
+    if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
+
     // Prefetch лидерборда в фоне
     if (!_drafterLeaderboardCache) {
         fetch(window.API_BASE_URL + '/draft/leaderboard')
@@ -3768,7 +3785,7 @@ function initDrafter() {
     if (!_drafterMatchLoaded) {
         loadDrafterMatch();
     } else {
-        _renderAttrFilterBtns();
+        _renderPosFilterBtns();
         _updateManualBtn();
         renderDrafterSlots();
         renderDrafterGrid();
@@ -3818,7 +3835,7 @@ async function loadDrafterMatch() {
     }
     var filtersEl = document.getElementById('drafter-pos-filters');
     if (filtersEl) filtersEl.style.opacity = '1';
-    _renderAttrFilterBtns();
+    _renderPosFilterBtns();
     renderDrafterSlots();
     renderDrafterGrid();
 }
@@ -3909,7 +3926,7 @@ function enableEnemyManualMode() {
     if (searchEl) searchEl.value = '';
     var filtersEl = document.getElementById('drafter-pos-filters');
     if (filtersEl) filtersEl.style.opacity = '1';
-    _renderAttrFilterBtns();
+    _renderPosFilterBtns();
     _updateManualBtn();
     renderDrafterSlots();
     renderDrafterGrid();
@@ -3965,16 +3982,17 @@ function drafterSlotClick(slotIndex) {
     renderDrafterGrid();
 }
 
-function setDrafterAttrFilter(attr) {
-    _drafterAttrFilter = attr;
-    _renderAttrFilterBtns();
+function setDrafterPosFilter(pos) {
+    _drafterPosFilter = pos;
+    _renderPosFilterBtns();
     renderDrafterGrid();
 }
 
-function _renderAttrFilterBtns() {
+function _renderPosFilterBtns() {
     var btns = document.querySelectorAll('.drafter-pos-btn');
     btns.forEach(function(btn) {
-        btn.classList.toggle('drafter-pos-btn--active', btn.dataset.attr === _drafterAttrFilter);
+        var p = parseInt(btn.dataset.pos, 10);
+        btn.classList.toggle('drafter-pos-btn--active', p === _drafterPosFilter);
     });
 }
 
@@ -4010,11 +4028,11 @@ function renderDrafterGrid() {
     heroes.sort(function(a, b) { return a.name.localeCompare(b.name); });
 
     if (query) {
-        // Поиск по тексту — все герои, фильтр атрибута игнорируется
+        // Поиск по тексту — все герои, фильтр позиции игнорируется
         heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
     } else {
-        // Фильтр по основному атрибуту: 'str' | 'agi' | 'int' | 'all'
-        heroes = heroes.filter(function(h) { return HERO_PRIMARY_ATTRS[h.id] === _drafterAttrFilter; });
+        // Фильтр по основной позиции (1..5)
+        heroes = heroes.filter(function(h) { return HERO_PRIMARY_POSITIONS[h.id] === _drafterPosFilter; });
     }
 
     // Уже выбранные
