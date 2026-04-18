@@ -434,6 +434,7 @@
 
 
             document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('positionQuestionCounter').textContent = `Вопрос ${currentQuestion + 1} из ${quizData.length}`;
             document.getElementById('question').textContent = questionData.question;
 
 
@@ -683,6 +684,7 @@
                 this.state.currentSelections = [];
 
                 document.getElementById('heroProgressBar').style.width = progress + '%';
+                document.getElementById('heroQuestionCounter').textContent = `Вопрос ${this.state.currentQuestionIndex + 1} из ${this.state.currentQuestionSet.length}`;
                 document.getElementById('heroQuestion').textContent = question.question;
 
                 const hint = document.getElementById('heroQuizHint');
@@ -806,6 +808,10 @@
 
                 const heroes = this.heroDatabase[this.state.selectedPosition];
 
+                let maxPossibleScore = 0;
+                Object.values(selectedTags).forEach(w => { maxPossibleScore += w; });
+                if (selectedDifficulty) maxPossibleScore += 1.5;
+
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
                     const heroTags = hero.tags;
@@ -835,7 +841,7 @@
                         score += Math.random() * 0.02 - 0.01;
                     }
 
-                    return { ...hero, score };
+                    return { ...hero, score, maxPossibleScore };
                 });
 
                 scoredHeroes.sort((a, b) => b.score - a.score);
@@ -1062,23 +1068,11 @@
                 const heroListContainer = document.getElementById('heroResultList');
                 heroListContainer.innerHTML = '';
 
-                // Находим реальные max/min среди выбранных героев
-                const scores = topHeroes.map(h => h.score);
-                const maxScore = Math.max(...scores);
-                const minScore = Math.min(...scores);
-                const range = maxScore - minScore || 1; // защита от 0
-
                 topHeroes.forEach((hero, index) => {
                     const card = document.createElement('div');
 
-                    // Если у всех score одинаковый, не будем врать 100% — дадим всем 75%
-                    let matchPercent;
-                    if (maxScore === minScore) {
-                        matchPercent = 75;
-                    } else {
-                        const normalized = (hero.score - minScore) / range; // от 0 до 1
-                        matchPercent = Math.round(60 + normalized * 40);    // 60–100%
-                    }
+                    const maxPossible = hero.maxPossibleScore || 1;
+                    const matchPercent = Math.max(0, Math.min(100, Math.round((hero.score / maxPossible) * 100)));
 
                     card.className = 'hero-card';
 
@@ -1126,13 +1120,8 @@
                     type: 'hero_quiz',
                     heroPositionIndex: positionIndex, // 0..4
                     topHeroes: topHeroes.map(hero => {
-                        let matchPercent;
-                        if (maxScore === minScore) {
-                            matchPercent = 75;
-                        } else {
-                            const normalized = (hero.score - minScore) / range; // 0..1
-                            matchPercent = Math.round(60 + normalized * 40);    // 60–100%
-                        }
+                        const maxPossible = hero.maxPossibleScore || 1;
+                        const matchPercent = Math.max(0, Math.min(100, Math.round((hero.score / maxPossible) * 100)));
                         return {
                             name: hero.name,
                             score: hero.score,
