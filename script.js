@@ -4461,7 +4461,7 @@ function showDrafterResult(data) {
     document.body.appendChild(_skipBtn);
     gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.4, ease: 'power2.out'});
 
-    // ─── STEP 1 · ПРОТИВОСТОЯНИЕ ────────────────────────────────────
+    // ─── STEP 1 · ПРОТИВОСТОЯНИЕ (1А сильнейший → 1Б слабейший) ─────
     async function playConfront() {
         if (!allyIds.length || !enemyIds.length || !matchupPairs.length) return;
 
@@ -4509,7 +4509,7 @@ function showDrafterResult(data) {
             }).join('');
 
             return (
-                '<div class="dr-cf-card dr-cf-card--' + side + '">' +
+                '<div class="dr-cf-card dr-cf-card--' + side + ' dr-cf-card--solo">' +
                     '<div class="dr-cf-card-label" style="color:' + labelColor + ';">' + labelText + '</div>' +
                     '<div class="dr-cf-card-portrait">' +
                         '<img src="' + _icon(t.allyId) + '" onerror="this.style.opacity=0">' +
@@ -4522,34 +4522,33 @@ function showDrafterResult(data) {
             );
         }
 
-        confrontScreen.innerHTML = (
-            '<div class="dr-step-label">ШАГ 1 · ПРОТИВОСТОЯНИЕ</div>' +
-            '<div class="dr-cf-grid">' +
-                cardHtml('best',  strongest) +
-                cardHtml('worst', weakest) +
-            '</div>'
-        );
-
         confrontScreen.style.display = 'block';
 
-        var stepEl = confrontScreen.querySelector('.dr-step-label');
-        var cards  = confrontScreen.querySelectorAll('.dr-cf-card');
+        async function showBeat(side, t, stepText) {
+            confrontScreen.innerHTML = (
+                '<div class="dr-step-label">' + stepText + '</div>' +
+                '<div class="dr-cf-grid dr-cf-grid--single">' +
+                    cardHtml(side, t) +
+                '</div>'
+            );
 
-        gsap.set(stepEl, {opacity: 0, y: -8});
-        gsap.set(cards,  {opacity: 0, y: 20});
+            var stepEl = confrontScreen.querySelector('.dr-step-label');
+            var card   = confrontScreen.querySelector('.dr-cf-card');
 
-        gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
-        gsap.to(cards,  {opacity: 1, y: 0, duration: 0.55, stagger: 0.15, delay: 0.12, ease: 'power3.out'});
+            gsap.set(stepEl, {opacity: 0, y: -8});
+            gsap.set(card,   {opacity: 0, y: 20});
 
-        await sleep(800);
-        if (_skip) return;
+            gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
+            gsap.to(card,   {opacity: 1, y: 0, duration: 0.55, delay: 0.12, ease: 'power3.out'});
 
-        cards.forEach(function(card, ci) {
+            await sleep(720);
+            if (_skip) return;
+
             var totalEl = card.querySelector('.dr-cf-card-total');
             var target  = parseFloat(totalEl.getAttribute('data-target'));
             var c = {v: 0};
             gsap.to(c, {
-                v: target, duration: 0.8, delay: ci * 0.15, ease: 'power2.out',
+                v: target, duration: 0.8, ease: 'power2.out',
                 onUpdate: function() {
                     totalEl.textContent = (c.v >= 0 ? '+' : '') + c.v.toFixed(1);
                 }
@@ -4561,19 +4560,25 @@ function showDrafterResult(data) {
                 gsap.to(fill, {
                     width: pct + '%',
                     duration: 0.5,
-                    delay: ci * 0.15 + 0.18 + fi * 0.05,
+                    delay: 0.18 + fi * 0.05,
                     ease: 'power2.out'
                 });
             });
-        });
 
-        await sleep(2000);
+            await sleep(2200);
+            if (_skip) return;
+
+            gsap.to(confrontScreen, {opacity: 0, duration: 0.35, ease: 'power2.in'});
+            await sleep(380);
+            gsap.set(confrontScreen, {opacity: 1});
+        }
+
+        await showBeat('best',  strongest, 'ШАГ 1А · СИЛЬНЕЙШИЙ');
+        if (_skip) return;
+        await showBeat('worst', weakest,   'ШАГ 1Б · СЛАБЕЙШИЙ');
         if (_skip) return;
 
-        gsap.to(confrontScreen, {opacity: 0, duration: 0.4, ease: 'power2.in'});
-        await sleep(420);
         confrontScreen.style.display = 'none';
-        gsap.set(confrontScreen, {opacity: 1});
     }
 
     // ─── STEP 2 · СИНЕРГИЯ — pentagon redone ────────────────────────
@@ -4615,7 +4620,7 @@ function showDrafterResult(data) {
         edges.forEach(function(e) { e.intensity = Math.abs(e.v) / maxAbs; });
         edges.sort(function(a, b) { return Math.abs(a.v) - Math.abs(b.v); });
 
-        var avgSyn = allValues.reduce(function(s, v) { return s + v; }, 0) / (allValues.length || 1);
+        var sumSyn = allValues.reduce(function(s, v) { return s + v; }, 0);
 
         var bgPolyPts = pts.map(function(p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
 
@@ -4646,7 +4651,7 @@ function showDrafterResult(data) {
             '<div class="dr-syn-stage" style="width:' + W + 'px;height:' + H + 'px;">' +
                 svg + verticesHtml +
                 '<div class="dr-syn-center" style="left:' + cx + 'px;top:' + cy + 'px;">' +
-                    '<div class="dr-syn-center-label">СРЕДНЯЯ</div>' +
+                    '<div class="dr-syn-center-label">СУММА</div>' +
                     '<div class="dr-syn-center-val" id="dr-syn-cval">+0.0</div>' +
                 '</div>' +
             '</div>'
@@ -4684,30 +4689,35 @@ function showDrafterResult(data) {
         await sleep(700);
         if (_skip) return;
 
-        edgeEls.forEach(function(edge, idx) {
-            var len = edge.getTotalLength();
+        for (var idx = 0; idx < edgeEls.length; idx++) {
+            if (_skip) return;
+            var edge = edgeEls[idx];
+            var len  = edge.getTotalLength();
             edge.style.strokeDasharray  = len;
             edge.style.strokeDashoffset = len;
-            gsap.to(edge, {opacity: 1, duration: 0.05});
-            gsap.to(edge, {
-                strokeDashoffset: 0,
-                duration: 0.5,
-                delay: idx * 0.05,
-                ease: 'power2.inOut'
-            });
-        });
+            edge.style.opacity = 1;
 
-        await sleep(edgeEls.length * 50 + 500);
+            var pair = edges[idx];
+            var v1   = vertices[pair.i];
+            var v2   = vertices[pair.j];
+
+            gsap.to(edge, { strokeDashoffset: 0, duration: 0.30, ease: 'power2.inOut' });
+            gsap.fromTo([v1, v2],
+                { scale: 1 },
+                { scale: 1.10, duration: 0.16, yoyo: true, repeat: 1, ease: 'power1.inOut' });
+
+            await sleep(380);
+        }
         if (_skip) return;
 
         gsap.to(center, {opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.4)'});
         var cnt = {v: 0};
         gsap.to(cnt, {
-            v: avgSyn, duration: 0.85, ease: 'power2.out',
+            v: sumSyn, duration: 0.85, ease: 'power2.out',
             onUpdate: function() {
                 cValEl.textContent = (cnt.v >= 0 ? '+' : '') + cnt.v.toFixed(1);
-                cValEl.style.color = cnt.v > 0.5 ? 'var(--positive)'
-                                  : cnt.v < -0.5 ? 'var(--negative)'
+                cValEl.style.color = cnt.v > 3 ? 'var(--positive)'
+                                  : cnt.v < -3 ? 'var(--negative)'
                                   : 'var(--warning)';
             }
         });
@@ -4738,17 +4748,28 @@ function showDrafterResult(data) {
         var isRecord = total > best;
         if (isRecord) localStorage.setItem('drafter_best_score', total);
 
-        function pairValue(allyId, enemyId) {
+        function matchupValue(allyId, enemyId) {
             for (var k = 0; k < matchupPairs.length; k++) {
                 var p = matchupPairs[k];
                 if (p.ally_id === allyId && p.enemy_id === enemyId) return p.value;
             }
             return 0;
         }
+        function synergyValue(a, b) {
+            if (a === b) return null;
+            for (var k = 0; k < synergyPairs.length; k++) {
+                var p = synergyPairs[k];
+                if ((p.hero_id1 === a && p.hero_id2 === b) ||
+                    (p.hero_id1 === b && p.hero_id2 === a)) return p.value;
+            }
+            return 0;
+        }
 
-        var maxAbs = matchupPairs.reduce(function(m, p) { return Math.max(m, Math.abs(p.value)); }, 1);
+        var maxAbsMu  = matchupPairs.reduce(function(m, p) { return Math.max(m, Math.abs(p.value)); }, 1);
+        var maxAbsSyn = synergyPairs.reduce(function(m, p) { return Math.max(m, Math.abs(p.value)); }, 1);
 
-        function cellBg(v) {
+        function cellBg(v, maxAbs) {
+            if (v === null) return 'rgba(255,255,255,0.02)';
             if (Math.abs(v) < 0.1) return 'rgba(255,255,255,0.03)';
             var alpha = Math.min(0.45, 0.08 + Math.abs(v) / maxAbs * 0.40);
             return v > 0
@@ -4756,48 +4777,86 @@ function showDrafterResult(data) {
                 : 'rgba(229, 83, 75, ' + alpha.toFixed(3) + ')';
         }
         function cellTxt(v) {
-            if (v > 0.5)  return '#a8e7c4';
-            if (v < -0.5) return '#f3aaa6';
+            if (v === null)   return 'rgba(255,255,255,0.18)';
+            if (v > 0.5)      return '#a8e7c4';
+            if (v < -0.5)     return '#f3aaa6';
             return 'var(--text-secondary)';
         }
+        function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(1); }
+        function sumColorCls(s) {
+            return s > 0.5 ? 'var(--positive)' : s < -0.5 ? 'var(--negative)' : 'var(--warning)';
+        }
 
-        var headerCells = '<div class="dr-mx-cell dr-mx-corner"></div>' +
+        // ── Matrix 1: ally × enemy (advantage) ──────────────────────────
+        var muHeader = '<div class="dr-mx-cell dr-mx-corner"></div>' +
             enemyIds.map(function(id) {
                 return '<div class="dr-mx-cell dr-mx-head dr-mx-head-enemy"><img src="' + _icon(id) + '" onerror="this.style.opacity=0"></div>';
             }).join('') +
-            '<div class="dr-mx-cell dr-mx-totals-head">Σ</div>';
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>';
 
-        var dataRows = allyIds.map(function(allyId) {
+        var muRows = allyIds.map(function(allyId) {
             var rowSum = 0;
             var cellsHtml = enemyIds.map(function(enemyId) {
-                var v = pairValue(allyId, enemyId);
+                var v = matchupValue(allyId, enemyId);
                 rowSum += v;
-                return '<div class="dr-mx-cell dr-mx-data" style="background:' + cellBg(v) + ';color:' + cellTxt(v) + ';">' +
-                    (v >= 0 ? '+' : '') + v.toFixed(1) +
-                '</div>';
+                return '<div class="dr-mx-cell dr-mx-data" style="background:' + cellBg(v, maxAbsMu) + ';color:' + cellTxt(v) + ';">' + fmt(v) + '</div>';
             }).join('');
-            var sumColor = rowSum > 0.5 ? 'var(--positive)' : rowSum < -0.5 ? 'var(--negative)' : 'var(--warning)';
             return '<div class="dr-mx-row">' +
                 '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(allyId) + '" onerror="this.style.opacity=0"></div>' +
                 cellsHtml +
-                '<div class="dr-mx-cell dr-mx-rowsum" style="color:' + sumColor + ';">' + (rowSum >= 0 ? '+' : '') + rowSum.toFixed(1) + '</div>' +
+                '<div class="dr-mx-cell dr-mx-rowsum" style="color:' + sumColorCls(rowSum) + ';">' + fmt(rowSum) + '</div>' +
             '</div>';
         }).join('');
 
-        var colSums = enemyIds.map(function(enemyId) {
-            return allyIds.reduce(function(s, allyId) { return s + pairValue(allyId, enemyId); }, 0);
+        var muColSums = enemyIds.map(function(enemyId) {
+            return allyIds.reduce(function(s, allyId) { return s + matchupValue(allyId, enemyId); }, 0);
         });
-        var grandSum = colSums.reduce(function(s, v) { return s + v; }, 0);
-
-        var colSumRow = '<div class="dr-mx-row dr-mx-row-tot">' +
-            '<div class="dr-mx-cell dr-mx-totals-head">Σ</div>' +
-            colSums.map(function(s) {
-                var col = s > 0.5 ? 'var(--positive)' : s < -0.5 ? 'var(--negative)' : 'var(--warning)';
-                return '<div class="dr-mx-cell dr-mx-colsum" style="color:' + col + ';">' + (s >= 0 ? '+' : '') + s.toFixed(1) + '</div>';
+        var muGrand = muColSums.reduce(function(s, v) { return s + v; }, 0);
+        var muColRow = '<div class="dr-mx-row dr-mx-row-tot">' +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>' +
+            muColSums.map(function(s) {
+                return '<div class="dr-mx-cell dr-mx-colsum" style="color:' + sumColorCls(s) + ';">' + fmt(s) + '</div>';
             }).join('') +
-            '<div class="dr-mx-cell dr-mx-grand" style="color:' + (grandSum >= 0 ? 'var(--positive)' : 'var(--negative)') + ';">' +
-                (grandSum >= 0 ? '+' : '') + grandSum.toFixed(1) +
-            '</div>' +
+            '<div class="dr-mx-cell dr-mx-grand" style="color:' + (muGrand >= 0 ? 'var(--positive)' : 'var(--negative)') + ';">' + fmt(muGrand) + '</div>' +
+        '</div>';
+
+        // ── Matrix 2: ally × ally (synergy, symmetric) ──────────────────
+        var synHeader = '<div class="dr-mx-cell dr-mx-corner"></div>' +
+            allyIds.map(function(id) {
+                return '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(id) + '" onerror="this.style.opacity=0"></div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>';
+
+        var synRows = allyIds.map(function(rowId) {
+            var rowSum = 0;
+            var cellsHtml = allyIds.map(function(colId) {
+                var v = synergyValue(rowId, colId);
+                if (v === null) {
+                    return '<div class="dr-mx-cell dr-mx-data dr-mx-diag" style="background:' + cellBg(null) + ';color:' + cellTxt(null) + ';">—</div>';
+                }
+                rowSum += v;
+                return '<div class="dr-mx-cell dr-mx-data" style="background:' + cellBg(v, maxAbsSyn) + ';color:' + cellTxt(v) + ';">' + fmt(v) + '</div>';
+            }).join('');
+            return '<div class="dr-mx-row">' +
+                '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(rowId) + '" onerror="this.style.opacity=0"></div>' +
+                cellsHtml +
+                '<div class="dr-mx-cell dr-mx-rowsum" style="color:' + sumColorCls(rowSum) + ';">' + fmt(rowSum) + '</div>' +
+            '</div>';
+        }).join('');
+
+        var synColSums = allyIds.map(function(colId) {
+            return allyIds.reduce(function(s, rowId) {
+                var v = synergyValue(rowId, colId);
+                return s + (v === null ? 0 : v);
+            }, 0);
+        });
+        var synGrand = synColSums.reduce(function(s, v) { return s + v; }, 0) / 2;
+        var synColRow = '<div class="dr-mx-row dr-mx-row-tot">' +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>' +
+            synColSums.map(function(s) {
+                return '<div class="dr-mx-cell dr-mx-colsum" style="color:' + sumColorCls(s) + ';">' + fmt(s) + '</div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-grand" style="color:' + (synGrand >= 0 ? 'var(--positive)' : 'var(--negative)') + ';">' + fmt(synGrand) + '</div>' +
         '</div>';
 
         finalScreen.style.display = 'block';
@@ -4814,9 +4873,18 @@ function showDrafterResult(data) {
                     '<div class="dr-fin-block-title">МАТРИЦА ПРЕИМУЩЕСТВА</div>' +
                     '<div class="dr-fin-block-sub">наши герои × вражеские</div>' +
                     '<div class="dr-mx-grid">' +
-                        '<div class="dr-mx-row dr-mx-row-head">' + headerCells + '</div>' +
-                        dataRows +
-                        colSumRow +
+                        '<div class="dr-mx-row dr-mx-row-head">' + muHeader + '</div>' +
+                        muRows +
+                        muColRow +
+                    '</div>' +
+                '</div>' +
+                '<div class="dr-fin-block">' +
+                    '<div class="dr-fin-block-title">МАТРИЦА СИНЕРГИИ</div>' +
+                    '<div class="dr-fin-block-sub">наши герои между собой</div>' +
+                    '<div class="dr-mx-grid">' +
+                        '<div class="dr-mx-row dr-mx-row-head">' + synHeader + '</div>' +
+                        synRows +
+                        synColRow +
                     '</div>' +
                 '</div>' +
                 '<button class="dr-fin-btn" onclick="loadDrafterMatch()">↻  НОВЫЙ МАТЧ</button>' +
