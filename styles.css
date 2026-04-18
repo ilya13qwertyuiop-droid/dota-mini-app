@@ -4676,34 +4676,17 @@ margin-top: 14px;
   transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.heroes-catalog-dragzone {
+.heroes-catalog-header {
   position: sticky;
   top: 0;
-  background: var(--bg-base, #0a0a0f);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  z-index: 2;
-  touch-action: none;
-  cursor: grab;
-}
-
-.heroes-catalog-dragzone:active {
-  cursor: grabbing;
-}
-
-.heroes-catalog-grip {
-  width: 36px;
-  height: 4px;
-  margin: 8px auto 0;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.heroes-catalog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px 12px;
+  padding: 16px 16px 12px;
+  background: var(--bg-base, #0a0a0f);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 2;
 }
 
 .heroes-catalog-titles {
@@ -4785,11 +4768,22 @@ margin-top: 14px;
 }
 
 .heroes-catalog-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.12em;
+}
+
+.heroes-catalog-section-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: block;
+  object-fit: contain;
 }
 
 .heroes-catalog-section-count {
@@ -4852,7 +4846,7 @@ margin-top: 14px;
 
 .heroes-catalog-tile-name {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text-secondary);
   line-height: 1.3;
   white-space: nowrap;
