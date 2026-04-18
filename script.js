@@ -3509,12 +3509,14 @@ function homeHeroWidgetClick() {
 // ── Виджет: последний драфт ──────────────────────────────────────────
 var _HOME_DRAFT_CACHE_KEY = 'home_last_draft_eval';
 
-function cacheLastDraftEval(data) {
+function cacheLastDraftEval(data, allyIds, enemyIds) {
     try {
         localStorage.setItem(_HOME_DRAFT_CACHE_KEY, JSON.stringify({
             total_score: data.total_score,
             synergy_score: data.synergy_score,
             matchup_score: data.matchup_score,
+            ally_heroes: Array.isArray(allyIds) ? allyIds : [],
+            enemy_heroes: Array.isArray(enemyIds) ? enemyIds : [],
             saved_at: Date.now(),
         }));
     } catch (e) {}
@@ -3600,8 +3602,8 @@ function _renderHomeDraftWidget(cached, lastHistory) {
     var synPct = syn != null ? Math.min(100, Math.round((syn / 50) * 100)) : null;
     var muPct  = mu  != null ? Math.min(100, Math.round((mu  / 50) * 100)) : null;
 
-    var allyIds = (lastHistory && Array.isArray(lastHistory.ally_heroes)) ? lastHistory.ally_heroes.slice(0, 5) : [];
-    var enemyIds = (lastHistory && Array.isArray(lastHistory.enemy_heroes)) ? lastHistory.enemy_heroes.slice(0, 5) : [];
+    var allyIds = (cached && Array.isArray(cached.ally_heroes)) ? cached.ally_heroes.slice(0, 5) : [];
+    var enemyIds = (cached && Array.isArray(cached.enemy_heroes)) ? cached.enemy_heroes.slice(0, 5) : [];
     var heroesHtml = '';
     if (allyIds.length || enemyIds.length) {
         heroesHtml = '<div class="home-draft-heroes">' +
@@ -4173,7 +4175,9 @@ async function submitDraft() {
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
-        if (typeof cacheLastDraftEval === 'function') cacheLastDraftEval(data);
+        var allyIds = ally.map(function(h) { return h && h.hero_id; }).filter(Boolean);
+        var enemyIds = enemy.map(function(h) { return h && h.hero_id; }).filter(Boolean);
+        if (typeof cacheLastDraftEval === 'function') cacheLastDraftEval(data, allyIds, enemyIds);
         showDrafterResult(data);
     } catch (e) {
         console.error('[drafter] submitDraft error:', e);
