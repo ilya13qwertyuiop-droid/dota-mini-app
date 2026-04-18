@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=109" />
+    <link rel="stylesheet" href="styles.css?v=111" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -239,14 +239,13 @@
               <i class="card-icon ph ph-game-controller" aria-hidden="true"></i>
               <span class="card-title">Какая твоя позиция?</span>
             </div>
-            <div class="card-content" style="margin-bottom: 16px;">
+            <div class="card-content">
               Пройди тест за 2 минуты и узнай, на какой роли ты раскроешься
               лучше всего
             </div>
             <button
-              class="btn-small"
-              onclick="startPositionQuiz()" 
-              style="width: 100%; padding: 12px;"
+              class="btn-small btn-small--full"
+              onclick="startPositionQuiz()"
             >
               Начать тест →
             </button>
@@ -258,14 +257,13 @@
               <i class="card-icon ph ph-user-focus" aria-hidden="true"></i>
               <span class="card-title">Подбор идеального героя</span>
             </div>
-            <div class="card-content" style="margin-bottom: 16px;">
+            <div class="card-content">
               Ответь на вопросы и получи список героев, которые идеально
               подходят под твой стиль игры
             </div>
             <button
-              class="btn-small"
+              class="btn-small btn-small--full"
               onclick="startHeroQuiz()"
-              style="width: 100%; padding: 12px;"
             >
               Подобрать героя →
             </button>
@@ -382,9 +380,8 @@
               </div>
 
               <button
-                class="btn-back"
+                class="btn-back btn-back--spaced"
                 onclick="backToQuizList()"
-                style="margin-top: 20px;"
               >
                 Назад
               </button>
@@ -431,9 +428,8 @@
               </div>
 
               <button
-                class="btn-back"
+                class="btn-back btn-back--spaced"
                 onclick="heroQuiz.showStartScreen()"
-                style="margin-top: 20px;"
               >
                 Назад
               </button>
@@ -476,9 +472,8 @@
               </div>
               <div class="hero-list" id="heroResultList"></div>
               <div
-                class="description"
+                class="description description--spaced"
                 id="heroResultDescription"
-                style="margin-top: 16px;"
               ></div>
 
               <button class="btn-outline" onclick="heroQuiz.restart()">
@@ -849,6 +844,6 @@
     <script src="heroes-offlane.js?v=2"></script>
     <script src="heroes-pos45.js?v=2"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=135"></script>
+    <script src="script.js?v=136"></script>
   </body>
 </html>
