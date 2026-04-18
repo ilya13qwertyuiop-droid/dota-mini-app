@@ -757,6 +757,13 @@ font-size: 18px;
 flex-shrink: 0;
 }
 
+.answer-btn .answer-icon {
+font-size: 18px;
+line-height: 1.4;
+flex-shrink: 0;
+color: var(--text-secondary);
+}
+
 .answer-btn span.text {
 flex: 1;
 }

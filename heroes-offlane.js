@@ -7,18 +7,22 @@ window.heroOfflaneData = {
       answers: [
         {
           text: 'Ключевой предмет для инициации',
+          icon: 'ph-package',
           tags: ['needs_blink']
         },
         {
           text: 'Предметы на стойкость',
+          icon: 'ph-shield',
           tags: ['needs_tank_items']
         },
         {
           text: 'Уровень и способности — сильный с 6-7 уровня, предметы вторичны',
+          icon: 'ph-lightning',
           tags: ['level_dependent']
         },
         {
           text: 'Фарм для масштабирования — нужны дорогие предметы',
+          icon: 'ph-coins',
           tags: ['needs_farm_scaling']
         }
       ]
@@ -29,18 +33,22 @@ window.heroOfflaneData = {
       answers: [
         {
           text: 'Длительный контроль — долго держу врагов в стане',
+          icon: 'ph-lock',
           tags: ['long_control']
         },
         {
           text: 'Быстрый контроль — короткие станы + урон',
+          icon: 'ph-lightning',
           tags: ['burst_control']
         },
         {
           text: 'Зональный контроль — замедления/сайленсы, ограничиваю пространство',
+          icon: 'ph-grid-four',
           tags: ['zone_control']
         },
         {
           text: 'Без сильного контроля — давлю уроном',
+          icon: 'ph-sword',
           tags: ['high_damage']
         }
       ]
@@ -51,18 +59,22 @@ window.heroOfflaneData = {
       answers: [
         {
           text: 'Агрессивно давлю керри, хочу убивать на линии',
+          icon: 'ph-fire',
           tags: ['lane_aggressive']
         },
         {
           text: 'Пассивно фармлю/выживаю до 6 уровня',
+          icon: 'ph-shield',
           tags: ['lane_passive']
         },
         {
           text: 'Быстро пушу линию и иду в лес',
+          icon: 'ph-tree',
           tags: ['lane_push_jungle']
         },
         {
           text: 'Активно роумлю после 6 уровня',
+          icon: 'ph-path',
           tags: ['lane_roam']
         }
       ]
@@ -73,18 +85,22 @@ window.heroOfflaneData = {
       answers: [
         {
           text: 'Играю с командой 5v5',
+          icon: 'ph-users-three',
           tags: ['teamfight_5v5']
         },
         {
           text: 'Хожу по разным лайнам — сплит-пушу',
+          icon: 'ph-arrows-split',
           tags: ['splitpush']
         },
         {
           text: 'Охочусь за одиночными героями на карте',
+          icon: 'ph-crosshair',
           tags: ['hunt_pickoff']
         },
         {
           text: 'Гибкий стиль — комбинирую драки, фарм и давление',
+          icon: 'ph-arrows-left-right',
           tags: ['flexible']
         }
       ]
@@ -95,14 +111,17 @@ window.heroOfflaneData = {
       answers: [
         {
           text: 'Простой — понятные способности, минимум микро',
+          icon: 'ph-leaf',
           tags: ['easy']
         },
         {
           text: 'Средний — нужно понимать тайминги и позиционирование',
+          icon: 'ph-scales',
           tags: ['medium']
         },
         {
           text: 'Сложный — люблю ломать пальцы',
+          icon: 'ph-fire',
           tags: ['hard']
         }
       ]
