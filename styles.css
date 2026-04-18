@@ -3662,9 +3662,23 @@ margin-top: 14px;
 
 /* ========== ДРАФТЕР ========== */
 
-.drafter-top-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 8px; }
-.drafter-top-title { font-size: 13px; font-weight: 800; color: var(--text-primary); letter-spacing: 1px; }
-.drafter-top-divider { height: 1px; background: rgba(255,255,255,0.05); margin: 0; }
+.drafter-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
+.drafter-top-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-wider);
+}
+.drafter-top-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin: 0;
+}
 
 /* ── Полноэкранные страницы (история / топ драфтеров) ─────────── */
 .drafter-fullpage {
@@ -3924,14 +3938,14 @@ margin-top: 14px;
 
 /* ── Доска драфта: единый тактический контейнер для двух команд ── */
 .draft-board {
-  margin: 8px 12px 12px;
+  margin: var(--space-2) var(--space-3) var(--space-3);
   background: var(--bg-surface);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  padding: 10px 10px 12px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .draft-board-row {
@@ -3973,9 +3987,9 @@ margin-top: 14px;
   border: 1px solid rgba(255,255,255,0.1);
   color: var(--text-secondary);
   font-size: var(--text-2xs);
-  font-weight: 500;
-  padding: 4px 9px;
-  border-radius: 6px;
+  font-weight: var(--font-medium);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   letter-spacing: 0.02em;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -4002,7 +4016,7 @@ margin-top: 14px;
 .drafter-slots-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .drafter-slot {
@@ -4091,8 +4105,8 @@ margin-top: 14px;
 }
 
 .drafter-picker {
-  margin: 0 16px 8px;
-  padding-top: 8px;
+  margin: 0 var(--space-3) var(--space-2);
+  padding-top: var(--space-2);
 }
 
 .drafter-search {
@@ -4100,11 +4114,11 @@ margin-top: 14px;
   box-sizing: border-box;
   background: rgba(255,255,255,0.07);
   border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 14px;
-  padding: 9px 14px;
-  margin-bottom: 10px;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
   outline: none;
 }
 
@@ -4114,29 +4128,30 @@ margin-top: 14px;
 
 .drafter-pos-filters {
   display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
   transition: opacity 0.2s;
 }
 
 .drafter-pos-btn {
   flex: 1;
   min-width: 0;
-  padding: 6px 4px;
+  min-height: 28px;
+  padding: var(--space-1) var(--space-1);
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
   color: var(--text-tertiary);
   background: transparent;
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: var(--space-1);
   line-height: 1;
 }
 
@@ -4158,7 +4173,7 @@ margin-top: 14px;
 .drafter-hero-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 .drafter-grid-hero {
@@ -4255,20 +4270,20 @@ margin-top: 14px;
   background: var(--accent);
   color: var(--text-primary);
   border: none;
-  border-radius: 9px;
-  padding: 10px;
-  font-size: 13px;
-  font-weight: 700;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
   cursor: pointer;
-  letter-spacing: 1px;
+  letter-spacing: var(--tracking-wider);
   width: 100%;
 }
 
 #drafter-evaluate-wrap {
   border-top: 1px solid rgba(255,255,255,0.06);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  padding: 10px 0;
-  margin: 4px 0;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  margin: 0;
+  text-align: center;
 }
 
 /* Результат — анимации */
