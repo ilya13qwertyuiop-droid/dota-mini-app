@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=117" />
+    <link rel="stylesheet" href="styles.css?v=118" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -698,21 +698,19 @@
             </div>
           </div>
 
-          <!-- Статистика — тактический stat-row -->
+          <!-- Статистика драфтера -->
           <div class="profile-stats" id="profile-stats">
             <div class="profile-stat">
-              <span class="profile-stat-label">Квизов</span>
-              <span class="profile-stat-value" id="profile-stat-quizzes">—</span>
-            </div>
-            <div class="profile-stat">
-              <span class="profile-stat-label">Позиций</span>
+              <span class="profile-stat-label">Лучший драфт</span>
               <span class="profile-stat-value">
-                <span id="profile-stat-positions">—</span><span class="profile-stat-denom">/5</span>
+                <span id="profile-stat-best-score">—</span><span class="profile-stat-rank" id="profile-stat-best-rank"></span>
               </span>
+              <span class="profile-stat-sub" id="profile-stat-best-desc">нет результата</span>
             </div>
             <div class="profile-stat">
-              <span class="profile-stat-label">Последний</span>
-              <span class="profile-stat-value" id="profile-stat-last">—</span>
+              <span class="profile-stat-label">Место в топе</span>
+              <span class="profile-stat-value" id="profile-stat-place">—</span>
+              <span class="profile-stat-sub" id="profile-stat-place-sub">нет результата</span>
             </div>
           </div>
 
@@ -868,6 +866,6 @@
     <script src="heroes-offlane.js?v=2"></script>
     <script src="heroes-pos45.js?v=2"></script>
     <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=141"></script>
+    <script src="script.js?v=142"></script>
   </body>
 </html>
