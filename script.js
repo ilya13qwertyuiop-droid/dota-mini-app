@@ -3756,10 +3756,6 @@ function _drafterHeroIcon(heroId) {
 }
 
 function initDrafter() {
-    // Показать лучший результат
-    var best = localStorage.getItem('drafter_best_score');
-    document.getElementById('drafter-best-score').textContent = best !== null ? best : '—';
-
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
@@ -3852,6 +3848,7 @@ function _renderAllySlots() {
         var cls = 'drafter-slot drafter-slot--ally';
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
+        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
         html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -3860,9 +3857,9 @@ function _renderAllySlots() {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
+            html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
         } else {
-            html += '<img src="/images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
-            html += '<span class="drafter-slot-plus">+</span>';
+            html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon" alt="">';
         }
         html += '</div>';
     }
@@ -3894,7 +3891,6 @@ function _renderEnemySlots() {
             }
         } else {
             html += '<img src="/images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
-            if (_drafterEnemyManualMode) html += '<span class="drafter-slot-plus">+</span>';
         }
         html += '</div>';
     }
@@ -4051,30 +4047,6 @@ function renderDrafterGrid() {
     });
 
     el.innerHTML = html;
-}
-
-function toggleDrafterMenu(e) {
-    if (e) e.stopPropagation();
-    var p = document.getElementById('drafter-top-menu-popover');
-    if (!p) return;
-    if (p.hasAttribute('hidden')) {
-        p.removeAttribute('hidden');
-        setTimeout(function() {
-            document.addEventListener('click', _drafterMenuOutsideClick);
-        }, 0);
-    } else {
-        closeDrafterMenu();
-    }
-}
-function closeDrafterMenu() {
-    var p = document.getElementById('drafter-top-menu-popover');
-    if (p) p.setAttribute('hidden', '');
-    document.removeEventListener('click', _drafterMenuOutsideClick);
-}
-function _drafterMenuOutsideClick(e) {
-    var t = document.querySelector('.drafter-top-menu');
-    if (!t) return;
-    if (!t.contains(e.target)) closeDrafterMenu();
 }
 
 function selectDrafterHero(heroId) {
