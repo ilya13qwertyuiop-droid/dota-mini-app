@@ -7,10 +7,12 @@ window.heroMidData = {
       answers: [
         {
           text: 'От уровня и рун (получил 6, взял руну и пошёл гангать).',
+          icon: 'ph-lightning',
           tags: ['gank_level_rune']
         },
         {
           text: 'От ключевого предмета (блинк, аганим и т.п.).',
+          icon: 'ph-package',
           tags: ['gank_item']
         }
       ]
@@ -21,14 +23,17 @@ window.heroMidData = {
       answers: [
         {
           text: 'Давить и пытаться убить оппонента.',
+          icon: 'ph-sword',
           tags: ['lane_pressure']
         },
         {
           text: 'Играть гибко: и фарм, и давление.',
+          icon: 'ph-arrows-left-right',
           tags: ['lane_mixed']
         },
         {
           text: 'Спокойно фармить, главное — не проиграть линию.',
+          icon: 'ph-coins',
           tags: ['lane_farm']
         }
       ]
@@ -39,14 +44,17 @@ window.heroMidData = {
       answers: [
         {
           text: 'Постоянно бегать и играть с командой.',
+          icon: 'ph-users-three',
           tags: ['post_team_gank']
         },
         {
           text: 'Чередовать фарм и подключение к дракам.',
+          icon: 'ph-arrows-clockwise',
           tags: ['post_mix']
         },
         {
           text: 'Больше фармить и пушить, файты если выгодно.',
+          icon: 'ph-tree',
           tags: ['post_farm_push']
         }
       ]
@@ -57,14 +65,17 @@ window.heroMidData = {
       answers: [
         {
           text: 'Простой, минимум кнопок.',
+          icon: 'ph-leaf',
           tags: ['difficulty_easy']
         },
         {
           text: 'Средний, без особого микро.',
+          icon: 'ph-scales',
           tags: ['difficulty_medium']
         },
         {
           text: 'Сложный, люблю ломать пальцы.',
+          icon: 'ph-fire',
           tags: ['difficulty_hard']
         }
       ]
@@ -75,14 +86,17 @@ window.heroMidData = {
       answers: [
         {
           text: 'Инициатор — врываться первым.',
+          icon: 'ph-rocket-launch',
           tags: ['role_initiator']
         },
         {
           text: 'Бёрст — быстро убивать ключевую цель.',
+          icon: 'ph-crosshair',
           tags: ['role_burst']
         },
         {
           text: 'Контроль/длительный урон из позиции.',
+          icon: 'ph-anchor',
           tags: ['role_control']
         }
       ]

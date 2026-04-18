@@ -38,21 +38,25 @@
                 {
                     id: "q1_pos1",
                     text: "Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
+                    icon: "ph-coins",
                     scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q1_pos2",
                     text: "Когда я один в правильный момент поймал и стёр врага за пару секунд",
+                    icon: "ph-crosshair",
                     scores: { pos1: 2, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q1_pos3",
                     text: "Когда я первый прыгаю в драку и закрываю вражеских героев",
+                    icon: "ph-sword",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q1_pos4", // pos4 и pos5 по 3, беру младший номер
                     text: "Когда моя помощь спасает союзников в критический момент",
+                    icon: "ph-hand-heart",
                     scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
                 }
                 ]
@@ -64,21 +68,25 @@
                 {
                     id: "q2_pos1",
                     text: "Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
+                    icon: "ph-coins",
                     scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 0, pos5: 0 }
                 },
                 {
                     id: "q2_pos2",
                     text: "Хочу переиграть оппонента на линии и начать двигаться по карте",
+                    icon: "ph-strategy",
                     scores: { pos1: 1, pos2: 3, pos3: 2, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q2_pos3",
                     text: "Ищу возможности для агрессии на линии и стараюсь доминировать",
+                    icon: "ph-fire",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 2 }
                 },
                 {
                     id: "q2_pos5",
                     text: "Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
+                    icon: "ph-users-three",
                     scores: { pos1: 0, pos2: 1, pos3: 0, pos4: 2, pos5: 3 }
                 }
                 ]
@@ -90,21 +98,25 @@
                 {
                     id: "q3_pos1",
                     text: "Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
+                    icon: "ph-scales",
                     scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 0, pos5: 0 }
                 },
                 {
                     id: "q3_pos4",
                     text: "Сразу даю ТП, чтобы помочь команде",
+                    icon: "ph-lightning",
                     scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
                 },
                 {
                     id: "q3_pos3",
                     text: "Пытаюсь 'выключить' опасного вражеского героя",
+                    icon: "ph-crosshair",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q3_pos1b", // pos1 и pos5 по 3, помечаю вторую керри‑метку
                     text: "Держу позицию, чтобы грамотно раскинуть кнопки",
+                    icon: "ph-anchor",
                     scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 1, pos5: 3 }
                 }
                 ]
@@ -116,21 +128,25 @@
                 {
                     id: "q4_pos1",
                     text: "Героев, которые становятся сильными с дорогими предметами",
+                    icon: "ph-crown",
                     scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q4_pos2",
                     text: "Героев с бёрст уроном — убил и ушёл",
+                    icon: "ph-lightning",
                     scores: { pos1: 1, pos2: 3, pos3: 1, pos4: 1, pos5: 0 }
                 },
                 {
                     id: "q4_pos3",
                     text: "Героев, которые выдерживают много урона",
+                    icon: "ph-shield",
                     scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q4_pos5",
                     text: "Героев с полезными способностями для команды (станы, сейвы, хил)",
+                    icon: "ph-hand-heart",
                     scores: { pos1: 0, pos2: 0, pos3: 1, pos4: 3, pos5: 3 }
                 }
                 ]
@@ -142,21 +158,25 @@
                 {
                     id: "q5_pos1",
                     text: "Золото/Фраги/Добито крипов",
+                    icon: "ph-coins",
                     scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q5_pos2",
                     text: "Фраги и нанесённый урон",
+                    icon: "ph-crosshair",
                     scores: { pos1: 3, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q5_pos3",
                     text: "Количество контроля и впитанного урона",
+                    icon: "ph-shield",
                     scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 2 }
                 },
                 {
                     id: "q5_pos5",
                     text: "Количество расходников (варды, дасты), ассистов, лечения",
+                    icon: "ph-hand-heart",
                     scores: { pos1: 0, pos2: 0, pos3: 0, pos4: 3, pos5: 3 }
                     }
                 ]
@@ -424,7 +444,8 @@
             questionData.answers.forEach((answer, index) => {
                 const button = document.createElement('button');
                 button.className = 'answer-btn';
-                button.innerHTML = `<span class="text">${answer.text}</span>`;
+                const iconHtml = answer.icon ? `<i class="answer-icon ph ${answer.icon}" aria-hidden="true"></i>` : '';
+                button.innerHTML = `${iconHtml}<span class="text">${answer.text}</span>`;
                 button.onclick = () => selectAnswer(index);
                 answersContainer.appendChild(button);
             });
@@ -692,7 +713,8 @@
                 displayAnswers.forEach((answer, index) => {
                     const button = document.createElement('button');
                     button.className = 'answer-btn';
-                    button.innerHTML = `<span class="text">${answer.text}</span>`;
+                    const iconHtml = answer.icon ? `<i class="answer-icon ph ${answer.icon}" aria-hidden="true"></i>` : '';
+                    button.innerHTML = `${iconHtml}<span class="text">${answer.text}</span>`;
                     button.onclick = () => this.selectAnswer(index);
                     answersContainer.appendChild(button);
                 });
