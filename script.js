@@ -4473,7 +4473,7 @@ function showDrafterResult(data) {
     _skipBtn.textContent = 'Пропустить';
     _skipBtn.addEventListener('click', skipAnim);
     document.body.appendChild(_skipBtn);
-    gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.4, ease: 'power2.out'});
+    gsap.fromTo(_skipBtn, {opacity: 0}, {opacity: 1, duration: 0.35, delay: 0.4, ease: 'power2.out'});
 
     // ─── STEP 1 · ПРОТИВОСТОЯНИЕ (1А сильнейший → 1Б слабейший) ─────
     async function playConfront() {
