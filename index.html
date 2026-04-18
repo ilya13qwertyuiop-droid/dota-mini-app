@@ -526,18 +526,20 @@
           <!-- Основной контент драфта -->
           <div id="drafter-draft-content">
 
-          <!-- Два ряда составов: враги сверху, своя команда снизу -->
-          <div class="drafter-teams">
-            <div class="drafter-team-row">
-              <div class="drafter-team-header">
-                <div class="drafter-team-title">ВРАГИ</div>
-                <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Новые враги</button>
+          <!-- Доска драфта: враги сверху, своя команда снизу, разделены линией фронта -->
+          <div class="draft-board">
+            <div class="draft-board-row draft-board-row--enemy">
+              <div class="draft-board-header">
+                <div class="draft-board-label draft-board-label--enemy">ВРАГИ</div>
+                <button id="drafter-refresh-btn" class="draft-board-action" onclick="loadDrafterMatch()">↺ Новые</button>
               </div>
               <div class="drafter-slots-grid" id="drafter-enemy-slots"></div>
             </div>
-            <div class="drafter-team-row">
-              <div class="drafter-team-header">
-                <div class="drafter-team-title">ТВОЯ КОМАНДА<span class="drafter-team-record"> · Лучший: <span id="drafter-best-score">—</span></span></div>
+            <div class="draft-board-divider" aria-hidden="true"></div>
+            <div class="draft-board-row draft-board-row--ally">
+              <div class="draft-board-header">
+                <div class="draft-board-label draft-board-label--ally">ТВОЯ КОМАНДА</div>
+                <div class="draft-board-meta">Лучший: <span id="drafter-best-score">—</span></div>
               </div>
               <div class="drafter-slots-grid" id="drafter-ally-slots"></div>
             </div>
@@ -552,11 +554,11 @@
           <div class="drafter-picker">
             <input type="text" id="drafter-search" class="drafter-search" placeholder="Найти любого героя..." oninput="onDrafterSearch()">
             <div class="drafter-pos-filters" id="drafter-pos-filters">
-              <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)"><img src="/images/positions/pos_1.png" width="16" height="16" alt="1"></button>
-              <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)"><img src="/images/positions/pos_2.png" width="16" height="16" alt="2"></button>
-              <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)"><img src="/images/positions/pos_3.png" width="16" height="16" alt="3"></button>
-              <button class="drafter-pos-btn" data-pos="4" onclick="setDrafterPosFilter(4)"><img src="/images/positions/pos_4.png" width="16" height="16" alt="4"></button>
-              <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)"><img src="/images/positions/pos_5.png" width="16" height="16" alt="5"></button>
+              <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)">1</button>
+              <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)">2</button>
+              <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)">3</button>
+              <button class="drafter-pos-btn" data-pos="4" onclick="setDrafterPosFilter(4)">4</button>
+              <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)">5</button>
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
           </div>
