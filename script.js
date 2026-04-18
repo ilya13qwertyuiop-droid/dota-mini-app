@@ -4046,17 +4046,41 @@ function renderDrafterGrid() {
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
         var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-hero-disabled' : '');
         var onclick = (isPicked || isEnemy) ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
-        html += '<div class="' + cls + '"' + onclick + '>';
+        var safeName = String(h.name).replace(/"/g, '&quot;');
+        html += '<div class="' + cls + '"' + onclick + ' title="' + safeName + '">';
         if (iconUrl) {
-            html += '<img src="' + iconUrl + '" alt="' + h.name + '" class="drafter-grid-img">';
+            html += '<img src="' + iconUrl + '" alt="' + safeName + '" class="drafter-grid-img">';
         } else {
             html += '<div class="drafter-grid-img-empty"></div>';
         }
-        html += '<div class="drafter-grid-name">' + h.name + '</div>';
         html += '</div>';
     });
 
     el.innerHTML = html;
+}
+
+function toggleDrafterMenu(e) {
+    if (e) e.stopPropagation();
+    var p = document.getElementById('drafter-top-menu-popover');
+    if (!p) return;
+    if (p.hasAttribute('hidden')) {
+        p.removeAttribute('hidden');
+        setTimeout(function() {
+            document.addEventListener('click', _drafterMenuOutsideClick);
+        }, 0);
+    } else {
+        closeDrafterMenu();
+    }
+}
+function closeDrafterMenu() {
+    var p = document.getElementById('drafter-top-menu-popover');
+    if (p) p.setAttribute('hidden', '');
+    document.removeEventListener('click', _drafterMenuOutsideClick);
+}
+function _drafterMenuOutsideClick(e) {
+    var t = document.querySelector('.drafter-top-menu');
+    if (!t) return;
+    if (!t.contains(e.target)) closeDrafterMenu();
 }
 
 function selectDrafterHero(heroId) {
