@@ -37,22 +37,22 @@
                 answers: [
                 {
                     id: "q1_pos1",
-                    text: "💰 Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
+                    text: "Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
                     scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q1_pos2",
-                    text: "🔪 Когда я один в правильный момент поймал и стёр врага за пару секунд",
+                    text: "Когда я один в правильный момент поймал и стёр врага за пару секунд",
                     scores: { pos1: 2, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q1_pos3",
-                    text: "⚔️ Когда я первый прыгаю в драку и закрываю вражеских героев",
+                    text: "Когда я первый прыгаю в драку и закрываю вражеских героев",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q1_pos4", // pos4 и pos5 по 3, беру младший номер
-                    text: "🤝 Когда моя помощь спасает союзников в критический момент",
+                    text: "Когда моя помощь спасает союзников в критический момент",
                     scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
                 }
                 ]
@@ -63,22 +63,22 @@
                 answers: [
                 {
                     id: "q2_pos1",
-                    text: "🌾 Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
+                    text: "Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
                     scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 0, pos5: 0 }
                 },
                 {
                     id: "q2_pos2",
-                    text: "⚖️ Хочу переиграть оппонента на линии и начать двигаться по карте",
+                    text: "Хочу переиграть оппонента на линии и начать двигаться по карте",
                     scores: { pos1: 1, pos2: 3, pos3: 2, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q2_pos3",
-                    text: "⚔️ Ищу возможности для агрессии на линии и стараюсь доминировать",
+                    text: "Ищу возможности для агрессии на линии и стараюсь доминировать",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 2 }
                 },
                 {
                     id: "q2_pos5",
-                    text: "🗺️ Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
+                    text: "Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
                     scores: { pos1: 0, pos2: 1, pos3: 0, pos4: 2, pos5: 3 }
                 }
                 ]
@@ -89,22 +89,22 @@
                 answers: [
                 {
                     id: "q3_pos1",
-                    text: "📊 Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
+                    text: "Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
                     scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 0, pos5: 0 }
                 },
                 {
                     id: "q3_pos4",
-                    text: "⚔️ Сразу даю ТП, чтобы помочь команде",
+                    text: "Сразу даю ТП, чтобы помочь команде",
                     scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
                 },
                 {
                     id: "q3_pos3",
-                    text: "🎯 Пытаюсь 'выключить' опасного вражеского героя",
+                    text: "Пытаюсь 'выключить' опасного вражеского героя",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q3_pos1b", // pos1 и pos5 по 3, помечаю вторую керри‑метку
-                    text: "💚 Держу позицию, чтобы грамотно раскинуть кнопки",
+                    text: "Держу позицию, чтобы грамотно раскинуть кнопки",
                     scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 1, pos5: 3 }
                 }
                 ]
@@ -115,22 +115,22 @@
                 answers: [
                 {
                     id: "q4_pos1",
-                    text: "💎 Героев, которые становятся сильными с дорогими предметами",
+                    text: "Героев, которые становятся сильными с дорогими предметами",
                     scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q4_pos2",
-                    text: "🎯 Героев с бёрст уроном — убил и ушёл",
+                    text: "Героев с бёрст уроном — убил и ушёл",
                     scores: { pos1: 1, pos2: 3, pos3: 1, pos4: 1, pos5: 0 }
                 },
                 {
                     id: "q4_pos3",
-                    text: "🛡️ Героев, которые выдерживают много урона",
+                    text: "Героев, которые выдерживают много урона",
                     scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q4_pos5",
-                    text: "🤝 Героев с полезными способностями для команды (станы, сейвы, хил)",
+                    text: "Героев с полезными способностями для команды (станы, сейвы, хил)",
                     scores: { pos1: 0, pos2: 0, pos3: 1, pos4: 3, pos5: 3 }
                 }
                 ]
@@ -141,22 +141,22 @@
                 answers: [
                 {
                     id: "q5_pos1",
-                    text: "📊 Золото/Фраги/Добито крипов",
+                    text: "Золото/Фраги/Добито крипов",
                     scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q5_pos2",
-                    text: "⚔️ Фраги и нанесённый урон",
+                    text: "Фраги и нанесённый урон",
                     scores: { pos1: 3, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q5_pos3",
-                    text: "🎯 Количество контроля и впитанного урона",
+                    text: "Количество контроля и впитанного урона",
                     scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 2 }
                 },
                 {
                     id: "q5_pos5",
-                    text: "💚 Количество расходников (варды, дасты), ассистов, лечения",
+                    text: "Количество расходников (варды, дасты), ассистов, лечения",
                     scores: { pos1: 0, pos2: 0, pos3: 0, pos4: 3, pos5: 3 }
                     }
                 ]
@@ -422,17 +422,9 @@
 
 
             questionData.answers.forEach((answer, index) => {
-                const parts = answer.text.split(' ');
-                const emoji = parts[0];
-                const text = parts.slice(1).join(' ');
-
-
                 const button = document.createElement('button');
                 button.className = 'answer-btn';
-                button.innerHTML = `
-                    <span class="emoji">${emoji}</span>
-                    <span class="text">${text}</span>
-                `;
+                button.innerHTML = `<span class="text">${answer.text}</span>`;
                 button.onclick = () => selectAnswer(index);
                 answersContainer.appendChild(button);
             });
@@ -698,16 +690,9 @@
                 this.state.currentShuffledAnswers = displayAnswers;
 
                 displayAnswers.forEach((answer, index) => {
-                    const parts = answer.text.split(' ');
-                    const emoji = parts[0];
-                    const text = parts.slice(1).join(' ');
-
                     const button = document.createElement('button');
                     button.className = 'answer-btn';
-                    button.innerHTML = `
-                        <span class="emoji">${emoji}</span>
-                        <span class="text">${text}</span>
-                    `;
+                    button.innerHTML = `<span class="text">${answer.text}</span>`;
                     button.onclick = () => this.selectAnswer(index);
                     answersContainer.appendChild(button);
                 });
@@ -1073,14 +1058,7 @@
                         matchPercent = Math.round(60 + normalized * 40);    // 60–100%
                     }
 
-                    // рамка по совпадению
-                    if (matchPercent >= 90) {
-                        card.className = 'hero-card hero-card--gold';
-                    } else if (matchPercent >= 75) {
-                        card.className = 'hero-card hero-card--silver';
-                    } else {
-                        card.className = 'hero-card hero-card--bronze';
-                    }
+                    card.className = 'hero-card';
 
                     const heroIconUrl = window.getHeroIconUrlByName(hero.name);
 
