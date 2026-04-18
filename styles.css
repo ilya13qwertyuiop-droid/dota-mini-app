@@ -3668,7 +3668,7 @@ margin-top: 14px;
 .drafter-top-record { font-size: var(--text-2xs); color: var(--text-tertiary); }
 .drafter-top-record span { color: var(--accent); }
 .drafter-top-btns { display: flex; gap: 4px; }
-.drafter-top-btn { display: flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25); border-radius: 6px; padding: 5px 8px; font-size: var(--text-2xs); color: var(--accent); font-weight: 600; cursor: pointer; }
+.drafter-top-btn { display: flex; align-items: center; gap: 4px; background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 5px 8px; font-size: var(--text-2xs); color: var(--accent); font-weight: 600; cursor: pointer; }
 .drafter-top-btn svg { color: var(--accent); }
 .drafter-top-divider { height: 1px; background: rgba(255,255,255,0.05); margin: 0; }
 
@@ -3965,7 +3965,6 @@ margin-top: 14px;
 
 .drafter-slot--active {
   border: 2px solid var(--accent);
-  animation: drafterPulse 1.2s ease-in-out infinite;
 }
 
 .drafter-slot--enemy {
@@ -4041,7 +4040,7 @@ margin-top: 14px;
 }
 
 .drafter-pos-btn--active {
-  background: rgba(156,92,247,0.25);
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -4140,7 +4139,7 @@ margin-top: 14px;
 }
 
 .drafter-evaluate-btn {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  background: var(--accent);
   color: var(--text-primary);
   border: none;
   border-radius: 9px;
