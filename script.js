@@ -2979,11 +2979,22 @@ function initHeroesCatalog() {
     var overlay = document.getElementById('heroes-catalog-overlay');
 
     if (openBtn) {
-        openBtn.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
+        // iOS-обход: когда инпут сфокусирован и клавиатура поднята,
+        // первый touchend уходит на dismiss keyboard и click не фирится.
+        // Ловим touchend напрямую и блёрим инпут заранее.
+        var lastCatalogOpenAt = 0;
+        var catalogOpenHandler = function (e) {
+            var now = Date.now();
+            if (now - lastCatalogOpenAt < 500) return;
+            lastCatalogOpenAt = now;
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+            var input = document.getElementById('matchup-hero-input');
+            if (input && typeof input.blur === 'function') input.blur();
             openHeroesCatalog();
-        });
+        };
+        openBtn.addEventListener('touchend', catalogOpenHandler);
+        openBtn.addEventListener('click', catalogOpenHandler);
     }
     if (closeBtn) {
         closeBtn.addEventListener('click', function (e) {
