@@ -1099,7 +1099,7 @@
                         </div>
                         </div>
 
-                        <div class="guide-row" style="display:flex;justify-content:flex-end;">
+                        <div class="guide-row">
                         <button
                             class="guide-chip hero-card__guide-btn"
                             data-hero-name="${hero.name}"
