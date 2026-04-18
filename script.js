@@ -4538,22 +4538,17 @@ function showDrafterResult(data) {
 
         confrontScreen.style.display = 'block';
 
-        async function showBeat(side, t, stepText) {
+        async function showBeat(side, t) {
             confrontScreen.innerHTML = (
-                '<div class="dr-step-label">' + stepText + '</div>' +
                 '<div class="dr-cf-grid dr-cf-grid--single">' +
                     cardHtml(side, t) +
                 '</div>'
             );
 
-            var stepEl = confrontScreen.querySelector('.dr-step-label');
-            var card   = confrontScreen.querySelector('.dr-cf-card');
+            var card = confrontScreen.querySelector('.dr-cf-card');
 
-            gsap.set(stepEl, {opacity: 0, y: -8});
-            gsap.set(card,   {opacity: 0, y: 20});
-
-            gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
-            gsap.to(card,   {opacity: 1, y: 0, duration: 0.55, delay: 0.12, ease: 'power3.out'});
+            gsap.set(card, {opacity: 0, y: 20});
+            gsap.to(card,  {opacity: 1, y: 0, duration: 0.55, ease: 'power3.out'});
 
             await sleep(720);
             if (_skip) return;
@@ -4587,9 +4582,9 @@ function showDrafterResult(data) {
             gsap.set(confrontScreen, {opacity: 1});
         }
 
-        await showBeat('best',  strongest, 'ШАГ 1А · СИЛЬНЕЙШИЙ');
+        await showBeat('best',  strongest);
         if (_skip) return;
-        await showBeat('worst', weakest,   'ШАГ 1Б · СЛАБЕЙШИЙ');
+        await showBeat('worst', weakest);
         if (_skip) return;
 
         confrontScreen.style.display = 'none';
@@ -4661,13 +4656,13 @@ function showDrafterResult(data) {
         }).join('');
 
         synergyScreen.innerHTML = (
-            '<div class="dr-step-label">ШАГ 2 · СИНЕРГИЯ</div>' +
+            '<div class="dr-step-label">СОЮЗНАЯ СИНЕРГИЯ</div>' +
             '<div class="dr-syn-stage" style="width:' + W + 'px;height:' + H + 'px;">' +
                 svg + verticesHtml +
-                '<div class="dr-syn-center" style="left:' + cx + 'px;top:' + cy + 'px;">' +
-                    '<div class="dr-syn-center-label">СУММА</div>' +
-                    '<div class="dr-syn-center-val" id="dr-syn-cval">+0.0</div>' +
-                '</div>' +
+            '</div>' +
+            '<div class="dr-syn-summary">' +
+                '<span class="dr-syn-summary-label">Сумма</span>' +
+                '<span class="dr-syn-summary-val" id="dr-syn-cval">+0.0</span>' +
             '</div>'
         );
 
@@ -4678,13 +4673,13 @@ function showDrafterResult(data) {
         var frame    = synergyScreen.querySelector('.dr-syn-frame');
         var vertices = synergyScreen.querySelectorAll('.dr-syn-vertex');
         var edgeEls  = synergyScreen.querySelectorAll('.dr-syn-edge');
-        var center   = synergyScreen.querySelector('.dr-syn-center');
+        var summary  = synergyScreen.querySelector('.dr-syn-summary');
         var cValEl   = document.getElementById('dr-syn-cval');
 
         gsap.set(stepEl,   {opacity: 0, y: -8});
         gsap.set(stage,    {opacity: 0, scale: 0.92});
         gsap.set(vertices, {opacity: 0, scale: 0.4});
-        gsap.set(center,   {opacity: 0, scale: 0.7});
+        gsap.set(summary,  {opacity: 0, y: 8});
         gsap.set(frame,    {opacity: 0});
 
         gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
@@ -4724,7 +4719,7 @@ function showDrafterResult(data) {
         }
         if (_skip) return;
 
-        gsap.to(center, {opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.4)'});
+        gsap.to(summary, {opacity: 1, y: 0, duration: 0.45, ease: 'power2.out'});
         var cnt = {v: 0};
         gsap.to(cnt, {
             v: sumSyn, duration: 0.85, ease: 'power2.out',
