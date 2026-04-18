@@ -3510,7 +3510,6 @@ function cacheLastDraftEval(data) {
     try {
         localStorage.setItem(_HOME_DRAFT_CACHE_KEY, JSON.stringify({
             total_score: data.total_score,
-            lane_score: data.lane_score,
             synergy_score: data.synergy_score,
             matchup_score: data.matchup_score,
             saved_at: Date.now(),
@@ -3587,18 +3586,16 @@ function _renderHomeDraftWidget(cached, lastHistory) {
 
     // Sub-scores: если локальный кэш относится к тому же (или близкому) total — используем его.
     // Иначе показываем только total и нулевые bar'ы (визуально указывает на отсутствие детализации).
-    var lane = null, syn = null, mu = null;
+    var syn = null, mu = null;
     if (cached && Math.abs((cached.total_score || 0) - total) < 0.5) {
-        lane = cached.lane_score || 0;
         syn = cached.synergy_score || 0;
         mu = cached.matchup_score || 0;
     }
 
     var totalRounded = Math.round(total);
-    // Каждая из 3 компонент — 0..33.33
-    var lanePct = lane != null ? Math.min(100, Math.round((lane / 33.33) * 100)) : null;
-    var synPct = syn != null ? Math.min(100, Math.round((syn / 33.33) * 100)) : null;
-    var muPct = mu != null ? Math.min(100, Math.round((mu / 33.33) * 100)) : null;
+    // Каждая из 2 компонент — 0..50
+    var synPct = syn != null ? Math.min(100, Math.round((syn / 50) * 100)) : null;
+    var muPct  = mu  != null ? Math.min(100, Math.round((mu  / 50) * 100)) : null;
 
     body.innerHTML =
         '<div class="home-draft-top">' +
@@ -3606,7 +3603,6 @@ function _renderHomeDraftWidget(cached, lastHistory) {
             '<div class="home-draft-rank" data-rank="' + _escHtml(rank) + '">' + _escHtml(rank) + '</div>' +
         '</div>' +
         '<div class="home-draft-bars">' +
-            _draftBarRow('Линии', 'accent', lanePct) +
             _draftBarRow('Синергия', 'positive', synPct) +
             _draftBarRow('Матчапы', 'warning', muPct) +
         '</div>';

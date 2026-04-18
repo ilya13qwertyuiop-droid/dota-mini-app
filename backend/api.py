@@ -1294,61 +1294,7 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     ally_ids = [h.hero_id for h in data.ally]
     enemy_ids = [h.hero_id for h in data.enemy]
 
-    # ── position maps ──────────────────────────────────────────────────────
-    # Keys are normalised to "pos N" so lookups work regardless of input format
-    ally_by_pos: dict[str, int] = {}
-    for h in data.ally:
-        num = _pos_str_to_num(h.position)
-        if num is not None:
-            ally_by_pos[f"pos {num}"] = h.hero_id
-
-    enemy_by_pos: dict[str, int] = {}
-    for h in data.enemy:
-        num = _pos_str_to_num(h.position)
-        if num is not None:
-            enemy_by_pos[f"pos {num}"] = h.hero_id
-
-    # ── helpers ───────────────────────────────────────────────────────────
-    def _vs(ally_id: int | None, enemy_id: int | None) -> float:
-        if ally_id is None or enemy_id is None:
-            return 0.0
-        return float((matchups.get(str(ally_id)) or {}).get("vs", {}).get(str(enemy_id), {}).get("synergy", 0.0))
-
-    def _lane_syn(ally_pos_ids: list[int | None], enemy_pos_ids: list[int | None]) -> float:
-        vals = [_vs(a, e) for a in ally_pos_ids for e in enemy_pos_ids]
-        return sum(vals) / len(vals) if vals else 0.0
-
-    # ── 3 битвы линий ─────────────────────────────────────────────────────
-    # Лёгкая: наши pos1+pos5 vs вражеские pos3+pos4
-    a_easy  = [ally_by_pos.get("pos 1"),  ally_by_pos.get("pos 5")]
-    e_easy  = [enemy_by_pos.get("pos 3"), enemy_by_pos.get("pos 4")]
-    # Мид:    наш pos2 vs вражеский pos2
-    a_mid   = [ally_by_pos.get("pos 2")]
-    e_mid   = [enemy_by_pos.get("pos 2")]
-    # Сложная: наши pos3+pos4 vs вражеские pos1+pos5
-    a_hard  = [ally_by_pos.get("pos 3"),  ally_by_pos.get("pos 4")]
-    e_hard  = [enemy_by_pos.get("pos 1"), enemy_by_pos.get("pos 5")]
-
-    def _lane_entry(name: str, a_ids: list, e_ids: list) -> dict:
-        syn = _lane_syn(a_ids, e_ids)
-        return {
-            "name": name,
-            "ally_heroes":  [{"hero_id": hid} for hid in a_ids if hid is not None],
-            "enemy_heroes": [{"hero_id": hid} for hid in e_ids if hid is not None],
-            "synergy": round(syn, 2),
-            "win": syn > 0,
-        }
-
-    duels = [
-        _lane_entry("Лёгкая линия", a_easy, e_easy),
-        _lane_entry("Мид",          a_mid,  e_mid),
-        _lane_entry("Сложная линия", a_hard, e_hard),
-    ]
-
-    # ── Компонент 1: Линии (0-33.33) — 100/9 за победу на линии ────────────
-    lane_component = sum(100.0 / 9 if d["win"] else 0.0 for d in duels)
-
-    # ── Компонент 2: Синергия команды (0-33.33) — 10 пар союзников ──────────
+    # ── Компонент 1: Синергия команды (0-50) — 10 пар союзников ─────────────
     # Усредняем обе стороны, чтобы результат не зависел от порядка ввода героев:
     # поле "with" асимметрично (дельта от базового WR у каждого героя своя).
     synergy_pairs: list[tuple[int, int, float]] = []
@@ -1361,9 +1307,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             synergy_pairs.append((a, b, val))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(100.0 / 3, (avg_synergy + 5) / 10 * (100.0 / 3)))
+    synergy_component = max(0.0, min(50.0, (avg_synergy + 5) / 10 * 50.0))
 
-    # ── Компонент 3: Матчап против врагов (0-33.33) — 25 пар наш vs вражеский
+    # ── Компонент 2: Матчап против врагов (0-50) — 25 пар наш vs вражеский ──
     matchup_pairs: list[tuple[int, int, float]] = []
     for a in ally_ids:
         for e in enemy_ids:
@@ -1371,10 +1317,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             matchup_pairs.append((a, e, float(val)))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
-    matchup_component = max(0.0, min(100.0 / 3, (matchup_score + 5) / 10 * (100.0 / 3)))
+    matchup_component = max(0.0, min(50.0, (matchup_score + 5) / 10 * 50.0))
 
-    # ── Компонент 4: Позиции — отключён от total_score, всегда 0 ────────────
-    # Предупреждения о неправильных позициях в comments сохранены.
+    # ── Позиции — не влияют на total_score, только comments ─────────────────
     pos_scores: list[tuple[int, bool]] = []
     for h in data.ally:
         chosen = _pos_str_to_num(h.position)
@@ -1382,10 +1327,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
         on_valid = chosen is not None and chosen in valid_positions
         pos_scores.append((h.hero_id, on_valid))
 
-    position_component = 0.0  # не влияет на total_score
+    position_component = 0.0
 
-    # ── total_score = 3 компонента, макс 100 ────────────────────────────────
-    total_score = lane_component + synergy_component + matchup_component
+    # ── total_score = 2 компонента, макс 100 ────────────────────────────────
+    total_score = synergy_component + matchup_component
 
     # ── comments ──────────────────────────────────────────────────────────
     comments: list[dict] = []
@@ -1439,7 +1384,6 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
 
     return {
         "total_score": round(total_score, 1),
-        "lane_score": round(lane_component, 2),
         "synergy_score": round(synergy_component, 2),
         "matchup_score": round(matchup_component, 2),
         "position_score": round(position_component, 2),
@@ -1453,7 +1397,6 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             for a, e, v in matchup_pairs
         ],
         "enemy_ids": enemy_ids,
-        "duels": duels,
         "comments": comments,
     }
 
