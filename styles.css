@@ -2856,7 +2856,7 @@ margin-top: var(--space-4);
 
 .home-draft-score {
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: var(--text-3xl);
   font-weight: var(--font-bold);
   color: var(--text-primary);
   line-height: 1;
