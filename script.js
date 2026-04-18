@@ -3842,10 +3842,9 @@ function _renderAllySlots() {
     for (var i = 0; i < 5; i++) {
         var hero = _drafterAllyPick[i];
         var isActive = (i === _drafterActiveSlot);
-        var cls = 'drafter-slot';
+        var cls = 'drafter-slot drafter-slot--ally';
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
-        html += '<div class="drafter-slot-wrap">';
         html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -3855,10 +3854,9 @@ function _renderAllySlots() {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
         } else {
+            html += '<span class="drafter-slot-num">' + (i + 1) + '</span>';
             html += '<span class="drafter-slot-plus">+</span>';
         }
-        html += '</div>';
-        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -3875,7 +3873,6 @@ function _renderEnemySlots() {
         if (hero.hero_id) cls += ' drafter-slot--filled';
         if (isActive) cls += ' drafter-slot--enemy-active';
         var clickAttr = _drafterEnemyManualMode ? ' onclick="drafterEnemySlotClick(' + i + ')"' : '';
-        html += '<div class="drafter-slot-wrap">';
         html += '<div class="' + cls + '" id="drafter-enemy-slot-' + i + '"' + clickAttr + '>';
         if (hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -3884,11 +3881,10 @@ function _renderEnemySlots() {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
-        } else if (_drafterEnemyManualMode) {
-            html += '<span class="drafter-slot-plus">+</span>';
+        } else {
+            html += '<span class="drafter-slot-num">' + (i + 1) + '</span>';
+            if (_drafterEnemyManualMode) html += '<span class="drafter-slot-plus">+</span>';
         }
-        html += '</div>';
-        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -4044,7 +4040,7 @@ function renderDrafterGrid() {
         var isPicked = pickedIds.has(h.id);
         var isEnemy  = _drafterEnemyPick.some(function(e) { return e && e.hero_id === h.id; });
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
-        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-hero-disabled' : '');
+        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-grid-hero--enemy drafter-hero-disabled' : '');
         var onclick = (isPicked || isEnemy) ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
         var safeName = String(h.name).replace(/"/g, '&quot;');
         html += '<div class="' + cls + '"' + onclick + ' title="' + safeName + '">';
