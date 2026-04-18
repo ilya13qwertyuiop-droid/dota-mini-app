@@ -1368,71 +1368,79 @@ function updateProfileHeader(profile, loading = false) {
     _renderAvatar(avatar, userData);
 }
 
-function _formatRelativeDate(iso) {
-    if (!iso) return '—';
-    const then = new Date(iso);
-    if (isNaN(then.getTime())) return '—';
-    const now = new Date();
-    const diffMs = now - then;
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'только что';
-    if (diffMin < 60) return `${diffMin} мин`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr} ч`;
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffDay === 1) return 'вчера';
-    if (diffDay < 7) return `${diffDay} дн`;
-    if (diffDay < 30) {
-        const w = Math.floor(diffDay / 7);
-        return `${w} нед`;
-    }
-    const diffMo = Math.floor(diffDay / 30);
-    if (diffMo < 12) return `${diffMo} мес`;
-    const diffYr = Math.floor(diffMo / 12);
-    return `${diffYr} г`;
+function _classifyDrafterRank(score) {
+    // Та же шкала, что в рендере результата драфтера (script.js ≈ 4998).
+    if (score >= 85) return { letter: 'SSS', desc: 'Абсолютный драфтер', color: 'var(--warning)' };
+    if (score >= 80) return { letter: 'S',   desc: 'Как ты это сделал?', color: 'var(--warning)' };
+    if (score >= 65) return { letter: 'A',   desc: 'Хороший драфт',      color: 'var(--accent)' };
+    if (score >= 50) return { letter: 'B',   desc: 'Можно лучше',        color: 'var(--text-primary)' };
+    return             { letter: 'C',        desc: 'Надо тренироваться', color: 'var(--text-secondary)' };
 }
 
-function _countStudiedPositions(profile) {
-    const positions = new Set();
-    const history = (profile && profile.quiz_history) || [];
-    for (const quiz of history) {
-        const res = quiz && quiz.result;
-        if (!res) continue;
-        if (res.hero_quiz_by_position && typeof res.hero_quiz_by_position === 'object') {
-            for (const key of Object.keys(res.hero_quiz_by_position)) {
-                const entry = res.hero_quiz_by_position[key];
-                if (entry && entry.topHeroes && entry.topHeroes.length > 0) {
-                    positions.add(String(key));
-                }
-            }
-        }
-        // Legacy: одиночный hero_quiz с heroPositionIndex
-        const legacy = res.hero_quiz;
-        if (legacy && legacy.topHeroes && legacy.topHeroes.length > 0 && legacy.heroPositionIndex !== undefined) {
-            positions.add(String(legacy.heroPositionIndex));
-        }
-        if (res.type === 'hero_quiz' && res.topHeroes && res.topHeroes.length > 0 && res.heroPositionIndex !== undefined) {
-            positions.add(String(res.heroPositionIndex));
-        }
-    }
-    return positions.size;
-}
+function _renderDrafterBest() {
+    const scoreEl = document.getElementById('profile-stat-best-score');
+    const rankEl  = document.getElementById('profile-stat-best-rank');
+    const descEl  = document.getElementById('profile-stat-best-desc');
 
-function updateProfileStats(profile) {
-    const quizzesEl = document.getElementById('profile-stat-quizzes');
-    const positionsEl = document.getElementById('profile-stat-positions');
-    const lastEl = document.getElementById('profile-stat-last');
+    let best = 0;
+    try {
+        best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10) || 0;
+    } catch (e) { best = 0; }
 
-    if (!profile) {
-        if (quizzesEl) quizzesEl.textContent = '0';
-        if (positionsEl) positionsEl.textContent = '0';
-        if (lastEl) lastEl.textContent = '—';
+    if (!best) {
+        if (scoreEl) scoreEl.textContent = '—';
+        if (rankEl) { rankEl.textContent = ''; rankEl.style.color = ''; }
+        if (descEl) descEl.textContent = 'нет результата';
         return;
     }
 
-    if (quizzesEl) quizzesEl.textContent = String(profile.total_quizzes || 0);
-    if (positionsEl) positionsEl.textContent = String(_countStudiedPositions(profile));
-    if (lastEl) lastEl.textContent = _formatRelativeDate(profile.last_quiz_date);
+    const rank = _classifyDrafterRank(best);
+    if (scoreEl) scoreEl.textContent = String(best);
+    if (rankEl) {
+        rankEl.textContent = rank.letter;
+        rankEl.style.color = rank.color;
+    }
+    if (descEl) descEl.textContent = rank.desc;
+}
+
+async function _renderDrafterPlace() {
+    const placeEl = document.getElementById('profile-stat-place');
+    const subEl   = document.getElementById('profile-stat-place-sub');
+
+    if (!USER_TOKEN) {
+        if (placeEl) placeEl.textContent = '—';
+        if (subEl) subEl.textContent = 'нет результата';
+        return;
+    }
+
+    try {
+        const resp = await fetch(`${window.API_BASE_URL}/draft/leaderboard/me?token=${encodeURIComponent(USER_TOKEN)}`);
+        if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+        const me = await resp.json();
+
+        if (!me || me.rank === null || me.rank === undefined) {
+            if (placeEl) placeEl.textContent = '—';
+            if (subEl) subEl.textContent = 'нет результата';
+            return;
+        }
+
+        if (placeEl) placeEl.textContent = `#${me.rank}`;
+        if (subEl) {
+            const sum = me.top5_sum != null ? Math.round(me.top5_sum) : null;
+            subEl.textContent = sum != null ? `Счёт ${sum}` : '';
+        }
+    } catch (e) {
+        console.warn('[PROFILE] leaderboard/me failed:', e);
+        if (placeEl) placeEl.textContent = '—';
+        if (subEl) subEl.textContent = 'нет данных';
+    }
+}
+
+function updateProfileStats(_profile) {
+    // Драфтер-метрики не зависят от quiz-профиля: лучший счёт — в localStorage,
+    // место в лидерборде — отдельный запрос по токену.
+    _renderDrafterBest();
+    _renderDrafterPlace();
 }
 
 function displayPositionResult(profile) {
