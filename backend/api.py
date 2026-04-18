@@ -1448,6 +1448,11 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             {"hero_id1": a, "hero_id2": b, "value": round(v, 2)}
             for a, b, v in synergy_pairs
         ],
+        "matchup_pairs": [
+            {"ally_id": a, "enemy_id": e, "value": round(v, 2)}
+            for a, e, v in matchup_pairs
+        ],
+        "enemy_ids": enemy_ids,
         "duels": duels,
         "comments": comments,
     }

@@ -3759,8 +3759,6 @@ function initDrafter() {
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
-    var _drOverlay = document.getElementById('dr-bg-overlay');
-    if (_drOverlay) gsap.to(_drOverlay, {opacity: 0, duration: 0.4, ease: 'power2.out'});
 
     // Prefetch лидерборда в фоне
     if (!_drafterLeaderboardCache) {
@@ -3789,9 +3787,6 @@ async function loadDrafterMatch() {
     _drafterEnemyManualMode = false;
     _drafterActiveEnemySlot = -1;
     _updateManualBtn();
-
-    var _ldrOverlay = document.getElementById('dr-bg-overlay');
-    if (_ldrOverlay) gsap.to(_ldrOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
 
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
@@ -4422,718 +4417,452 @@ function showDrafterResult(data) {
     document.getElementById('drafter-main').style.display = 'none';
     document.getElementById('drafter-result').style.display = 'block';
 
-    var battleScreen = document.getElementById('dr-battle-screen');
-    var finalScreen  = document.getElementById('dr-final-screen');
+    var confrontScreen = document.getElementById('dr-confront-screen');
+    var synergyScreen  = document.getElementById('dr-synergy-screen');
+    var finalScreen    = document.getElementById('dr-final-screen');
 
-    battleScreen.style.display = 'block';
-    finalScreen.style.display  = 'none';
+    confrontScreen.style.display = 'none';
+    synergyScreen.style.display  = 'none';
+    finalScreen.style.display    = 'none';
 
-    var duels = data.duels || [];
-
-    var _drafterSkip = false;
-
-    function sleep(ms) {
-        return new Promise(function(resolve) {
-            if (_drafterSkip) { resolve(); return; }
-            setTimeout(resolve, ms);
-        });
-    }
-
-    function skipDrafterAnim() {
-        if (_drafterSkip) return;
-        _drafterSkip = true;
-        gsap.set(battleScreen, {clearProps: 'x'});
-        battleScreen.style.display = 'none';
-        var synSc = document.getElementById('dr-synergy-screen');
-        if (synSc) { synSc.style.display = 'none'; gsap.set(synSc, {clearProps: 'opacity'}); }
-        var sb = document.getElementById('dr-skip-btn');
-        if (sb) sb.remove();
-        showFinal();
-    }
+    var allyIds      = data.ally_ids      || [];
+    var enemyIds     = data.enemy_ids     || [];
+    var matchupPairs = data.matchup_pairs || [];
+    var synergyPairs = data.synergy_pairs || [];
 
     function _icon(id) { return _drafterHeroIcon(id) || ''; }
     function _name(id) { return _drafterHeroName(id) || ('Герой #' + id); }
 
-    var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#3db87a" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#3db87a" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
-    var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(229,83,75,0.15)" stroke="#e5534b" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#e5534b" stroke-width="3" stroke-linecap="round"/></svg>';
-
-    function spawnParticles(win) {
-        var canvas = document.getElementById('dr-particles-canvas');
-        if (!canvas) return;
-        canvas.width  = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-        var ctx = canvas.getContext('2d');
-        var cx  = canvas.width  / 2;
-        var cy  = canvas.height / 2;
-        var rgb = win ? '192,132,252' : '239,68,68';
-        var particles = [];
-        for (var i = 0; i < 30; i++) {
-            var angle = Math.random() * Math.PI * 2;
-            var speed = 1.5 + Math.random() * 2.5;
-            particles.push({x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: 2 + Math.random() * 3, life: 60});
-        }
-        function tick() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            var alive = false;
-            particles.forEach(function(p) {
-                if (p.life <= 0) return;
-                alive = true;
-                p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life--;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(' + rgb + ',' + (p.life / 60) + ')';
-                ctx.fill();
-            });
-            if (alive) requestAnimationFrame(tick);
-        }
-        tick();
+    var _skip = false;
+    function sleep(ms) {
+        return new Promise(function(resolve) {
+            if (_skip) { resolve(); return; }
+            setTimeout(resolve, ms);
+        });
     }
 
-    // ── Фон страницы — overlay с градиентом ─────────────────────────────
-    function setBattleBackground(win) {
-        var pageDrafter = document.getElementById('page-drafter');
-        var overlay = document.getElementById('dr-bg-overlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.id = 'dr-bg-overlay';
-            pageDrafter.insertBefore(overlay, pageDrafter.firstChild);
-        }
-        var newBg = win
-            ? 'radial-gradient(ellipse at 50% 20%, rgba(120,40,220,0.5) 0%, #0a0612 65%)'
-            : 'radial-gradient(ellipse at 50% 20%, rgba(180,20,20,0.5) 0%, #0a0612 65%)';
-        var currentOpacity = parseFloat(gsap.getProperty(overlay, 'opacity')) || 0;
-        if (currentOpacity < 0.1) {
-            overlay.style.background = newBg;
-            gsap.to(overlay, {opacity: 1, duration: 0.8, ease: 'power2.out'});
-        } else {
-            gsap.to(overlay, {opacity: 0.05, duration: 0.25, ease: 'power2.out', onComplete: function() {
-                overlay.style.background = newBg;
-                gsap.to(overlay, {opacity: 1, duration: 0.55, ease: 'power2.out'});
-            }});
-        }
-    }
-
-    // ── Шаг 1: 3 битвы линий ─────────────────────────────────────────────
-    async function playBattle(index, duel) {
-        var win = duel.win;
-
-        var dotsHtml = duels.map(function(_, d) {
-            return '<div class="dr-dot' + (d === index ? ' dr-dot-active' : '') + '" id="dr-dot-' + d + '"></div>';
-        }).join('');
-
-        gsap.set(battleScreen, {clearProps: 'backgroundColor,x'});
-        battleScreen.innerHTML = (
-            '<canvas id="dr-particles-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;"></canvas>' +
-            '<div class="dr-b-header">' +
-                '<div class="dr-b-num">БИТВА ' + (index + 1) + ' ИЗ ' + duels.length + '</div>' +
-                '<div class="dr-b-name">' + duel.name.toUpperCase() + '</div>' +
-            '</div>' +
-            '<div class="dr-b-arena">' +
-                '<div class="dr-b-side dr-b-ally" id="dr-side-ally">' +
-                    (duel.ally_heroes || []).map(function(h) {
-                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-ally" onerror="this.style.display=\'none\'">';
-                    }).join('') +
-                '</div>' +
-                '<div class="dr-b-center-icon" id="dr-result-icon" style="opacity:0;"></div>' +
-                '<div class="dr-b-side dr-b-enemy" id="dr-side-enemy">' +
-                    (duel.enemy_heroes || []).map(function(h) {
-                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-enemy" onerror="this.style.display=\'none\'">';
-                    }).join('') +
-                '</div>' +
-            '</div>' +
-            '<div class="dr-hbar-wrap">' +
-                '<div class="dr-hbar-ally"  id="dr-hbar-ally"  style="width:50%"></div>' +
-                '<div class="dr-hbar-enemy" id="dr-hbar-enemy" style="width:50%"></div>' +
-            '</div>' +
-            '<div class="dr-b-result-text" id="dr-b-result-text"></div>' +
-            '<div class="dr-dots">' + dotsHtml + '</div>'
-        );
-
-        var allyEls    = Array.from(document.querySelectorAll('#dr-side-ally .dr-b-avatar'));
-        var enemyEls   = Array.from(document.querySelectorAll('#dr-side-enemy .dr-b-avatar'));
-        var resultIcon = document.getElementById('dr-result-icon');
-        var hbarAlly   = document.getElementById('dr-hbar-ally');
-        var hbarEnemy  = document.getElementById('dr-hbar-enemy');
-        var resultText = document.getElementById('dr-b-result-text');
-
-        gsap.set(allyEls,  {x: -30, opacity: 0});
-        gsap.set(enemyEls, {x:  30, opacity: 0});
-
-        await sleep(400);
-
-        // Герои появляются
-        gsap.to(allyEls,  {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
-        gsap.to(enemyEls, {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
-
-        await sleep(300);
-
-        // Сближение
-        gsap.to(allyEls,  {x:  18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
-        gsap.to(enemyEls, {x: -18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
-
-        await sleep(400);
-
-        // Удар: частицы + shake + отдача
-        spawnParticles(win);
-        gsap.to('#dr-battle-screen', {x: -7, duration: 0.05, yoyo: true, repeat: 7, ease: 'none',
-            onComplete: function() { gsap.set('#dr-battle-screen', {x: 0}); }});
-        gsap.to(allyEls,  {x: -3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
-        gsap.to(enemyEls, {x:  3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
-
-        await sleep(150);
-
-        // Шкала + фон страницы + текст
-        gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 0.9, ease: 'power2.out'});
-        gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 0.9, ease: 'power2.out'});
-        setBattleBackground(win);
-        if (resultText) {
-            resultText.textContent = win ? 'Доминирование на линии' : 'Сложная линия для нас';
-            gsap.fromTo(resultText, {opacity: 0, y: 8}, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
-        }
-
-        await sleep(900);
-
-        // Герои возвращаются
-        gsap.to(allyEls.concat(enemyEls), {x: 0, scale: 1, duration: 0.3, ease: 'back.out(1)'});
-
-        // SVG иконка результата
-        if (resultIcon) {
-            resultIcon.innerHTML = win ? WIN_SVG : LOSS_SVG;
-            if (win) {
-                gsap.fromTo(resultIcon, {scale: 0, opacity: 0}, {scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)'});
-            } else {
-                gsap.fromTo(resultIcon, {y: -30, opacity: 0}, {y: 0, opacity: 1, duration: 0.4, ease: 'power2.out'});
-            }
-        }
-
-        var dot = document.getElementById('dr-dot-' + index);
-        if (dot) dot.className = 'dr-dot ' + (win ? 'dr-dot-win' : 'dr-dot-loss');
-
-        await sleep(600);
-    }
-
-    // ── Шаг 2: Синергия команды — pentagon layout ───────────────────
-    async function playSynergy() {
-        var synPairs = data.synergy_pairs || [];
-        var allyIds  = (data.ally_ids    || []).slice();
-
-        // Fallback: derive ally hero list from duels if backend didn't return ally_ids
-        if (!allyIds.length && data.duels) {
-            var _seen = {};
-            data.duels.forEach(function(d) {
-                (d.ally_heroes || []).forEach(function(h) {
-                    if (!_seen[h.hero_id]) { _seen[h.hero_id] = true; allyIds.push(h.hero_id); }
-                });
-            });
-        }
-
-        if (!synPairs.length || allyIds.length < 2) {
-            if (!synPairs.length) console.warn('[synergy] synergy_pairs missing — restart backend to apply API update');
-            return;
-        }
-
-        var synScreen = document.getElementById('dr-synergy-screen');
-        var NS = 'http://www.w3.org/2000/svg';
-
-        // ── Build DOM ────────────────────────────────────────────────
-        var dotsHtml = synPairs.map(function(_, pi) {
-            return '<div class="dr-dot" id="dr-syn-dot-' + pi + '"></div>';
-        }).join('');
-
-        synScreen.innerHTML = (
-            '<div class="dr-syn-title">Командная синергия</div>' +
-            '<div class="dr-syn-penta" id="dr-syn-penta"></div>' +
-            '<div class="dr-syn-score-wrap">' +
-                '<div class="dr-syn-total" id="dr-syn-total">+0.0</div>' +
-                '<div class="dr-syn-delta" id="dr-syn-delta"></div>' +
-            '</div>' +
-            '<div class="dr-dots" style="margin-top:8px;">' + dotsHtml + '</div>'
-        );
-
-        var penta   = document.getElementById('dr-syn-penta');
-        var totalEl = document.getElementById('dr-syn-total');
-        var deltaEl = document.getElementById('dr-syn-delta');
-
-        // SVG canvas (positioned absolute over penta, pointer-events:none)
-        var svgEl = document.createElementNS(NS, 'svg');
-        svgEl.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
-        penta.appendChild(svgEl);
-
-        // Hero slots — positioned by JS after layout
-        var SLOT_HALF = 25; // half of 50px slot
-        var slots = allyIds.map(function(heroId, i) {
-            var slot = document.createElement('div');
-            slot.id = 'dr-syn-slot-' + i;
-            slot.className = 'dr-syn-slot';
-            var img = document.createElement('img');
-            img.src = _icon(heroId);
-            img.className = 'dr-syn-av';
-            img.onerror = function() { this.style.opacity = 0; };
-            slot.appendChild(img);
-            penta.appendChild(slot);
-            return slot;
-        });
-
-        // ── Fade in screen ───────────────────────────────────────────
-        var overlay = document.getElementById('dr-bg-overlay');
-        if (overlay) gsap.to(overlay, {opacity: 0.2, duration: 0.5});
-        synScreen.style.display = 'block';
-        gsap.fromTo(synScreen, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power2.out'});
-
-        await sleep(200);
-        if (_drafterSkip) return;
-
-        // ── Pentagon geometry ────────────────────────────────────────
-        var RADIUS   = 88;
-        var pentaW   = penta.offsetWidth || 300;
-        var cx       = pentaW / 2;
-        var cy       = RADIUS + 30;                            // top vertex at y=30
-        var bottomY  = cy + RADIUS * Math.sin(2 * Math.PI / 5); // ≈ cy+71
-        var pentaH   = Math.ceil(bottomY + SLOT_HALF + 10);   // bottom slot edge + padding
-
-        var pts = allyIds.map(function(_, i) {
-            return {
-                x: cx + RADIUS * Math.cos(i * 2 * Math.PI / 5 - Math.PI / 2),
-                y: cy + RADIUS * Math.sin(i * 2 * Math.PI / 5 - Math.PI / 2)
-            };
-        });
-
-        // Apply geometry
-        penta.style.height = pentaH + 'px';
-        svgEl.setAttribute('width',   pentaW);
-        svgEl.setAttribute('height',  pentaH);
-        svgEl.setAttribute('viewBox', '0 0 ' + pentaW + ' ' + pentaH);
-
-        slots.forEach(function(slot, i) {
-            slot.style.left = (pts[i].x - SLOT_HALF) + 'px';
-            slot.style.top  = (pts[i].y - SLOT_HALF) + 'px';
-        });
-
-        // ── Hero entrance: simple fade-in with subtle scale ──────────
-        gsap.set(slots, {scale: 0.85, opacity: 0});
-        for (var hi = 0; hi < slots.length; hi++) {
-            if (_drafterSkip) return;
-            gsap.to(slots[hi], {scale: 1, opacity: 1, duration: 0.3, ease: 'power2.out'});
-            await sleep(110);
-        }
-
-        await sleep(240);
-        if (_drafterSkip) return;
-
-        // ── SVG helpers ──────────────────────────────────────────────
-        function mkSvg(tag, attrs) {
-            var el = document.createElementNS(NS, tag);
-            Object.keys(attrs).forEach(function(k) { el.setAttribute(k, attrs[k]); });
-            return el;
-        }
-
-        // Perimeter = adjacent vertices (index diff 1 or wraps 0↔n-1)
-        var N = allyIds.length;
-        function isPerimeter(i1, i2) {
-            var a = Math.min(i1, i2), b = Math.max(i1, i2);
-            return (b - a === 1) || (a === 0 && b === N - 1);
-        }
-
-        // Build two-layer bezier (glow + main), returns {glow, main}
-        function buildBezier(i1, i2, color, intensity) {
-            var p1 = pts[i1], p2 = pts[i2];
-            var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-            var dx = cx - mx, dy = cy - my;
-            var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            var ux = dx / dist, uy = dy / dist;
-            // Perimeter bends outward (negative = away from center)
-            // Diagonals bend inward (positive = toward center)
-            var off = isPerimeter(i1, i2)
-                ? -(28 + intensity * 14)
-                :  (22 + intensity * 10);
-            var cpx = mx + ux * off, cpy = my + uy * off;
-            var d = 'M ' + p1.x.toFixed(1) + ' ' + p1.y.toFixed(1)
-                  + ' Q ' + cpx.toFixed(1) + ' ' + cpy.toFixed(1)
-                  + ' ' + p2.x.toFixed(1) + ' ' + p2.y.toFixed(1);
-
-            var glow = mkSvg('path', {d: d, stroke: color, 'stroke-width': '7',
-                                      fill: 'none', 'stroke-linecap': 'round'});
-            glow.style.opacity = '0';
-            var main = mkSvg('path', {d: d, stroke: color, 'stroke-width': '2',
-                                      fill: 'none', 'stroke-linecap': 'round'});
-            main.style.opacity = '0';
-            svgEl.appendChild(glow);
-            svgEl.appendChild(main);
-
-            var len = main.getTotalLength();
-            gsap.set(main, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
-            gsap.set(glow, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
-            return {glow: glow, main: main};
-        }
-
-        // ── 10 пар ──────────────────────────────────────────────────
-        var running = 0;
-
-        for (var pi = 0; pi < synPairs.length; pi++) {
-            if (_drafterSkip) return;
-
-            var pair  = synPairs[pi];
-            var idx1  = allyIds.indexOf(pair.hero_id1);
-            var idx2  = allyIds.indexOf(pair.hero_id2);
-            if (idx1 < 0 || idx2 < 0) continue;
-
-            var val       = pair.value;
-            var intensity = Math.min(Math.abs(val) / 18, 1);
-            var lineColor = val > 0 ? '#3db87a' : '#e5534b';
-
-            // Progress dots
-            if (pi > 0) {
-                var pd = document.getElementById('dr-syn-dot-' + (pi - 1));
-                if (pd) pd.className = 'dr-dot ' + (synPairs[pi-1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
-            }
-            var cd = document.getElementById('dr-syn-dot-' + pi);
-            if (cd) cd.className = 'dr-dot dr-dot-active';
-
-            // Highlight active pair, dim rest
-            slots.forEach(function(sl, si) {
-                var on = si === idx1 || si === idx2;
-                gsap.to(sl, {opacity: on ? 1 : 0.2, scale: on ? 1.1 : 1,
-                             duration: 0.18, ease: 'power2.out'});
-            });
-
-            await sleep(80);
-            if (_drafterSkip) return;
-
-            // Draw bezier
-            svgEl.innerHTML = '';
-            var bez = buildBezier(idx1, idx2, lineColor, intensity);
-
-            // Endpoint dots
-            [idx1, idx2].forEach(function(i) {
-                svgEl.appendChild(mkSvg('circle', {
-                    cx: pts[i].x.toFixed(1), cy: pts[i].y.toFixed(1),
-                    r: '4', fill: lineColor
-                }));
-            });
-
-            gsap.to(bez.main, {attr: {'stroke-dashoffset': 0}, opacity: 1,
-                               duration: 0.35, ease: 'power2.inOut'});
-            gsap.to(bez.glow, {attr: {'stroke-dashoffset': 0}, opacity: 0.22,
-                               duration: 0.35, ease: 'power2.inOut'});
-
-            // Score counter (total stays in place)
-            var newRunning = running + val;
-            (function(from, to) {
-                var obj = {v: from};
-                gsap.to(obj, {v: to, duration: 0.35, ease: 'power2.out',
-                    onUpdate: function() {
-                        var sign = obj.v > 0.05 ? '+' : (obj.v < -0.05 ? '' : '+');
-                        totalEl.textContent = sign + obj.v.toFixed(1);
-                        totalEl.style.color = obj.v > 0.5  ? '#3db87a'
-                                            : obj.v < -0.5 ? '#e5534b' : '#d29922';
-                    }
-                });
-            })(running, newRunning);
-            running = newRunning;
-
-            // Delta: slide up from below, then exit upward
-            var dSign = val >= 0 ? '+' : '';
-            deltaEl.textContent = dSign + val.toFixed(1);
-            deltaEl.style.color = lineColor;
-            gsap.fromTo(deltaEl, {opacity: 0, y: 12}, {opacity: 1, y: 0,
-                                  duration: 0.25, ease: 'power2.out'});
-
-            await sleep(480);
-            if (_drafterSkip) return;
-
-            gsap.to([bez.main, bez.glow], {opacity: 0, duration: 0.2});
-            gsap.to(deltaEl, {opacity: 0, y: -10, duration: 0.22, ease: 'power2.in'});
-
-            await sleep(160);
-        }
-
-        // Mark last dot
-        var lastDot = document.getElementById('dr-syn-dot-' + (synPairs.length - 1));
-        if (lastDot) {
-            lastDot.className = 'dr-dot ' + (synPairs[synPairs.length - 1].value >= 0
-                                             ? 'dr-dot-win' : 'dr-dot-loss');
-        }
-
-        if (_drafterSkip) return;
-
-        // Reset all heroes, clear SVG
-        slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1)'}); });
-        gsap.set(deltaEl, {opacity: 0, y: 0});
-        svgEl.innerHTML = '';
-
-        await sleep(280);
-        if (_drafterSkip) return;
-
-        // ── Final score card ─────────────────────────────────────────
-        var finalScore = data.synergy_score || 0;
-        var cardColor  = finalScore >= 24 ? '#3db87a' : finalScore >= 16 ? '#d29922' : '#e5534b';
-
-        var card = document.createElement('div');
-        card.className = 'dr-syn-card';
-        card.innerHTML = (
-            '<div class="dr-syn-card-label">СИНЕРГИЯ</div>' +
-            '<div class="dr-syn-card-val" id="dr-syn-fval" style="color:' + cardColor + ';">0.0</div>' +
-            '<div class="dr-syn-card-sub">из 33 очков</div>'
-        );
-        synScreen.appendChild(card);
-
-        gsap.fromTo(card, {opacity: 0, scale: 0.88, y: 8},
-                          {opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
-
-        var fvalEl = document.getElementById('dr-syn-fval');
-        var cnt = {v: 0};
-        gsap.to(cnt, {v: finalScore, duration: 0.7, ease: 'power2.out',
-            onUpdate: function() { fvalEl.textContent = cnt.v.toFixed(1); }
-        });
-
-        await sleep(2200);
-        if (_drafterSkip) return;
-
-        // Fade out and hand off to showFinal
-        gsap.to(synScreen, {opacity: 0, duration: 0.4, ease: 'power2.in', onComplete: function() {
-            synScreen.style.display = 'none';
-            gsap.set(synScreen, {opacity: 1});
-        }});
-        await sleep(420);
-    }
-
-    async function runBattles() {
-        for (var i = 0; i < duels.length; i++) {
-            if (_drafterSkip) return;
-            await playBattle(i, duels[i]);
-        }
-        if (_drafterSkip) return;
-        gsap.set(battleScreen, {clearProps: 'x'});
-        battleScreen.style.display = 'none';
-        await playSynergy();
-        if (_drafterSkip) return;
+    function skipAnim() {
+        if (_skip) return;
+        _skip = true;
+        try { gsap.globalTimeline.clear(); } catch(e) {}
+        confrontScreen.style.display = 'none';
+        synergyScreen.style.display  = 'none';
+        gsap.set([confrontScreen, synergyScreen], {clearProps: 'opacity,scale'});
         var sb = document.getElementById('dr-skip-btn');
         if (sb) sb.remove();
         showFinal();
     }
 
-    // ── Шаг 2: финальный экран ───────────────────────────────────────────
-    function showFinal() {
-        var sb = document.getElementById('dr-skip-btn');
-        if (sb) sb.remove();
-
-        var _sfOverlay = document.getElementById('dr-bg-overlay');
-        if (_sfOverlay) gsap.to(_sfOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
-
-        var total = Math.round(data.total_score || 0);
-        var rank, rankColor, rankDesc, rankGlow;
-        if (total >= 85) {
-            rank = 'SSS'; rankColor = '#d29922'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
-        } else if (total >= 80) {
-            rank = 'S';   rankColor = '#d29922'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
-        } else if (total >= 65) {
-            rank = 'A';   rankColor = '#7b8bb8'; rankDesc = 'Хороший драфт!';               rankGlow = false;
-        } else if (total >= 50) {
-            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
-        } else {
-            rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
-        }
-
-        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
-        var isRecord = total > best;
-        if (isRecord) {
-            localStorage.setItem('drafter_best_score', total);
-            var bestLabel = document.getElementById('drafter-best-score');
-            if (bestLabel) bestLabel.textContent = total;
-        }
-
-        // ── Битвы линий ──────────────────────────────────────────────────
-        var laneCardsHtml = duels.map(function(duel) {
-            var synColor = duel.win ? '#3db87a' : '#e5534b';
-            var absSyn   = Math.abs(duel.synergy || 0);
-            var pct      = Math.min(95, Math.max(15, 50 + absSyn * 4));
-            var pctRound = Math.round(pct);
-
-            var allyAvatars = (duel.ally_heroes || []).map(function(h) {
-                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
-            }).join('');
-            var enemyAvatars = (duel.enemy_heroes || []).map(function(h) {
-                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
-            }).join('');
-
-            // Победившая половина: наша (левая) если win, вражеская (правая) если нет
-            var allyFillHtml  = duel.win
-                ? '<div class="lane-ally-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#3db87a;"></div>'
-                : '';
-            var enemyFillHtml = !duel.win
-                ? '<div class="lane-enemy-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#e5534b;"></div>'
-                : '';
-
-            // Подпись: одно число, прижатое к победившей стороне
-            var labelHtml = duel.win
-                ? '<span class="lane-bar-val" style="color:#3db87a;">' + pctRound + '%</span><span></span>'
-                : '<span></span><span class="lane-bar-val" style="color:#e5534b;text-align:right;">' + pctRound + '%</span>';
-
-            return (
-                '<div class="lane-card">' +
-                    '<div class="lane-header">' +
-                        '<span style="font-size:11px;font-weight:700;color:#e5e7eb;">' + duel.name + '</span>' +
-                        '<span style="font-size:11px;font-weight:700;color:' + synColor + ';">' + (duel.synergy != null ? duel.synergy.toFixed(2) : '\u2014') + '</span>' +
-                    '</div>' +
-                    '<div class="lane-teams">' +
-                        '<div class="lane-team">' +
-                            '<div class="lane-team-label">\u041c\u042b</div>' +
-                            '<div class="lane-heroes">' + allyAvatars + '</div>' +
-                        '</div>' +
-                        '<div class="lane-team right">' +
-                            '<div class="lane-team-label" style="text-align:right;">\u0412\u0420\u0410\u0413\u0418</div>' +
-                            '<div class="lane-heroes">' + enemyAvatars + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="lane-bar-center">' +
-                        '<div class="lane-bar-ally-half">' + allyFillHtml + '</div>' +
-                        '<div class="lane-bar-enemy-half">' + enemyFillHtml + '</div>' +
-                    '</div>' +
-                    '<div class="lane-bar-labels">' + labelHtml + '</div>' +
-                '</div>'
-            );
-        }).join('');
-
-        // ── Ключевые матчапы ─────────────────────────────────────────────
-        var comments = data.comments || [];
-        var matchupCardsHtml = comments.slice(0, 4).map(function(c) {
-            if (c.kind === 'synergy') {
-                var n1   = _name(c.hero_id1);
-                var n2   = _name(c.hero_id2);
-                var sign = c.value >= 0 ? '+' : '';
-                return (
-                    '<div class="matchup-card" style="border:1px solid rgba(123,139,184,0.15);background:rgba(123,139,184,0.04);">' +
-                        '<div class="mc-heroes">' +
-                            '<div class="mc-av"><img src="' + _icon(c.hero_id1) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                            '<span class="mc-sep">+</span>' +
-                            '<div class="mc-av"><img src="' + _icon(c.hero_id2) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                        '</div>' +
-                        '<div class="mc-info">' +
-                            '<div class="mc-text">' + n1 + ' + ' + n2 + '</div>' +
-                            '<div style="font-size:8px;color:#8b5cf6;">\u0421\u0438\u043d\u0435\u0440\u0433\u0438\u044f</div>' +
-                        '</div>' +
-                        '<div class="mc-val" style="color:#8b5cf6;">' + sign + c.value.toFixed(1) + '</div>' +
-                    '</div>'
-                );
-            }
-            if (c.kind === 'matchup') {
-                var allyName  = _name(c.ally_hero_id);
-                var enemyName = _name(c.enemy_hero_id);
-                if (c.value > 0) {
-                    return (
-                        '<div class="matchup-card" style="border:1px solid rgba(61,184,122,0.20);background:rgba(61,184,122,0.04);">' +
-                            '<div class="mc-heroes">' +
-                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                                '<span class="mc-sep">vs</span>' +
-                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                            '</div>' +
-                            '<div class="mc-info">' +
-                                '<div class="mc-text">' + allyName + ' \u043a\u043e\u043d\u0442\u0440\u0438\u0442</div>' +
-                                '<div style="font-size:8px;color:#3db87a;">' + enemyName + '</div>' +
-                            '</div>' +
-                            '<div class="mc-val" style="color:#3db87a;">+' + c.value.toFixed(1) + '</div>' +
-                        '</div>'
-                    );
-                } else {
-                    return (
-                        '<div class="matchup-card" style="border:1px solid rgba(229,83,75,0.20);background:rgba(229,83,75,0.04);">' +
-                            '<div class="mc-heroes">' +
-                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                                '<span class="mc-sep">vs</span>' +
-                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                            '</div>' +
-                            '<div class="mc-info">' +
-                                '<div class="mc-text">' + allyName + ' \u043f\u0440\u043e\u0438\u0433\u0440\u044b\u0432\u0430\u0435\u0442</div>' +
-                                '<div style="font-size:8px;color:#e5534b;">' + enemyName + '</div>' +
-                            '</div>' +
-                            '<div class="mc-val" style="color:#e5534b;">' + c.value.toFixed(1) + '</div>' +
-                        '</div>'
-                    );
-                }
-            }
-            return '';
-        }).join('');
-
-        var warnComment = comments.find(function(c) { return c.type === 'warn' && c.kind === 'position'; });
-        var warnCardHtml = '';
-        if (warnComment && warnComment.hero_ids && warnComment.hero_ids.length > 0) {
-            var avatarsHtml = warnComment.hero_ids.map(function(hid) {
-                return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
-            }).join('');
-            warnCardHtml = (
-                '<div class="matchup-card" style="border:1px solid rgba(210,153,34,0.20);background:rgba(210,153,34,0.04);">' +
-                    '<div class="mc-heroes">' + avatarsHtml + '</div>' +
-                    '<div class="mc-info">' +
-                        '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
-                    '</div>' +
-                    '<div class="mc-val" style="color:#f59e0b;">&#x26A0;</div>' +
-                '</div>'
-            );
-        }
-
-        finalScreen.style.display = 'block';
-        finalScreen.innerHTML = (
-            '<div class="dr-fin-wrap">' +
-                '<div class="dr-fin-rank-wrap" style="display:flex;flex-direction:column;align-items:center;width:100%;">' +
-                    '<div class="dr-fin-rank-label">\u0422\u0412\u041e\u042f \u041e\u0426\u0415\u041d\u041a\u0410</div>' +
-                    '<div class="dr-fin-letter" id="dr-fin-letter" style="color:' + rankColor + ';opacity:0;">' + rank + '</div>' +
-                    (isRecord ? '<div class="dr-fin-record">\ud83c\udfc6 \u041d\u043e\u0432\u044b\u0439 \u0440\u0435\u043a\u043e\u0440\u0434!</div>' : '') +
-                    '<div class="dr-fin-desc">' + rankDesc + '</div>' +
-                '</div>' +
-                '<div style="width:100%;margin-bottom:6px;">' +
-                    '<div class="dr-fin-block-title">\u0411\u0418\u0422\u0412\u042b \u041b\u0418\u041d\u0418\u0419</div>' +
-                    '<div>' + laneCardsHtml + '</div>' +
-                '</div>' +
-                (matchupCardsHtml || warnCardHtml ? (
-                    '<div style="width:100%;margin-bottom:6px;">' +
-                        '<div class="dr-fin-block-title">\u041a\u041b\u042e\u0427\u0415\u0412\u042b\u0415 \u041c\u0410\u0422\u0427\u0410\u041f\u042b</div>' +
-                        '<div>' + matchupCardsHtml + warnCardHtml + '</div>' +
-                    '</div>'
-                ) : '') +
-                '<button class="dr-fin-btn" id="dr-fin-btn" onclick="loadDrafterMatch()">\u27f3 \u041d\u041e\u0412\u042b\u0419 \u041c\u0410\u0422\u0427</button>' +
-            '</div>'
-        );
-
-        // Анимация прогресс-баров — только победившая половина
-        Array.from(finalScreen.querySelectorAll('.lane-card')).forEach(function(card, i) {
-            var fill = card.querySelector('.lane-ally-fill') || card.querySelector('.lane-enemy-fill');
-            if (!fill) return;
-            var pct      = parseFloat(fill.getAttribute('data-pct'));
-            var barDelay = 0.3 + (2 + i) * 0.12 + 0.4;
-            gsap.fromTo(fill, {width: '0%'}, {width: pct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
-        });
-
-        // Буква — отдельная pop-анимация (rank-pop)
-        var letterEl = document.getElementById('dr-fin-letter');
-        gsap.fromTo(letterEl,
-            {scale: 0.05, opacity: 0},
-            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)', delay: 0.5, onComplete: function() {
-                if (rankGlow) {
-                    gsap.to(letterEl, {textShadow: '0 0 30px rgba(251,191,36,0.9)', yoyo: true, repeat: -1, duration: 1.5, ease: 'sine.inOut'});
-                }
-            }}
-        );
-
-        // Stagger-анимация в DOM-порядке — охватывает все видимые элементы включая заголовки секций
-        var animEls = Array.from(finalScreen.querySelectorAll(
-            '.dr-fin-rank-wrap, .dr-fin-block-title, .lane-card, .matchup-card, #dr-fin-btn'
-        ));
-        gsap.fromTo(animEls,
-            {opacity: 0, y: 16},
-            {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
-        );
-    }
-
-    // Skip button — top-right pill, appended to body so position:fixed is viewport-relative
     var _skipBtn = document.createElement('button');
     _skipBtn.id = 'dr-skip-btn';
     _skipBtn.className = 'dr-skip-btn';
     _skipBtn.textContent = 'Пропустить';
-    _skipBtn.addEventListener('click', skipDrafterAnim);
+    _skipBtn.addEventListener('click', skipAnim);
     document.body.appendChild(_skipBtn);
-    gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.5, ease: 'power2.out'});
+    gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.4, ease: 'power2.out'});
 
-    runBattles();
+    // ─── STEP 1 · ПРОТИВОСТОЯНИЕ ────────────────────────────────────
+    async function playConfront() {
+        if (!allyIds.length || !enemyIds.length || !matchupPairs.length) return;
+
+        function pairValue(allyId, enemyId) {
+            for (var k = 0; k < matchupPairs.length; k++) {
+                var p = matchupPairs[k];
+                if (p.ally_id === allyId && p.enemy_id === enemyId) return p.value;
+            }
+            return 0;
+        }
+
+        var allyTotals = allyIds.map(function(allyId) {
+            var perEnemy = enemyIds.map(function(enemyId) {
+                return { enemyId: enemyId, value: pairValue(allyId, enemyId) };
+            });
+            var sum = perEnemy.reduce(function(s, e) { return s + e.value; }, 0);
+            return { allyId: allyId, sum: sum, perEnemy: perEnemy };
+        });
+
+        var sorted = allyTotals.slice().sort(function(a, b) { return b.sum - a.sum; });
+        var strongest = sorted[0];
+        var weakest   = sorted[sorted.length - 1];
+
+        function cardHtml(side, t) {
+            var labelText  = side === 'best' ? 'СИЛЬНЕЙШИЙ' : 'СЛАБЕЙШИЙ';
+            var labelColor = side === 'best' ? 'var(--positive)' : 'var(--negative)';
+            var sumColor   = t.sum > 0.5 ? 'var(--positive)' : t.sum < -0.5 ? 'var(--negative)' : 'var(--warning)';
+
+            var rowsHtml = t.perEnemy.map(function(e) {
+                var c = e.value > 0.1 ? 'var(--positive)'
+                      : e.value < -0.1 ? 'var(--negative)'
+                      : 'rgba(255,255,255,0.18)';
+                var w = Math.min(100, Math.abs(e.value) * 14);
+                var posClass = e.value >= 0 ? 'is-pos' : 'is-neg';
+                return (
+                    '<div class="dr-cf-row">' +
+                        '<img class="dr-cf-row-icon" src="' + _icon(e.enemyId) + '" onerror="this.style.opacity=0">' +
+                        '<div class="dr-cf-row-bar">' +
+                            '<div class="dr-cf-row-mid"></div>' +
+                            '<div class="dr-cf-row-fill ' + posClass + '" data-pct="' + w.toFixed(1) + '" style="background:' + c + ';width:0%;"></div>' +
+                        '</div>' +
+                        '<div class="dr-cf-row-val" style="color:' + c + ';">' + (e.value >= 0 ? '+' : '') + e.value.toFixed(1) + '</div>' +
+                    '</div>'
+                );
+            }).join('');
+
+            return (
+                '<div class="dr-cf-card dr-cf-card--' + side + '">' +
+                    '<div class="dr-cf-card-label" style="color:' + labelColor + ';">' + labelText + '</div>' +
+                    '<div class="dr-cf-card-portrait">' +
+                        '<img src="' + _icon(t.allyId) + '" onerror="this.style.opacity=0">' +
+                    '</div>' +
+                    '<div class="dr-cf-card-name">' + _name(t.allyId) + '</div>' +
+                    '<div class="dr-cf-card-total" style="color:' + sumColor + ';" data-target="' + t.sum.toFixed(2) + '">+0.0</div>' +
+                    '<div class="dr-cf-card-rowlabel">vs враги</div>' +
+                    '<div class="dr-cf-card-rows">' + rowsHtml + '</div>' +
+                '</div>'
+            );
+        }
+
+        confrontScreen.innerHTML = (
+            '<div class="dr-step-label">ШАГ 1 · ПРОТИВОСТОЯНИЕ</div>' +
+            '<div class="dr-cf-grid">' +
+                cardHtml('best',  strongest) +
+                cardHtml('worst', weakest) +
+            '</div>'
+        );
+
+        confrontScreen.style.display = 'block';
+
+        var stepEl = confrontScreen.querySelector('.dr-step-label');
+        var cards  = confrontScreen.querySelectorAll('.dr-cf-card');
+
+        gsap.set(stepEl, {opacity: 0, y: -8});
+        gsap.set(cards,  {opacity: 0, y: 20});
+
+        gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
+        gsap.to(cards,  {opacity: 1, y: 0, duration: 0.55, stagger: 0.15, delay: 0.12, ease: 'power3.out'});
+
+        await sleep(800);
+        if (_skip) return;
+
+        cards.forEach(function(card, ci) {
+            var totalEl = card.querySelector('.dr-cf-card-total');
+            var target  = parseFloat(totalEl.getAttribute('data-target'));
+            var c = {v: 0};
+            gsap.to(c, {
+                v: target, duration: 0.8, delay: ci * 0.15, ease: 'power2.out',
+                onUpdate: function() {
+                    totalEl.textContent = (c.v >= 0 ? '+' : '') + c.v.toFixed(1);
+                }
+            });
+
+            var fills = card.querySelectorAll('.dr-cf-row-fill');
+            fills.forEach(function(fill, fi) {
+                var pct = parseFloat(fill.getAttribute('data-pct'));
+                gsap.to(fill, {
+                    width: pct + '%',
+                    duration: 0.5,
+                    delay: ci * 0.15 + 0.18 + fi * 0.05,
+                    ease: 'power2.out'
+                });
+            });
+        });
+
+        await sleep(2000);
+        if (_skip) return;
+
+        gsap.to(confrontScreen, {opacity: 0, duration: 0.4, ease: 'power2.in'});
+        await sleep(420);
+        confrontScreen.style.display = 'none';
+        gsap.set(confrontScreen, {opacity: 1});
+    }
+
+    // ─── STEP 2 · СИНЕРГИЯ — pentagon redone ────────────────────────
+    async function playSynergy() {
+        if (allyIds.length < 2 || !synergyPairs.length) return;
+
+        var W    = Math.min(340, document.documentElement.clientWidth - 40);
+        var H    = W;
+        var cx   = W / 2;
+        var cy   = H / 2;
+        var R    = W * 0.36;
+        var SLOT = 54;
+
+        var pts = allyIds.map(function(_, i) {
+            var ang = i * 2 * Math.PI / 5 - Math.PI / 2;
+            return { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) };
+        });
+
+        function pairValue(i, j) {
+            var a = allyIds[i], b = allyIds[j];
+            for (var k = 0; k < synergyPairs.length; k++) {
+                var p = synergyPairs[k];
+                if ((p.hero_id1 === a && p.hero_id2 === b) ||
+                    (p.hero_id1 === b && p.hero_id2 === a)) return p.value;
+            }
+            return 0;
+        }
+
+        var allValues = [];
+        var edges = [];
+        for (var i = 0; i < allyIds.length; i++) {
+            for (var j = i + 1; j < allyIds.length; j++) {
+                var v = pairValue(i, j);
+                allValues.push(v);
+                edges.push({ i: i, j: j, v: v });
+            }
+        }
+        var maxAbs = Math.max.apply(null, allValues.map(function(v) { return Math.abs(v); }).concat([1]));
+        edges.forEach(function(e) { e.intensity = Math.abs(e.v) / maxAbs; });
+        edges.sort(function(a, b) { return Math.abs(a.v) - Math.abs(b.v); });
+
+        var avgSyn = allValues.reduce(function(s, v) { return s + v; }, 0) / (allValues.length || 1);
+
+        var bgPolyPts = pts.map(function(p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+
+        var svg =
+            '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="overflow:visible;display:block;">' +
+                '<polygon class="dr-syn-frame" points="' + bgPolyPts + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3 4"/>' +
+                edges.map(function(e) {
+                    var p1 = pts[e.i], p2 = pts[e.j];
+                    var color = e.v > 0.1 ? '#3db87a' : e.v < -0.1 ? '#e5534b' : '#56565f';
+                    var sw    = 1 + e.intensity * 3.6;
+                    return '<line class="dr-syn-edge" data-i="' + e.i + '" data-j="' + e.j + '" data-v="' + e.v.toFixed(2) + '" ' +
+                           'x1="' + p1.x.toFixed(1) + '" y1="' + p1.y.toFixed(1) + '" ' +
+                           'x2="' + p2.x.toFixed(1) + '" y2="' + p2.y.toFixed(1) + '" ' +
+                           'stroke="' + color + '" stroke-width="' + sw.toFixed(2) + '" ' +
+                           'stroke-linecap="round" opacity="0" />';
+                }).join('') +
+            '</svg>';
+
+        var verticesHtml = pts.map(function(p, i) {
+            return '<div class="dr-syn-vertex" data-i="' + i + '" ' +
+                   'style="left:' + (p.x - SLOT/2).toFixed(1) + 'px;top:' + (p.y - SLOT/2).toFixed(1) + 'px;width:' + SLOT + 'px;height:' + SLOT + 'px;">' +
+                       '<img src="' + _icon(allyIds[i]) + '" onerror="this.style.opacity=0">' +
+                   '</div>';
+        }).join('');
+
+        synergyScreen.innerHTML = (
+            '<div class="dr-step-label">ШАГ 2 · СИНЕРГИЯ</div>' +
+            '<div class="dr-syn-stage" style="width:' + W + 'px;height:' + H + 'px;">' +
+                svg + verticesHtml +
+                '<div class="dr-syn-center" style="left:' + cx + 'px;top:' + cy + 'px;">' +
+                    '<div class="dr-syn-center-label">СРЕДНЯЯ</div>' +
+                    '<div class="dr-syn-center-val" id="dr-syn-cval">+0.0</div>' +
+                '</div>' +
+            '</div>'
+        );
+
+        synergyScreen.style.display = 'block';
+
+        var stepEl   = synergyScreen.querySelector('.dr-step-label');
+        var stage    = synergyScreen.querySelector('.dr-syn-stage');
+        var frame    = synergyScreen.querySelector('.dr-syn-frame');
+        var vertices = synergyScreen.querySelectorAll('.dr-syn-vertex');
+        var edgeEls  = synergyScreen.querySelectorAll('.dr-syn-edge');
+        var center   = synergyScreen.querySelector('.dr-syn-center');
+        var cValEl   = document.getElementById('dr-syn-cval');
+
+        gsap.set(stepEl,   {opacity: 0, y: -8});
+        gsap.set(stage,    {opacity: 0, scale: 0.92});
+        gsap.set(vertices, {opacity: 0, scale: 0.4});
+        gsap.set(center,   {opacity: 0, scale: 0.7});
+        gsap.set(frame,    {opacity: 0});
+
+        gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
+        gsap.to(stage,  {opacity: 1, scale: 1, duration: 0.55, delay: 0.1, ease: 'power3.out'});
+        gsap.to(frame,  {opacity: 1, duration: 0.6, delay: 0.25, ease: 'power2.out'});
+
+        await sleep(380);
+        if (_skip) return;
+
+        gsap.to(vertices, {
+            opacity: 1, scale: 1, duration: 0.55,
+            stagger: { each: 0.07, from: 'start' },
+            ease: 'back.out(1.5)'
+        });
+
+        await sleep(700);
+        if (_skip) return;
+
+        edgeEls.forEach(function(edge, idx) {
+            var len = edge.getTotalLength();
+            edge.style.strokeDasharray  = len;
+            edge.style.strokeDashoffset = len;
+            gsap.to(edge, {opacity: 1, duration: 0.05});
+            gsap.to(edge, {
+                strokeDashoffset: 0,
+                duration: 0.5,
+                delay: idx * 0.05,
+                ease: 'power2.inOut'
+            });
+        });
+
+        await sleep(edgeEls.length * 50 + 500);
+        if (_skip) return;
+
+        gsap.to(center, {opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.4)'});
+        var cnt = {v: 0};
+        gsap.to(cnt, {
+            v: avgSyn, duration: 0.85, ease: 'power2.out',
+            onUpdate: function() {
+                cValEl.textContent = (cnt.v >= 0 ? '+' : '') + cnt.v.toFixed(1);
+                cValEl.style.color = cnt.v > 0.5 ? 'var(--positive)'
+                                  : cnt.v < -0.5 ? 'var(--negative)'
+                                  : 'var(--warning)';
+            }
+        });
+
+        await sleep(1500);
+        if (_skip) return;
+
+        gsap.to(synergyScreen, {opacity: 0, duration: 0.4, ease: 'power2.in'});
+        await sleep(420);
+        synergyScreen.style.display = 'none';
+        gsap.set(synergyScreen, {opacity: 1});
+    }
+
+    // ─── STEP 3 · МАТРИЦА + RANK ────────────────────────────────────
+    function showFinal() {
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+
+        var total = Math.round(data.total_score || 0);
+        var rank, rankColor, rankDesc;
+        if (total >= 85)      { rank = 'SSS'; rankColor = 'var(--warning)';  rankDesc = 'Абсолютный драфтер'; }
+        else if (total >= 80) { rank = 'S';   rankColor = 'var(--warning)';  rankDesc = 'Как ты это сделал?'; }
+        else if (total >= 65) { rank = 'A';   rankColor = 'var(--accent)';   rankDesc = 'Хороший драфт'; }
+        else if (total >= 50) { rank = 'B';   rankColor = '#60a5fa';         rankDesc = 'Неплохо, но можно лучше'; }
+        else                  { rank = 'C';   rankColor = 'var(--text-secondary)'; rankDesc = 'Надо тренироваться, братанчик'; }
+
+        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
+        var isRecord = total > best;
+        if (isRecord) localStorage.setItem('drafter_best_score', total);
+
+        function pairValue(allyId, enemyId) {
+            for (var k = 0; k < matchupPairs.length; k++) {
+                var p = matchupPairs[k];
+                if (p.ally_id === allyId && p.enemy_id === enemyId) return p.value;
+            }
+            return 0;
+        }
+
+        var maxAbs = matchupPairs.reduce(function(m, p) { return Math.max(m, Math.abs(p.value)); }, 1);
+
+        function cellBg(v) {
+            if (Math.abs(v) < 0.1) return 'rgba(255,255,255,0.03)';
+            var alpha = Math.min(0.45, 0.08 + Math.abs(v) / maxAbs * 0.40);
+            return v > 0
+                ? 'rgba(61, 184, 122, ' + alpha.toFixed(3) + ')'
+                : 'rgba(229, 83, 75, ' + alpha.toFixed(3) + ')';
+        }
+        function cellTxt(v) {
+            if (v > 0.5)  return '#a8e7c4';
+            if (v < -0.5) return '#f3aaa6';
+            return 'var(--text-secondary)';
+        }
+
+        var headerCells = '<div class="dr-mx-cell dr-mx-corner"></div>' +
+            enemyIds.map(function(id) {
+                return '<div class="dr-mx-cell dr-mx-head dr-mx-head-enemy"><img src="' + _icon(id) + '" onerror="this.style.opacity=0"></div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-totals-head">Σ</div>';
+
+        var dataRows = allyIds.map(function(allyId) {
+            var rowSum = 0;
+            var cellsHtml = enemyIds.map(function(enemyId) {
+                var v = pairValue(allyId, enemyId);
+                rowSum += v;
+                return '<div class="dr-mx-cell dr-mx-data" style="background:' + cellBg(v) + ';color:' + cellTxt(v) + ';">' +
+                    (v >= 0 ? '+' : '') + v.toFixed(1) +
+                '</div>';
+            }).join('');
+            var sumColor = rowSum > 0.5 ? 'var(--positive)' : rowSum < -0.5 ? 'var(--negative)' : 'var(--warning)';
+            return '<div class="dr-mx-row">' +
+                '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(allyId) + '" onerror="this.style.opacity=0"></div>' +
+                cellsHtml +
+                '<div class="dr-mx-cell dr-mx-rowsum" style="color:' + sumColor + ';">' + (rowSum >= 0 ? '+' : '') + rowSum.toFixed(1) + '</div>' +
+            '</div>';
+        }).join('');
+
+        var colSums = enemyIds.map(function(enemyId) {
+            return allyIds.reduce(function(s, allyId) { return s + pairValue(allyId, enemyId); }, 0);
+        });
+        var grandSum = colSums.reduce(function(s, v) { return s + v; }, 0);
+
+        var colSumRow = '<div class="dr-mx-row dr-mx-row-tot">' +
+            '<div class="dr-mx-cell dr-mx-totals-head">Σ</div>' +
+            colSums.map(function(s) {
+                var col = s > 0.5 ? 'var(--positive)' : s < -0.5 ? 'var(--negative)' : 'var(--warning)';
+                return '<div class="dr-mx-cell dr-mx-colsum" style="color:' + col + ';">' + (s >= 0 ? '+' : '') + s.toFixed(1) + '</div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-grand" style="color:' + (grandSum >= 0 ? 'var(--positive)' : 'var(--negative)') + ';">' +
+                (grandSum >= 0 ? '+' : '') + grandSum.toFixed(1) +
+            '</div>' +
+        '</div>';
+
+        finalScreen.style.display = 'block';
+        finalScreen.innerHTML = (
+            '<div class="dr-fin-wrap">' +
+                '<div class="dr-fin-rank-block">' +
+                    '<div class="dr-fin-rank-label">ОЦЕНКА ДРАФТА</div>' +
+                    '<div class="dr-fin-rank-letter" id="dr-fin-letter" style="color:' + rankColor + ';">' + rank + '</div>' +
+                    '<div class="dr-fin-score" id="dr-fin-score" style="color:' + rankColor + ';">0</div>' +
+                    '<div class="dr-fin-desc">' + rankDesc + '</div>' +
+                    (isRecord ? '<div class="dr-fin-record">Новый рекорд</div>' : '') +
+                '</div>' +
+                '<div class="dr-fin-block">' +
+                    '<div class="dr-fin-block-title">МАТРИЦА ПРЕИМУЩЕСТВА</div>' +
+                    '<div class="dr-fin-block-sub">наши герои × вражеские</div>' +
+                    '<div class="dr-mx-grid">' +
+                        '<div class="dr-mx-row dr-mx-row-head">' + headerCells + '</div>' +
+                        dataRows +
+                        colSumRow +
+                    '</div>' +
+                '</div>' +
+                '<button class="dr-fin-btn" onclick="loadDrafterMatch()">↻  НОВЫЙ МАТЧ</button>' +
+            '</div>'
+        );
+
+        var letterEl = document.getElementById('dr-fin-letter');
+        gsap.fromTo(letterEl,
+            {scale: 0.2, opacity: 0},
+            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.6)', delay: 0.15});
+
+        var scoreEl = document.getElementById('dr-fin-score');
+        var sCount = {v: 0};
+        gsap.to(sCount, {
+            v: total, duration: 1.1, ease: 'power2.out', delay: 0.45,
+            onUpdate: function() { scoreEl.textContent = Math.round(sCount.v); }
+        });
+
+        var dataCells = finalScreen.querySelectorAll('.dr-mx-data');
+        gsap.fromTo(dataCells,
+            {opacity: 0, scale: 0.85},
+            {
+                opacity: 1, scale: 1, duration: 0.32,
+                stagger: { each: 0.022, from: 'start' },
+                ease: 'power2.out', delay: 0.7
+            });
+
+        var staggerEls = Array.from(finalScreen.querySelectorAll(
+            '.dr-fin-rank-label, .dr-fin-desc, .dr-fin-record, .dr-fin-block-title, .dr-fin-block-sub, ' +
+            '.dr-mx-row-head .dr-mx-head, .dr-mx-row .dr-mx-head, .dr-mx-rowsum, ' +
+            '.dr-mx-row-tot .dr-mx-cell, .dr-fin-btn'
+        ));
+        gsap.fromTo(staggerEls,
+            {opacity: 0, y: 6},
+            {opacity: 1, y: 0, duration: 0.32, stagger: 0.025, ease: 'power2.out', delay: 0.1});
+    }
+
+    (async function runFlow() {
+        await playConfront();
+        if (_skip) return;
+        await playSynergy();
+        if (_skip) return;
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+        showFinal();
+    })();
 }
 
 function _drafterCommentText(c) {
