@@ -2896,9 +2896,7 @@ margin-top: var(--space-4);
 .home-draft-bars {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  flex: 1;
-  justify-content: space-around;
+  gap: var(--space-3);
   margin-top: auto;
 }
 
@@ -2945,7 +2943,6 @@ margin-top: var(--space-4);
   transition: width 280ms ease-out;
 }
 
-.home-draft-bar-fill--accent { background: var(--accent); }
 .home-draft-bar-fill--positive { background: var(--positive); }
 .home-draft-bar-fill--warning { background: var(--warning); }
 
