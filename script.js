@@ -2957,6 +2957,12 @@ var _CATALOG_ATTR_LABELS = {
     'int': 'Интеллект',
     'all': 'Универсал',
 };
+var _CATALOG_ATTR_ICONS = {
+    'str': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_strength.png',
+    'agi': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_agility.png',
+    'int': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_intelligence.png',
+    'all': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_universal.png',
+};
 
 function initHeroesCatalog() {
     var input = document.getElementById('matchup-hero-input');
@@ -2996,57 +3002,6 @@ function initHeroesCatalog() {
             if (ov && !ov.hasAttribute('hidden')) closeHeroesCatalog();
         }
     });
-
-    _bindCatalogSwipeToClose();
-}
-
-function _bindCatalogSwipeToClose() {
-    var dragzone = document.getElementById('heroes-catalog-dragzone');
-    var panel = document.getElementById('heroes-catalog-panel');
-    if (!dragzone || !panel) return;
-
-    var startY = 0;
-    var deltaY = 0;
-    var startedAt = 0;
-    var dragging = false;
-    var CLOSE_THRESHOLD = 80;
-    var VELOCITY_THRESHOLD = 0.5;
-
-    dragzone.addEventListener('touchstart', function (e) {
-        if (e.target.closest('.heroes-catalog-close')) return;
-        if (e.touches.length !== 1) return;
-        dragging = true;
-        startY = e.touches[0].clientY;
-        deltaY = 0;
-        startedAt = Date.now();
-        panel.classList.remove('is-open');
-        panel.style.transition = 'none';
-    }, { passive: true });
-
-    dragzone.addEventListener('touchmove', function (e) {
-        if (!dragging) return;
-        var dy = e.touches[0].clientY - startY;
-        if (dy < 0) dy = 0;
-        deltaY = dy;
-        panel.style.transform = 'translateY(' + dy + 'px)';
-    }, { passive: true });
-
-    function endDrag() {
-        if (!dragging) return;
-        dragging = false;
-        var elapsed = Date.now() - startedAt;
-        var velocity = elapsed > 0 ? deltaY / elapsed : 0;
-        panel.style.transition = '';
-        if (deltaY > CLOSE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
-            closeHeroesCatalog();
-        } else {
-            panel.style.transform = '';
-            panel.classList.add('is-open');
-        }
-    }
-
-    dragzone.addEventListener('touchend', endDrag);
-    dragzone.addEventListener('touchcancel', endDrag);
 }
 
 function openHeroesCatalog() {
@@ -3149,10 +3104,14 @@ function renderHeroesCatalog() {
                 '</button>'
             );
         }).join('');
+        var iconUrl = _CATALOG_ATTR_ICONS[attr] || '';
+        var iconHtml = iconUrl
+            ? '<img class="heroes-catalog-section-icon" src="' + _escHtml(iconUrl) + '" alt="" aria-hidden="true" onerror="this.style.display=\'none\'">'
+            : '';
         return (
             '<section class="heroes-catalog-section">' +
                 '<header class="heroes-catalog-section-header">' +
-                    '<div class="heroes-catalog-section-title">' + _escHtml(label) + '</div>' +
+                    '<div class="heroes-catalog-section-title">' + iconHtml + '<span>' + _escHtml(label) + '</span></div>' +
                     '<div class="heroes-catalog-section-count">' + names.length + '</div>' +
                 '</header>' +
                 '<div class="heroes-catalog-grid">' + tilesHtml + '</div>' +
