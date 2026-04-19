@@ -3600,15 +3600,19 @@ function _loadHomeHeroWidget() {
     var widget = document.getElementById('home-hero-widget');
     if (!body || !widget) return;
 
+    var cta = widget.querySelector('.home-widget-cta');
     var heroId = _getLastHeroId();
     if (!heroId) {
-        widget.disabled = true;
-        body.innerHTML = '<div class="home-hero-placeholder">Открой любого героя</div>';
+        widget.disabled = false;
+        widget.dataset.heroId = '';
+        body.innerHTML = '<div class="home-hero-placeholder">Открой любого героя во вкладке Герои</div>';
+        if (cta) cta.innerHTML = 'Перейти к героям <i class="ph ph-arrow-right" aria-hidden="true"></i>';
         return;
     }
 
     widget.disabled = false;
     widget.dataset.heroId = heroId;
+    if (cta) cta.innerHTML = 'Открыть гайд <i class="ph ph-arrow-right" aria-hidden="true"></i>';
     var API = window.API_BASE_URL || '/api';
     fetch(API + '/hero/' + heroId + '/build')
         .then(function(r) { return r.ok ? r.json() : null; })
@@ -3731,7 +3735,7 @@ function homeHeroWidgetClick() {
     var widget = document.getElementById('home-hero-widget');
     if (!widget || widget.disabled) return;
     var heroId = parseInt(widget.dataset.heroId || '0', 10);
-    if (!heroId) return;
+    if (!heroId) { switchPage('database'); return; }
     var name = window.dotaHeroIdToName && window.dotaHeroIdToName[heroId];
     if (name) _metaHeroClick(name);
 }
@@ -3805,8 +3809,8 @@ function _renderHomeDraftEmpty() {
     var body = document.getElementById('home-draft-body');
     var cta = document.getElementById('home-draft-cta');
     if (!body) return;
-    body.innerHTML = '<div class="home-draft-placeholder">Оцени свой первый драфт</div>';
-    if (cta) cta.innerHTML = 'Оценить драфт <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+    body.innerHTML = '<div class="home-draft-placeholder">Сделай свой первый драфт</div>';
+    if (cta) cta.innerHTML = 'Перейти к драфтеру <i class="ph ph-arrow-right" aria-hidden="true"></i>';
 }
 
 function _renderHomeDraftWidget(cached, lastHistory) {
