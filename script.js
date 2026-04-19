@@ -4436,35 +4436,10 @@ function hideDrafterFullpage(id) {
     if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
-function _drafterFpSkeleton(title, backId) {
-    return (
-        '<div class="drafter-fp-header">' +
-            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
-            '<div class="drafter-fp-title">' + title + '</div>' +
-            '<div class="drafter-fp-spacer"></div>' +
-        '</div>' +
-        '<div class="drafter-fp-content">' +
-            '<div style="color:#6b7280;font-size:12px;padding:8px 0;">Загрузка...</div>' +
-        '</div>'
-    );
-}
-
-function _drafterFpError(title, backId) {
-    return (
-        '<div class="drafter-fp-header">' +
-            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
-            '<div class="drafter-fp-title">' + title + '</div>' +
-            '<div class="drafter-fp-spacer"></div>' +
-        '</div>' +
-        '<div class="drafter-fp-content"><div style="color:#e5534b;font-size:13px;">Ошибка загрузки</div></div>'
-    );
-}
-
-function _draftRankColor(rank) {
-    return rank === 'SSS' || rank === 'S' ? '#d29922'
-         : rank === 'A' ? '#7b8bb8'
-         : rank === 'B' ? '#60a5fa'
-         : '#9ca3af';
+function _draftRankClass(rank) {
+    return (rank === 'SSS' || rank === 'S')
+        ? 'drafter-hist-rank drafter-hist-rank--s'
+        : 'drafter-hist-rank drafter-hist-rank--neutral';
 }
 
 function _draftFormatDate(isoStr) {
@@ -4481,80 +4456,227 @@ function _draftFormatDate(isoStr) {
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + hh + ':' + mm;
 }
 
-function _rankCardStyle(rank) {
-    if (rank === 'SSS' || rank === 'S') return 'background:rgba(251,191,36,0.06);border:1px solid rgba(210,153,34,0.12);';
-    if (rank === 'A') return 'background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);';
-    if (rank === 'B') return 'background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);';
-    return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);';
+function _histBuildHeader(PAGE_ID) {
+    var header = document.createElement('div');
+    header.className = 'drafter-fp-header';
+
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'drafter-fp-back';
+    back.setAttribute('aria-label', 'Назад');
+    back.textContent = '← Назад';
+    back.addEventListener('click', function() { hideDrafterFullpage(PAGE_ID); });
+    header.appendChild(back);
+
+    var title = document.createElement('div');
+    title.className = 'drafter-fp-title';
+    title.textContent = 'Моя история';
+    header.appendChild(title);
+
+    var spacer = document.createElement('div');
+    spacer.className = 'drafter-fp-spacer';
+    header.appendChild(spacer);
+
+    return header;
+}
+
+function _histBuildSkeleton(count) {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < count; i++) {
+        var card = document.createElement('div');
+        card.className = 'drafter-hist-skel-card';
+        card.setAttribute('aria-hidden', 'true');
+
+        var top = document.createElement('div');
+        top.className = 'drafter-hist-skel-top';
+
+        var rank = document.createElement('div');
+        rank.className = 'drafter-hist-skel-shape drafter-hist-skel-rank';
+        top.appendChild(rank);
+
+        var meta = document.createElement('div');
+        meta.className = 'drafter-hist-skel-shape drafter-hist-skel-meta';
+        top.appendChild(meta);
+
+        var score = document.createElement('div');
+        score.className = 'drafter-hist-skel-shape drafter-hist-skel-score';
+        top.appendChild(score);
+
+        card.appendChild(top);
+
+        for (var t = 0; t < 2; t++) {
+            var heroesRow = document.createElement('div');
+            heroesRow.className = 'drafter-hist-skel-heroes';
+            for (var h = 0; h < 5; h++) {
+                var hero = document.createElement('div');
+                hero.className = 'drafter-hist-skel-shape drafter-hist-skel-hero';
+                heroesRow.appendChild(hero);
+            }
+            card.appendChild(heroesRow);
+        }
+
+        frag.appendChild(card);
+    }
+    return frag;
+}
+
+function _histBuildEmptyBlock(titleText, subText, onRetry) {
+    var wrap = document.createElement('div');
+    wrap.className = 'drafter-lb-empty';
+    if (onRetry) wrap.setAttribute('role', 'alert');
+    else wrap.setAttribute('role', 'status');
+
+    var title = document.createElement('div');
+    title.className = 'drafter-lb-empty-title';
+    title.textContent = titleText;
+    wrap.appendChild(title);
+
+    if (subText) {
+        var text = document.createElement('div');
+        text.className = 'drafter-lb-empty-text';
+        text.textContent = subText;
+        wrap.appendChild(text);
+    }
+
+    if (onRetry) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'drafter-lb-retry';
+        btn.textContent = 'Повторить';
+        btn.addEventListener('click', onRetry);
+        wrap.appendChild(btn);
+    }
+
+    return wrap;
+}
+
+function _histBuildTeam(labelText, heroIds, sideClass) {
+    var team = document.createElement('div');
+    team.className = 'drafter-hist-team';
+
+    var label = document.createElement('div');
+    label.className = 'drafter-hist-team-label';
+    label.textContent = labelText;
+    team.appendChild(label);
+
+    var row = document.createElement('div');
+    row.className = 'drafter-hist-heroes';
+    heroIds.forEach(function(id) {
+        var url = _drafterHeroIcon(id);
+        if (!url) return;
+        var img = document.createElement('img');
+        img.className = 'drafter-hist-hero ' + sideClass;
+        img.src = url;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        var name = (typeof _drafterHeroName === 'function') ? _drafterHeroName(id) : '';
+        img.alt = name || '';
+        if (name) img.title = name;
+        row.appendChild(img);
+    });
+    team.appendChild(row);
+
+    return team;
+}
+
+function _histBuildCard(r) {
+    var card = document.createElement('div');
+    card.className = 'drafter-hist-card';
+
+    var top = document.createElement('div');
+    top.className = 'drafter-hist-top';
+
+    var rank = document.createElement('div');
+    rank.className = _draftRankClass(r.rank);
+    rank.textContent = r.rank;
+    top.appendChild(rank);
+
+    var meta = document.createElement('div');
+    meta.className = 'drafter-hist-meta';
+    meta.textContent = _draftFormatDate(r.created_at);
+    top.appendChild(meta);
+
+    var scoreBlock = document.createElement('div');
+    scoreBlock.className = 'drafter-hist-score-block';
+    var scoreLabel = document.createElement('div');
+    scoreLabel.className = 'drafter-hist-score-label';
+    scoreLabel.textContent = 'Счёт';
+    scoreBlock.appendChild(scoreLabel);
+    var score = document.createElement('div');
+    score.className = 'drafter-hist-score';
+    score.textContent = r.total_score;
+    scoreBlock.appendChild(score);
+    top.appendChild(scoreBlock);
+
+    card.appendChild(top);
+
+    if (r.ally_heroes && r.enemy_heroes) {
+        var teams = document.createElement('div');
+        teams.className = 'drafter-hist-teams';
+        teams.appendChild(_histBuildTeam('Против', r.enemy_heroes, 'drafter-hist-hero--enemy'));
+        teams.appendChild(_histBuildTeam('С собой', r.ally_heroes, 'drafter-hist-hero--ally'));
+        card.appendChild(teams);
+    }
+
+    return card;
+}
+
+function _histBuildScaffold(PAGE_ID) {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(_histBuildHeader(PAGE_ID));
+    var content = document.createElement('div');
+    content.className = 'drafter-fp-content';
+    frag.appendChild(content);
+    return { frag: frag, content: content };
 }
 
 async function showDrafterHistory() {
     var PAGE_ID = 'drafter-history-page';
     var page = document.getElementById(PAGE_ID);
-    page.innerHTML = _drafterFpSkeleton('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
     page.style.display = 'block';
+    page.textContent = '';
+
+    var scaffold = _histBuildScaffold(PAGE_ID);
+    page.appendChild(scaffold.frag);
+    var content = scaffold.content;
 
     if (!USER_TOKEN) {
-        page.innerHTML = (
-            '<div class="drafter-fp-header">' +
-                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
-                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
-                '<div class="drafter-fp-spacer"></div>' +
-            '</div>' +
-            '<div class="drafter-fp-content"><div style="color:#6b7280;font-size:13px;">Войдите, чтобы посмотреть историю</div></div>'
-        );
+        content.appendChild(_histBuildEmptyBlock(
+            'Войдите, чтобы посмотреть историю',
+            'Драфты сохраняются для авторизованных игроков',
+            null
+        ));
         return;
     }
+
+    content.appendChild(_histBuildSkeleton(4));
+
     try {
         var resp = await fetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
-        var cardsHtml = rows.length === 0
-            ? '<div style="color:#6b7280;font-size:13px;">Нет сохранённых драфтов</div>'
-            : rows.map(function(r) {
-                var color = _draftRankColor(r.rank);
-                var cardStyle = _rankCardStyle(r.rank);
-                var dt = _draftFormatDate(r.created_at);
-                var heroIconStyle = 'width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;';
-                var heroesHtml = '';
-                if (r.ally_heroes && r.enemy_heroes) {
-                    var enemyIcons = r.enemy_heroes.map(function(id) {
-                        var url = _drafterHeroIcon(id);
-                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #e5534b;">' : '';
-                    }).join('');
-                    var allyIcons = r.ally_heroes.map(function(id) {
-                        var url = _drafterHeroIcon(id);
-                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #3db87a;">' : '';
-                    }).join('');
-                    heroesHtml = (
-                        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + enemyIcons + '</div>' +
-                        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + allyIcons + '</div>'
-                    );
-                }
-                return (
-                    '<div class="drafter-hist-card" style="' + cardStyle + 'flex-direction:column;align-items:stretch;gap:0;">' +
-                        '<div style="display:flex;align-items:center;">' +
-                            '<div style="font-size:24px;font-weight:900;color:' + color + ';width:40px;text-align:center;flex-shrink:0;line-height:1;">' + r.rank + '</div>' +
-                            '<div style="flex:1;font-size:12px;color:#6b7280;">' + dt + '</div>' +
-                            '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
-                        '</div>' +
-                        heroesHtml +
-                    '</div>'
-                );
-            }).join('');
-        page.innerHTML = (
-            '<div class="drafter-fp-header">' +
-                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
-                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
-                '<div class="drafter-fp-spacer"></div>' +
-            '</div>' +
-            '<div class="drafter-fp-content">' +
-                '<div style="font-size:8px;color:#4b5563;text-align:center;margin-bottom:8px;">Последние 10 драфтов</div>' +
-                cardsHtml +
-            '</div>'
-        );
+
+        content.textContent = '';
+
+        if (!rows || rows.length === 0) {
+            content.appendChild(_histBuildEmptyBlock(
+                'Пока нет драфтов',
+                'Сохранённые результаты появятся здесь',
+                null
+            ));
+            return;
+        }
+
+        var frag = document.createDocumentFragment();
+        rows.forEach(function(r) { frag.appendChild(_histBuildCard(r)); });
+        content.appendChild(frag);
     } catch (e) {
-        page.innerHTML = _drafterFpError('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
+        content.textContent = '';
+        content.appendChild(_histBuildEmptyBlock(
+            'Не удалось загрузить историю',
+            'Проверь соединение и попробуй ещё раз',
+            function() { showDrafterHistory(); }
+        ));
     }
 }
 
