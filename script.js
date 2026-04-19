@@ -4704,8 +4704,8 @@ function _histBuildCard(r) {
     if (r.ally_heroes && r.enemy_heroes) {
         var teams = document.createElement('div');
         teams.className = 'drafter-hist-teams';
-        teams.appendChild(_histBuildTeam('Против', r.enemy_heroes, 'drafter-hist-hero--enemy'));
-        teams.appendChild(_histBuildTeam('С собой', r.ally_heroes, 'drafter-hist-hero--ally'));
+        teams.appendChild(_histBuildTeam('Враги', r.enemy_heroes, 'drafter-hist-hero--enemy'));
+        teams.appendChild(_histBuildTeam('Союзники', r.ally_heroes, 'drafter-hist-hero--ally'));
         card.appendChild(teams);
     }
 
