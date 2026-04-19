@@ -3954,11 +3954,146 @@ margin-top: var(--space-4);
 /* ── Карточки истории ──────────────────────────────────────────── */
 .drafter-hist-card {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--bg-surface);
+  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.drafter-hist-top {
+  display: flex;
   align-items: center;
-  gap: 12px;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
+  gap: var(--space-3);
+}
+
+.drafter-hist-rank {
+  font-size: var(--text-base);
+  font-weight: var(--font-bold);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 28px;
+  letter-spacing: var(--tracking-normal);
+}
+.drafter-hist-rank--s { color: var(--warning); }
+.drafter-hist-rank--neutral { color: var(--text-secondary); }
+
+.drafter-hist-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drafter-hist-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  line-height: var(--leading-tight);
+}
+.drafter-hist-score-label {
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.drafter-hist-score {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.drafter-hist-teams {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drafter-hist-team {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.drafter-hist-team-label {
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.drafter-hist-heroes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.drafter-hist-hero {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+.drafter-hist-hero--enemy { border-color: rgba(229, 83, 75, 0.55); }
+.drafter-hist-hero--ally { border-color: rgba(61, 184, 122, 0.55); }
+
+/* Skeleton рядов истории — переиспользует home-shimmer */
+.drafter-hist-skel-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--bg-surface);
+  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+.drafter-hist-skel-shape {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 0%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: home-shimmer 1.8s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+.drafter-hist-skel-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.drafter-hist-skel-rank {
+  width: 22px;
+  height: 14px;
+}
+.drafter-hist-skel-meta {
+  flex: 1;
+  height: 10px;
+}
+.drafter-hist-skel-score {
+  width: 40px;
+  height: 16px;
+}
+.drafter-hist-skel-heroes {
+  display: flex;
+  gap: var(--space-1);
+}
+.drafter-hist-skel-hero {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
 }
 
 /* ── Баннер приза ──────────────────────────────────────────────── */
