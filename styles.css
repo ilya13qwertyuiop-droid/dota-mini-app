@@ -1693,11 +1693,16 @@ margin-top: var(--space-4);
 
 .profile-error {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4);
-  text-align: center;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.profile-error[hidden] {
+  display: none;
 }
 
 .profile-error-text {
