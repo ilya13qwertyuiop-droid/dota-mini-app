@@ -1454,11 +1454,11 @@ function updateProfileHeader(profile, loading = false) {
 
 function _classifyDrafterRank(score) {
     // Та же шкала, что в рендере результата драфтера (script.js ≈ 4998).
-    if (score >= 85) return { letter: 'SSS', desc: 'Абсолютный драфтер', color: 'var(--warning)' };
-    if (score >= 80) return { letter: 'S',   desc: 'Как ты это сделал?', color: 'var(--warning)' };
-    if (score >= 65) return { letter: 'A',   desc: 'Хороший драфт',      color: 'var(--accent)' };
-    if (score >= 50) return { letter: 'B',   desc: 'Можно лучше',        color: 'var(--text-primary)' };
-    return             { letter: 'C',        desc: 'Надо тренироваться', color: 'var(--text-secondary)' };
+    if (score >= 85) return { letter: 'SSS', desc: 'Идеальный драфт', color: 'var(--warning)' };
+    if (score >= 70) return { letter: 'S',   desc: 'Отличный драфт',  color: 'var(--warning)' };
+    if (score >= 55) return { letter: 'A',   desc: 'Хороший драфт',   color: 'var(--accent)' };
+    if (score >= 45) return { letter: 'B',   desc: 'Средний драфт',   color: 'var(--text-primary)' };
+    return             { letter: 'C',        desc: 'Слабый драфт',    color: 'var(--text-secondary)' };
 }
 
 function _renderDrafterBest() {
@@ -3847,9 +3847,9 @@ function cacheLastDraftEval(data, allyIds, enemyIds) {
 
 function _scoreRank(score) {
     if (score >= 85) return 'SSS';
-    if (score >= 80) return 'S';
-    if (score >= 65) return 'A';
-    if (score >= 50) return 'B';
+    if (score >= 70) return 'S';
+    if (score >= 55) return 'A';
+    if (score >= 45) return 'B';
     return 'C';
 }
 
@@ -5408,11 +5408,11 @@ function showDrafterResult(data) {
 
         var total = Math.round(data.total_score || 0);
         var rank, rankColor, rankDesc;
-        if (total >= 85)      { rank = 'SSS'; rankColor = 'var(--warning)';  rankDesc = 'Абсолютный драфтер'; }
-        else if (total >= 80) { rank = 'S';   rankColor = 'var(--warning)';  rankDesc = 'Как ты это сделал?'; }
-        else if (total >= 65) { rank = 'A';   rankColor = 'var(--accent)';   rankDesc = 'Хороший драфт'; }
-        else if (total >= 50) { rank = 'B';   rankColor = 'var(--text-primary)'; rankDesc = 'Неплохо, но можно лучше'; }
-        else                  { rank = 'C';   rankColor = 'var(--text-secondary)'; rankDesc = 'Надо тренироваться, братанчик'; }
+        if (total >= 85)      { rank = 'SSS'; rankColor = 'var(--warning)';  rankDesc = 'Идеальный драфт'; }
+        else if (total >= 70) { rank = 'S';   rankColor = 'var(--warning)';  rankDesc = 'Отличный драфт'; }
+        else if (total >= 55) { rank = 'A';   rankColor = 'var(--accent)';   rankDesc = 'Хороший драфт'; }
+        else if (total >= 45) { rank = 'B';   rankColor = 'var(--text-primary)'; rankDesc = 'Средний драфт'; }
+        else                  { rank = 'C';   rankColor = 'var(--text-secondary)'; rankDesc = 'Слабый драфт'; }
 
         var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
         var isRecord = total > best;
