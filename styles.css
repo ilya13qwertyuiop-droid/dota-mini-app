@@ -2895,6 +2895,7 @@ margin-top: var(--space-4);
 .home-hero-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   min-width: 0;
 }
@@ -2955,6 +2956,7 @@ margin-top: var(--space-4);
   font-weight: var(--font-semibold);
   color: var(--positive);
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .home-hero-items {

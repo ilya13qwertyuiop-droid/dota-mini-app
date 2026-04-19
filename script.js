@@ -3726,8 +3726,8 @@ function _renderHomeHeroWidget(heroId, build) {
                     _escHtml(posLabel) +
                 '</div>' +
             '</div>' +
+            wrHtml +
         '</div>' +
-        wrHtml +
         '<div class="home-hero-items">' + itemSlots.join('') + '</div>';
 }
 
