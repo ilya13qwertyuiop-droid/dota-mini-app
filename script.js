@@ -300,7 +300,96 @@
             return params.get('token');
         }
 
-        const USER_TOKEN = getTokenFromUrl();
+        let USER_TOKEN = getTokenFromUrl();
+
+        // ── Silent token refresh через Telegram initData ─────────────────
+        // Токены живут 24ч. Если пользователь давно не нажимал /start,
+        // API-запросы падают с 401 — ловим их и бесшумно обновляем токен
+        // через /api/refresh_token, проверяющий подпись initData.
+        const _rawFetch = window.fetch.bind(window);
+        let _refreshInFlight = null;
+
+        function _getInitData() {
+            const tg = window.Telegram && window.Telegram.WebApp;
+            return (tg && tg.initData) ? tg.initData : null;
+        }
+
+        function _showAuthError(message) {
+            if (document.getElementById('auth-error-banner')) return;
+            const div = document.createElement('div');
+            div.id = 'auth-error-banner';
+            div.textContent = message;
+            div.style.cssText = [
+                'position:fixed','top:0','left:0','right:0',
+                'padding:12px 16px','background:#e5534b','color:#fff',
+                'font-size:13px','text-align:center','z-index:9999',
+                'font-family:inherit','line-height:1.4'
+            ].join(';');
+            (document.body || document.documentElement).appendChild(div);
+        }
+
+        async function refreshToken() {
+            if (_refreshInFlight) return _refreshInFlight;
+            const initData = _getInitData();
+            if (!initData) {
+                _showAuthError('Откройте приложение через Telegram');
+                return null;
+            }
+            const API = window.API_BASE_URL || '/api';
+            _refreshInFlight = (async () => {
+                try {
+                    const resp = await _rawFetch(API + '/refresh_token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ init_data: initData })
+                    });
+                    if (!resp.ok) {
+                        console.warn('[auth] refresh_token HTTP', resp.status);
+                        return null;
+                    }
+                    const data = await resp.json();
+                    if (data && data.token) {
+                        USER_TOKEN = data.token;
+                        return data.token;
+                    }
+                    return null;
+                } catch (e) {
+                    console.warn('[auth] refresh_token error:', e);
+                    return null;
+                } finally {
+                    _refreshInFlight = null;
+                }
+            })();
+            return _refreshInFlight;
+        }
+
+        async function apiFetch(url, options) {
+            const oldToken = USER_TOKEN;
+            const resp = await _rawFetch(url, options);
+            if (resp.status !== 401 && resp.status !== 403) return resp;
+
+            const newToken = await refreshToken();
+            if (!newToken) {
+                if (_getInitData()) _showAuthError('Сессия истекла. Обновите страницу.');
+                return resp;
+            }
+            if (newToken === oldToken) return resp;
+
+            // Подменяем старый токен на новый в URL и теле запроса.
+            // Токен — URL-safe base64 (secrets.token_urlsafe), поэтому
+            // простая строковая замена безопасна от коллизий.
+            let retryUrl = url;
+            let retryOptions = options;
+            if (oldToken && typeof retryUrl === 'string') {
+                retryUrl = retryUrl.split(oldToken).join(newToken);
+            }
+            if (oldToken && options && typeof options.body === 'string') {
+                retryOptions = Object.assign({}, options, {
+                    body: options.body.split(oldToken).join(newToken)
+                });
+            }
+            return _rawFetch(retryUrl, retryOptions);
+        }
 
         // Сохранение результата на backend
         async function saveResultToBackend(result) {
@@ -310,7 +399,7 @@
             }
 
             try {
-                const response = await fetch(`${window.API_BASE_URL}/save_result`, {
+                const response = await apiFetch(`${window.API_BASE_URL}/save_result`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1251,7 +1340,7 @@ async function initProfile() {
     }
 
     try {
-        const response = await fetch(`${window.API_BASE_URL}/profile_full?token=${USER_TOKEN}`);
+        const response = await apiFetch(`${window.API_BASE_URL}/profile_full?token=${USER_TOKEN}`);
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
         }
@@ -1266,7 +1355,7 @@ async function initProfile() {
             if (!profile.first_name && user.first_name) {
                 console.log('[PROFILE] Отправляем данные Telegram на backend (fallback)');
                 try {
-                    await fetch(`${window.API_BASE_URL}/save_telegram_data`, {
+                    await apiFetch(`${window.API_BASE_URL}/save_telegram_data`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1409,7 +1498,7 @@ async function _renderDrafterPlace() {
     }
 
     try {
-        const resp = await fetch(`${window.API_BASE_URL}/draft/leaderboard/me?token=${encodeURIComponent(USER_TOKEN)}`);
+        const resp = await apiFetch(`${window.API_BASE_URL}/draft/leaderboard/me?token=${encodeURIComponent(USER_TOKEN)}`);
         if (!resp.ok) throw new Error(`API error: ${resp.status}`);
         const me = await resp.json();
 
@@ -2274,7 +2363,7 @@ async function loadHeroBuild(heroId) {
     _buildHeroId = heroId;
     _showBuildLoading();
     try {
-        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/build');
+        var response = await apiFetch(window.API_BASE_URL + '/hero/' + heroId + '/build');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         var data = await response.json();
         if (_buildHeroId !== heroId) return;  // hero changed while loading
@@ -2444,7 +2533,7 @@ async function loadHeroMatchups(heroId) {
     var LIMIT = 5;
 
     async function fetchCounters(minGames) {
-        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
+        var response = await apiFetch(window.API_BASE_URL + '/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var text = await response.text().catch(function () { return ''; });
             var error = new Error('HTTP ' + response.status);
@@ -2506,7 +2595,7 @@ async function loadHeroSynergy(heroId) {
     var LIMIT = 5;
 
     async function fetchSynergy(minGames) {
-        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
+        var response = await apiFetch(window.API_BASE_URL + '/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var error = new Error('HTTP ' + response.status);
             error.status = response.status;
@@ -2845,7 +2934,7 @@ async function submitFeedback() {
     _clearFeedbackStatus();
 
     try {
-        var resp = await fetch(`${window.API_BASE_URL}/feedback`, {
+        var resp = await apiFetch(`${window.API_BASE_URL}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2954,7 +3043,7 @@ function loadMeta() {
         return;
     }
     var API = window.API_BASE_URL || '/api';
-    fetch(API + '/meta')
+    apiFetch(API + '/meta')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             _metaCache = data;
@@ -3024,7 +3113,7 @@ function loadHeroesSearchMeta() {
         return;
     }
     var API = window.API_BASE_URL || '/api';
-    fetch(API + '/meta')
+    apiFetch(API + '/meta')
         .then(function (r) { return r.json(); })
         .then(function (data) {
             _metaCache = data;
@@ -3614,7 +3703,7 @@ function _loadHomeHeroWidget() {
     widget.dataset.heroId = heroId;
     if (cta) cta.innerHTML = 'Открыть гайд <i class="ph ph-arrow-right" aria-hidden="true"></i>';
     var API = window.API_BASE_URL || '/api';
-    fetch(API + '/hero/' + heroId + '/build')
+    apiFetch(API + '/hero/' + heroId + '/build')
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
             if (!data) {
@@ -3792,7 +3881,7 @@ function _loadHomeDraftWidget() {
     }
 
     var API = window.API_BASE_URL || '/api';
-    fetch(API + '/draft/history?token=' + encodeURIComponent(token))
+    apiFetch(API + '/draft/history?token=' + encodeURIComponent(token))
         .then(function(r) { return r.ok ? r.json() : []; })
         .then(function(list) {
             var last = (list && list.length) ? list[0] : null;
@@ -3907,7 +3996,7 @@ function _loadHomeNews() {
     var block = document.getElementById('home-news');
     if (!block) return;
     var API = window.API_BASE_URL || '/api';
-    fetch(API + '/news')
+    apiFetch(API + '/news')
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
             if (!data || !data.title) { block.hidden = true; return; }
@@ -3952,7 +4041,7 @@ var _itemsDbLoaded = false;
 
 async function _loadItemsDb() {
     try {
-        var resp = await fetch(window.API_BASE_URL + '/items_db');
+        var resp = await apiFetch(window.API_BASE_URL + '/items_db');
         if (resp.ok) {
             _itemsDb = await resp.json();
             _itemsDbLoaded = true;
@@ -4024,7 +4113,7 @@ function initDrafter() {
 
     // Prefetch лидерборда в фоне
     if (!_drafterLeaderboardCache) {
-        fetch(window.API_BASE_URL + '/draft/leaderboard')
+        apiFetch(window.API_BASE_URL + '/draft/leaderboard')
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(data) { if (data) _drafterLeaderboardCache = data; })
             .catch(function() {});
@@ -4058,7 +4147,7 @@ async function loadDrafterMatch() {
     if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Загрузка...</div>';
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/random');
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/random');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
 
@@ -4401,7 +4490,7 @@ async function submitDraft() {
     if (btn) btn.disabled = true;
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/evaluate', {
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ally: ally, enemy: enemy, token: USER_TOKEN || null })
@@ -4654,7 +4743,7 @@ async function showDrafterHistory() {
     content.appendChild(_histBuildSkeleton(4));
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
 
@@ -4931,7 +5020,7 @@ async function _lbAttachMyrankBar(page) {
     page.appendChild(bar);
 
     try {
-        var meResp = await fetch(window.API_BASE_URL + '/draft/leaderboard/me?token=' + encodeURIComponent(token));
+        var meResp = await apiFetch(window.API_BASE_URL + '/draft/leaderboard/me?token=' + encodeURIComponent(token));
         if (!meResp.ok) return;
         var me = await meResp.json();
         if (!me || me.rank === null) return;
@@ -4981,7 +5070,7 @@ async function showDrafterLeaderboard() {
     content.appendChild(_lbBuildSkeletonRows(6));
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/leaderboard');
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/leaderboard');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
         _drafterLeaderboardCache = rows;

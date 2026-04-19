@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -7,6 +9,7 @@ import time
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +154,7 @@ from sqlalchemy.orm.attributes import flag_modified
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables, engine
 from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
-from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids
+from backend.db import get_user_id_by_token, create_token_for_user, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
@@ -271,8 +274,77 @@ class TelegramUserData(BaseModel):
     photo_url: str | None = None
 
 
+class RefreshTokenRequest(BaseModel):
+    """Silent token refresh через валидный Telegram WebApp initData."""
+    init_data: str
+
+
+class RefreshTokenResponse(BaseModel):
+    token: str
+
+
+# ── Telegram WebApp initData validation ───────────────────────────────────
+# Максимальный возраст auth_date в initData (защита от replay).
+_INIT_DATA_MAX_AGE_SECONDS = 86400  # 24 часа
+
+
+def _validate_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
+    """Проверяет HMAC-подпись initData по схеме из документации Telegram.
+    Возвращает словарь параметров при успехе или None при ошибке."""
+    if not init_data:
+        return None
+    try:
+        pairs = parse_qsl(init_data, keep_blank_values=True)
+    except ValueError:
+        return None
+
+    params = dict(pairs)
+    received_hash = params.pop("hash", None)
+    if not received_hash:
+        return None
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(computed_hash, received_hash):
+        return None
+
+    try:
+        auth_date = int(params.get("auth_date", "0"))
+    except ValueError:
+        return None
+    if auth_date <= 0 or (time.time() - auth_date) > _INIT_DATA_MAX_AGE_SECONDS:
+        return None
+
+    return params
+
+
 
 # ========== API Endpoints ==========
+
+@app.post("/api/refresh_token", response_model=RefreshTokenResponse)
+async def refresh_token(data: RefreshTokenRequest):
+    """Выдаёт новый токен по валидному Telegram WebApp initData.
+    Нужен для silent refresh когда старый токен истёк (24ч),
+    чтобы пользователю не приходилось заново нажимать /start в боте."""
+    params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
+    if params is None:
+        raise HTTPException(status_code=401, detail="Invalid initData signature")
+
+    user_json = params.get("user")
+    if not user_json:
+        raise HTTPException(status_code=401, detail="No user in initData")
+
+    try:
+        user_payload = json.loads(user_json)
+        user_id = int(user_payload["id"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid user payload")
+
+    new_token = await asyncio.to_thread(create_token_for_user, user_id)
+    return RefreshTokenResponse(token=new_token)
+
 
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
