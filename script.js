@@ -4437,9 +4437,10 @@ function hideDrafterFullpage(id) {
 }
 
 function _draftRankClass(rank) {
-    return (rank === 'SSS' || rank === 'S')
-        ? 'drafter-hist-rank drafter-hist-rank--s'
-        : 'drafter-hist-rank drafter-hist-rank--neutral';
+    if (rank === 'SSS' || rank === 'S') return 'drafter-hist-rank drafter-hist-rank--s';
+    if (rank === 'A') return 'drafter-hist-rank drafter-hist-rank--a';
+    if (rank === 'B') return 'drafter-hist-rank drafter-hist-rank--b';
+    return 'drafter-hist-rank drafter-hist-rank--neutral';
 }
 
 function _draftFormatDate(isoStr) {
@@ -5320,7 +5321,7 @@ function showDrafterResult(data) {
         if (total >= 85)      { rank = 'SSS'; rankColor = 'var(--warning)';  rankDesc = 'Абсолютный драфтер'; }
         else if (total >= 80) { rank = 'S';   rankColor = 'var(--warning)';  rankDesc = 'Как ты это сделал?'; }
         else if (total >= 65) { rank = 'A';   rankColor = 'var(--accent)';   rankDesc = 'Хороший драфт'; }
-        else if (total >= 50) { rank = 'B';   rankColor = '#60a5fa';         rankDesc = 'Неплохо, но можно лучше'; }
+        else if (total >= 50) { rank = 'B';   rankColor = 'var(--text-primary)'; rankDesc = 'Неплохо, но можно лучше'; }
         else                  { rank = 'C';   rankColor = 'var(--text-secondary)'; rankDesc = 'Надо тренироваться, братанчик'; }
 
         var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
