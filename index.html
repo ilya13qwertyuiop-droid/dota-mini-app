@@ -8,8 +8,22 @@
     />
     <title>Dota 2 Helper</title>
 
+    <!-- Шрифты — Geist для тактической точности -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap"
+    />
+
+    <!-- Иконки — Phosphor Icons (regular) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
+    />
+
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=76" />
+    <link rel="stylesheet" href="styles.css?v=122" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -22,24 +36,85 @@
     <div class="app-container">
       <!-- Главная страница (Dashboard) -->
       <div id="page-home" class="page active">
-        <div class="dashboard-header">
-          <h1>🎮 Добро пожаловать в Dota 2 Helper</h1>
-        </div>
+        <!-- Шапка -->
+        <header class="home-top">
+          <div class="home-top-title">D2Helper</div>
+          <div class="home-top-avatar" id="home-avatar">
+            <i class="ph ph-user" aria-hidden="true"></i>
+          </div>
+        </header>
 
         <!-- Мета патча -->
-        <div class="card meta-block">
-          <div id="meta-positions"></div>
+        <section class="home-card home-meta" aria-label="Мета патча">
+          <div class="home-meta-head">
+            <div class="home-meta-head-left">
+              <span class="section-eyebrow">Мета патча</span>
+              <span class="home-meta-patch-info" id="home-meta-patch">—</span>
+            </div>
+            <div class="home-meta-nav">
+              <button type="button" class="home-meta-nav-btn" id="home-meta-prev" aria-label="Предыдущий слайд" onclick="_metaNavClick(-1)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <button type="button" class="home-meta-nav-btn" id="home-meta-next" aria-label="Следующий слайд" onclick="_metaNavClick(1)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M6 4L10 8L6 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="home-meta-slides" id="home-meta-slides" role="group" aria-roledescription="carousel">
+            <div class="home-meta-skeleton" aria-hidden="true"></div>
+          </div>
+          <div class="home-meta-dots" id="home-meta-dots" role="tablist" aria-label="Навигация по позициям"></div>
+        </section>
+
+        <!-- Виджеты: последний герой + последний драфт -->
+        <div class="home-grid">
+          <button class="home-card home-widget" id="home-hero-widget" onclick="homeHeroWidgetClick()" disabled>
+            <div class="home-widget-head">
+              <span class="section-eyebrow">Последний герой</span>
+            </div>
+            <div class="home-widget-body home-hero-body" id="home-hero-body">
+              <div class="home-hero-placeholder">Открой любого героя</div>
+            </div>
+            <div class="home-widget-cta">Открыть гайд <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
+          </button>
+
+          <button class="home-card home-widget" id="home-draft-widget" onclick="homeDraftWidgetClick()">
+            <div class="home-widget-head">
+              <span class="section-eyebrow">Последний драфт</span>
+            </div>
+            <div class="home-widget-body home-draft-body" id="home-draft-body">
+              <div class="home-draft-placeholder">Сыграй свой первый драфт</div>
+            </div>
+            <div class="home-widget-cta" id="home-draft-cta">Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
+          </button>
         </div>
 
-        <!-- Поддержать / Предложить — одна строка -->
-        <div class="home-action-row">
-          <button class="feedback-entry-btn home-half-btn donate-entry-btn" onclick="goToDonate()">
-            <span class="feedback-entry-icon">❤️</span>
-            <span class="feedback-entry-text">Поддержать автора</span>
+        <!-- Новость (скрыто, пока нет данных) -->
+        <button class="home-news" id="home-news" onclick="homeNewsClick()" hidden>
+          <span class="home-news-label">Последнее обновление</span>
+          <span class="home-news-row">
+            <span class="home-news-dot" aria-hidden="true"></span>
+            <span class="home-news-text" id="home-news-text"></span>
+            <span class="home-news-meta">
+              <span class="home-news-date" id="home-news-date"></span>
+              <i class="ph ph-arrow-right home-news-arrow" aria-hidden="true"></i>
+            </span>
+          </span>
+        </button>
+
+        <!-- Действия -->
+        <div class="home-actions">
+          <button class="home-action" onclick="goToFeedback()">
+            <i class="ph ph-chat-circle" aria-hidden="true"></i>
+            <span>Отзыв</span>
           </button>
-          <button class="feedback-entry-btn home-half-btn" onclick="goToFeedback()">
-            <span class="feedback-entry-icon">💬</span>
-            <span class="feedback-entry-text">Предложить улучшения</span>
+          <button class="home-action home-action-support" onclick="goToDonate()">
+            <i class="ph ph-heart" aria-hidden="true"></i>
+            <span>Поддержать</span>
           </button>
         </div>
       </div>
@@ -48,7 +123,7 @@
       <div id="page-feedback" class="page">
 
         <div class="dashboard-header">
-          <h1>📖 Предложить улучшения</h1>
+          <h1><i class="h1-icon ph ph-book-open-text" aria-hidden="true"></i>Предложить улучшения</h1>
           <p class="feedback-intro">
             Я делаю этот мини‑апп для дотеров. Напиши честно, что стоит
             улучшить — я читаю всё лично.
@@ -63,16 +138,16 @@
           </div>
           <div class="feedback-rating-row">
             <button class="feedback-rating-btn" data-rating="4" onclick="selectRating(4)">
-              🔥 Очень нравится
+              <i class="ph ph-fire" aria-hidden="true"></i> Очень нравится
             </button>
             <button class="feedback-rating-btn" data-rating="3" onclick="selectRating(3)">
-              🙂 Норм
+              <i class="ph ph-smiley" aria-hidden="true"></i> Норм
             </button>
             <button class="feedback-rating-btn" data-rating="2" onclick="selectRating(2)">
-              😐 Так себе
+              <i class="ph ph-smiley-meh" aria-hidden="true"></i> Так себе
             </button>
             <button class="feedback-rating-btn" data-rating="1" onclick="selectRating(1)">
-              👎 Не зашло
+              <i class="ph ph-thumbs-down" aria-hidden="true"></i> Не зашло
             </button>
           </div>
         </div>
@@ -80,7 +155,7 @@
         <!-- Блок 2: Теги -->
         <div class="card">
           <div class="card-header">
-            <span class="card-icon">🎯</span>
+            <i class="card-icon ph ph-target" aria-hidden="true"></i>
             <span class="card-title">Что именно оцениваешь?</span>
           </div>
           <div class="feedback-tags-row">
@@ -102,7 +177,7 @@
         <!-- Блок 3: Комментарий -->
         <div class="card">
           <div class="card-header">
-            <span class="card-icon">✏️</span>
+            <i class="card-icon ph ph-pencil-simple" aria-hidden="true"></i>
             <span class="card-title">Твой комментарий</span>
           </div>
           <textarea
@@ -127,28 +202,40 @@
 
       <!-- Страница доната -->
       <div id="page-donate" class="page">
-        <div class="dashboard-header">
-          <h1>❤️ Поддержать автора</h1>
+        <div class="donate-header">
+          <button type="button" class="donate-back" aria-label="Назад" onclick="goBackFromDonate()">← Назад</button>
+          <div class="donate-header-title">Поддержать автора</div>
+          <div class="donate-header-spacer"></div>
         </div>
 
-        <div class="card donate-card">
-          <p class="donate-text">
-            Этот бот живёт на серверах и использует платные API.<br>
-            Если он оказался полезным — ты можешь добровольно помочь покрыть
-            часть расходов. Любая поддержка очень помогает развитию проекта
-            и мотивации делать новые фичи.
-          </p>
-
-          <div style="display:flex !important; justify-content:center !important; width:100% !important;">
-            <button onclick="openDonationAlerts()" style="display:inline-block !important; background:#0088cc !important; color:#fff !important; border:none !important; border-radius:10px !important; padding:14px 28px !important; font-size:15px !important; font-weight:600 !important; cursor:pointer !important; width:auto !important; max-width:280px !important; text-align:center !important; letter-spacing:0.02em !important;">
-              Поддержать через Donation Alerts
-            </button>
+        <div class="donate-content">
+          <div class="donate-metrics">
+            <div class="donate-metric">
+              <div class="donate-metric-value">50&nbsp;000+</div>
+              <div class="donate-metric-label">Игроков пользуются</div>
+            </div>
+            <div class="donate-metric">
+              <div class="donate-metric-value">Бесплатно</div>
+              <div class="donate-metric-label">Без рекламы</div>
+            </div>
+            <div class="donate-metric">
+              <div class="donate-metric-value">~165€/мес</div>
+              <div class="donate-metric-label">Сервер и API</div>
+            </div>
+            <div class="donate-metric">
+              <div class="donate-metric-value">Один</div>
+              <div class="donate-metric-label">Разработчик</div>
+            </div>
           </div>
-        </div>
 
-        <button class="btn-back donate-back-btn" onclick="goBackFromDonate()">
-          Назад
-        </button>
+          <div class="donate-letter">
+            <div class="donate-letter-from">От Зафера</div>
+            <p class="donate-letter-text">Привет, я Зафер. Делаю D2Helper один, в свободное время. Если приложение помогает в игре — буду рад любой поддержке: она покрывает серверы и даёт время делать новые фичи.</p>
+          </div>
+
+          <button type="button" class="donate-cta" onclick="openDonationAlerts()">Задонатить</button>
+          <div class="donate-note">Откроется Donation Alerts</div>
+        </div>
       </div>
 
       <!-- Страница квизов -->
@@ -156,24 +243,23 @@
         <!-- Список доступных квизов -->
         <div id="quiz-list">
           <div class="dashboard-header">
-            <h1>🎯 Квизы</h1>
+            <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Квизы</h1>
             <p>Узнай больше о своём игровом стиле</p>
           </div>
 
           <!-- Квиз по позициям -->
           <div class="card">
             <div class="card-header">
-              <span class="card-icon">🎮</span>
+              <i class="card-icon ph ph-game-controller" aria-hidden="true"></i>
               <span class="card-title">Какая твоя позиция?</span>
             </div>
-            <div class="card-content" style="margin-bottom: 16px;">
+            <div class="card-content">
               Пройди тест за 2 минуты и узнай, на какой роли ты раскроешься
               лучше всего
             </div>
             <button
-              class="btn-small"
-              onclick="startPositionQuiz()" 
-              style="width: 100%; padding: 12px;"
+              class="btn-small btn-small--full"
+              onclick="startPositionQuiz()"
             >
               Начать тест →
             </button>
@@ -182,17 +268,16 @@
           <!-- Квиз по героям -->
           <div class="card">
             <div class="card-header">
-              <span class="card-icon">🦸</span>
+              <i class="card-icon ph ph-user-focus" aria-hidden="true"></i>
               <span class="card-title">Подбор идеального героя</span>
             </div>
-            <div class="card-content" style="margin-bottom: 16px;">
+            <div class="card-content">
               Ответь на вопросы и получи список героев, которые идеально
               подходят под твой стиль игры
             </div>
             <button
-              class="btn-small"
+              class="btn-small btn-small--full"
               onclick="startHeroQuiz()"
-              style="width: 100%; padding: 12px;"
             >
               Подобрать героя →
             </button>
@@ -201,7 +286,7 @@
           <!-- Последний результат (если есть) -->
           <div class="card" id="quizPageLastResult" style="display: none;">
             <div class="card-header">
-              <span class="card-icon">📊</span>
+              <i class="card-icon ph ph-chart-bar" aria-hidden="true"></i>
               <span class="card-title">Твой последний результат</span>
             </div>
             <div class="position-result">
@@ -230,13 +315,13 @@
         <div id="quiz-content-container" style="display: none;">
           <div class="quiz-container">
             <div class="quiz-content">
-              <h1>🎮 Какая твоя позиция в Dota 2?</h1>
-              <p class="subtitle">
-                Пройди тест и узнай, на какой роли ты раскроешься лучше всего
-              </p>
+              <h1><i class="h1-icon ph ph-game-controller" aria-hidden="true"></i>Какая твоя позиция в Dota 2?</h1>
 
-              <div class="progress-bar">
-                <div class="progress-fill" id="progressBar"></div>
+              <div class="quiz-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="progressBar"></div>
+                </div>
+                <span class="quiz-progress-counter" id="positionQuestionCounter">Вопрос 1 из 5</span>
               </div>
 
               <div class="question" id="question"></div>
@@ -251,7 +336,7 @@
             </div>
 
             <div class="result" id="result">
-              <div class="result-header">🎯</div>
+              <i class="result-header ph ph-target" aria-hidden="true"></i>
               <div class="result-title">Твоя позиция</div>
 
               <div class="position-primary" id="positionPrimary"></div>
@@ -283,7 +368,7 @@
           <div class="quiz-container">
             <!-- Стартовый экран -->
             <div id="hero-start">
-              <h1>🦸 Подбор идеального героя</h1>
+              <h1><i class="h1-icon ph ph-user-focus" aria-hidden="true"></i>Подбор идеального героя</h1>
               <p class="subtitle">
                 Узнай, какие герои подходят под твой стиль игры
               </p>
@@ -294,7 +379,7 @@
                   id="useSavedPositionBtn"
                   onclick="heroQuiz.useSavedPosition()"
                 >
-                  <span class="emoji">📊</span>
+                  <i class="emoji ph ph-chart-bar" aria-hidden="true"></i>
                   <span class="text" id="savedPositionText"
                     >Сначала пройди тест по позициям</span
                   >
@@ -303,15 +388,14 @@
                   class="answer-btn"
                   onclick="heroQuiz.showPositionSelect()"
                 >
-                  <span class="emoji">🎯</span>
+                  <i class="emoji ph ph-target" aria-hidden="true"></i>
                   <span class="text">Выбрать позицию вручную</span>
                 </button>
               </div>
 
               <button
-                class="btn-back"
+                class="btn-back btn-back--spaced"
                 onclick="backToQuizList()"
-                style="margin-top: 20px;"
               >
                 Назад
               </button>
@@ -319,7 +403,7 @@
 
             <!-- Ручной выбор позиции -->
             <div id="hero-position-select" style="display: none;">
-              <h1>🎯 Выбери позицию</h1>
+              <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Выбери позицию</h1>
               <p class="subtitle">
                 На какой позиции ты хочешь играть?
               </p>
@@ -358,9 +442,8 @@
               </div>
 
               <button
-                class="btn-back"
+                class="btn-back btn-back--spaced"
                 onclick="heroQuiz.showStartScreen()"
-                style="margin-top: 20px;"
               >
                 Назад
               </button>
@@ -368,16 +451,19 @@
 
             <!-- Вопросы -->
             <div id="hero-questions" style="display: none;">
-                <h1>🦸 Подбор героя</h1>
+                <h1><i class="h1-icon ph ph-user-focus" aria-hidden="true"></i>Подбор героя</h1>
                 <p class="subtitle" id="heroQuizSubtitle">
                   Ответь на несколько вопросов
                 </p>
 
-                <div class="progress-bar">
-                  <div
-                    class="progress-fill"
-                    id="heroProgressBar"
-                  ></div>
+                <div class="quiz-progress">
+                  <div class="progress-bar">
+                    <div
+                      class="progress-fill"
+                      id="heroProgressBar"
+                    ></div>
+                  </div>
+                  <span class="quiz-progress-counter" id="heroQuestionCounter">Вопрос 1 из 5</span>
                 </div>
 
                 <div class="question" id="heroQuestion"></div>
@@ -393,16 +479,15 @@
             <!-- Результат -->
             <div id="hero-result" style="display: none;">
               <div class="hero-result-header">
-                <div class="hero-header-icon">★</div>
+                <i class="hero-header-icon ph ph-star" aria-hidden="true"></i>
                 <div class="hero-header-text" id="heroResultPosition">
                   Герои для мидера
                 </div>
               </div>
               <div class="hero-list" id="heroResultList"></div>
               <div
-                class="description"
+                class="description description--spaced"
                 id="heroResultDescription"
-                style="margin-top: 16px;"
               ></div>
 
               <button class="btn-outline" onclick="heroQuiz.restart()">
@@ -422,23 +507,21 @@
         <!-- Экран драфта -->
         <div id="drafter-main">
           <div class="drafter-top-bar">
-            <div class="drafter-top-left">
-              <div class="drafter-top-title">ДРАФТЕР</div>
-              <div class="drafter-top-record">Рекорд: <span id="drafter-best-score">—</span>/100</div>
-            </div>
-            <div class="drafter-top-btns">
-              <button class="drafter-top-btn" onclick="showDrafterHistory()">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
-                  <path d="M6 3.5V6L7.5 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <div class="drafter-top-title">ДРАФТЕР</div>
+            <div class="drafter-top-actions">
+              <button class="drafter-top-action" onclick="showDrafterHistory()" aria-label="История" title="История">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/>
+                  <path d="M7 4V7L9 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                История
               </button>
-              <button class="drafter-top-btn" onclick="showDrafterLeaderboard()">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M6 1L7.5 4.5H11L8.5 6.5L9.5 10L6 8L2.5 10L3.5 6.5L1 4.5H4.5L6 1Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+              <button class="drafter-top-action" onclick="showDrafterLeaderboard()" aria-label="Топ" title="Топ">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path d="M3.5 2H10.5V5.5C10.5 7.43 8.93 9 7 9C5.07 9 3.5 7.43 3.5 5.5V2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                  <path d="M3.5 3.2H2C1.7 3.2 1.5 3.4 1.5 3.7V4.5C1.5 5.5 2.3 6.3 3.3 6.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  <path d="M10.5 3.2H12C12.3 3.2 12.5 3.4 12.5 3.7V4.5C12.5 5.5 11.7 6.3 10.7 6.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  <path d="M5.5 12H8.5M7 9V12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
                 </svg>
-                Топ
               </button>
             </div>
           </div>
@@ -447,37 +530,58 @@
           <!-- Основной контент драфта -->
           <div id="drafter-draft-content">
 
-          <!-- Строка ВРАГИ + Обновить -->
-          <div class="drafter-enemies-bar">
-            <div class="drafter-enemies-label">ВРАГИ</div>
-            <button id="drafter-refresh-btn" onclick="loadDrafterMatch()">↺ Новые враги</button>
-          </div>
-
-          <!-- Два ряда составов: враги сверху, своя команда снизу -->
-          <div class="drafter-teams">
-            <div class="drafter-team-row">
+          <!-- Доска драфта: враги сверху, своя команда снизу, разделены линией фронта -->
+          <div class="draft-board">
+            <div class="draft-board-row draft-board-row--enemy">
+              <div class="draft-board-header">
+                <div class="draft-board-label draft-board-label--enemy">ВРАГИ</div>
+                <button id="drafter-refresh-btn" class="draft-board-action" onclick="loadDrafterMatch()">↺ Новые</button>
+              </div>
               <div class="drafter-slots-grid" id="drafter-enemy-slots"></div>
             </div>
-            <div class="drafter-team-row">
-              <div class="drafter-team-title">ТВОЯ КОМАНДА</div>
+            <div class="draft-board-divider" aria-hidden="true"></div>
+            <div class="draft-board-row draft-board-row--ally">
+              <div class="draft-board-header">
+                <div class="draft-board-label draft-board-label--ally">ТВОЯ КОМАНДА</div>
+              </div>
               <div class="drafter-slots-grid" id="drafter-ally-slots"></div>
             </div>
           </div>
 
           <!-- Кнопка оценки — между составами и поиском -->
-          <div id="drafter-evaluate-wrap" style="display:none; text-align:center; padding: 10px 16px 4px;">
+          <div id="drafter-evaluate-wrap" style="display:none;">
             <button class="drafter-evaluate-btn" onclick="submitDraft()">Оценить драфт</button>
           </div>
 
           <!-- Сетка выбора героев -->
           <div class="drafter-picker">
-            <input type="text" id="drafter-search" class="drafter-search" placeholder="Найти любого героя..." oninput="onDrafterSearch()">
+            <div class="drafter-search-wrap">
+              <input type="text" id="drafter-search" class="drafter-search" placeholder="Найти любого героя..." oninput="onDrafterSearch()">
+              <button type="button" class="drafter-search-catalog-btn" id="drafter-search-catalog-btn" aria-label="Каталог всех героев">
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="2"  y="2"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <rect x="9"  y="2"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <rect x="2"  y="9"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <rect x="9"  y="9"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                </svg>
+              </button>
+            </div>
             <div class="drafter-pos-filters" id="drafter-pos-filters">
-              <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)"><img src="/images/positions/pos_1.png" width="16" height="16" alt="1"></button>
-              <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)"><img src="/images/positions/pos_2.png" width="16" height="16" alt="2"></button>
-              <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)"><img src="/images/positions/pos_3.png" width="16" height="16" alt="3"></button>
-              <button class="drafter-pos-btn" data-pos="4" onclick="setDrafterPosFilter(4)"><img src="/images/positions/pos_4.png" width="16" height="16" alt="4"></button>
-              <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)"><img src="/images/positions/pos_5.png" width="16" height="16" alt="5"></button>
+              <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)">
+                <img class="drafter-pos-btn-icon" src="/images/positions/pos_1.png" alt="1" aria-hidden="true">
+              </button>
+              <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)">
+                <img class="drafter-pos-btn-icon" src="/images/positions/pos_2.png" alt="2" aria-hidden="true">
+              </button>
+              <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)">
+                <img class="drafter-pos-btn-icon" src="/images/positions/pos_3.png" alt="3" aria-hidden="true">
+              </button>
+              <button class="drafter-pos-btn" data-pos="4" onclick="setDrafterPosFilter(4)">
+                <img class="drafter-pos-btn-icon" src="/images/positions/pos_4.png" alt="4" aria-hidden="true">
+              </button>
+              <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)">
+                <img class="drafter-pos-btn-icon" src="/images/positions/pos_5.png" alt="5" aria-hidden="true">
+              </button>
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
           </div>
@@ -486,9 +590,9 @@
 
         <!-- Страница результата -->
         <div id="drafter-result" style="display:none;">
-          <div id="dr-battle-screen"  style="display:none;"></div>
-          <div id="dr-synergy-screen" style="display:none;"></div>
-          <div id="dr-final-screen"   style="display:none;"></div>
+          <div id="dr-confront-screen" style="display:none;"></div>
+          <div id="dr-synergy-screen"  style="display:none;"></div>
+          <div id="dr-final-screen"    style="display:none;"></div>
         </div>
 
         <!-- Полноэкранная страница истории -->
@@ -505,13 +609,7 @@
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
           <div class="dashboard-header">
-            <h1>⚔️ Герои</h1>
-            <p>Сборки, матчапы и синергии для каждого героя</p>
-          </div>
-
-          <div style="display:flex !important; align-items:center !important; gap:10px !important; background:#f57c00 !important; color:#fff !important; padding:12px 14px !important; border-radius:10px !important; margin:0 0 16px !important; font-size:13px !important; font-weight:500 !important; line-height:1.45 !important; border:none !important; box-shadow:0 2px 8px rgba(255,152,0,0.4) !important;">
-            <span style="font-size:18px !important; flex-shrink:0 !important; line-height:1 !important;">⚠️</span>
-            <span>Статистика может быть неточной — обработано мало матчей. Данные будут улучшаться со временем.</span>
+            <h1>Герои</h1>
           </div>
 
           <div class="matchup-search-wrap">
@@ -519,9 +617,17 @@
               type="text"
               id="matchup-hero-input"
               class="matchup-search-input"
-              placeholder="Введите имя героя"
+              placeholder="Имя героя"
               autocomplete="off"
             />
+            <button type="button" class="matchup-search-catalog-btn" id="matchup-search-catalog-btn" aria-label="Каталог всех героев">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="2"  y="2"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                <rect x="9"  y="2"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                <rect x="2"  y="9"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                <rect x="9"  y="9"  width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+              </svg>
+            </button>
             <div id="matchup-suggestions" class="matchup-suggestions"></div>
           </div>
 
@@ -529,6 +635,18 @@
             <div class="recent-heroes-title">Недавние герои</div>
             <div id="recent-heroes-list" class="recent-heroes-list"></div>
           </div>
+
+          <div class="heroes-meta-block" id="heroes-meta-block">
+            <div class="heroes-meta-header">
+              <div class="heroes-meta-title">Сильные сейчас</div>
+              <div class="heroes-meta-patch" id="heroes-meta-patch">—</div>
+            </div>
+            <div class="heroes-meta-rows" id="heroes-meta-rows">
+              <div class="heroes-meta-skeleton" aria-hidden="true"></div>
+            </div>
+          </div>
+
+          <div class="heroes-data-footer">Топ по винрейту · минимум 200 матчей на позицию</div>
         </div>
 
         <!-- Экран конкретного героя -->
@@ -553,10 +671,6 @@
             <!-- Блок 1: Контрпики -->
             <div class="matchup-section">
               <div class="matchup-section-title">Контрпики</div>
-              <div class="matchup-tabs">
-                <button class="matchup-tab active" id="counter-tab-btn-strong" onclick="switchCountersTab('strong')">✅ Кого контрит</button>
-                <button class="matchup-tab" id="counter-tab-btn-weak" onclick="switchCountersTab('weak')">❌ Кто контрит его</button>
-              </div>
               <div class="matchup-block" id="counters-list">
                 <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть матчапы</p>
               </div>
@@ -564,11 +678,7 @@
 
             <!-- Блок 2: Синергия -->
             <div class="matchup-section">
-              <div class="matchup-section-title">Синергия с союзниками</div>
-              <div class="matchup-tabs">
-                <button class="matchup-tab active" id="synergy-tab-btn-best" onclick="switchSynergyTab('best')">🤝 Лучшие союзники</button>
-                <button class="matchup-tab" id="synergy-tab-btn-worst" onclick="switchSynergyTab('worst')">💀 Худшие союзники</button>
-              </div>
+              <div class="matchup-section-title">Синергия</div>
               <div class="matchup-block" id="synergy-list">
                 <p class="matchup-placeholder-text">Выбери героя, чтобы увидеть синергию</p>
               </div>
@@ -579,7 +689,7 @@
           <div id="hero-tab-build">
             <div id="build-content">
               <div class="hero-tab-placeholder">
-                <div class="hero-tab-placeholder-icon">⚔️</div>
+                <i class="hero-tab-placeholder-icon ph ph-sword" aria-hidden="true"></i>
                 <div class="hero-tab-placeholder-text">Выбери героя</div>
               </div>
             </div>
@@ -595,75 +705,97 @@
 
           <!-- Шапка профиля -->
           <div class="profile-header">
-            <img id="profile-avatar" src="" alt="" class="profile-avatar">
+            <div id="profile-avatar" class="profile-avatar" aria-hidden="true"></div>
             <div class="profile-info">
-              <h2 id="profile-name">Загрузка...</h2>
+              <h2 id="profile-name">Загрузка…</h2>
               <p id="profile-username"></p>
             </div>
           </div>
 
+          <!-- Статистика драфтера -->
+          <div class="profile-stats" id="profile-stats">
+            <div class="profile-stat">
+              <span class="profile-stat-label">Лучший драфт</span>
+              <span class="profile-stat-value">
+                <span id="profile-stat-best-score">—</span><span class="profile-stat-rank" id="profile-stat-best-rank"></span>
+              </span>
+              <span class="profile-stat-sub" id="profile-stat-best-desc">нет результата</span>
+            </div>
+            <div class="profile-stat">
+              <span class="profile-stat-label">Место в топе</span>
+              <span class="profile-stat-value" id="profile-stat-place">—</span>
+              <span class="profile-stat-sub" id="profile-stat-place-sub">нет результата</span>
+            </div>
+          </div>
+
+          <!-- Error-state — показывается при ошибке fetch -->
+          <div class="profile-card profile-error" id="profile-error" hidden>
+            <p class="profile-error-text">Не удалось загрузить профиль</p>
+            <button class="profile-action-btn" id="profile-retry-btn" type="button">
+              <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>Попробовать снова
+            </button>
+          </div>
+
           <!-- Результат квиза по позиции -->
-          <div class="profile-card">
+          <div class="profile-card" id="profile-position-card">
+            <span class="section-eyebrow">Позиция</span>
+
+            <!-- Skeleton загрузки -->
+            <div id="profile-position-skeleton">
+              <div class="profile-skeleton-line" style="width: 60%;"></div>
+              <div class="profile-skeleton-line" style="width: 35%;"></div>
+            </div>
+
             <!-- Если квиз пройден -->
-            <div id="profile-position-result" style="display: none;">
+            <div id="profile-position-result" hidden>
               <div class="status-row">
-                <div class="status-icon">🎯</div>
+                <i class="status-icon ph ph-target" aria-hidden="true"></i>
                 <div class="status-main">
                   <div id="profile-position-main-name" class="status-main-title"></div>
                   <div id="profile-position-extra-name" class="status-main-sub"></div>
                 </div>
-                <button class="profile-status-btn" onclick="goToPositionQuiz()">
-                  Пройти заново
+                <button class="profile-redo-btn" id="profile-position-redo-btn" type="button">
+                  Заново
                 </button>
               </div>
             </div>
 
             <!-- Если квиз НЕ пройден -->
-            <div id="profile-position-empty" style="display: none;">
+            <div id="profile-position-empty" hidden>
               <p class="profile-empty-text">Ты ещё не проходил квиз по позициям</p>
-              <button class="profile-action-btn" onclick="goToPositionQuiz()">
-                🎯 Пройти квиз по позиции
+              <button class="profile-action-btn" id="profile-position-start-btn" type="button">
+                <i class="ph ph-target" aria-hidden="true"></i>Пройти квиз по позиции
               </button>
             </div>
           </div>
 
           <!-- Результат квиза по героям -->
-          <div class="profile-card">
-            <div class="profile-card-header">
-              <span class="profile-card-icon">⚔️</span>
-              <span class="profile-card-title" id="profile-heroes-title">Твои герои</span>
+          <div class="profile-card" id="profile-heroes-card">
+            <span class="section-eyebrow" id="profile-heroes-title">Твои герои</span>
+
+            <!-- Skeleton загрузки -->
+            <div id="profile-heroes-skeleton">
+              <div class="profile-skeleton-line" style="width: 80%;"></div>
+              <div class="profile-skeleton-line" style="width: 70%;"></div>
+              <div class="profile-skeleton-line" style="width: 75%;"></div>
             </div>
 
             <!-- Если квиз пройден -->
-            <div id="profile-heroes-result" style="display: none;">
-              <div id="profile-heroes-list" class="heroes-list">
-                <!-- сюда JS рендерит 5 .hero-row -->
-                <!-- пример одной строки, для ориентира структуры:
-
-                <a class="hero-row hero-row-main" href="https://d2pt.com/hero/clinkz" target="_blank" rel="noopener noreferrer">
-                  <div class="hero-row-rank">1</div>
-                  <div class="hero-row-img"></div>
-                  <div class="hero-row-main-text">
-                    <div class="hero-row-name">Clinkz</div>
-                    <div class="hero-row-sub">Лучший матч • 78%</div>
-                  </div>
-                </a>
-
-                -->
-              </div>
+            <div id="profile-heroes-result" hidden>
+              <div id="profile-heroes-list" class="heroes-list"></div>
               <div class="heroes-footer">
                 <span class="muted">Нажми на героя, чтобы открыть гайд</span>
-                <button class="btn-outline btn-outline-sm" type="button" onclick="goToHeroQuiz()">
-                  Пройти заново
+                <button class="profile-redo-btn" id="profile-heroes-redo-btn" type="button">
+                  Заново
                 </button>
               </div>
             </div>
 
             <!-- Если квиз НЕ пройден -->
-            <div id="profile-heroes-empty" style="display: none;">
+            <div id="profile-heroes-empty" hidden>
               <p class="profile-empty-text">Ты ещё не проходил квиз по героям для этой позиции</p>
-              <button class="profile-action-btn" onclick="goToHeroQuiz()">
-                ⚔️ Пройти квиз по героям
+              <button class="profile-action-btn" id="profile-heroes-start-btn" type="button">
+                <i class="ph ph-sword" aria-hidden="true"></i>Пройти квиз по героям
               </button>
             </div>
           </div>
@@ -672,28 +804,28 @@
 
 
       <!-- Нижняя навигация -->
-      <div class="bottom-nav">
+      <nav class="bottom-nav" aria-label="Основная навигация">
         <div class="nav-item active" onclick="switchPage('home', event)">
-          <div class="nav-icon">🏠</div>
+          <i class="nav-icon ph ph-house" aria-hidden="true"></i>
           <div class="nav-label">Главная</div>
         </div>
         <div class="nav-item" onclick="switchPage('quiz', event)">
-          <div class="nav-icon">🎯</div>
+          <i class="nav-icon ph ph-target" aria-hidden="true"></i>
           <div class="nav-label">Квизы</div>
         </div>
         <div class="nav-item" onclick="switchPage('drafter', event)">
-          <div class="nav-icon">⚔️</div>
+          <i class="nav-icon ph ph-strategy" aria-hidden="true"></i>
           <div class="nav-label">Драфтер</div>
         </div>
         <div class="nav-item" onclick="switchPage('database', event)">
-          <div class="nav-icon">🛡️</div>
+          <i class="nav-icon ph ph-shield" aria-hidden="true"></i>
           <div class="nav-label">Герои</div>
         </div>
         <div class="nav-item" onclick="switchPage('profile', event)">
-          <div class="nav-icon">⚙️</div>
+          <i class="nav-icon ph ph-user" aria-hidden="true"></i>
           <div class="nav-label">Профиль</div>
         </div>
-      </div>
+      </nav>
     </div>
 
     <!-- Инициализация Telegram WebApp -->
@@ -725,11 +857,26 @@
       </div>
     </div>
 
-    <script src="heroes-carry.js?v=2"></script>
-    <script src="heroes-mid.js?v=1"></script>
-    <script src="heroes-offlane.js?v=1"></script>
-    <script src="heroes-pos45.js?v=1"></script>
-    <script src="hero-images.js?v=1"></script>
-    <script src="script.js?v=98"></script>
+    <!-- Полноэкранный каталог героев (открывается из поиска) -->
+    <div id="heroes-catalog-overlay" class="heroes-catalog-overlay" hidden aria-hidden="true">
+      <div class="heroes-catalog-panel" id="heroes-catalog-panel" role="dialog" aria-labelledby="heroes-catalog-title">
+        <div class="heroes-catalog-header">
+          <div class="heroes-catalog-titles">
+            <div class="heroes-catalog-title" id="heroes-catalog-title">Каталог</div>
+            <div class="heroes-catalog-count" id="heroes-catalog-count">—</div>
+          </div>
+          <button type="button" class="heroes-catalog-close" id="heroes-catalog-close" aria-label="Закрыть каталог">
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <path d="M2 2 L12 12 M12 2 L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="heroes-catalog-body" id="heroes-catalog-body"></div>
+      </div>
+    </div>
+
+    <script defer src="heroes-data.js?v=1"></script>
+    <script defer src="hero-images.js?v=1"></script>
+    <script defer src="script.js?v=145"></script>
   </body>
 </html>
