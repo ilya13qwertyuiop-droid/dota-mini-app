@@ -238,7 +238,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             KeyboardButton(
-                text="Найди своего героя",
+                text="Открыть D2Helper",
                 web_app=WebAppInfo(url=mini_app_url_with_token),
             )
         ]

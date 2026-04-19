@@ -37,22 +37,26 @@
                 answers: [
                 {
                     id: "q1_pos1",
-                    text: "💰 Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
+                    text: "Когда я вижу, что прогрессирую по золоту быстрее, чем вражеские герои",
+                    icon: "ph-coins",
                     scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q1_pos2",
-                    text: "🔪 Когда я один в правильный момент поймал и стёр врага за пару секунд",
+                    text: "Когда я один в правильный момент поймал и стёр врага за пару секунд",
+                    icon: "ph-crosshair",
                     scores: { pos1: 2, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q1_pos3",
-                    text: "⚔️ Когда я первый прыгаю в драку и закрываю вражеских героев",
+                    text: "Когда я первый прыгаю в драку и закрываю вражеских героев",
+                    icon: "ph-sword",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q1_pos4", // pos4 и pos5 по 3, беру младший номер
-                    text: "🤝 Когда моя помощь спасает союзников в критический момент",
+                    text: "Когда моя помощь спасает союзников в критический момент",
+                    icon: "ph-hand-heart",
                     scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
                 }
                 ]
@@ -63,22 +67,26 @@
                 answers: [
                 {
                     id: "q2_pos1",
-                    text: "🌾 Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
+                    text: "Сосредотачиваюсь на добивании крипов и стараюсь максимально эффективно фармить",
+                    icon: "ph-coins",
                     scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 0, pos5: 0 }
                 },
                 {
                     id: "q2_pos2",
-                    text: "⚖️ Хочу переиграть оппонента на линии и начать двигаться по карте",
+                    text: "Хочу переиграть оппонента на линии и начать двигаться по карте",
+                    icon: "ph-strategy",
                     scores: { pos1: 1, pos2: 3, pos3: 2, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q2_pos3",
-                    text: "⚔️ Ищу возможности для агрессии на линии и стараюсь доминировать",
+                    text: "Ищу возможности для агрессии на линии и стараюсь доминировать",
+                    icon: "ph-fire",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 2 }
                 },
                 {
                     id: "q2_pos5",
-                    text: "🗺️ Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
+                    text: "Помогаю на линиях — даю тп при необходимости, контролирую руны/вижн",
+                    icon: "ph-users-three",
                     scores: { pos1: 0, pos2: 1, pos3: 0, pos4: 2, pos5: 3 }
                 }
                 ]
@@ -89,22 +97,26 @@
                 answers: [
                 {
                     id: "q3_pos1",
-                    text: "📊 Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
+                    text: "Оцениваю выгоду. Если не выгодно, продолжаю фармить или сплит-пушу",
+                    icon: "ph-scales",
                     scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 0, pos5: 0 }
                 },
                 {
                     id: "q3_pos4",
-                    text: "⚔️ Сразу даю ТП, чтобы помочь команде",
+                    text: "Сразу даю ТП, чтобы помочь команде",
+                    icon: "ph-lightning",
                     scores: { pos1: 1, pos2: 1, pos3: 1, pos4: 3, pos5: 3 }
                 },
                 {
                     id: "q3_pos3",
-                    text: "🎯 Пытаюсь 'выключить' опасного вражеского героя",
+                    text: "Пытаюсь 'выключить' опасного вражеского героя",
+                    icon: "ph-crosshair",
                     scores: { pos1: 1, pos2: 2, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q3_pos1b", // pos1 и pos5 по 3, помечаю вторую керри‑метку
-                    text: "💚 Держу позицию, чтобы грамотно раскинуть кнопки",
+                    text: "Держу позицию, чтобы грамотно раскинуть кнопки",
+                    icon: "ph-anchor",
                     scores: { pos1: 3, pos2: 1, pos3: 1, pos4: 1, pos5: 3 }
                 }
                 ]
@@ -115,22 +127,26 @@
                 answers: [
                 {
                     id: "q4_pos1",
-                    text: "💎 Героев, которые становятся сильными с дорогими предметами",
+                    text: "Героев, которые становятся сильными с дорогими предметами",
+                    icon: "ph-crown",
                     scores: { pos1: 3, pos2: 2, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q4_pos2",
-                    text: "🎯 Героев с бёрст уроном — убил и ушёл",
+                    text: "Героев с бёрст уроном — убил и ушёл",
+                    icon: "ph-lightning",
                     scores: { pos1: 1, pos2: 3, pos3: 1, pos4: 1, pos5: 0 }
                 },
                 {
                     id: "q4_pos3",
-                    text: "🛡️ Героев, которые выдерживают много урона",
+                    text: "Героев, которые выдерживают много урона",
+                    icon: "ph-shield",
                     scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 1 }
                 },
                 {
                     id: "q4_pos5",
-                    text: "🤝 Героев с полезными способностями для команды (станы, сейвы, хил)",
+                    text: "Героев с полезными способностями для команды (станы, сейвы, хил)",
+                    icon: "ph-hand-heart",
                     scores: { pos1: 0, pos2: 0, pos3: 1, pos4: 3, pos5: 3 }
                 }
                 ]
@@ -141,22 +157,26 @@
                 answers: [
                 {
                     id: "q5_pos1",
-                    text: "📊 Золото/Фраги/Добито крипов",
+                    text: "Золото/Фраги/Добито крипов",
+                    icon: "ph-coins",
                     scores: { pos1: 3, pos2: 2, pos3: 2, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q5_pos2",
-                    text: "⚔️ Фраги и нанесённый урон",
+                    text: "Фраги и нанесённый урон",
+                    icon: "ph-crosshair",
                     scores: { pos1: 3, pos2: 3, pos3: 1, pos4: 1, pos5: 1 }
                 },
                 {
                     id: "q5_pos3",
-                    text: "🎯 Количество контроля и впитанного урона",
+                    text: "Количество контроля и впитанного урона",
+                    icon: "ph-shield",
                     scores: { pos1: 1, pos2: 1, pos3: 3, pos4: 2, pos5: 2 }
                 },
                 {
                     id: "q5_pos5",
-                    text: "💚 Количество расходников (варды, дасты), ассистов, лечения",
+                    text: "Количество расходников (варды, дасты), ассистов, лечения",
+                    icon: "ph-hand-heart",
                     scores: { pos1: 0, pos2: 0, pos3: 0, pos4: 3, pos5: 3 }
                     }
                 ]
@@ -280,11 +300,95 @@
             return params.get('token');
         }
 
-        const USER_TOKEN = getTokenFromUrl();
+        let USER_TOKEN = getTokenFromUrl();
 
-        // Фоновая загрузка профиля при старте — не блокирует интерфейс
-        if (USER_TOKEN) {
-            setTimeout(function() { initProfile(); }, 0);
+        // ── Silent token refresh через Telegram initData ─────────────────
+        // Токены живут 24ч. Если пользователь давно не нажимал /start,
+        // API-запросы падают с 401 — ловим их и бесшумно обновляем токен
+        // через /api/refresh_token, проверяющий подпись initData.
+        const _rawFetch = window.fetch.bind(window);
+        let _refreshInFlight = null;
+
+        function _getInitData() {
+            const tg = window.Telegram && window.Telegram.WebApp;
+            return (tg && tg.initData) ? tg.initData : null;
+        }
+
+        function _showAuthError(message) {
+            if (document.getElementById('auth-error-banner')) return;
+            const div = document.createElement('div');
+            div.id = 'auth-error-banner';
+            div.textContent = message;
+            div.style.cssText = [
+                'position:fixed','top:0','left:0','right:0',
+                'padding:12px 16px','background:#e5534b','color:#fff',
+                'font-size:13px','text-align:center','z-index:9999',
+                'font-family:inherit','line-height:1.4'
+            ].join(';');
+            (document.body || document.documentElement).appendChild(div);
+        }
+
+        async function refreshToken() {
+            if (_refreshInFlight) return _refreshInFlight;
+            const initData = _getInitData();
+            if (!initData) {
+                _showAuthError('Откройте приложение через Telegram');
+                return null;
+            }
+            const API = window.API_BASE_URL || '/api';
+            _refreshInFlight = (async () => {
+                try {
+                    const resp = await _rawFetch(API + '/refresh_token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ init_data: initData })
+                    });
+                    if (!resp.ok) {
+                        console.warn('[auth] refresh_token HTTP', resp.status);
+                        return null;
+                    }
+                    const data = await resp.json();
+                    if (data && data.token) {
+                        USER_TOKEN = data.token;
+                        return data.token;
+                    }
+                    return null;
+                } catch (e) {
+                    console.warn('[auth] refresh_token error:', e);
+                    return null;
+                } finally {
+                    _refreshInFlight = null;
+                }
+            })();
+            return _refreshInFlight;
+        }
+
+        async function apiFetch(url, options) {
+            const oldToken = USER_TOKEN;
+            const resp = await _rawFetch(url, options);
+            if (resp.status !== 401 && resp.status !== 403) return resp;
+
+            const newToken = await refreshToken();
+            if (!newToken) {
+                if (_getInitData()) _showAuthError('Сессия истекла. Обновите страницу.');
+                return resp;
+            }
+            if (newToken === oldToken) return resp;
+
+            // Подменяем старый токен на новый в URL и теле запроса.
+            // Токен — URL-safe base64 (secrets.token_urlsafe), поэтому
+            // простая строковая замена безопасна от коллизий.
+            let retryUrl = url;
+            let retryOptions = options;
+            if (oldToken && typeof retryUrl === 'string') {
+                retryUrl = retryUrl.split(oldToken).join(newToken);
+            }
+            if (oldToken && options && typeof options.body === 'string') {
+                retryOptions = Object.assign({}, options, {
+                    body: options.body.split(oldToken).join(newToken)
+                });
+            }
+            return _rawFetch(retryUrl, retryOptions);
         }
 
         // Сохранение результата на backend
@@ -295,7 +399,7 @@
             }
 
             try {
-                const response = await fetch(`${window.API_BASE_URL}/save_result`, {
+                const response = await apiFetch(`${window.API_BASE_URL}/save_result`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -330,7 +434,8 @@
 
 
             if (pageName === 'home') {
-                loadMeta();
+                if (typeof initHomeScreen === 'function') initHomeScreen();
+                else loadMeta();
             }
             if (pageName === 'quiz') {
                 document.getElementById('quiz-list').style.display = 'block';
@@ -413,6 +518,7 @@
 
 
             document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('positionQuestionCounter').textContent = `Вопрос ${currentQuestion + 1} из ${quizData.length}`;
             document.getElementById('question').textContent = questionData.question;
 
 
@@ -421,17 +527,10 @@
 
 
             questionData.answers.forEach((answer, index) => {
-                const parts = answer.text.split(' ');
-                const emoji = parts[0];
-                const text = parts.slice(1).join(' ');
-
-
                 const button = document.createElement('button');
                 button.className = 'answer-btn';
-                button.innerHTML = `
-                    <span class="emoji">${emoji}</span>
-                    <span class="text">${text}</span>
-                `;
+                const iconHtml = answer.icon ? `<i class="answer-icon ph ${answer.icon}" aria-hidden="true"></i>` : '';
+                button.innerHTML = `${iconHtml}<span class="text">${answer.text}</span>`;
                 button.onclick = () => selectAnswer(index);
                 answersContainer.appendChild(button);
             });
@@ -669,6 +768,7 @@
                 this.state.currentSelections = [];
 
                 document.getElementById('heroProgressBar').style.width = progress + '%';
+                document.getElementById('heroQuestionCounter').textContent = `Вопрос ${this.state.currentQuestionIndex + 1} из ${this.state.currentQuestionSet.length}`;
                 document.getElementById('heroQuestion').textContent = question.question;
 
                 const hint = document.getElementById('heroQuizHint');
@@ -697,16 +797,10 @@
                 this.state.currentShuffledAnswers = displayAnswers;
 
                 displayAnswers.forEach((answer, index) => {
-                    const parts = answer.text.split(' ');
-                    const emoji = parts[0];
-                    const text = parts.slice(1).join(' ');
-
                     const button = document.createElement('button');
                     button.className = 'answer-btn';
-                    button.innerHTML = `
-                        <span class="emoji">${emoji}</span>
-                        <span class="text">${text}</span>
-                    `;
+                    const iconHtml = answer.icon ? `<i class="answer-icon ph ${answer.icon}" aria-hidden="true"></i>` : '';
+                    button.innerHTML = `${iconHtml}<span class="text">${answer.text}</span>`;
                     button.onclick = () => this.selectAnswer(index);
                     answersContainer.appendChild(button);
                 });
@@ -798,6 +892,10 @@
 
                 const heroes = this.heroDatabase[this.state.selectedPosition];
 
+                let maxPossibleScore = 0;
+                Object.values(selectedTags).forEach(w => { maxPossibleScore += w; });
+                if (selectedDifficulty) maxPossibleScore += 1.5;
+
                 const scoredHeroes = heroes.map(hero => {
                     let score = 0;
                     const heroTags = hero.tags;
@@ -827,7 +925,7 @@
                         score += Math.random() * 0.02 - 0.01;
                     }
 
-                    return { ...hero, score };
+                    return { ...hero, score, maxPossibleScore };
                 });
 
                 scoredHeroes.sort((a, b) => b.score - a.score);
@@ -855,22 +953,23 @@
             showResult() {
                 document.getElementById('hero-questions').style.display = 'none';
 
-                // Считаем немедленно, параллельно с экраном загрузки
                 const topHeroes = this.calculateTopHeroes().slice(0, 6);
 
+                // Brief loading indicator (1.2s) — just enough to feel intentional,
+                // not so long that it wastes the user's time
                 this._startHeroLoading();
 
                 setTimeout(() => {
                     const loading = document.getElementById('hero-loading');
-                    loading.style.transition = 'opacity 0.4s ease';
+                    loading.style.transition = 'opacity 0.3s ease';
                     loading.style.opacity = '0';
                     setTimeout(() => {
                         loading.style.display = 'none';
                         loading.style.opacity = '';
                         loading.style.transition = '';
                         this._renderResult(topHeroes);
-                    }, 400);
-                }, 5500);
+                    }, 300);
+                }, 1200);
             },
 
             _startHeroLoading() {
@@ -878,9 +977,9 @@
                 loading.style.display = 'flex';
                 loading.style.opacity = '1';
 
-                // Иконки — хаотичный дрейф по всему экрану
+                // A few hero icons drift subtly in the background
                 const heroNames = Object.keys(window.dotaHeroImages || {});
-                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 14);
+                const shuffled = [...heroNames].sort(() => Math.random() - 0.5).slice(0, 6);
 
                 const container = loading.querySelector('.hlo-orbits-wrap');
                 container.innerHTML = '';
@@ -907,8 +1006,8 @@
 
                 shuffled.forEach((heroName, i) => {
                     const size = 32 + Math.floor(Math.random() * 16); // 32–47px
-                    const dur  = (12 + Math.random() * 8).toFixed(1); // 12–20s
-                    const delay = (2 + i * 0.18).toFixed(2); // первые 2с — только фон и панель
+                    const dur  = (8 + Math.random() * 6).toFixed(1);  // 8–14s
+                    const delay = (0.1 + i * 0.08).toFixed(2);        // appear quickly
 
                     const img = document.createElement('img');
                     img.className = 'hlo-icon';
@@ -922,29 +1021,16 @@
                     container.appendChild(img);
                 });
 
-                // Звёздное поле
+                // Clear star field (not needed for brief loading)
                 const starsEl = document.getElementById('hloStars');
                 starsEl.innerHTML = '';
-                for (let i = 0; i < 25; i++) {
-                    const s = document.createElement('div');
-                    s.className = 'hlo-star';
-                    const sz = [2, 3, 4][Math.floor(Math.random() * 3)];
-                    s.style.cssText = `
-                        width:${sz}px; height:${sz}px;
-                        top:${Math.random() * 100}%;
-                        left:${Math.random() * 100}%;
-                        --dur:${(1.5 + Math.random() * 2).toFixed(2)}s;
-                        --delay:-${(Math.random() * 3).toFixed(2)}s;
-                    `;
-                    starsEl.appendChild(s);
-                }
 
-                // Прогресс-бар 0 → 100% за 5.5с
+                // Прогресс-бар 0 → 100% за 1.2с
                 const fill = document.getElementById('hloProgressFill');
                 fill.style.transition = 'none';
                 fill.style.width = '0%';
                 requestAnimationFrame(() => requestAnimationFrame(() => {
-                    fill.style.transition = 'width 5.5s linear';
+                    fill.style.transition = 'width 1.2s ease-out';
                     fill.style.width = '100%';
                 }));
             },
@@ -1066,32 +1152,13 @@
                 const heroListContainer = document.getElementById('heroResultList');
                 heroListContainer.innerHTML = '';
 
-                // Находим реальные max/min среди выбранных героев
-                const scores = topHeroes.map(h => h.score);
-                const maxScore = Math.max(...scores);
-                const minScore = Math.min(...scores);
-                const range = maxScore - minScore || 1; // защита от 0
-
                 topHeroes.forEach((hero, index) => {
                     const card = document.createElement('div');
 
-                    // Если у всех score одинаковый, не будем врать 100% — дадим всем 75%
-                    let matchPercent;
-                    if (maxScore === minScore) {
-                        matchPercent = 75;
-                    } else {
-                        const normalized = (hero.score - minScore) / range; // от 0 до 1
-                        matchPercent = Math.round(60 + normalized * 40);    // 60–100%
-                    }
+                    const maxPossible = hero.maxPossibleScore || 1;
+                    const matchPercent = Math.max(0, Math.min(100, Math.round((hero.score / maxPossible) * 100)));
 
-                    // рамка по совпадению
-                    if (matchPercent >= 90) {
-                        card.className = 'hero-card hero-card--gold';
-                    } else if (matchPercent >= 75) {
-                        card.className = 'hero-card hero-card--silver';
-                    } else {
-                        card.className = 'hero-card hero-card--bronze';
-                    }
+                    card.className = 'hero-card';
 
                     const heroIconUrl = window.getHeroIconUrlByName(hero.name);
 
@@ -1116,7 +1183,7 @@
                         </div>
                         </div>
 
-                        <div class="guide-row" style="display:flex;justify-content:flex-end;">
+                        <div class="guide-row">
                         <button
                             class="guide-chip hero-card__guide-btn"
                             data-hero-name="${hero.name}"
@@ -1137,13 +1204,8 @@
                     type: 'hero_quiz',
                     heroPositionIndex: positionIndex, // 0..4
                     topHeroes: topHeroes.map(hero => {
-                        let matchPercent;
-                        if (maxScore === minScore) {
-                            matchPercent = 75;
-                        } else {
-                            const normalized = (hero.score - minScore) / range; // 0..1
-                            matchPercent = Math.round(60 + normalized * 40);    // 60–100%
-                        }
+                        const maxPossible = hero.maxPossibleScore || 1;
+                        const matchPercent = Math.max(0, Math.min(100, Math.round((hero.score / maxPossible) * 100)));
                         return {
                             name: hero.name,
                             score: hero.score,
@@ -1212,18 +1274,73 @@
         });
 // ========== ПРОФИЛЬ ==========
 
+function _profileSetLoadingState() {
+    // Показываем skeleton, прячем result/empty, прячем error
+    const show = id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = false;
+    };
+    const hide = id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+    };
+    show('profile-position-skeleton');
+    show('profile-heroes-skeleton');
+    hide('profile-position-result');
+    hide('profile-position-empty');
+    hide('profile-heroes-result');
+    hide('profile-heroes-empty');
+    hide('profile-error');
+    const statsEl = document.getElementById('profile-stats');
+    if (statsEl) statsEl.hidden = false;
+}
+
+function _profileHideSkeletons() {
+    const pos = document.getElementById('profile-position-skeleton');
+    const heroes = document.getElementById('profile-heroes-skeleton');
+    if (pos) pos.hidden = true;
+    if (heroes) heroes.hidden = true;
+}
+
+function _profileShowError() {
+    _profileHideSkeletons();
+    const error = document.getElementById('profile-error');
+    const stats = document.getElementById('profile-stats');
+    const posCard = document.getElementById('profile-position-card');
+    const heroesCard = document.getElementById('profile-heroes-card');
+    if (error) error.hidden = false;
+    if (stats) stats.hidden = true;
+    if (posCard) posCard.hidden = true;
+    if (heroesCard) heroesCard.hidden = true;
+}
+
+function _profileHideError() {
+    const error = document.getElementById('profile-error');
+    const posCard = document.getElementById('profile-position-card');
+    const heroesCard = document.getElementById('profile-heroes-card');
+    if (error) error.hidden = true;
+    if (posCard) posCard.hidden = false;
+    if (heroesCard) heroesCard.hidden = false;
+}
+
 async function initProfile() {
     console.log('[PROFILE] Загрузка профиля...');
 
+    _profileHideError();
+    _profileSetLoadingState();
+    updateProfileHeader(null, /*loading*/ true);
+
     if (!USER_TOKEN) {
         console.error('[PROFILE] Токен отсутствует');
+        _profileHideSkeletons();
         updateProfileHeader(null);
+        updateProfileStats(null);
         showEmptyProfile();
         return;
     }
 
     try {
-        const response = await fetch(`${window.API_BASE_URL}/profile_full?token=${USER_TOKEN}`);
+        const response = await apiFetch(`${window.API_BASE_URL}/profile_full?token=${USER_TOKEN}`);
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
         }
@@ -1238,7 +1355,7 @@ async function initProfile() {
             if (!profile.first_name && user.first_name) {
                 console.log('[PROFILE] Отправляем данные Telegram на backend (fallback)');
                 try {
-                    await fetch(`${window.API_BASE_URL}/save_telegram_data`, {
+                    await apiFetch(`${window.API_BASE_URL}/save_telegram_data`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1256,21 +1373,59 @@ async function initProfile() {
             }
         }
 
+        _profileHideSkeletons();
         updateProfileHeader(profile);
+        updateProfileStats(profile);
         displayPositionResult(profile);
         displayHeroesResult(profile);
 
     } catch (error) {
         console.error('[PROFILE] Ошибка загрузки:', error);
         updateProfileHeader(null);
-        showEmptyProfile();
+        _profileShowError();
     }
 }
 
-function updateProfileHeader(profile) {
+function _renderAvatar(avatarEl, userData) {
+    // Полный reset: убираем любые старые image / инициалы
+    avatarEl.innerHTML = '';
+
+    const photoUrl = userData && userData.photo_url;
+    if (photoUrl) {
+        const img = document.createElement('img');
+        img.src = photoUrl;
+        img.alt = '';
+        img.decoding = 'async';
+        img.loading = 'lazy';
+        img.onerror = () => {
+            // Сетевая ошибка — падаем на локальный инициал, без внешних сервисов
+            avatarEl.innerHTML = '';
+            avatarEl.textContent = _avatarInitial(userData);
+        };
+        avatarEl.appendChild(img);
+        return;
+    }
+
+    avatarEl.textContent = _avatarInitial(userData);
+}
+
+function _avatarInitial(userData) {
+    const source = (userData && (userData.first_name || userData.username)) || '';
+    const ch = source.trim().charAt(0);
+    return ch || '·';
+}
+
+function updateProfileHeader(profile, loading = false) {
     const avatar = document.getElementById('profile-avatar');
     const nameEl = document.getElementById('profile-name');
     const usernameEl = document.getElementById('profile-username');
+
+    if (loading) {
+        nameEl.textContent = 'Загрузка…';
+        usernameEl.textContent = '';
+        avatar.innerHTML = '';
+        return;
+    }
 
     let userData = null;
 
@@ -1288,25 +1443,88 @@ function updateProfileHeader(profile) {
     if (userData) {
         const fullName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim();
         nameEl.textContent = fullName || 'Пользователь';
-        if (userData.username) {
-            usernameEl.textContent = `@${userData.username}`;
-        } else {
-            usernameEl.textContent = '';
-        }
-        if (userData.photo_url) {
-            avatar.src = userData.photo_url;
-        } else {
-            avatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.first_name || 'U')}&background=3a7bd5&color=fff&size=200&bold=true`;
-        }
+        usernameEl.textContent = userData.username ? `@${userData.username}` : '';
     } else {
         nameEl.textContent = 'Пользователь';
         usernameEl.textContent = '';
-        avatar.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
     }
 
-    avatar.onerror = function () {
-        this.src = `https://ui-avatars.com/api/?name=U&background=3a7bd5&color=fff&size=200&bold=true`;
-    };
+    _renderAvatar(avatar, userData);
+}
+
+function _classifyDrafterRank(score) {
+    // Та же шкала, что в рендере результата драфтера (script.js ≈ 4998).
+    if (score >= 85) return { letter: 'SSS', desc: 'Абсолютный драфтер', color: 'var(--warning)' };
+    if (score >= 80) return { letter: 'S',   desc: 'Как ты это сделал?', color: 'var(--warning)' };
+    if (score >= 65) return { letter: 'A',   desc: 'Хороший драфт',      color: 'var(--accent)' };
+    if (score >= 50) return { letter: 'B',   desc: 'Можно лучше',        color: 'var(--text-primary)' };
+    return             { letter: 'C',        desc: 'Надо тренироваться', color: 'var(--text-secondary)' };
+}
+
+function _renderDrafterBest() {
+    const scoreEl = document.getElementById('profile-stat-best-score');
+    const rankEl  = document.getElementById('profile-stat-best-rank');
+    const descEl  = document.getElementById('profile-stat-best-desc');
+
+    let best = 0;
+    try {
+        best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10) || 0;
+    } catch (e) { best = 0; }
+
+    if (!best) {
+        if (scoreEl) scoreEl.textContent = '—';
+        if (rankEl) { rankEl.textContent = ''; rankEl.style.color = ''; }
+        if (descEl) descEl.textContent = 'нет результата';
+        return;
+    }
+
+    const rank = _classifyDrafterRank(best);
+    if (scoreEl) scoreEl.textContent = String(best);
+    if (rankEl) {
+        rankEl.textContent = rank.letter;
+        rankEl.style.color = rank.color;
+    }
+    if (descEl) descEl.textContent = rank.desc;
+}
+
+async function _renderDrafterPlace() {
+    const placeEl = document.getElementById('profile-stat-place');
+    const subEl   = document.getElementById('profile-stat-place-sub');
+
+    if (!USER_TOKEN) {
+        if (placeEl) placeEl.textContent = '—';
+        if (subEl) subEl.textContent = 'нет результата';
+        return;
+    }
+
+    try {
+        const resp = await apiFetch(`${window.API_BASE_URL}/draft/leaderboard/me?token=${encodeURIComponent(USER_TOKEN)}`);
+        if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+        const me = await resp.json();
+
+        if (!me || me.rank === null || me.rank === undefined) {
+            if (placeEl) placeEl.textContent = '—';
+            if (subEl) subEl.textContent = 'нет результата';
+            return;
+        }
+
+        if (placeEl) placeEl.textContent = `#${me.rank}`;
+        if (subEl) {
+            const sum = me.top5_sum != null ? Math.round(me.top5_sum) : null;
+            subEl.textContent = sum != null ? `Счёт ${sum}` : '';
+        }
+    } catch (e) {
+        console.warn('[PROFILE] leaderboard/me failed:', e);
+        if (placeEl) placeEl.textContent = '—';
+        if (subEl) subEl.textContent = 'нет данных';
+    }
+}
+
+function updateProfileStats(_profile) {
+    // Драфтер-метрики не зависят от quiz-профиля: лучший счёт — в localStorage,
+    // место в лидерборде — отдельный запрос по токену.
+    _renderDrafterBest();
+    _renderDrafterPlace();
 }
 
 function displayPositionResult(profile) {
@@ -1334,8 +1552,8 @@ function displayPositionResult(profile) {
     }
 
     if (!positionData) {
-        posResult.style.display = 'none';
-        posEmpty.style.display = 'block';
+        posResult.hidden = true;
+        posEmpty.hidden = false;
         // ✅ БАГ-ФИХ: Сбрасываем lastPositionResult и обновляем кнопку hero-квиза
         lastPositionResult = null;
         updateHeroQuizStart();
@@ -1357,8 +1575,8 @@ function displayPositionResult(profile) {
     updateHeroQuizStart();
     console.log('[PROFILE] lastPositionResult синхронизирован:', lastPositionResult);
 
-    posResult.style.display = 'block';
-    posEmpty.style.display = 'none';
+    posResult.hidden = false;
+    posEmpty.hidden = true;
 
     const mainNameEl = document.getElementById('profile-position-main-name');
     const extraNameEl = document.getElementById('profile-position-extra-name');
@@ -1454,15 +1672,15 @@ function displayHeroesResult(profile) {
 
     // Показываем героев или заглушку
     if (heroData) {
-        heroesResult.style.display = 'block';
-        heroesEmpty.style.display = 'none';
+        heroesResult.hidden = false;
+        heroesEmpty.hidden = true;
         renderProfileHeroes(heroesList, heroData.topHeroes);
         return;
     }
 
     // Иначе показываем заглушку
-    heroesResult.style.display = 'none';
-    heroesEmpty.style.display = 'block';
+    heroesResult.hidden = true;
+    heroesEmpty.hidden = false;
 }
 
 function renderProfileHeroes(container, heroes) {
@@ -1473,34 +1691,114 @@ function renderProfileHeroes(container, heroes) {
         const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
         const row = document.createElement('a');
-        row.className = 'hero-row' + (index === 0 ? ' hero-row-main' : '');
+        row.className = 'hero-row';
         row.href = getDota2ProTrackerUrl(heroName);
         row.target = '_blank';
         row.rel = 'noopener noreferrer';
 
-        row.innerHTML = `
-            <div class="hero-row-rank">${index + 1}</div>
-            <div class="hero-row-img">
-                <img src="${heroIconUrl}" alt="${heroName}" style="width:100%; height:100%; object-fit:cover; border-radius:6px;" onerror="this.style.display='none'">
-            </div>
-            <div class="hero-row-main-text">
-                <div class="hero-row-name">${heroName}</div>
-                <div class="hero-row-sub">
-                    ${index === 0 ? 'Лучший мэтч' : 'Совпадение'} • ${matchPercent}%
-                </div>
-            </div>
-        `;
+        const rank = document.createElement('div');
+        rank.className = 'hero-row-rank';
+        rank.textContent = String(index + 1);
+
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'hero-row-img';
+        if (heroIconUrl) {
+            const img = document.createElement('img');
+            img.src = heroIconUrl;
+            img.alt = heroName;
+            img.decoding = 'async';
+            img.loading = 'lazy';
+            img.onerror = () => { img.style.display = 'none'; };
+            imgWrap.appendChild(img);
+        }
+
+        const text = document.createElement('div');
+        text.className = 'hero-row-main-text';
+
+        const name = document.createElement('div');
+        name.className = 'hero-row-name';
+        name.textContent = heroName;
+
+        const sub = document.createElement('div');
+        sub.className = 'hero-row-sub';
+        sub.textContent = `${index === 0 ? 'Лучший мэтч' : 'Совпадение'} · ${matchPercent}%`;
+
+        text.appendChild(name);
+        text.appendChild(sub);
+
+        row.appendChild(rank);
+        row.appendChild(imgWrap);
+        row.appendChild(text);
 
         container.appendChild(row);
     });
 }
 
 function showEmptyProfile() {
-    document.getElementById('profile-position-result').style.display = 'none';
-    document.getElementById('profile-position-empty').style.display = 'block';
-    document.getElementById('profile-heroes-result').style.display = 'none';
-    document.getElementById('profile-heroes-empty').style.display = 'block';
+    document.getElementById('profile-position-result').hidden = true;
+    document.getElementById('profile-position-empty').hidden = false;
+    document.getElementById('profile-heroes-result').hidden = true;
+    document.getElementById('profile-heroes-empty').hidden = false;
 }
+
+// ─── Обработчики кнопок профиля ──────────────────────────────────────
+function _profileConfirmRedo(message, action) {
+    // Telegram WebApp showConfirm асинхронный через callback; fallback на window.confirm
+    const tgApp = window.Telegram && window.Telegram.WebApp;
+    if (tgApp && typeof tgApp.showConfirm === 'function') {
+        try {
+            tgApp.showConfirm(message, (ok) => { if (ok) action(); });
+            return;
+        } catch (e) {
+            console.warn('[PROFILE] showConfirm failed, fallback:', e);
+        }
+    }
+    if (window.confirm(message)) action();
+}
+
+function _profileBindActions() {
+    const retryBtn = document.getElementById('profile-retry-btn');
+    if (retryBtn && !retryBtn.dataset.bound) {
+        retryBtn.addEventListener('click', () => initProfile());
+        retryBtn.dataset.bound = '1';
+    }
+
+    const posRedo = document.getElementById('profile-position-redo-btn');
+    if (posRedo && !posRedo.dataset.bound) {
+        posRedo.addEventListener('click', () => {
+            _profileConfirmRedo(
+                'Пройти квиз по позиции заново? Текущий результат будет перезаписан.',
+                () => goToPositionQuiz()
+            );
+        });
+        posRedo.dataset.bound = '1';
+    }
+
+    const posStart = document.getElementById('profile-position-start-btn');
+    if (posStart && !posStart.dataset.bound) {
+        posStart.addEventListener('click', () => goToPositionQuiz());
+        posStart.dataset.bound = '1';
+    }
+
+    const heroesRedo = document.getElementById('profile-heroes-redo-btn');
+    if (heroesRedo && !heroesRedo.dataset.bound) {
+        heroesRedo.addEventListener('click', () => {
+            _profileConfirmRedo(
+                'Пройти квиз по героям заново? Текущий топ-5 будет перезаписан.',
+                () => goToHeroQuiz()
+            );
+        });
+        heroesRedo.dataset.bound = '1';
+    }
+
+    const heroesStart = document.getElementById('profile-heroes-start-btn');
+    if (heroesStart && !heroesStart.dataset.bound) {
+        heroesStart.addEventListener('click', () => goToHeroQuiz());
+        heroesStart.dataset.bound = '1';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', _profileBindActions);
 
 const _originalSwitchPage = switchPage;
 switchPage = function (pageName, event) {
@@ -1578,6 +1876,8 @@ const matchupPage = {
             suggestions.style.display = 'none';
         }
         if (window.renderRecentHeroes) window.renderRecentHeroes();
+        if (typeof loadHeroesSearchMeta === 'function') loadHeroesSearchMeta();
+        if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
     },
 
     showHero: function (heroName) {
@@ -1637,9 +1937,7 @@ const matchupPage = {
         this.showHero(heroName);
 
         const heroId = window.dotaHeroIds && window.dotaHeroIds[heroName];
-        console.log('[matchups] selected heroName =', heroName, 'heroId =', heroId);
         if (!heroId) {
-            console.warn('[matchups] no heroId for heroName =', heroName);
             showMatchupsError('Матчапы для этого героя пока недоступны');
             return;
         }
@@ -1712,6 +2010,9 @@ function _showBuildLoading() {
 
 function selectBuildPosition(pos) {
     _buildPosition = pos;
+    if (_buildHeroId && typeof window.setRecentHeroPosition === 'function') {
+        window.setRecentHeroPosition(_buildHeroId, pos);
+    }
     if (_buildData) renderBuildTab(_buildData);
 }
 
@@ -1800,7 +2101,6 @@ function _applyTalentNum(ruName, num) {
     if (ruName.indexOf('?') !== -1) {
         var qIdx = ruName.indexOf('?');
         var charBefore = qIdx > 0 ? ruName[qIdx - 1] : '';
-        console.log('talent debug:', { charBefore: charBefore, numSign: num[0], num: num, ruName: ruName });
         var isMinus = charBefore === '-' || charBefore === '\u2013' || charBefore === '\u2014';
         var numToInsert = ((charBefore === '+' && num[0] === '+') || (isMinus && num[0] === '-'))
             ? num.slice(1) : num;
@@ -1827,8 +2127,8 @@ function _buildTalentsHtml(dotaPos, data) {
         rows = sorted.map(function (t) {
             var leftPopular  = t.choice === 'lt';
             var rightPopular = t.choice === 'rt';
-            var leftCls  = 'build-talent-card build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
-            var rightCls = 'build-talent-card build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
+            var leftCls  = 'build-talent-cell build-talent-left'  + (leftPopular  ? ' build-talent-popular' : '');
+            var rightCls = 'build-talent-cell build-talent-right' + (rightPopular ? ' build-talent-popular' : '');
             var leftNum   = _extractTalentNum((t.left  || {}).displayName);
             var rightNum  = _extractTalentNum((t.right || {}).displayName);
             var leftRu    = ruMap[(t.left  || {}).name] || (t.left  || {}).displayName || '';
@@ -1846,8 +2146,8 @@ function _buildTalentsHtml(dotaPos, data) {
         if (!talents.length) return '';
         var sortedFb = talents.slice().sort(function (a, b) { return (a.level || 0) - (b.level || 0); });
         rows = sortedFb.map(function (t) {
-            var leftCls  = 'build-talent-card build-talent-left';
-            var rightCls = 'build-talent-card build-talent-right';
+            var leftCls  = 'build-talent-cell build-talent-left';
+            var rightCls = 'build-talent-cell build-talent-right';
             return '<div class="build-talent-row">' +
                 '<div class="' + leftCls  + '">' + (t.left_display || t.left  || '') + '</div>' +
                 '<div class="build-talent-level-badge">' + (t.level || '') + '</div>' +
@@ -2012,6 +2312,9 @@ function renderBuildTab(data) {
     if (topPositions.length && topPositions.indexOf(_buildPosition) === -1) {
         _buildPosition = topPositions[0];
     }
+    if (_buildHeroId && _buildPosition && typeof window.setRecentHeroPosition === 'function') {
+        window.setRecentHeroPosition(_buildHeroId, _buildPosition);
+    }
 
     var dotaPos = data.dota_builds && _buildPosition && data.dota_builds[_buildPosition];
 
@@ -2024,24 +2327,30 @@ function renderBuildTab(data) {
             ? '<span class="build-pos-winrate">' + (posData.win_rate * 100).toFixed(1) + '%</span>'
             : '';
         return '<button class="build-pos-btn' + activeCls + '" data-pos="' + pos + '" onclick="selectBuildPosition(\'' + pos + '\')">' +
-            '<img src="' + imgSrc + '" style="width:24px;height:24px;object-fit:contain;" onerror="this.style.display=\'none\'">' +
+            '<img src="' + imgSrc + '" class="build-pos-icon" onerror="this.style.display=\'none\'">' +
             '<span class="build-filter-name">' + label + '</span>' +
             wrStr +
             '</button>';
     }).join('');
 
+    var talentsHtml = _buildTalentsHtml(dotaPos, data);
+    var talentsSection = talentsHtml
+        ? '<div class="build-section-divider"></div>' +
+          '<div class="build-section">' +
+              '<div class="build-section-label">ТАЛАНТЫ</div>' +
+              talentsHtml +
+          '</div>'
+        : '';
+
     el.innerHTML =
         '<div class="build-filters">' +
-            '<div class="build-filter-section">' +
-                '<div class="build-filter-label">ПОПУЛЯРНЫЕ ПОЗИЦИИ</div>' +
-                '<div class="build-filter-segmented">' + posButtons + '</div>' +
-            '</div>' +
+            '<div class="build-filter-segmented">' + posButtons + '</div>' +
         '</div>' +
         '<div class="build-section">' +
             '<div class="build-section-label">ПРОКАЧКА</div>' +
             _buildSkillRowHtml(dotaPos, data) +
-            _buildTalentsHtml(dotaPos, data) +
         '</div>' +
+        talentsSection +
         '<div class="build-section-divider"></div>' +
         '<div class="build-section">' +
             '<div class="build-section-label">ПРЕДМЕТЫ</div>' +
@@ -2054,7 +2363,7 @@ async function loadHeroBuild(heroId) {
     _buildHeroId = heroId;
     _showBuildLoading();
     try {
-        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/build');
+        var response = await apiFetch(window.API_BASE_URL + '/hero/' + heroId + '/build');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         var data = await response.json();
         if (_buildHeroId !== heroId) return;  // hero changed while loading
@@ -2126,97 +2435,105 @@ function showSynergyError(msg) {
     if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Недостаточно матчей для оценки синергии.') + '</p>';
 }
 
-function renderMatchupList(containerId, items, type, baseWr) {
+function renderMatchupList(containerId, positiveItems, negativeItems, baseWr, labels) {
     var container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!items || items.length === 0) {
+    var posLabel = (labels && labels.positive) || 'сильнее';
+    var negLabel = (labels && labels.negative) || 'избегать';
+
+    function enrichAndSort(list, desc) {
+        var out = [];
+        if (!list) return out;
+        for (var i = 0; i < list.length; i++) {
+            var entry = list[i];
+            var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.hero_id];
+            if (!heroName) continue;
+            var base = (baseWr != null) ? baseWr : 0.5;
+            var delta = entry.wr_vs - base;
+            out.push({ entry: entry, heroName: heroName, delta: delta });
+        }
+        out.sort(function (a, b) { return desc ? b.delta - a.delta : a.delta - b.delta; });
+        return out;
+    }
+
+    var pos = enrichAndSort(positiveItems, true);
+    var neg = enrichAndSort(negativeItems, false);
+
+    if (pos.length === 0 && neg.length === 0) {
+        container.classList.remove('expanded');
         container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
         return;
     }
 
-    // Обогащаем каждую запись дельтой относительно базового винрейта
-    var enriched = [];
-    for (var i = 0; i < items.length; i++) {
-        var entry = items[i];
-        var heroName = window.dotaHeroIdToName && window.dotaHeroIdToName[entry.hero_id];
-        if (!heroName) {
-            console.warn('[matchups] skip opponent: no name mapping for id =', entry.hero_id);
-            continue;
-        }
-        var base = (baseWr != null) ? baseWr : 0.5;
-        var delta = entry.wr_vs - base; // дробное значение, например 0.12
-        enriched.push({ entry: entry, heroName: heroName, delta: delta });
+    var TOP = 3;
+
+    function formatGames(n) {
+        if (n >= 10000) return Math.round(n / 1000) + 'k';
+        if (n >= 1000)  return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        return n.toLocaleString('ru-RU');
     }
 
-    if (enriched.length === 0) {
-        container.innerHTML = '<p class="matchup-placeholder-text">Недостаточно данных (мало игр)</p>';
-        return;
-    }
-
-    // Сортировка: «кого контрит» — по убыванию delta; «кто контрит» — по возрастанию
-    if (type === 'strong') {
-        enriched.sort(function (a, b) { return b.delta - a.delta; });
-    } else {
-        enriched.sort(function (a, b) { return a.delta - b.delta; });
-    }
-
-    // Масштаб прогресс-бара: по максимальному |delta| в списке (минимум 0.10)
-    var maxAbsDelta = 0.10;
-    for (var j = 0; j < enriched.length; j++) {
-        if (Math.abs(enriched[j].delta) > maxAbsDelta) {
-            maxAbsDelta = Math.abs(enriched[j].delta);
-        }
-    }
-
-    var rendered = [];
-    for (var k = 0; k < enriched.length; k++) {
-        var item = enriched[k];
+    function renderRow(item, isTop, polarity, isExtra) {
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(item.heroName) : '';
         var deltaPct = item.delta * 100;
-        var absDeltaPct = Math.abs(deltaPct);
-        var barWidth = Math.min(Math.round((absDeltaPct / (maxAbsDelta * 100)) * 100), 100);
-
-        var sign = '';
-        var cssClass = 'neutral';
-        if (deltaPct > 2) {
-            sign = '+';
-            cssClass = 'positive';
-        } else if (deltaPct < -2) {
-            cssClass = 'negative';
-        }
-
+        var sign = deltaPct > 0 ? '+' : '';
+        var cssClass = polarity;
+        if (Math.abs(deltaPct) <= 2) cssClass = 'neutral';
         var deltaStr = sign + Math.round(deltaPct) + '%';
-        var gamesStr = item.entry.games + '\u00a0игр';
-
-        rendered.push(
-            '<div class="matchup-item ' + cssClass + '">' +
+        var gamesStr = formatGames(item.entry.games) + ' игр';
+        var topCls = isTop ? ' matchup-item--top' : '';
+        var extraCls = isExtra ? ' matchup-item--extra' : '';
+        return '<div class="matchup-item ' + cssClass + topCls + extraCls + '">' +
                 '<div class="matchup-item-left">' +
                     '<img src="' + iconUrl + '" alt="" class="matchup-item-icon" onerror="this.style.display=\'none\'">' +
                     '<span class="matchup-item-name">' + item.heroName + '</span>' +
                 '</div>' +
                 '<div class="matchup-item-right">' +
-                    '<div class="matchup-item-stat">' +
-                        '<span class="matchup-item-delta">' + deltaStr + '</span>' +
-                        '<span class="matchup-item-games">\u00b7\u00a0' + gamesStr + '</span>' +
-                    '</div>' +
-                    '<div class="matchup-item-bar-wrap">' +
-                        '<div class="matchup-item-bar-fill" style="width:' + barWidth + '%"></div>' +
-                    '</div>' +
+                    '<span class="matchup-item-delta">' + deltaStr + '</span>' +
+                    '<span class="matchup-item-games">' + gamesStr + '</span>' +
                 '</div>' +
-            '</div>'
-        );
+            '</div>';
     }
 
-    container.innerHTML = rendered.join('');
+    var html = '';
+    if (pos.length > 0) {
+        html += '<div class="matchup-signed-divider"><span>' + posLabel + '</span></div>';
+        for (var i = 0; i < pos.length; i++) {
+            html += renderRow(pos[i], i === 0, 'positive', i >= TOP);
+        }
+    }
+    if (neg.length > 0) {
+        html += '<div class="matchup-signed-divider"><span>' + negLabel + '</span></div>';
+        for (var j = 0; j < neg.length; j++) {
+            html += renderRow(neg[j], j === 0, 'negative', j >= TOP);
+        }
+    }
+
+    var extra = Math.max(0, pos.length - TOP) + Math.max(0, neg.length - TOP);
+    var collapsedLabel = 'показать ещё ' + extra + ' \u2192';
+    var expandedLabel  = 'свернуть \u2191';
+    if (extra > 0) {
+        html += '<button class="matchup-expand-btn" type="button">' + collapsedLabel + '</button>';
+    }
+
+    container.classList.remove('expanded');
+    container.innerHTML = html;
+
+    var btn = container.querySelector('.matchup-expand-btn');
+    if (btn) {
+        btn.addEventListener('click', function () {
+            var isExpanded = container.classList.toggle('expanded');
+            btn.textContent = isExpanded ? expandedLabel : collapsedLabel;
+        });
+    }
 }
 
 async function loadHeroMatchups(heroId) {
     var LIMIT = 5;
 
     async function fetchCounters(minGames) {
-        console.log('Loading counters from ' + window.API_BASE_URL + '/hero/' + heroId + '/counters?min_games=' + minGames);
-        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
+        var response = await apiFetch(window.API_BASE_URL + '/hero/' + heroId + '/counters?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var text = await response.text().catch(function () { return ''; });
             var error = new Error('HTTP ' + response.status);
@@ -2254,11 +2571,6 @@ async function loadHeroMatchups(heroId) {
             }
         }
 
-        console.log('[matchups] API response victims.length =', data.victims && data.victims.length,
-                    'counters.length =', data.counters && data.counters.length);
-        console.log('[matchups] API sample victims[0] =', data.victims && data.victims[0]);
-        console.log('[matchups] API sample counters[0] =', data.counters && data.counters[0]);
-
         var wrEl = document.getElementById('matchup-hero-winrate');
         if (wrEl) {
             if (data.base_winrate != null) {
@@ -2271,9 +2583,8 @@ async function loadHeroMatchups(heroId) {
         }
 
         _countersData = data;
-        var items = _activeCountersTab === 'strong' ? data.victims : data.counters;
-        var type  = _activeCountersTab === 'strong' ? 'strong' : 'weak';
-        renderMatchupList('counters-list', items, type, data.base_winrate);
+        renderMatchupList('counters-list', data.victims, data.counters, data.base_winrate,
+            { positive: 'силён против', negative: 'слаб против' });
     } catch (err) {
         console.error('[matchups] loadHeroMatchups error:', err);
         showMatchupsError();
@@ -2284,8 +2595,7 @@ async function loadHeroSynergy(heroId) {
     var LIMIT = 5;
 
     async function fetchSynergy(minGames) {
-        console.log('[synergy] fetching ' + window.API_BASE_URL + '/hero/' + heroId + '/synergy?min_games=' + minGames);
-        var response = await fetch(window.API_BASE_URL + '/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
+        var response = await apiFetch(window.API_BASE_URL + '/hero/' + heroId + '/synergy?limit=' + LIMIT + '&min_games=' + minGames);
         if (!response.ok) {
             var error = new Error('HTTP ' + response.status);
             error.status = response.status;
@@ -2318,13 +2628,9 @@ async function loadHeroSynergy(heroId) {
             }
         }
 
-        console.log('[synergy] best_allies=', (data.best_allies || []).length,
-                    'worst_allies=', (data.worst_allies || []).length);
-
         _synergyData = data;
-        var items = _activeSynergyTab === 'best' ? data.best_allies : data.worst_allies;
-        var type  = _activeSynergyTab === 'best' ? 'strong' : 'weak';
-        renderMatchupList('synergy-list', items, type, data.base_winrate);
+        renderMatchupList('synergy-list', data.best_allies, data.worst_allies, data.base_winrate,
+            { positive: 'силён с', negative: 'слаб с' });
     } catch (err) {
         console.error('[synergy] loadHeroSynergy error:', err);
         showSynergyError();
@@ -2416,15 +2722,43 @@ function switchSynergyTab(tab) {
         return _heroIdToName;
     }
 
-    window.addRecentHero = function (heroId) {
-        if (!heroId) return;
+    // Read list — entries are {id, pos?}. Accepts legacy plain-id arrays too.
+    function readList() {
         try {
-            var list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-            list = list.filter(function (id) { return id !== heroId; });
-            list.unshift(heroId);
-            if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
-            localStorage.setItem(RECENT_KEY, JSON.stringify(list));
-        } catch (e) {}
+            var raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            if (!Array.isArray(raw)) return [];
+            return raw.map(function (e) {
+                if (typeof e === 'number') return { id: e, pos: null };
+                if (e && typeof e === 'object' && e.id) return { id: e.id, pos: e.pos || null };
+                return null;
+            }).filter(Boolean);
+        } catch (e) { return []; }
+    }
+
+    function writeList(list) {
+        try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) {}
+    }
+
+    window.getRecentHeroes = readList;
+
+    window.addRecentHero = function (heroId, position) {
+        if (!heroId) return;
+        var list = readList();
+        var existing = list.find(function (e) { return e.id === heroId; });
+        var pos = position || (existing && existing.pos) || null;
+        list = list.filter(function (e) { return e.id !== heroId; });
+        list.unshift({ id: heroId, pos: pos });
+        if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
+        writeList(list);
+    };
+
+    window.setRecentHeroPosition = function (heroId, position) {
+        if (!heroId || !position) return;
+        var list = readList();
+        var idx = list.findIndex(function (e) { return e.id === heroId; });
+        if (idx === -1) return;
+        list[idx] = { id: heroId, pos: position };
+        writeList(list);
     };
 
     window.renderRecentHeroes = function () {
@@ -2432,8 +2766,7 @@ function switchSynergyTab(tab) {
         var listEl = document.getElementById('recent-heroes-list');
         if (!block || !listEl) return;
 
-        var list = [];
-        try { list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) {}
+        var list = readList();
 
         if (!list.length) {
             block.style.display = 'none';
@@ -2441,8 +2774,8 @@ function switchSynergyTab(tab) {
         }
 
         var idToName = getHeroIdToName();
-        var items = list.map(function (id) {
-            return idToName[id] ? { id: id, name: idToName[id] } : null;
+        var items = list.map(function (e) {
+            return idToName[e.id] ? { id: e.id, name: idToName[e.id] } : null;
         }).filter(Boolean).slice(0, 5);
 
         if (!items.length) {
@@ -2541,7 +2874,7 @@ function _clearFeedbackStatus() {
 function _setFeedbackStatus(text, type) {
     var el = document.getElementById('feedback-status');
     if (!el) return;
-    el.textContent = text;
+    el.innerHTML = text;
     el.className = 'feedback-status ' + (type || '');
 }
 
@@ -2582,13 +2915,13 @@ async function submitFeedback() {
     var ta  = document.getElementById('feedback-message');
 
     if (!_feedbackRating) {
-        _setFeedbackStatus('Выбери оценку 👆', 'hint');
+        _setFeedbackStatus('Выбери оценку <i class="ph ph-hand-pointing" aria-hidden="true"></i>', 'hint');
         return;
     }
 
     var message = (ta ? ta.value : '').trim();
     if (!message) {
-        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии 🙏', 'hint');
+        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии <i class="ph ph-hands-praying" aria-hidden="true"></i>', 'hint');
         return;
     }
 
@@ -2601,7 +2934,7 @@ async function submitFeedback() {
     _clearFeedbackStatus();
 
     try {
-        var resp = await fetch(`${window.API_BASE_URL}/feedback`, {
+        var resp = await apiFetch(`${window.API_BASE_URL}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2613,7 +2946,7 @@ async function submitFeedback() {
         });
 
         if (resp.ok) {
-            _setFeedbackStatus('Спасибо за отзыв ❤️', 'ok');
+            _setFeedbackStatus('Спасибо за отзыв <i class="ph ph-heart" aria-hidden="true"></i>', 'ok');
             _feedbackRating = null;
             _feedbackTags.clear();
             document.querySelectorAll('.feedback-rating-btn').forEach(function(b) { b.classList.remove('selected'); });
@@ -2662,16 +2995,16 @@ function openDonationAlerts() {
     }
 }
 
-// ========== МЕТА ПАТЧА ==========
+// ========== HOME SCREEN — МЕТА / ВИДЖЕТЫ ==========
 
 var _metaCache = null;
 
 var _META_POS_LABELS = {
-    'POSITION_1': 'КЕРРИ',
-    'POSITION_2': 'МИД',
-    'POSITION_3': 'ОФФЛЕЙН',
-    'POSITION_4': 'ЧЕТВЁРКА',
-    'POSITION_5': 'ПЯТЁРКА',
+    'POSITION_1': 'Керри',
+    'POSITION_2': 'Мид',
+    'POSITION_3': 'Оффлейн',
+    'POSITION_4': 'Четвёрка',
+    'POSITION_5': 'Пятёрка',
 };
 
 var _META_POS_IMG = {
@@ -2682,82 +3015,1024 @@ var _META_POS_IMG = {
     'POSITION_5': '/images/positions/pos_5.png',
 };
 
+var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
+
+function _metaHeroClick(heroName) {
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-database').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    var navItems = document.querySelectorAll('.nav-item');
+    if (navItems[3]) navItems[3].classList.add('active');
+    _heroPageActiveTab = 'build';
+    matchupPage.selectHero(heroName);
+}
+
+function _escHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function loadMeta() {
     if (_metaCache) {
-        _renderMeta(_metaCache);
+        _renderHomeMeta(_metaCache);
         return;
     }
     var API = window.API_BASE_URL || '/api';
-    fetch(API + '/meta')
+    apiFetch(API + '/meta')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             _metaCache = data;
-            _renderMeta(data);
+            _renderHomeMeta(data);
         })
         .catch(function(e) {
             console.warn('[meta] failed to load:', e);
         });
 }
 
-function _metaHeroClick(heroName) {
-    // Navigate to database page
-    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
-    document.getElementById('page-database').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
-    var navItems = document.querySelectorAll('.nav-item');
-    if (navItems[2]) navItems[2].classList.add('active');
-    // Open build tab for the hero
-    _heroPageActiveTab = 'build';
-    matchupPage.selectHero(heroName);
-}
+// ── Heroes-tab meta: "Сильные сейчас" ─────────────────────────────
+function loadHeroesSearchMeta() {
+    var rowsEl = document.getElementById('heroes-meta-rows');
+    var patchEl = document.getElementById('heroes-meta-patch');
+    if (!rowsEl) return;
 
-function _renderMeta(data) {
-    var posContainer = document.getElementById('meta-positions');
-    if (!posContainer) return;
+    function render(data) {
+        var patch = _resolveMetaPatch(data);
+        if (patchEl) patchEl.textContent = 'патч ' + (patch || '—');
 
-    var patch = data.patch || '7.41B';
-    var positions = data.positions || {};
-    var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
-
-    var html = '<div class="meta-top-bar">';
-    html += '<div class="meta-top-title">МЕТА ПАТЧА</div>';
-    html += '<div class="meta-top-patch">' + patch + '</div>';
-    html += '</div>';
-
-    posOrder.forEach(function(posKey, posIdx) {
-        var heroes = positions[posKey];
-        if (!heroes || !heroes.length) return;
-
-        var label = _META_POS_LABELS[posKey] || posKey;
-        var imgSrc = _META_POS_IMG[posKey] || '';
-
-        html += '<div class="meta-pos-block">';
-        html += '<div class="meta-pos-header">';
-        html += '<img src="' + imgSrc + '" class="meta-pos-icon" alt="">';
-        html += '<div class="meta-pos-label">' + label + '</div>';
-        html += '</div>';
-        html += '<div class="meta-heroes-row">';
-
-        heroes.slice(0, 5).forEach(function(hero) {
-            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[hero.hero_id]) || ('Hero #' + hero.hero_id);
-            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
-            var wrPct = Math.round(hero.win_rate * 100);
-            var escapedName = heroName.replace(/'/g, "\\'");
-
-            html += '<div class="meta-hero-item" onclick="_metaHeroClick(\'' + escapedName + '\')">';
-            html += '<div class="meta-hero-avatar"><img src="' + iconUrl + '" alt="' + heroName + '" onerror="this.style.display=\'none\'"></div>';
-            html += '<div class="meta-hero-wr">' + wrPct + '%</div>';
-            html += '</div>';
+        var positions = (data && data.positions) || {};
+        var posOrder = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
+        var blocks = [];
+        posOrder.forEach(function (posKey) {
+            var heroes = (positions[posKey] || []).slice(0, 2);
+            if (!heroes.length) return;
+            var posLabel = _META_POS_LABELS[posKey] || '';
+            var heroesHtml = heroes.map(function (h) {
+                var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.hero_id]) || ('Hero #' + h.hero_id);
+                var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+                var wrPct = Math.round((h.win_rate || 0) * 100);
+                return (
+                    '<button type="button" class="heroes-meta-hero" data-hero-name="' + _escHtml(heroName) + '">' +
+                        '<img class="heroes-meta-hero-icon" src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'">' +
+                        '<span class="heroes-meta-hero-name">' + _escHtml(heroName) + '</span>' +
+                        '<span class="heroes-meta-hero-wr">' + wrPct + '%</span>' +
+                    '</button>'
+                );
+            }).join('');
+            blocks.push(
+                '<div class="heroes-meta-pos">' +
+                    '<div class="heroes-meta-pos-label">' + _escHtml(posLabel) + '</div>' +
+                    '<div class="heroes-meta-pos-heroes">' + heroesHtml + '</div>' +
+                '</div>'
+            );
         });
 
-        html += '</div></div>';
+        if (!blocks.length) {
+            rowsEl.innerHTML = '<div class="heroes-meta-skeleton" aria-hidden="true"></div>';
+            return;
+        }
 
-        if (posIdx < posOrder.length - 1) {
-            html += '<div class="meta-divider"></div>';
+        rowsEl.innerHTML = blocks.join('');
+
+        rowsEl.querySelectorAll('.heroes-meta-hero').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var name = btn.getAttribute('data-hero-name');
+                if (name && matchupPage && typeof matchupPage.selectHero === 'function') {
+                    matchupPage.selectHero(name);
+                }
+            });
+        });
+    }
+
+    if (_metaCache) {
+        render(_metaCache);
+        return;
+    }
+    var API = window.API_BASE_URL || '/api';
+    apiFetch(API + '/meta')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            _metaCache = data;
+            render(data);
+        })
+        .catch(function (e) { console.warn('[heroes-meta] failed:', e); });
+}
+
+// ── Полноэкранный каталог героев по атрибутам ────────────────────────
+// Статический снапшот OpenDota /api/heroes (зафиксировано 2026-04-18).
+// Никаких сетевых запросов — каталог открывается мгновенно.
+var _HEROES_CATALOG_DATA = [
+    { id: 1,   primary_attr: 'agi', localized_name: 'Anti-Mage' },
+    { id: 2,   primary_attr: 'str', localized_name: 'Axe' },
+    { id: 3,   primary_attr: 'all', localized_name: 'Bane' },
+    { id: 4,   primary_attr: 'agi', localized_name: 'Bloodseeker' },
+    { id: 5,   primary_attr: 'int', localized_name: 'Crystal Maiden' },
+    { id: 6,   primary_attr: 'agi', localized_name: 'Drow Ranger' },
+    { id: 7,   primary_attr: 'str', localized_name: 'Earthshaker' },
+    { id: 8,   primary_attr: 'agi', localized_name: 'Juggernaut' },
+    { id: 9,   primary_attr: 'agi', localized_name: 'Mirana' },
+    { id: 10,  primary_attr: 'agi', localized_name: 'Morphling' },
+    { id: 11,  primary_attr: 'agi', localized_name: 'Shadow Fiend' },
+    { id: 12,  primary_attr: 'agi', localized_name: 'Phantom Lancer' },
+    { id: 13,  primary_attr: 'int', localized_name: 'Puck' },
+    { id: 14,  primary_attr: 'str', localized_name: 'Pudge' },
+    { id: 15,  primary_attr: 'agi', localized_name: 'Razor' },
+    { id: 16,  primary_attr: 'all', localized_name: 'Sand King' },
+    { id: 17,  primary_attr: 'int', localized_name: 'Storm Spirit' },
+    { id: 18,  primary_attr: 'str', localized_name: 'Sven' },
+    { id: 19,  primary_attr: 'str', localized_name: 'Tiny' },
+    { id: 20,  primary_attr: 'agi', localized_name: 'Vengeful Spirit' },
+    { id: 21,  primary_attr: 'all', localized_name: 'Windranger' },
+    { id: 22,  primary_attr: 'int', localized_name: 'Zeus' },
+    { id: 23,  primary_attr: 'str', localized_name: 'Kunkka' },
+    { id: 25,  primary_attr: 'int', localized_name: 'Lina' },
+    { id: 26,  primary_attr: 'int', localized_name: 'Lion' },
+    { id: 27,  primary_attr: 'int', localized_name: 'Shadow Shaman' },
+    { id: 28,  primary_attr: 'str', localized_name: 'Slardar' },
+    { id: 29,  primary_attr: 'str', localized_name: 'Tidehunter' },
+    { id: 30,  primary_attr: 'int', localized_name: 'Witch Doctor' },
+    { id: 31,  primary_attr: 'int', localized_name: 'Lich' },
+    { id: 32,  primary_attr: 'agi', localized_name: 'Riki' },
+    { id: 33,  primary_attr: 'all', localized_name: 'Enigma' },
+    { id: 34,  primary_attr: 'int', localized_name: 'Tinker' },
+    { id: 35,  primary_attr: 'agi', localized_name: 'Sniper' },
+    { id: 36,  primary_attr: 'int', localized_name: 'Necrophos' },
+    { id: 37,  primary_attr: 'int', localized_name: 'Warlock' },
+    { id: 38,  primary_attr: 'all', localized_name: 'Beastmaster' },
+    { id: 39,  primary_attr: 'int', localized_name: 'Queen of Pain' },
+    { id: 40,  primary_attr: 'all', localized_name: 'Venomancer' },
+    { id: 41,  primary_attr: 'agi', localized_name: 'Faceless Void' },
+    { id: 42,  primary_attr: 'str', localized_name: 'Wraith King' },
+    { id: 43,  primary_attr: 'all', localized_name: 'Death Prophet' },
+    { id: 44,  primary_attr: 'agi', localized_name: 'Phantom Assassin' },
+    { id: 45,  primary_attr: 'int', localized_name: 'Pugna' },
+    { id: 46,  primary_attr: 'agi', localized_name: 'Templar Assassin' },
+    { id: 47,  primary_attr: 'agi', localized_name: 'Viper' },
+    { id: 48,  primary_attr: 'agi', localized_name: 'Luna' },
+    { id: 49,  primary_attr: 'str', localized_name: 'Dragon Knight' },
+    { id: 50,  primary_attr: 'all', localized_name: 'Dazzle' },
+    { id: 51,  primary_attr: 'str', localized_name: 'Clockwerk' },
+    { id: 52,  primary_attr: 'int', localized_name: 'Leshrac' },
+    { id: 53,  primary_attr: 'all', localized_name: "Nature's Prophet" },
+    { id: 54,  primary_attr: 'str', localized_name: 'Lifestealer' },
+    { id: 55,  primary_attr: 'int', localized_name: 'Dark Seer' },
+    { id: 56,  primary_attr: 'agi', localized_name: 'Clinkz' },
+    { id: 57,  primary_attr: 'str', localized_name: 'Omniknight' },
+    { id: 58,  primary_attr: 'int', localized_name: 'Enchantress' },
+    { id: 59,  primary_attr: 'str', localized_name: 'Huskar' },
+    { id: 60,  primary_attr: 'str', localized_name: 'Night Stalker' },
+    { id: 61,  primary_attr: 'agi', localized_name: 'Broodmother' },
+    { id: 62,  primary_attr: 'agi', localized_name: 'Bounty Hunter' },
+    { id: 63,  primary_attr: 'agi', localized_name: 'Weaver' },
+    { id: 64,  primary_attr: 'int', localized_name: 'Jakiro' },
+    { id: 65,  primary_attr: 'all', localized_name: 'Batrider' },
+    { id: 66,  primary_attr: 'int', localized_name: 'Chen' },
+    { id: 67,  primary_attr: 'agi', localized_name: 'Spectre' },
+    { id: 68,  primary_attr: 'int', localized_name: 'Ancient Apparition' },
+    { id: 69,  primary_attr: 'str', localized_name: 'Doom' },
+    { id: 70,  primary_attr: 'agi', localized_name: 'Ursa' },
+    { id: 71,  primary_attr: 'str', localized_name: 'Spirit Breaker' },
+    { id: 72,  primary_attr: 'agi', localized_name: 'Gyrocopter' },
+    { id: 73,  primary_attr: 'str', localized_name: 'Alchemist' },
+    { id: 74,  primary_attr: 'int', localized_name: 'Invoker' },
+    { id: 75,  primary_attr: 'int', localized_name: 'Silencer' },
+    { id: 76,  primary_attr: 'int', localized_name: 'Outworld Destroyer' },
+    { id: 77,  primary_attr: 'str', localized_name: 'Lycan' },
+    { id: 78,  primary_attr: 'all', localized_name: 'Brewmaster' },
+    { id: 79,  primary_attr: 'int', localized_name: 'Shadow Demon' },
+    { id: 80,  primary_attr: 'agi', localized_name: 'Lone Druid' },
+    { id: 81,  primary_attr: 'str', localized_name: 'Chaos Knight' },
+    { id: 82,  primary_attr: 'agi', localized_name: 'Meepo' },
+    { id: 83,  primary_attr: 'str', localized_name: 'Treant Protector' },
+    { id: 84,  primary_attr: 'str', localized_name: 'Ogre Magi' },
+    { id: 85,  primary_attr: 'str', localized_name: 'Undying' },
+    { id: 86,  primary_attr: 'int', localized_name: 'Rubick' },
+    { id: 87,  primary_attr: 'int', localized_name: 'Disruptor' },
+    { id: 88,  primary_attr: 'all', localized_name: 'Nyx Assassin' },
+    { id: 89,  primary_attr: 'agi', localized_name: 'Naga Siren' },
+    { id: 90,  primary_attr: 'int', localized_name: 'Keeper of the Light' },
+    { id: 91,  primary_attr: 'all', localized_name: 'Io' },
+    { id: 92,  primary_attr: 'all', localized_name: 'Visage' },
+    { id: 93,  primary_attr: 'agi', localized_name: 'Slark' },
+    { id: 94,  primary_attr: 'agi', localized_name: 'Medusa' },
+    { id: 95,  primary_attr: 'agi', localized_name: 'Troll Warlord' },
+    { id: 96,  primary_attr: 'str', localized_name: 'Centaur Warrunner' },
+    { id: 97,  primary_attr: 'all', localized_name: 'Magnus' },
+    { id: 98,  primary_attr: 'str', localized_name: 'Timbersaw' },
+    { id: 99,  primary_attr: 'str', localized_name: 'Bristleback' },
+    { id: 100, primary_attr: 'str', localized_name: 'Tusk' },
+    { id: 101, primary_attr: 'int', localized_name: 'Skywrath Mage' },
+    { id: 102, primary_attr: 'all', localized_name: 'Abaddon' },
+    { id: 103, primary_attr: 'str', localized_name: 'Elder Titan' },
+    { id: 104, primary_attr: 'str', localized_name: 'Legion Commander' },
+    { id: 105, primary_attr: 'all', localized_name: 'Techies' },
+    { id: 106, primary_attr: 'agi', localized_name: 'Ember Spirit' },
+    { id: 107, primary_attr: 'str', localized_name: 'Earth Spirit' },
+    { id: 108, primary_attr: 'str', localized_name: 'Underlord' },
+    { id: 109, primary_attr: 'agi', localized_name: 'Terrorblade' },
+    { id: 110, primary_attr: 'str', localized_name: 'Phoenix' },
+    { id: 111, primary_attr: 'int', localized_name: 'Oracle' },
+    { id: 112, primary_attr: 'int', localized_name: 'Winter Wyvern' },
+    { id: 113, primary_attr: 'all', localized_name: 'Arc Warden' },
+    { id: 114, primary_attr: 'agi', localized_name: 'Monkey King' },
+    { id: 119, primary_attr: 'int', localized_name: 'Dark Willow' },
+    { id: 120, primary_attr: 'all', localized_name: 'Pangolier' },
+    { id: 121, primary_attr: 'int', localized_name: 'Grimstroke' },
+    { id: 123, primary_attr: 'agi', localized_name: 'Hoodwink' },
+    { id: 126, primary_attr: 'all', localized_name: 'Void Spirit' },
+    { id: 128, primary_attr: 'all', localized_name: 'Snapfire' },
+    { id: 129, primary_attr: 'str', localized_name: 'Mars' },
+    { id: 131, primary_attr: 'int', localized_name: 'Ringmaster' },
+    { id: 135, primary_attr: 'str', localized_name: 'Dawnbreaker' },
+    { id: 136, primary_attr: 'all', localized_name: 'Marci' },
+    { id: 137, primary_attr: 'str', localized_name: 'Primal Beast' },
+    { id: 138, primary_attr: 'int', localized_name: 'Muerta' },
+    { id: 145, primary_attr: 'agi', localized_name: 'Kez' },
+    { id: 155, primary_attr: 'str', localized_name: 'Largo' },
+];
+
+var _heroesCatalogBound = false;
+var _heroesCatalogRendered = false;
+var _catalogLastFocus = null;
+var _catalogContext = 'matchup';
+
+var _CATALOG_ATTR_ORDER = ['str', 'agi', 'int', 'all'];
+var _CATALOG_ATTR_LABELS = {
+    'str': 'Сила',
+    'agi': 'Ловкость',
+    'int': 'Интеллект',
+    'all': 'Универсал',
+};
+var _CATALOG_ATTR_ICONS = {
+    'str': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_strength.png',
+    'agi': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_agility.png',
+    'int': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_intelligence.png',
+    'all': 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/hero_universal.png',
+};
+
+function initHeroesCatalog() {
+    var input = document.getElementById('matchup-hero-input');
+    if (input && window.dotaHeroImages) {
+        var count = Object.keys(window.dotaHeroImages).length;
+        input.setAttribute('placeholder', 'Найти среди ' + count + ' героев');
+    }
+
+    if (_heroesCatalogBound) return;
+    _heroesCatalogBound = true;
+
+    var openBtn = document.getElementById('matchup-search-catalog-btn');
+    var drafterOpenBtn = document.getElementById('drafter-search-catalog-btn');
+    var closeBtn = document.getElementById('heroes-catalog-close');
+    var overlay = document.getElementById('heroes-catalog-overlay');
+
+    function _bindCatalogOpener(btn, inputId, contextName) {
+        if (!btn) return;
+        var lastOpenAt = 0;
+        var handler = function (e) {
+            var now = Date.now();
+            if (now - lastOpenAt < 500) return;
+            lastOpenAt = now;
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+            var inputEl = inputId ? document.getElementById(inputId) : null;
+            if (inputEl && typeof inputEl.blur === 'function') inputEl.blur();
+            _catalogContext = contextName;
+            openHeroesCatalog();
+        };
+        btn.addEventListener('touchend', handler);
+        btn.addEventListener('click', handler);
+    }
+
+    // iOS-обход: когда инпут сфокусирован и клавиатура поднята,
+    // первый touchend уходит на dismiss keyboard и click не фирится.
+    // Ловим touchend напрямую и блёрим инпут заранее.
+    _bindCatalogOpener(openBtn, 'matchup-hero-input', 'matchup');
+    _bindCatalogOpener(drafterOpenBtn, 'drafter-search', 'drafter');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeHeroesCatalog();
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) closeHeroesCatalog();
+        });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+            var ov = document.getElementById('heroes-catalog-overlay');
+            if (ov && !ov.hasAttribute('hidden')) closeHeroesCatalog();
         }
     });
+}
 
-    posContainer.innerHTML = html;
+function openHeroesCatalog() {
+    var overlay = document.getElementById('heroes-catalog-overlay');
+    var panel = document.getElementById('heroes-catalog-panel');
+    if (!overlay) return;
+    if (!_heroesCatalogRendered) {
+        renderHeroesCatalog();
+        _heroesCatalogRendered = true;
+    }
+    _catalogLastFocus = document.activeElement;
+
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    if (panel) {
+        panel.classList.remove('is-closing');
+        panel.style.transform = '';
+        panel.style.transition = '';
+        // force reflow so transition runs from translateY(100%) → 0
+        void panel.offsetWidth;
+        requestAnimationFrame(function () {
+            panel.classList.add('is-open');
+        });
+    }
+}
+
+function closeHeroesCatalog() {
+    var overlay = document.getElementById('heroes-catalog-overlay');
+    var panel = document.getElementById('heroes-catalog-panel');
+    if (!overlay) return;
+
+    function finalize() {
+        overlay.hidden = true;
+        overlay.setAttribute('aria-hidden', 'true');
+        if (panel) {
+            panel.classList.remove('is-open', 'is-closing');
+            panel.style.transform = '';
+            panel.style.transition = '';
+        }
+        document.body.style.overflow = '';
+        if (_catalogLastFocus && typeof _catalogLastFocus.focus === 'function') {
+            try { _catalogLastFocus.focus(); } catch (e) {}
+        }
+        _catalogLastFocus = null;
+    }
+
+    if (panel) {
+        panel.style.transform = '';
+        panel.classList.remove('is-open');
+        panel.classList.add('is-closing');
+        var done = false;
+        var onEnd = function () {
+            if (done) return;
+            done = true;
+            panel.removeEventListener('transitionend', onEnd);
+            finalize();
+        };
+        panel.addEventListener('transitionend', onEnd);
+        setTimeout(onEnd, 320);
+    } else {
+        finalize();
+    }
+}
+
+function renderHeroesCatalog() {
+    var bodyEl = document.getElementById('heroes-catalog-body');
+    var countEl = document.getElementById('heroes-catalog-count');
+    if (!bodyEl) return;
+
+    var groups = { str: [], agi: [], int: [], all: [] };
+    var total = 0;
+
+    _HEROES_CATALOG_DATA.forEach(function (h) {
+        var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.id]) || h.localized_name;
+        if (!heroName) return;
+        if (!window.dotaHeroImages || !window.dotaHeroImages[heroName]) return;
+        var attr = h.primary_attr;
+        if (!groups[attr]) return;
+        groups[attr].push(heroName);
+        total += 1;
+    });
+
+    if (countEl) countEl.textContent = total ? total + ' героев' : '—';
+
+    var sectionsHtml = _CATALOG_ATTR_ORDER.map(function (attr) {
+        var names = groups[attr] || [];
+        if (!names.length) return '';
+        names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
+        var label = _CATALOG_ATTR_LABELS[attr] || attr;
+        var tilesHtml = names.map(function (name) {
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+            return (
+                '<button type="button" class="heroes-catalog-tile" data-hero-name="' + _escHtml(name) + '">' +
+                    '<span class="heroes-catalog-tile-icon">' +
+                        '<img src="' + _escHtml(iconUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                    '</span>' +
+                    '<span class="heroes-catalog-tile-name">' + _escHtml(name) + '</span>' +
+                '</button>'
+            );
+        }).join('');
+        var iconUrl = _CATALOG_ATTR_ICONS[attr] || '';
+        var iconHtml = iconUrl
+            ? '<img class="heroes-catalog-section-icon" src="' + _escHtml(iconUrl) + '" alt="" aria-hidden="true" onerror="this.style.display=\'none\'">'
+            : '';
+        return (
+            '<section class="heroes-catalog-section">' +
+                '<header class="heroes-catalog-section-header">' +
+                    '<div class="heroes-catalog-section-title">' + iconHtml + '<span>' + _escHtml(label) + '</span></div>' +
+                    '<div class="heroes-catalog-section-count">' + names.length + '</div>' +
+                '</header>' +
+                '<div class="heroes-catalog-grid">' + tilesHtml + '</div>' +
+            '</section>'
+        );
+    }).join('');
+
+    if (!sectionsHtml) {
+        bodyEl.innerHTML = '<div class="heroes-catalog-empty">Каталог пуст</div>';
+        return;
+    }
+
+    bodyEl.innerHTML = sectionsHtml;
+
+    bodyEl.querySelectorAll('.heroes-catalog-tile').forEach(function (tile) {
+        tile.addEventListener('click', function () {
+            var name = tile.getAttribute('data-hero-name');
+            if (!name) return;
+            closeHeroesCatalog();
+            if (_catalogContext === 'drafter') {
+                var hid = window.dotaHeroIds && window.dotaHeroIds[name];
+                if (hid && typeof selectDrafterHero === 'function') {
+                    selectDrafterHero(hid);
+                }
+                return;
+            }
+            if (matchupPage && typeof matchupPage.selectHero === 'function') {
+                matchupPage.selectHero(name);
+            }
+        });
+    });
+}
+
+// ── META: carousel ───────────────────────────────────────────────────
+var _metaSlides = [];
+var _metaActiveIdx = 0;
+var _metaAutoTimer = null;
+var _metaInteracted = false;
+var _metaReducedMotion = false;
+var _metaDragStartX = 0;
+var _metaDragActive = false;
+var _metaDragDX = 0;
+
+// PATCH VERSION — обновлять вручную при выходе нового патча
+const CURRENT_PATCH = '7.41b';
+
+function _resolveMetaPatch(data) {
+    return CURRENT_PATCH;
+}
+
+function _renderHomeMeta(data) {
+    var slidesEl = document.getElementById('home-meta-slides');
+    var dots = document.getElementById('home-meta-dots');
+    var patchEl = document.getElementById('home-meta-patch');
+    if (!slidesEl || !dots) return;
+
+    var patch = _resolveMetaPatch(data);
+    if (patchEl) patchEl.textContent = patch || '—';
+
+    var positions = (data && data.positions) || {};
+    var slides = [];
+    _HOME_POS_ORDER.forEach(function(posKey) {
+        var arr = positions[posKey];
+        if (!arr || !arr.length) return;
+        slides.push({ posKey: posKey, heroes: arr.slice(0, 5) });
+    });
+
+    if (!slides.length) {
+        slidesEl.innerHTML = '<div class="home-meta-skeleton"></div>';
+        dots.innerHTML = '';
+        return;
+    }
+
+    _metaSlides = slides;
+    _metaActiveIdx = 0;
+
+    var slidesHtml = slides.map(function(s, i) {
+        var posImg = _META_POS_IMG[s.posKey] || '';
+        var posLabel = _META_POS_LABELS[s.posKey] || '';
+        var cls = 'home-meta-slide' + (i === 0 ? ' is-active' : '');
+        var heroesHtml = s.heroes.map(function(h) {
+            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[h.hero_id]) || ('Hero #' + h.hero_id);
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+            var wrPct = Math.round((h.win_rate || 0) * 100);
+            return (
+                '<button class="home-meta-hero" data-hero-name="' + _escHtml(heroName) + '" aria-label="' + _escHtml(heroName) + '">' +
+                    '<div class="home-meta-hero-icon">' +
+                        '<img src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'">' +
+                    '</div>' +
+                    '<div class="home-meta-hero-wr">' + wrPct + '%</div>' +
+                '</button>'
+            );
+        }).join('');
+        return (
+            '<div class="' + cls + '" data-idx="' + i + '" role="tabpanel">' +
+                '<div class="home-meta-slide-pos">' +
+                    '<img class="home-meta-pos-icon" src="' + _escHtml(posImg) + '" alt="" onerror="this.style.display=\'none\'">' +
+                    _escHtml(posLabel) +
+                '</div>' +
+                '<div class="home-meta-grid">' + heroesHtml + '</div>' +
+            '</div>'
+        );
+    }).join('');
+
+    slidesEl.innerHTML = slidesHtml;
+
+    var dotsHtml = slides.map(function(_, i) {
+        return '<button class="home-meta-dot' + (i === 0 ? ' is-active' : '') +
+               '" data-idx="' + i + '" role="tab" aria-label="Слайд ' + (i + 1) + '"></button>';
+    }).join('');
+    dots.innerHTML = dotsHtml;
+
+    _bindHomeMetaInteractions(slidesEl, dots);
+    _startHomeMetaAutoplay();
+}
+
+function _bindHomeMetaInteractions(slidesEl, dots) {
+    _metaReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    dots.querySelectorAll('.home-meta-dot').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var idx = parseInt(btn.getAttribute('data-idx'), 10);
+            _metaInteracted = true;
+            _stopHomeMetaAutoplay();
+            _setMetaSlide(idx);
+        });
+    });
+
+    slidesEl.querySelectorAll('.home-meta-hero').forEach(function(heroBtn) {
+        heroBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (Math.abs(_metaDragDX) > 6) return;
+            var name = heroBtn.getAttribute('data-hero-name');
+            if (name) _metaHeroClick(name);
+        });
+    });
+
+    var onDown = function(e) {
+        _metaDragActive = true;
+        _metaDragDX = 0;
+        _metaDragStartX = (e.touches ? e.touches[0].clientX : e.clientX);
+        _metaInteracted = true;
+        _stopHomeMetaAutoplay();
+    };
+    var onMove = function(e) {
+        if (!_metaDragActive) return;
+        var x = (e.touches ? e.touches[0].clientX : e.clientX);
+        _metaDragDX = x - _metaDragStartX;
+    };
+    var onUp = function() {
+        if (!_metaDragActive) return;
+        _metaDragActive = false;
+        var threshold = 32;
+        if (_metaDragDX <= -threshold) _setMetaSlide(_metaActiveIdx + 1);
+        else if (_metaDragDX >= threshold) _setMetaSlide(_metaActiveIdx - 1);
+        setTimeout(function() { _metaDragDX = 0; }, 50);
+    };
+
+    slidesEl.addEventListener('touchstart', onDown, { passive: true });
+    slidesEl.addEventListener('touchmove', onMove, { passive: true });
+    slidesEl.addEventListener('touchend', onUp);
+    slidesEl.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+}
+
+function _metaNavClick(dir) {
+    if (!_metaSlides.length) return;
+    _metaInteracted = true;
+    _stopHomeMetaAutoplay();
+    _setMetaSlide(_metaActiveIdx + (dir > 0 ? 1 : -1));
+    _startHomeMetaAutoplay();
+}
+
+function _setMetaSlide(idx) {
+    if (!_metaSlides.length) return;
+    var n = _metaSlides.length;
+    var next = ((idx % n) + n) % n;
+    if (next === _metaActiveIdx) return;
+
+    var slidesEl = document.getElementById('home-meta-slides');
+    var dots = document.getElementById('home-meta-dots');
+    if (!slidesEl || !dots) return;
+
+    var slides = slidesEl.querySelectorAll('.home-meta-slide');
+    slides.forEach(function(el, i) {
+        el.classList.remove('is-active', 'is-prev');
+        if (i === next) el.classList.add('is-active');
+        else if (i === _metaActiveIdx) el.classList.add('is-prev');
+    });
+    dots.querySelectorAll('.home-meta-dot').forEach(function(b, i) {
+        b.classList.toggle('is-active', i === next);
+    });
+    _metaActiveIdx = next;
+}
+
+function _startHomeMetaAutoplay() {
+    _stopHomeMetaAutoplay();
+    if (_metaReducedMotion) return;
+    // Autoplay disabled — manual nav only (arrows + swipe).
+    // _metaAutoTimer = setInterval(function() {
+    //     if (_metaInteracted) return;
+    //     if (document.hidden) return;
+    //     var homePage = document.getElementById('page-home');
+    //     if (!homePage || !homePage.classList.contains('active')) return;
+    //     _setMetaSlide(_metaActiveIdx + 1);
+    // }, 3800);
+}
+
+function _stopHomeMetaAutoplay() {
+    if (_metaAutoTimer) { clearInterval(_metaAutoTimer); _metaAutoTimer = null; }
+}
+
+// ── Аватар пользователя ──────────────────────────────────────────────
+function _renderHomeAvatar() {
+    var el = document.getElementById('home-avatar');
+    if (!el) return;
+    try {
+        var tg = window.Telegram && window.Telegram.WebApp;
+        var user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+        var url = user && user.photo_url;
+        if (url) {
+            el.innerHTML = '<img src="' + _escHtml(url) + '" alt="">';
+        }
+    } catch (e) {}
+}
+
+// ── Виджет: последний герой ──────────────────────────────────────────
+var _JUNK_ITEM_IDS = { 0:1, 44:1, 45:1, 46:1, 42:1, 43:1, 185:1, 145:1, 244:1 };
+
+function _getLastHeroEntry() {
+    var list = (typeof window.getRecentHeroes === 'function') ? window.getRecentHeroes() : [];
+    var head = (list && list.length) ? list[0] : null;
+    console.log('[_getLastHeroEntry] recent_heroes =', list, 'head =', head);
+    return head;
+}
+
+function _getLastHeroId() {
+    var e = _getLastHeroEntry();
+    return e ? e.id : null;
+}
+
+var _HOME_HERO_LAST = null; // { heroId, build } — kept so we can re-render when items_db arrives
+
+function _loadHomeHeroWidget() {
+    var body = document.getElementById('home-hero-body');
+    var widget = document.getElementById('home-hero-widget');
+    if (!body || !widget) return;
+
+    var cta = widget.querySelector('.home-widget-cta');
+    var heroId = _getLastHeroId();
+    if (!heroId) {
+        widget.disabled = false;
+        widget.dataset.heroId = '';
+        body.innerHTML = '<div class="home-hero-placeholder">Открой любого героя во вкладке Герои</div>';
+        if (cta) cta.innerHTML = 'Перейти к героям <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+        return;
+    }
+
+    widget.disabled = false;
+    widget.dataset.heroId = heroId;
+    if (cta) cta.innerHTML = 'Открыть гайд <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+    var API = window.API_BASE_URL || '/api';
+    apiFetch(API + '/hero/' + heroId + '/build')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) {
+                body.innerHTML = '<div class="home-hero-placeholder">Данные недоступны</div>';
+                return;
+            }
+            _HOME_HERO_LAST = { heroId: heroId, build: data };
+            // items_db нужен для иконок предметов в виджете — ждём его перед рендером,
+            // чтобы не показывать пустые слоты с последующим re-render.
+            var ready = _itemsDbLoaded ? Promise.resolve() : _loadItemsDb();
+            return ready.then(function() { _renderHomeHeroWidget(heroId, data); });
+        })
+        .catch(function(e) {
+            console.warn('[home hero] failed:', e);
+            body.innerHTML = '<div class="home-hero-placeholder">Нет подключения</div>';
+        });
+}
+
+// Pick dota_builds position key (pos%20N): saved recent pos first, else max num_matches.
+// savedPos may be in dota format ("pos%201") or stratz format ("POSITION_1").
+function _pickHomeHeroDotaPos(heroId, dotaBuilds, savedPos) {
+    if (!dotaBuilds) return null;
+    if (savedPos) {
+        if (dotaBuilds[savedPos]) {
+            console.log('[home hero]', heroId, 'position from recent_heroes:', savedPos);
+            return savedPos;
+        }
+        var mapped = _STRATZ_POS_TO_DOTA[savedPos];
+        if (mapped && dotaBuilds[mapped]) {
+            console.log('[home hero]', heroId, 'position from recent_heroes (mapped):', savedPos, '->', mapped);
+            return mapped;
+        }
+        console.log('[home hero]', heroId, 'saved pos', savedPos, 'not in dota_builds, falling back');
+    }
+    var best = null;
+    Object.keys(dotaBuilds).forEach(function(k) {
+        var entry = dotaBuilds[k] || {};
+        var nm = entry.num_matches || 0;
+        if (!best || nm > best.nm) best = { key: k, nm: nm };
+    });
+    if (best) {
+        console.log('[home hero]', heroId, 'position from max num_matches:', best.key, '(' + best.nm + ' matches)');
+        return best.key;
+    }
+    console.log('[home hero]', heroId, 'no position resolved — dota_builds empty');
+    return null;
+}
+
+function _renderHomeHeroWidget(heroId, build) {
+    var body = document.getElementById('home-hero-body');
+    if (!body) return;
+
+    var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('Hero #' + heroId);
+    var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+
+    var db = build && build.dota_builds;
+    // Backend-sorted list of pos keys by num_matches desc (uses sixslot sum fallback
+    // for entries without a top-level num_matches field). First element = top pos.
+    var sortedPositions = (build && build.positions) || [];
+    var dotaPosKey = null;
+    if (sortedPositions.length && db && db[sortedPositions[0]]) {
+        dotaPosKey = sortedPositions[0];
+    } else if (db) {
+        var bestNm = -1;
+        Object.keys(db).forEach(function (k) {
+            if (k.indexOf('pos') !== 0) return;
+            var entry = db[k] || {};
+            var nm = entry.num_matches || 0;
+            if (!nm && Array.isArray(entry.sixslot)) {
+                nm = entry.sixslot.reduce(function (s, e) { return s + (e.num_matches || 0); }, 0);
+            }
+            if (nm > bestNm) { bestNm = nm; dotaPosKey = k; }
+        });
+    }
+    var posData = dotaPosKey && db ? db[dotaPosKey] : null;
+
+    var posNum = 1;
+    if (dotaPosKey) {
+        // Keys look like "pos%201" — %20 is a URL-encoded space, so /(\d)/
+        // matches the "2" in "%20" first. Match the trailing position digit.
+        var m = dotaPosKey.match(/(\d)$/);
+        if (m) posNum = parseInt(m[1], 10);
+    }
+    var posKey = 'POSITION_' + posNum;
+    var posImg = _META_POS_IMG[posKey] || '';
+    var posLabel = _META_POS_LABELS[posKey] || '';
+
+    var sixslot = ((posData && posData.sixslot) || [])
+        .slice()
+        .sort(function (a, b) { return (b.pick_rate || 0) - (a.pick_rate || 0); });
+    var itemSlots = [];
+    for (var i = 0; i < 6; i++) {
+        var slot = sixslot[i];
+        var itemId = slot && slot.item_id;
+        var info = (itemId != null && _itemsDb) ? _itemsDb[String(itemId)] : null;
+        if (info && info.img) {
+            itemSlots.push('<div class="home-hero-item"><img src="' + _escHtml(info.img) + '" alt="' + _escHtml(info.dname || '') + '" onerror="this.style.display=\'none\'"></div>');
+        } else {
+            itemSlots.push('<div class="home-hero-item"></div>');
+        }
+    }
+
+    body.innerHTML =
+        '<div class="home-hero-head">' +
+            '<div class="home-hero-icon"><img src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'"></div>' +
+            '<div class="home-hero-text">' +
+                '<div class="home-hero-name">' + _escHtml(heroName) + '</div>' +
+                '<div class="home-hero-pos">' +
+                    '<img class="home-hero-pos-icon" src="' + _escHtml(posImg) + '" alt="" onerror="this.style.display=\'none\'">' +
+                    _escHtml(posLabel) +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+        '<div class="home-hero-items">' + itemSlots.join('') + '</div>';
+}
+
+function homeHeroWidgetClick() {
+    var widget = document.getElementById('home-hero-widget');
+    if (!widget || widget.disabled) return;
+    var heroId = parseInt(widget.dataset.heroId || '0', 10);
+    if (!heroId) { switchPage('database'); return; }
+    var name = window.dotaHeroIdToName && window.dotaHeroIdToName[heroId];
+    if (name) _metaHeroClick(name);
+}
+
+// ── Виджет: последний драфт ──────────────────────────────────────────
+var _HOME_DRAFT_CACHE_KEY = 'home_last_draft_eval';
+
+function cacheLastDraftEval(data, allyIds, enemyIds) {
+    try {
+        localStorage.setItem(_HOME_DRAFT_CACHE_KEY, JSON.stringify({
+            total_score: data.total_score,
+            synergy_score: data.synergy_score,
+            matchup_score: data.matchup_score,
+            ally_heroes: Array.isArray(allyIds) ? allyIds : [],
+            enemy_heroes: Array.isArray(enemyIds) ? enemyIds : [],
+            saved_at: Date.now(),
+        }));
+    } catch (e) {}
+}
+
+function _scoreRank(score) {
+    if (score >= 85) return 'SSS';
+    if (score >= 80) return 'S';
+    if (score >= 65) return 'A';
+    if (score >= 50) return 'B';
+    return 'C';
+}
+
+function _formatDraftDate(iso) {
+    if (!iso) return '';
+    try {
+        var d = new Date(iso);
+        var now = new Date();
+        var sameDay = d.toDateString() === now.toDateString();
+        if (sameDay) {
+            return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        }
+        return d.getDate().toString().padStart(2, '0') + '.' + (d.getMonth() + 1).toString().padStart(2, '0');
+    } catch (e) { return ''; }
+}
+
+function _loadHomeDraftWidget() {
+    var body = document.getElementById('home-draft-body');
+    if (!body) return;
+
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem(_HOME_DRAFT_CACHE_KEY) || 'null'); } catch (e) {}
+
+    var token = (typeof USER_TOKEN !== 'undefined' && USER_TOKEN) ? USER_TOKEN : null;
+    if (!token) {
+        if (cached) _renderHomeDraftWidget(cached, null);
+        else _renderHomeDraftEmpty();
+        return;
+    }
+
+    var API = window.API_BASE_URL || '/api';
+    apiFetch(API + '/draft/history?token=' + encodeURIComponent(token))
+        .then(function(r) { return r.ok ? r.json() : []; })
+        .then(function(list) {
+            var last = (list && list.length) ? list[0] : null;
+            _renderHomeDraftWidget(cached, last);
+        })
+        .catch(function(e) {
+            console.warn('[home draft] failed:', e);
+            if (cached) _renderHomeDraftWidget(cached, null);
+            else _renderHomeDraftEmpty();
+        });
+}
+
+function _renderHomeDraftEmpty() {
+    var body = document.getElementById('home-draft-body');
+    var cta = document.getElementById('home-draft-cta');
+    if (!body) return;
+    body.innerHTML = '<div class="home-draft-placeholder">Сделай свой первый драфт</div>';
+    if (cta) cta.innerHTML = 'Перейти к драфтеру <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+}
+
+function _renderHomeDraftWidget(cached, lastHistory) {
+    var body = document.getElementById('home-draft-body');
+    var cta = document.getElementById('home-draft-cta');
+    if (!body) return;
+
+    var total = lastHistory ? lastHistory.total_score : (cached ? cached.total_score : null);
+    if (total == null) { _renderHomeDraftEmpty(); return; }
+
+    var rank = lastHistory ? lastHistory.rank : _scoreRank(total);
+
+    // Sub-scores: если локальный кэш относится к тому же (или близкому) total — используем его.
+    // Иначе показываем только total и нулевые bar'ы (визуально указывает на отсутствие детализации).
+    var syn = null, mu = null;
+    if (cached && Math.abs((cached.total_score || 0) - total) < 0.5) {
+        syn = cached.synergy_score || 0;
+        mu = cached.matchup_score || 0;
+    }
+
+    var totalRounded = Math.round(total);
+    // Каждая из 2 компонент — 0..50
+    var synPct = syn != null ? Math.min(100, Math.round((syn / 50) * 100)) : null;
+    var muPct  = mu  != null ? Math.min(100, Math.round((mu  / 50) * 100)) : null;
+
+    var allyIds = (cached && Array.isArray(cached.ally_heroes)) ? cached.ally_heroes.slice(0, 5) : [];
+    var enemyIds = (cached && Array.isArray(cached.enemy_heroes)) ? cached.enemy_heroes.slice(0, 5) : [];
+    var heroesHtml = '';
+    if (allyIds.length || enemyIds.length) {
+        heroesHtml = '<div class="home-draft-heroes">' +
+            _draftTeamRow(allyIds) +
+            _draftTeamRow(enemyIds) +
+        '</div>';
+    }
+
+    body.innerHTML =
+        '<div class="home-draft-top">' +
+            '<div class="home-draft-score">' + totalRounded + '<span class="home-draft-score-max">/100</span></div>' +
+            '<div class="home-draft-rank" data-rank="' + _escHtml(rank) + '">' + _escHtml(rank) + '</div>' +
+        '</div>' +
+        heroesHtml +
+        '<div class="home-draft-bars">' +
+            _draftBarRow('Синергия', 'positive', synPct) +
+            _draftBarRow('Матчапы', 'warning', muPct) +
+        '</div>';
+
+    if (cta) cta.innerHTML = 'Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i>';
+}
+
+function _draftTeamRow(heroIds) {
+    var cells = [];
+    for (var i = 0; i < 5; i++) {
+        var id = heroIds[i];
+        var url = id ? _drafterHeroIcon(id) : '';
+        cells.push('<div class="home-draft-hero">' + (url ? '<img src="' + _escHtml(url) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div>');
+    }
+    return '<div class="home-draft-team">' + cells.join('') + '</div>';
+}
+
+function _draftBarRow(label, tone, pct) {
+    var width = (pct == null ? 0 : pct) + '%';
+    var valueText = pct == null ? '—' : (pct + '%');
+    return (
+        '<div class="home-draft-bar-row">' +
+            '<div class="home-draft-bar-label">' + label + '</div>' +
+            '<div class="home-draft-bar-track"><div class="home-draft-bar-fill home-draft-bar-fill--' + tone + '" style="width:' + width + '"></div></div>' +
+            '<div class="home-draft-bar-value">' + valueText + '</div>' +
+        '</div>'
+    );
+}
+
+function homeDraftWidgetClick() {
+    switchPage('drafter');
+}
+
+// ── Новость ──────────────────────────────────────────────────────────
+var _HOME_NEWS_LINK = null;
+
+function _formatNewsDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var now = new Date();
+    var startOfDay = function(date) {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    };
+    var diffDays = Math.floor((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays <= 0) return 'сегодня';
+    if (diffDays === 1) return 'вчера';
+    return diffDays + ' дн. назад';
+}
+
+function _loadHomeNews() {
+    var block = document.getElementById('home-news');
+    if (!block) return;
+    var API = window.API_BASE_URL || '/api';
+    apiFetch(API + '/news')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data || !data.title) { block.hidden = true; return; }
+            var textEl = document.getElementById('home-news-text');
+            var dateEl = document.getElementById('home-news-date');
+            if (textEl) textEl.textContent = data.title;
+            if (dateEl) dateEl.textContent = _formatNewsDate(data.published_at);
+            _HOME_NEWS_LINK = data.link || null;
+            block.hidden = false;
+        })
+        .catch(function(e) {
+            console.warn('[home news] failed:', e);
+            block.hidden = true;
+        });
+}
+
+function homeNewsClick() {
+    if (_HOME_NEWS_LINK) {
+        var tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.openLink === 'function') {
+            tg.openLink(_HOME_NEWS_LINK);
+        } else {
+            window.open(_HOME_NEWS_LINK, '_blank', 'noopener');
+        }
+        return;
+    }
+    switchPage('database');
+}
+
+// ── Инициализация главной ────────────────────────────────────────────
+function initHomeScreen() {
+    _renderHomeAvatar();
+    loadMeta();
+    _loadHomeHeroWidget();
+    _loadHomeDraftWidget();
+    _loadHomeNews();
 }
 
 // ── items_db: загружаем один раз при старте, используем во всём приложении ──
@@ -2766,20 +4041,24 @@ var _itemsDbLoaded = false;
 
 async function _loadItemsDb() {
     try {
-        var resp = await fetch(window.API_BASE_URL + '/items_db');
-        if (resp.ok) { _itemsDb = await resp.json(); _itemsDbLoaded = true; }
+        var resp = await apiFetch(window.API_BASE_URL + '/items_db');
+        if (resp.ok) {
+            _itemsDb = await resp.json();
+            _itemsDbLoaded = true;
+            if (_HOME_HERO_LAST) _renderHomeHeroWidget(_HOME_HERO_LAST.heroId, _HOME_HERO_LAST.build);
+        }
     } catch (e) {
         console.warn('Failed to load items_db:', e);
     }
 }
 
-// Загружаем мету и items_db при старте (главная открыта по умолчанию)
+// Загружаем мету при старте (главная открыта по умолчанию).
+// items_db грузим лениво — при открытии героя (loadHeroBuild) или драфтера (initDrafter).
 (function() {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() { loadMeta(); _loadItemsDb(); });
+        document.addEventListener('DOMContentLoaded', function() { initHomeScreen(); });
     } else {
-        loadMeta();
-        _loadItemsDb();
+        initHomeScreen();
     }
 }());
 
@@ -2789,12 +4068,22 @@ const HERO_PRIMARY_POSITIONS = {
   1:1, 2:3, 3:5, 4:1, 5:5, 6:1, 7:4, 8:1, 9:4, 10:1, 11:1, 12:1, 13:2, 14:4, 15:3, 16:3, 17:2, 18:1, 19:4, 20:5, 21:4, 22:4, 23:3, 25:2, 26:5, 27:5, 28:3, 29:3, 30:5, 31:5, 32:1, 33:3, 34:2, 35:2, 36:2, 37:5, 38:3, 39:2, 40:5, 41:1, 42:1, 43:3, 44:1, 45:5, 46:1, 47:2, 48:1, 49:1, 50:5, 51:4, 52:2, 53:4, 54:1, 55:3, 56:1, 57:3, 58:5, 59:2, 60:3, 61:2, 62:4, 63:1, 64:5, 65:3, 66:5, 67:1, 68:5, 69:3, 70:1, 71:4, 72:1, 73:1, 74:2, 75:5, 76:2, 77:3, 78:3, 79:5, 80:2, 81:3, 82:2, 83:5, 84:5, 85:5, 86:4, 87:5, 88:4, 89:1, 90:2, 91:5, 92:3, 93:1, 94:1, 95:1, 96:3, 97:3, 98:3, 99:3, 100:4, 101:4, 102:5, 103:5, 104:3, 105:4, 106:2, 107:4, 108:3, 109:1, 110:4, 111:5, 112:5, 113:2, 114:1, 119:4, 120:2, 121:5, 123:4, 126:2, 128:4, 129:3, 131:5, 135:3, 136:5, 137:3, 138:1, 145:1, 155:3
 };
 
+var HERO_PRIMARY_ATTRS = (function() {
+    var m = {};
+    if (typeof _HEROES_CATALOG_DATA !== 'undefined' && _HEROES_CATALOG_DATA) {
+        _HEROES_CATALOG_DATA.forEach(function(h) { m[h.id] = h.primary_attr; });
+    }
+    return m;
+})();
+
 var _drafterEnemyPick = [];          // [{hero_id, position}]
 var _drafterAllyPick = [null, null, null, null, null]; // null = пусто
 var _drafterActiveSlot = 0;
 var _drafterMatchLoaded = false;
-var _drafterPosFilter = 0;           // 0 = все, 1-5 = позиция
+var _drafterPosFilter = 1;           // 1..5 — основная позиция героя
 var _drafterLeaderboardCache = null;
+var _drafterEnemyManualMode = false; // true = пользователь сам выбирает врагов
+var _drafterActiveEnemySlot = -1;    // -1 = клик по герою идёт в союзный слот
 
 function _drafterHeroName(heroId) {
     if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
@@ -2812,19 +4101,19 @@ function _drafterHeroIcon(heroId) {
 }
 
 function initDrafter() {
-    // Показать лучший результат
-    var best = localStorage.getItem('drafter_best_score');
-    document.getElementById('drafter-best-score').textContent = best !== null ? best : '—';
-
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
-    var _drOverlay = document.getElementById('dr-bg-overlay');
-    if (_drOverlay) gsap.to(_drOverlay, {opacity: 0, duration: 0.4, ease: 'power2.out'});
+
+    // items_db нужен для предметов в результатах оценки драфта
+    if (!_itemsDbLoaded) _loadItemsDb();
+
+    // Bind catalog button (idempotent — guarded by _heroesCatalogBound)
+    if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
 
     // Prefetch лидерборда в фоне
     if (!_drafterLeaderboardCache) {
-        fetch(window.API_BASE_URL + '/draft/leaderboard')
+        apiFetch(window.API_BASE_URL + '/draft/leaderboard')
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(data) { if (data) _drafterLeaderboardCache = data; })
             .catch(function() {});
@@ -2835,6 +4124,7 @@ function initDrafter() {
         loadDrafterMatch();
     } else {
         _renderPosFilterBtns();
+        _updateManualBtn();
         renderDrafterSlots();
         renderDrafterGrid();
     }
@@ -2845,10 +4135,9 @@ async function loadDrafterMatch() {
     _drafterAllyPick = [null, null, null, null, null];
     _drafterActiveSlot = 0;
     _drafterEnemyPick = [];
-    _drafterPosFilter = 1;
-
-    var _ldrOverlay = document.getElementById('dr-bg-overlay');
-    if (_ldrOverlay) gsap.to(_ldrOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
+    _drafterEnemyManualMode = false;
+    _drafterActiveEnemySlot = -1;
+    _updateManualBtn();
 
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
@@ -2858,7 +4147,7 @@ async function loadDrafterMatch() {
     if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Загрузка...</div>';
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/random');
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/random');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
 
@@ -2902,10 +4191,10 @@ function _renderAllySlots() {
     for (var i = 0; i < 5; i++) {
         var hero = _drafterAllyPick[i];
         var isActive = (i === _drafterActiveSlot);
-        var cls = 'drafter-slot';
+        var cls = 'drafter-slot drafter-slot--ally';
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
-        html += '<div class="drafter-slot-wrap">';
+        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
         html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -2914,11 +4203,10 @@ function _renderAllySlots() {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
+            html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
         } else {
-            html += '<span class="drafter-slot-plus">+</span>';
+            html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon" alt="">';
         }
-        html += '</div>';
-        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
@@ -2930,10 +4218,12 @@ function _renderEnemySlots() {
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = _drafterEnemyPick[i] || { hero_id: 0 };
+        var isActive = _drafterEnemyManualMode && (i === _drafterActiveEnemySlot);
         var cls = 'drafter-slot drafter-slot--enemy';
         if (hero.hero_id) cls += ' drafter-slot--filled';
-        html += '<div class="drafter-slot-wrap">';
-        html += '<div class="' + cls + '">';
+        if (isActive) cls += ' drafter-slot--enemy-active';
+        var clickAttr = _drafterEnemyManualMode ? ' onclick="drafterEnemySlotClick(' + i + ')"' : '';
+        html += '<div class="' + cls + '" id="drafter-enemy-slot-' + i + '"' + clickAttr + '>';
         if (hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
             if (iconUrl) {
@@ -2941,12 +4231,57 @@ function _renderEnemySlots() {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero.hero_id + '</span>';
             }
+            var posNum = parseInt(String(hero.position || '').replace('pos ', ''), 10);
+            if (posNum >= 1 && posNum <= 5) {
+                html += '<img src="/images/positions/pos_' + posNum + '.png" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
+            }
+        } else {
+            html += '<img src="/images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
         }
-        html += '</div>';
-        html += '<div class="drafter-slot-pos"><img src="/images/positions/pos_' + (i + 1) + '.png" width="16" height="16"></div>';
         html += '</div>';
     }
     el.innerHTML = html;
+}
+
+function _updateManualBtn() {
+    var btn = document.getElementById('drafter-manual-btn');
+    if (!btn) return;
+    btn.classList.toggle('drafter-manual-btn--active', !!_drafterEnemyManualMode);
+}
+
+function enableEnemyManualMode() {
+    _drafterEnemyManualMode = true;
+    _drafterEnemyPick = [
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' },
+        { hero_id: 0, position: '' }
+    ];
+    _drafterActiveEnemySlot = 0;
+    _drafterMatchLoaded = true;
+    var searchEl = document.getElementById('drafter-search');
+    if (searchEl) searchEl.value = '';
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = '1';
+    _renderPosFilterBtns();
+    _updateManualBtn();
+    renderDrafterSlots();
+    renderDrafterGrid();
+}
+
+function drafterEnemySlotClick(slotIndex) {
+    if (!_drafterEnemyManualMode) return;
+    if (_drafterEnemyPick[slotIndex] && _drafterEnemyPick[slotIndex].hero_id) {
+        _drafterEnemyPick[slotIndex] = { hero_id: 0, position: '' };
+        _drafterActiveEnemySlot = slotIndex;
+        renderDrafterSlots();
+        renderDrafterGrid();
+        return;
+    }
+    _drafterActiveEnemySlot = slotIndex;
+    _renderEnemySlots();
+    renderDrafterGrid();
 }
 
 function _updateEvaluateBtn() {
@@ -2970,6 +4305,8 @@ function _updateEvaluateBtn() {
 }
 
 function drafterSlotClick(slotIndex) {
+    // Switch focus from enemy back to ally side
+    _drafterActiveEnemySlot = -1;
     // If slot is filled — clear it and make it active
     if (_drafterAllyPick[slotIndex]) {
         _drafterAllyPick[slotIndex] = null;
@@ -2979,13 +4316,7 @@ function drafterSlotClick(slotIndex) {
         return;
     }
     _drafterActiveSlot = slotIndex;
-    // Auto-activate position filter matching the slot
-    var searchVal = (document.getElementById('drafter-search') || {}).value || '';
-    if (!searchVal.trim()) {
-        _drafterPosFilter = slotIndex + 1;
-        _renderPosFilterBtns();
-    }
-    _renderAllySlots();
+    renderDrafterSlots();
     renderDrafterGrid();
 }
 
@@ -2998,7 +4329,7 @@ function setDrafterPosFilter(pos) {
 function _renderPosFilterBtns() {
     var btns = document.querySelectorAll('.drafter-pos-btn');
     btns.forEach(function(btn) {
-        var p = parseInt(btn.dataset.pos);
+        var p = parseInt(btn.dataset.pos, 10);
         btn.classList.toggle('drafter-pos-btn--active', p === _drafterPosFilter);
     });
 }
@@ -3038,7 +4369,7 @@ function renderDrafterGrid() {
         // Поиск по тексту — все герои, фильтр позиции игнорируется
         heroes = heroes.filter(function(h) { return h.name.toLowerCase().indexOf(query) !== -1; });
     } else {
-        // Фильтр по позиции (всегда 1-5)
+        // Фильтр по основной позиции (1..5)
         heroes = heroes.filter(function(h) { return HERO_PRIMARY_POSITIONS[h.id] === _drafterPosFilter; });
     }
 
@@ -3050,15 +4381,15 @@ function renderDrafterGrid() {
         var isPicked = pickedIds.has(h.id);
         var isEnemy  = _drafterEnemyPick.some(function(e) { return e && e.hero_id === h.id; });
         var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
-        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-hero-disabled' : '');
+        var cls = 'drafter-grid-hero' + (isPicked ? ' drafter-grid-hero--picked' : '') + (isEnemy ? ' drafter-grid-hero--enemy drafter-hero-disabled' : '');
         var onclick = (isPicked || isEnemy) ? '' : ' onclick="selectDrafterHero(' + h.id + ')"';
-        html += '<div class="' + cls + '"' + onclick + '>';
+        var safeName = String(h.name).replace(/"/g, '&quot;');
+        html += '<div class="' + cls + '"' + onclick + ' title="' + safeName + '">';
         if (iconUrl) {
-            html += '<img src="' + iconUrl + '" alt="' + h.name + '" class="drafter-grid-img">';
+            html += '<img src="' + iconUrl + '" alt="' + safeName + '" class="drafter-grid-img">';
         } else {
             html += '<div class="drafter-grid-img-empty"></div>';
         }
-        html += '<div class="drafter-grid-name">' + h.name + '</div>';
         html += '</div>';
     });
 
@@ -3066,6 +4397,39 @@ function renderDrafterGrid() {
 }
 
 function selectDrafterHero(heroId) {
+    // Manual enemy selection: a free enemy slot is focused
+    if (_drafterEnemyManualMode && _drafterActiveEnemySlot >= 0 && _drafterActiveEnemySlot < 5) {
+        var enemySlot = _drafterActiveEnemySlot;
+        _drafterEnemyPick[enemySlot] = {
+            hero_id: heroId,
+            position: 'pos ' + (enemySlot + 1)
+        };
+
+        if (navigator.vibrate) navigator.vibrate(25);
+
+        var nextE = -1;
+        for (var ei = enemySlot + 1; ei < 5; ei++) {
+            if (!_drafterEnemyPick[ei] || !_drafterEnemyPick[ei].hero_id) { nextE = ei; break; }
+        }
+        if (nextE === -1) {
+            for (var ej = 0; ej < enemySlot; ej++) {
+                if (!_drafterEnemyPick[ej] || !_drafterEnemyPick[ej].hero_id) { nextE = ej; break; }
+            }
+        }
+        _drafterActiveEnemySlot = nextE;
+
+        renderDrafterSlots();
+        renderDrafterGrid();
+
+        var enemyEl = document.getElementById('drafter-enemy-slot-' + enemySlot);
+        if (enemyEl) {
+            enemyEl.style.transition = 'transform 0.15s ease';
+            enemyEl.style.transform = 'scale(0.85)';
+            setTimeout(function() { enemyEl.style.transform = 'scale(1)'; }, 150);
+        }
+        return;
+    }
+
     if (_drafterActiveSlot >= 5) return;
 
     var filledSlot = _drafterActiveSlot;
@@ -3126,7 +4490,7 @@ async function submitDraft() {
     if (btn) btn.disabled = true;
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/evaluate', {
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ally: ally, enemy: enemy, token: USER_TOKEN || null })
@@ -3137,10 +4501,21 @@ async function submitDraft() {
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
+        var allyIds = ally.map(function(h) { return h && h.hero_id; }).filter(Boolean);
+        var enemyIds = enemy.map(function(h) { return h && h.hero_id; }).filter(Boolean);
+        if (typeof cacheLastDraftEval === 'function') cacheLastDraftEval(data, allyIds, enemyIds);
         showDrafterResult(data);
     } catch (e) {
         console.error('[drafter] submitDraft error:', e);
-        alert('Ошибка при оценке драфта');
+        const msg = 'Не удалось оценить драфт. Проверь подключение и попробуй снова.';
+        const tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.showAlert === 'function') {
+            tg.showAlert(msg);
+        } else if (typeof showToast === 'function') {
+            showToast(msg);
+        } else {
+            console.warn(msg);
+        }
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -3151,35 +4526,11 @@ function hideDrafterFullpage(id) {
     if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
-function _drafterFpSkeleton(title, backId) {
-    return (
-        '<div class="drafter-fp-header">' +
-            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
-            '<div class="drafter-fp-title">' + title + '</div>' +
-            '<div class="drafter-fp-spacer"></div>' +
-        '</div>' +
-        '<div class="drafter-fp-content">' +
-            '<div style="color:#6b7280;font-size:12px;padding:8px 0;">Загрузка...</div>' +
-        '</div>'
-    );
-}
-
-function _drafterFpError(title, backId) {
-    return (
-        '<div class="drafter-fp-header">' +
-            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + backId + '\')">← Назад</button>' +
-            '<div class="drafter-fp-title">' + title + '</div>' +
-            '<div class="drafter-fp-spacer"></div>' +
-        '</div>' +
-        '<div class="drafter-fp-content"><div style="color:#ef4444;font-size:13px;">Ошибка загрузки</div></div>'
-    );
-}
-
-function _draftRankColor(rank) {
-    return rank === 'SSS' || rank === 'S' ? '#fbbf24'
-         : rank === 'A' ? '#a78bfa'
-         : rank === 'B' ? '#60a5fa'
-         : '#9ca3af';
+function _draftRankClass(rank) {
+    if (rank === 'SSS' || rank === 'S') return 'drafter-hist-rank drafter-hist-rank--s';
+    if (rank === 'A') return 'drafter-hist-rank drafter-hist-rank--a';
+    if (rank === 'B') return 'drafter-hist-rank drafter-hist-rank--b';
+    return 'drafter-hist-rank drafter-hist-rank--neutral';
 }
 
 function _draftFormatDate(isoStr) {
@@ -3196,175 +4547,506 @@ function _draftFormatDate(isoStr) {
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + hh + ':' + mm;
 }
 
-function _rankCardStyle(rank) {
-    if (rank === 'SSS' || rank === 'S') return 'background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);';
-    if (rank === 'A') return 'background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);';
-    if (rank === 'B') return 'background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);';
-    return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);';
+function _histBuildHeader(PAGE_ID) {
+    var header = document.createElement('div');
+    header.className = 'drafter-fp-header';
+
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'drafter-fp-back';
+    back.setAttribute('aria-label', 'Назад');
+    back.textContent = '← Назад';
+    back.addEventListener('click', function() { hideDrafterFullpage(PAGE_ID); });
+    header.appendChild(back);
+
+    var title = document.createElement('div');
+    title.className = 'drafter-fp-title';
+    title.textContent = 'Моя история';
+    header.appendChild(title);
+
+    var spacer = document.createElement('div');
+    spacer.className = 'drafter-fp-spacer';
+    header.appendChild(spacer);
+
+    return header;
+}
+
+function _histBuildSkeleton(count) {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < count; i++) {
+        var card = document.createElement('div');
+        card.className = 'drafter-hist-skel-card';
+        card.setAttribute('aria-hidden', 'true');
+
+        var top = document.createElement('div');
+        top.className = 'drafter-hist-skel-top';
+
+        var rank = document.createElement('div');
+        rank.className = 'drafter-hist-skel-shape drafter-hist-skel-rank';
+        top.appendChild(rank);
+
+        var meta = document.createElement('div');
+        meta.className = 'drafter-hist-skel-shape drafter-hist-skel-meta';
+        top.appendChild(meta);
+
+        var score = document.createElement('div');
+        score.className = 'drafter-hist-skel-shape drafter-hist-skel-score';
+        top.appendChild(score);
+
+        card.appendChild(top);
+
+        for (var t = 0; t < 2; t++) {
+            var heroesRow = document.createElement('div');
+            heroesRow.className = 'drafter-hist-skel-heroes';
+            for (var h = 0; h < 5; h++) {
+                var hero = document.createElement('div');
+                hero.className = 'drafter-hist-skel-shape drafter-hist-skel-hero';
+                heroesRow.appendChild(hero);
+            }
+            card.appendChild(heroesRow);
+        }
+
+        frag.appendChild(card);
+    }
+    return frag;
+}
+
+function _histBuildEmptyBlock(titleText, subText, onRetry) {
+    var wrap = document.createElement('div');
+    wrap.className = 'drafter-lb-empty';
+    if (onRetry) wrap.setAttribute('role', 'alert');
+    else wrap.setAttribute('role', 'status');
+
+    var title = document.createElement('div');
+    title.className = 'drafter-lb-empty-title';
+    title.textContent = titleText;
+    wrap.appendChild(title);
+
+    if (subText) {
+        var text = document.createElement('div');
+        text.className = 'drafter-lb-empty-text';
+        text.textContent = subText;
+        wrap.appendChild(text);
+    }
+
+    if (onRetry) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'drafter-lb-retry';
+        btn.textContent = 'Повторить';
+        btn.addEventListener('click', onRetry);
+        wrap.appendChild(btn);
+    }
+
+    return wrap;
+}
+
+function _histBuildTeam(labelText, heroIds, sideClass) {
+    var team = document.createElement('div');
+    team.className = 'drafter-hist-team';
+
+    var label = document.createElement('div');
+    label.className = 'drafter-hist-team-label';
+    label.textContent = labelText;
+    team.appendChild(label);
+
+    var row = document.createElement('div');
+    row.className = 'drafter-hist-heroes';
+    heroIds.forEach(function(id) {
+        var url = _drafterHeroIcon(id);
+        if (!url) return;
+        var img = document.createElement('img');
+        img.className = 'drafter-hist-hero ' + sideClass;
+        img.src = url;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        var name = (typeof _drafterHeroName === 'function') ? _drafterHeroName(id) : '';
+        img.alt = name || '';
+        if (name) img.title = name;
+        row.appendChild(img);
+    });
+    team.appendChild(row);
+
+    return team;
+}
+
+function _histBuildCard(r) {
+    var card = document.createElement('div');
+    card.className = 'drafter-hist-card';
+
+    var top = document.createElement('div');
+    top.className = 'drafter-hist-top';
+
+    var rank = document.createElement('div');
+    rank.className = _draftRankClass(r.rank);
+    rank.textContent = r.rank;
+    top.appendChild(rank);
+
+    var meta = document.createElement('div');
+    meta.className = 'drafter-hist-meta';
+    meta.textContent = _draftFormatDate(r.created_at);
+    top.appendChild(meta);
+
+    var scoreBlock = document.createElement('div');
+    scoreBlock.className = 'drafter-hist-score-block';
+    var scoreLabel = document.createElement('div');
+    scoreLabel.className = 'drafter-hist-score-label';
+    scoreLabel.textContent = 'Счёт';
+    scoreBlock.appendChild(scoreLabel);
+    var score = document.createElement('div');
+    score.className = 'drafter-hist-score';
+    score.textContent = r.total_score;
+    scoreBlock.appendChild(score);
+    top.appendChild(scoreBlock);
+
+    card.appendChild(top);
+
+    if (r.ally_heroes && r.enemy_heroes) {
+        var teams = document.createElement('div');
+        teams.className = 'drafter-hist-teams';
+        teams.appendChild(_histBuildTeam('Против', r.enemy_heroes, 'drafter-hist-hero--enemy'));
+        teams.appendChild(_histBuildTeam('С собой', r.ally_heroes, 'drafter-hist-hero--ally'));
+        card.appendChild(teams);
+    }
+
+    return card;
+}
+
+function _histBuildScaffold(PAGE_ID) {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(_histBuildHeader(PAGE_ID));
+    var content = document.createElement('div');
+    content.className = 'drafter-fp-content';
+    frag.appendChild(content);
+    return { frag: frag, content: content };
 }
 
 async function showDrafterHistory() {
     var PAGE_ID = 'drafter-history-page';
     var page = document.getElementById(PAGE_ID);
-    page.innerHTML = _drafterFpSkeleton('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
     page.style.display = 'block';
+    page.textContent = '';
+
+    var scaffold = _histBuildScaffold(PAGE_ID);
+    page.appendChild(scaffold.frag);
+    var content = scaffold.content;
 
     if (!USER_TOKEN) {
-        page.innerHTML = (
-            '<div class="drafter-fp-header">' +
-                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
-                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
-                '<div class="drafter-fp-spacer"></div>' +
-            '</div>' +
-            '<div class="drafter-fp-content"><div style="color:#6b7280;font-size:13px;">Войдите, чтобы посмотреть историю</div></div>'
-        );
+        content.appendChild(_histBuildEmptyBlock(
+            'Войдите, чтобы посмотреть историю',
+            'Драфты сохраняются для авторизованных игроков',
+            null
+        ));
         return;
     }
+
+    content.appendChild(_histBuildSkeleton(4));
+
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/history?token=' + USER_TOKEN);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
-        var cardsHtml = rows.length === 0
-            ? '<div style="color:#6b7280;font-size:13px;">Нет сохранённых драфтов</div>'
-            : rows.map(function(r) {
-                var color = _draftRankColor(r.rank);
-                var cardStyle = _rankCardStyle(r.rank);
-                var dt = _draftFormatDate(r.created_at);
-                var heroIconStyle = 'width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;';
-                var heroesHtml = '';
-                if (r.ally_heroes && r.enemy_heroes) {
-                    var enemyIcons = r.enemy_heroes.map(function(id) {
-                        var url = _drafterHeroIcon(id);
-                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #ef4444;">' : '';
-                    }).join('');
-                    var allyIcons = r.ally_heroes.map(function(id) {
-                        var url = _drafterHeroIcon(id);
-                        return url ? '<img src="' + url + '" style="' + heroIconStyle + 'border:2px solid #10b981;">' : '';
-                    }).join('');
-                    heroesHtml = (
-                        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + enemyIcons + '</div>' +
-                        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' + allyIcons + '</div>'
-                    );
-                }
-                return (
-                    '<div class="drafter-hist-card" style="' + cardStyle + 'flex-direction:column;align-items:stretch;gap:0;">' +
-                        '<div style="display:flex;align-items:center;">' +
-                            '<div style="font-size:24px;font-weight:900;color:' + color + ';width:40px;text-align:center;flex-shrink:0;line-height:1;">' + r.rank + '</div>' +
-                            '<div style="flex:1;font-size:12px;color:#6b7280;">' + dt + '</div>' +
-                            '<div style="font-size:16px;font-weight:700;color:' + color + ';white-space:nowrap;">' + r.total_score + '</div>' +
-                        '</div>' +
-                        heroesHtml +
-                    '</div>'
-                );
-            }).join('');
-        page.innerHTML = (
-            '<div class="drafter-fp-header">' +
-                '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← Назад</button>' +
-                '<div class="drafter-fp-title">\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f</div>' +
-                '<div class="drafter-fp-spacer"></div>' +
-            '</div>' +
-            '<div class="drafter-fp-content">' +
-                '<div style="font-size:8px;color:#4b5563;text-align:center;margin-bottom:8px;">Последние 10 драфтов</div>' +
-                cardsHtml +
-            '</div>'
-        );
+
+        content.textContent = '';
+
+        if (!rows || rows.length === 0) {
+            content.appendChild(_histBuildEmptyBlock(
+                'Пока нет драфтов',
+                'Сохранённые результаты появятся здесь',
+                null
+            ));
+            return;
+        }
+
+        var frag = document.createDocumentFragment();
+        rows.forEach(function(r) { frag.appendChild(_histBuildCard(r)); });
+        content.appendChild(frag);
     } catch (e) {
-        page.innerHTML = _drafterFpError('\u041c\u041e\u042f \u0418\u0421\u0422\u041e\u0420\u0418\u042f', PAGE_ID);
+        content.textContent = '';
+        content.appendChild(_histBuildEmptyBlock(
+            'Не удалось загрузить историю',
+            'Проверь соединение и попробуй ещё раз',
+            function() { showDrafterHistory(); }
+        ));
     }
 }
 
-var _LB_ICON_1 = '<span style="color:#fbbf24;font-size:14px;">&#9733;</span>';
-var _LB_ICON_2 = '<span style="color:#94a3b8;font-size:12px;font-weight:700;">2</span>';
-var _LB_ICON_3 = '<span style="color:#b45309;font-size:12px;font-weight:700;">3</span>';
+function _lbBuildHeader(PAGE_ID) {
+    var header = document.createElement('div');
+    header.className = 'drafter-fp-header';
 
-function _lbAvatarColors(rank) {
-    if (rank === 1) return { bg: 'rgba(251,191,36,0.2)',  text: '#fbbf24' };
-    if (rank === 2) return { bg: 'rgba(148,163,184,0.2)', text: '#94a3b8' };
-    if (rank === 3) return { bg: 'rgba(180,83,9,0.2)',    text: '#b45309' };
-    return { bg: 'rgba(255,255,255,0.05)', text: '#6b7280' };
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'drafter-fp-back';
+    back.setAttribute('aria-label', 'Назад');
+    back.textContent = '← Назад';
+    back.addEventListener('click', function() { hideDrafterFullpage(PAGE_ID); });
+    header.appendChild(back);
+
+    var title = document.createElement('div');
+    title.className = 'drafter-fp-title';
+    title.textContent = 'Топ драфтеров';
+    header.appendChild(title);
+
+    var spacer = document.createElement('div');
+    spacer.className = 'drafter-fp-spacer';
+    header.appendChild(spacer);
+
+    return header;
 }
 
-function _lbScoreColor(rank) {
-    if (rank === 1) return '#fbbf24';
-    if (rank === 2) return '#94a3b8';
-    if (rank === 3) return '#b45309';
-    return '#c084fc';
+function _lbBuildPrizeBanner() {
+    var banner = document.createElement('div');
+    banner.className = 'lb-prize-banner';
+
+    var img = document.createElement('img');
+    img.src = '/images/arcana.gif';
+    img.className = 'lb-prize-gif';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.setAttribute('aria-hidden', 'true');
+    banner.appendChild(img);
+
+    var info = document.createElement('div');
+    info.className = 'lb-prize-info';
+
+    var title = document.createElement('div');
+    title.className = 'lb-prize-title';
+    title.textContent = 'Арканы каждый месяц';
+    info.appendChild(title);
+
+    var sub = document.createElement('div');
+    sub.className = 'lb-prize-sub';
+    sub.textContent = 'Топ-3 получают аркану на выбор в конце месяца';
+    info.appendChild(sub);
+
+    var month = document.createElement('div');
+    month.className = 'lb-prize-month';
+    month.textContent = 'апрель 2026';
+    info.appendChild(month);
+
+    banner.appendChild(info);
+    return banner;
 }
 
-async function _renderLeaderboardRows(rows, page, PAGE_ID) {
-    var rowsHtml = rows.length === 0
-        ? '<div style="color:#6b7280;font-size:13px;padding:8px 0;">Пока нет участников</div>'
-        : rows.map(function(r) {
-            var placeIcon = r.rank === 1 ? _LB_ICON_1 : r.rank === 2 ? _LB_ICON_2 : r.rank === 3 ? _LB_ICON_3
-                : '<span style="font-size:11px;font-weight:700;color:#6b7280;">' + r.rank + '</span>';
-            var rowCls = 'drafter-lb-row' + (r.rank === 1 ? ' drafter-lb-row--top1' : r.rank === 2 ? ' drafter-lb-row--top2' : r.rank === 3 ? ' drafter-lb-row--top3' : '');
-            var ac = _lbAvatarColors(r.rank);
-            var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
-            var firstChar = displayName.charAt(0).toUpperCase();
-            var letterDiv = '<div class="drafter-lb-avatar-letter" style="background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>';
-            var avatarHtml = r.photo_url
-                ? '<img class="drafter-lb-avatar" src="' + r.photo_url + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
-                  '<div class="drafter-lb-avatar-letter" style="display:none;background:' + ac.bg + ';color:' + ac.text + ';">' + firstChar + '</div>'
-                : letterDiv;
-            return (
-                '<div class="' + rowCls + '" style="display:flex;align-items:center;gap:8px">' +
-                    '<div class="drafter-lb-place">' + placeIcon + '</div>' +
-                    avatarHtml +
-                    '<div style="flex:1;min-width:0">' +
-                        '<div class="drafter-lb-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + displayName + '</div>' +
-                        '<div class="drafter-lb-count">' + r.draft_count + ' \u0434\u0440\u0430\u0444\u0442\u043e\u0432</div>' +
-                    '</div>' +
-                    '<div class="drafter-lb-score" style="color:' + _lbScoreColor(r.rank) + ';">' + r.top5_sum + '</div>' +
-                '</div>'
-            );
-        }).join('');
-    page.innerHTML = (
-        '<div class="drafter-fp-header">' +
-            '<button class="drafter-fp-back" onclick="hideDrafterFullpage(\'' + PAGE_ID + '\')">← \u041d\u0430\u0437\u0430\u0434</button>' +
-            '<div class="drafter-fp-title">\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412</div>' +
-            '<div class="drafter-fp-spacer"></div>' +
-        '</div>' +
-        '<div class="lb-prize-banner">' +
-            '<img src="/images/arcana.gif" class="lb-prize-gif" alt="arcana">' +
-            '<div class="lb-prize-info">' +
-                '<div class="lb-prize-title">\u0410\u0440\u043a\u0430\u043d\u044b \u043a\u0430\u0436\u0434\u044b\u0439 \u043c\u0435\u0441\u044f\u0446</div>' +
-                '<div class="lb-prize-sub">\u0422\u043e\u043f-3 \u043f\u043e\u043b\u0443\u0447\u0430\u044e\u0442 \u0430\u0440\u043a\u0430\u043d\u0443 \u043d\u0430 \u0432\u044b\u0431\u043e\u0440 \u0432 \u043a\u043e\u043d\u0446\u0435 \u043c\u0435\u0441\u044f\u0446\u0430</div>' +
-                '<div class="lb-prize-month">\u0430\u043f\u0440\u0435\u043b\u044c 2026</div>' +
-            '</div>' +
-        '</div>' +
-        '<div class="lb-note">' +
-            '<span class="lb-note-icon">\u2139</span> ' +
-            '\u0421\u0447\u0451\u0442 \u043f\u043e \u0441\u0443\u043c\u043c\u0435 <b>\u043b\u0443\u0447\u0448\u0438\u0445 5 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u043e\u0432</b>' +
-        '</div>' +
-        '<div class="drafter-fp-content">' + rowsHtml + '</div>'
-    );
+function _lbBuildNote() {
+    var note = document.createElement('div');
+    note.className = 'lb-note';
+    var icon = document.createElement('span');
+    icon.className = 'lb-note-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'ℹ';
+    note.appendChild(icon);
+    note.appendChild(document.createTextNode(' Счёт по сумме '));
+    var b = document.createElement('b');
+    b.textContent = 'лучших 5 результатов';
+    note.appendChild(b);
+    return note;
+}
 
-    // ── Fixed плашка «Ваше место» — показываем сразу, данные подгружаем ──
+function _lbBuildSkeletonRows(count) {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < count; i++) {
+        var row = document.createElement('div');
+        row.className = 'drafter-lb-skel-row';
+        row.setAttribute('aria-hidden', 'true');
+
+        var place = document.createElement('div');
+        place.className = 'drafter-lb-skel-shape drafter-lb-skel-place';
+        row.appendChild(place);
+
+        var avatar = document.createElement('div');
+        avatar.className = 'drafter-lb-skel-shape drafter-lb-skel-avatar';
+        row.appendChild(avatar);
+
+        var info = document.createElement('div');
+        info.style.flex = '1';
+        info.style.minWidth = '0';
+        var name = document.createElement('div');
+        name.className = 'drafter-lb-skel-shape drafter-lb-skel-name';
+        var sub = document.createElement('div');
+        sub.className = 'drafter-lb-skel-shape drafter-lb-skel-sub';
+        info.appendChild(name);
+        info.appendChild(sub);
+        row.appendChild(info);
+
+        var score = document.createElement('div');
+        score.className = 'drafter-lb-skel-shape drafter-lb-skel-score';
+        row.appendChild(score);
+
+        frag.appendChild(row);
+    }
+    return frag;
+}
+
+function _lbBuildEmpty() {
+    var wrap = document.createElement('div');
+    wrap.className = 'drafter-lb-empty';
+    var title = document.createElement('div');
+    title.className = 'drafter-lb-empty-title';
+    title.textContent = 'Пока нет участников';
+    wrap.appendChild(title);
+    var text = document.createElement('div');
+    text.className = 'drafter-lb-empty-text';
+    text.textContent = 'Сыграй драфт, чтобы попасть в топ';
+    wrap.appendChild(text);
+    return wrap;
+}
+
+function _lbBuildError(onRetry) {
+    var wrap = document.createElement('div');
+    wrap.className = 'drafter-lb-empty';
+    wrap.setAttribute('role', 'alert');
+
+    var title = document.createElement('div');
+    title.className = 'drafter-lb-empty-title';
+    title.textContent = 'Не удалось загрузить топ';
+    wrap.appendChild(title);
+
+    var text = document.createElement('div');
+    text.className = 'drafter-lb-empty-text';
+    text.textContent = 'Проверь соединение и попробуй ещё раз';
+    wrap.appendChild(text);
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'drafter-lb-retry';
+    btn.textContent = 'Повторить';
+    btn.addEventListener('click', onRetry);
+    wrap.appendChild(btn);
+    return wrap;
+}
+
+function _lbBuildRow(r) {
+    var row = document.createElement('div');
+    var cls = 'drafter-lb-row';
+    if (r.rank === 1) cls += ' drafter-lb-row--top1';
+    else if (r.rank === 2) cls += ' drafter-lb-row--top2';
+    else if (r.rank === 3) cls += ' drafter-lb-row--top3';
+    row.className = cls;
+
+    var place = document.createElement('div');
+    place.className = 'drafter-lb-place';
+    place.textContent = r.rank;
+    row.appendChild(place);
+
+    var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
+    var firstChar = displayName.charAt(0).toUpperCase();
+
+    if (r.photo_url) {
+        var img = document.createElement('img');
+        img.className = 'drafter-lb-avatar';
+        img.src = r.photo_url;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.setAttribute('aria-hidden', 'true');
+
+        var fallback = document.createElement('div');
+        fallback.className = 'drafter-lb-avatar-letter';
+        fallback.style.display = 'none';
+        fallback.textContent = firstChar;
+
+        img.addEventListener('error', function() {
+            img.style.display = 'none';
+            fallback.style.display = 'flex';
+        });
+
+        row.appendChild(img);
+        row.appendChild(fallback);
+    } else {
+        var letter = document.createElement('div');
+        letter.className = 'drafter-lb-avatar-letter';
+        letter.textContent = firstChar;
+        row.appendChild(letter);
+    }
+
+    var info = document.createElement('div');
+    info.className = 'drafter-lb-info';
+
+    var name = document.createElement('div');
+    name.className = 'drafter-lb-name';
+    name.textContent = displayName;
+    info.appendChild(name);
+
+    var count = document.createElement('div');
+    count.className = 'drafter-lb-count';
+    count.textContent = r.draft_count + ' драфтов';
+    info.appendChild(count);
+
+    row.appendChild(info);
+
+    var score = document.createElement('div');
+    score.className = 'drafter-lb-score';
+    score.textContent = r.top5_sum;
+    row.appendChild(score);
+
+    return row;
+}
+
+function _lbRenderRowsInto(content, rows) {
+    content.textContent = '';
+    if (!rows || rows.length === 0) {
+        content.appendChild(_lbBuildEmpty());
+        return;
+    }
+    var frag = document.createDocumentFragment();
+    rows.forEach(function(r) { frag.appendChild(_lbBuildRow(r)); });
+    content.appendChild(frag);
+}
+
+function _lbBuildScaffold(PAGE_ID) {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(_lbBuildHeader(PAGE_ID));
+    frag.appendChild(_lbBuildPrizeBanner());
+    frag.appendChild(_lbBuildNote());
+    var content = document.createElement('div');
+    content.className = 'drafter-fp-content';
+    frag.appendChild(content);
+    return { frag: frag, content: content };
+}
+
+async function _lbAttachMyrankBar(page) {
     var token = (typeof USER_TOKEN !== 'undefined' ? USER_TOKEN : '') || '';
     if (!token) return;
 
-    // Показываем плашку-заглушку сразу (чтобы не прыгал контент)
     var bar = document.createElement('div');
     bar.id = 'drafter-lb-myrank-bar';
     bar.className = 'drafter-lb-myrank';
-    bar.style.display = 'none'; // скрыта до получения данных
+    bar.setAttribute('role', 'status');
+    bar.setAttribute('aria-label', 'Ваша позиция в лидерборде');
+    bar.style.display = 'none';
     page.appendChild(bar);
 
     try {
-        var meResp = await fetch(window.API_BASE_URL + '/draft/leaderboard/me?token=' + encodeURIComponent(token));
+        var meResp = await apiFetch(window.API_BASE_URL + '/draft/leaderboard/me?token=' + encodeURIComponent(token));
         if (!meResp.ok) return;
         var me = await meResp.json();
         if (!me || me.rank === null) return;
-        if (me.rank <= 25) return; // виден в списке — плашка не нужна
-        bar.innerHTML = (
-            '<div class="drafter-lb-myrank-left">' +
-                '\u0412\u0430\u0448\u0435 \u043c\u0435\u0441\u0442\u043e: <span class="drafter-lb-myrank-rank">#' + me.rank + '</span>' +
-            '</div>' +
-            '<div class="drafter-lb-myrank-right">' +
-                '<div class="drafter-lb-myrank-label">\u0421\u0427\u0401\u0422</div>' +
-                '<div class="drafter-lb-myrank-score">' + me.top5_sum + '</div>' +
-            '</div>'
-        );
+        if (me.rank <= 25) return;
+
+        var left = document.createElement('div');
+        left.className = 'drafter-lb-myrank-left';
+        left.appendChild(document.createTextNode('Ваше место: '));
+        var rank = document.createElement('span');
+        rank.className = 'drafter-lb-myrank-rank';
+        rank.textContent = '#' + me.rank;
+        left.appendChild(rank);
+        bar.appendChild(left);
+
+        var right = document.createElement('div');
+        right.className = 'drafter-lb-myrank-right';
+        var label = document.createElement('div');
+        label.className = 'drafter-lb-myrank-label';
+        label.textContent = 'Счёт';
+        right.appendChild(label);
+        var score = document.createElement('div');
+        score.className = 'drafter-lb-myrank-score';
+        score.textContent = me.top5_sum;
+        right.appendChild(score);
+        bar.appendChild(right);
+
         bar.style.display = 'flex';
     } catch (e) { /* ignore */ }
 }
@@ -3373,22 +5055,30 @@ async function showDrafterLeaderboard() {
     var PAGE_ID = 'drafter-leaderboard-page';
     var page = document.getElementById(PAGE_ID);
     page.style.display = 'block';
+    page.textContent = '';
+
+    var scaffold = _lbBuildScaffold(PAGE_ID);
+    page.appendChild(scaffold.frag);
+    var content = scaffold.content;
 
     if (_drafterLeaderboardCache) {
-        _renderLeaderboardRows(_drafterLeaderboardCache, page, PAGE_ID);
+        _lbRenderRowsInto(content, _drafterLeaderboardCache);
+        _lbAttachMyrankBar(page);
         return;
     }
 
-    page.innerHTML = _drafterFpSkeleton('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+    content.appendChild(_lbBuildSkeletonRows(6));
 
     try {
-        var resp = await fetch(window.API_BASE_URL + '/draft/leaderboard');
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/leaderboard');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
         _drafterLeaderboardCache = rows;
-        _renderLeaderboardRows(rows, page, PAGE_ID);
+        _lbRenderRowsInto(content, rows);
+        _lbAttachMyrankBar(page);
     } catch (e) {
-        page.innerHTML = _drafterFpError('\u0422\u041e\u041f \u0414\u0420\u0410\u0424\u0422\u0415\u0420\u041e\u0412', PAGE_ID);
+        content.textContent = '';
+        content.appendChild(_lbBuildError(function() { showDrafterLeaderboard(); }));
     }
 }
 
@@ -3396,718 +5086,521 @@ function showDrafterResult(data) {
     document.getElementById('drafter-main').style.display = 'none';
     document.getElementById('drafter-result').style.display = 'block';
 
-    var battleScreen = document.getElementById('dr-battle-screen');
-    var finalScreen  = document.getElementById('dr-final-screen');
+    var confrontScreen = document.getElementById('dr-confront-screen');
+    var synergyScreen  = document.getElementById('dr-synergy-screen');
+    var finalScreen    = document.getElementById('dr-final-screen');
 
-    battleScreen.style.display = 'block';
-    finalScreen.style.display  = 'none';
+    confrontScreen.style.display = 'none';
+    synergyScreen.style.display  = 'none';
+    finalScreen.style.display    = 'none';
 
-    var duels = data.duels || [];
-
-    var _drafterSkip = false;
-
-    function sleep(ms) {
-        return new Promise(function(resolve) {
-            if (_drafterSkip) { resolve(); return; }
-            setTimeout(resolve, ms);
-        });
-    }
-
-    function skipDrafterAnim() {
-        if (_drafterSkip) return;
-        _drafterSkip = true;
-        gsap.set(battleScreen, {clearProps: 'x'});
-        battleScreen.style.display = 'none';
-        var synSc = document.getElementById('dr-synergy-screen');
-        if (synSc) { synSc.style.display = 'none'; gsap.set(synSc, {clearProps: 'opacity'}); }
-        var sb = document.getElementById('dr-skip-btn');
-        if (sb) sb.remove();
-        showFinal();
-    }
+    var allyIds      = data.ally_ids      || [];
+    var enemyIds     = data.enemy_ids     || [];
+    var matchupPairs = data.matchup_pairs || [];
+    var synergyPairs = data.synergy_pairs || [];
 
     function _icon(id) { return _drafterHeroIcon(id) || ''; }
     function _name(id) { return _drafterHeroName(id) || ('Герой #' + id); }
 
-    var WIN_SVG  = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(16,185,129,0.2)" stroke="#10b981" stroke-width="2"/><path d="M16 26L22 32L36 18" stroke="#10b981" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
-    var LOSS_SVG = '<svg width="52" height="52" viewBox="0 0 52 52"><path d="M26 4L6 12V26C6 37 15 46 26 48C37 46 46 37 46 26V12L26 4Z" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="2"/><path d="M19 19L33 33M33 19L19 33" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>';
-
-    function spawnParticles(win) {
-        var canvas = document.getElementById('dr-particles-canvas');
-        if (!canvas) return;
-        canvas.width  = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-        var ctx = canvas.getContext('2d');
-        var cx  = canvas.width  / 2;
-        var cy  = canvas.height / 2;
-        var rgb = win ? '192,132,252' : '239,68,68';
-        var particles = [];
-        for (var i = 0; i < 30; i++) {
-            var angle = Math.random() * Math.PI * 2;
-            var speed = 1.5 + Math.random() * 2.5;
-            particles.push({x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r: 2 + Math.random() * 3, life: 60});
-        }
-        function tick() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            var alive = false;
-            particles.forEach(function(p) {
-                if (p.life <= 0) return;
-                alive = true;
-                p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life--;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(' + rgb + ',' + (p.life / 60) + ')';
-                ctx.fill();
-            });
-            if (alive) requestAnimationFrame(tick);
-        }
-        tick();
+    var _skip = false;
+    function sleep(ms) {
+        return new Promise(function(resolve) {
+            if (_skip) { resolve(); return; }
+            setTimeout(resolve, ms);
+        });
     }
 
-    // ── Фон страницы — overlay с градиентом ─────────────────────────────
-    function setBattleBackground(win) {
-        var pageDrafter = document.getElementById('page-drafter');
-        var overlay = document.getElementById('dr-bg-overlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.id = 'dr-bg-overlay';
-            pageDrafter.insertBefore(overlay, pageDrafter.firstChild);
-        }
-        var newBg = win
-            ? 'radial-gradient(ellipse at 50% 20%, rgba(120,40,220,0.5) 0%, #0a0612 65%)'
-            : 'radial-gradient(ellipse at 50% 20%, rgba(180,20,20,0.5) 0%, #0a0612 65%)';
-        var currentOpacity = parseFloat(gsap.getProperty(overlay, 'opacity')) || 0;
-        if (currentOpacity < 0.1) {
-            overlay.style.background = newBg;
-            gsap.to(overlay, {opacity: 1, duration: 0.8, ease: 'power2.out'});
-        } else {
-            gsap.to(overlay, {opacity: 0.05, duration: 0.25, ease: 'power2.out', onComplete: function() {
-                overlay.style.background = newBg;
-                gsap.to(overlay, {opacity: 1, duration: 0.55, ease: 'power2.out'});
-            }});
-        }
-    }
-
-    // ── Шаг 1: 3 битвы линий ─────────────────────────────────────────────
-    async function playBattle(index, duel) {
-        var win = duel.win;
-
-        var dotsHtml = duels.map(function(_, d) {
-            return '<div class="dr-dot' + (d === index ? ' dr-dot-active' : '') + '" id="dr-dot-' + d + '"></div>';
-        }).join('');
-
-        gsap.set(battleScreen, {clearProps: 'backgroundColor,x'});
-        battleScreen.innerHTML = (
-            '<canvas id="dr-particles-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;"></canvas>' +
-            '<div class="dr-b-header">' +
-                '<div class="dr-b-num">БИТВА ' + (index + 1) + ' ИЗ ' + duels.length + '</div>' +
-                '<div class="dr-b-name">' + duel.name.toUpperCase() + '</div>' +
-            '</div>' +
-            '<div class="dr-b-arena">' +
-                '<div class="dr-b-side dr-b-ally" id="dr-side-ally">' +
-                    (duel.ally_heroes || []).map(function(h) {
-                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-ally" onerror="this.style.display=\'none\'">';
-                    }).join('') +
-                '</div>' +
-                '<div class="dr-b-center-icon" id="dr-result-icon" style="opacity:0;"></div>' +
-                '<div class="dr-b-side dr-b-enemy" id="dr-side-enemy">' +
-                    (duel.enemy_heroes || []).map(function(h) {
-                        return '<img src="' + _icon(h.hero_id) + '" class="dr-b-avatar dr-b-avatar-enemy" onerror="this.style.display=\'none\'">';
-                    }).join('') +
-                '</div>' +
-            '</div>' +
-            '<div class="dr-hbar-wrap">' +
-                '<div class="dr-hbar-ally"  id="dr-hbar-ally"  style="width:50%"></div>' +
-                '<div class="dr-hbar-enemy" id="dr-hbar-enemy" style="width:50%"></div>' +
-            '</div>' +
-            '<div class="dr-b-result-text" id="dr-b-result-text"></div>' +
-            '<div class="dr-dots">' + dotsHtml + '</div>'
-        );
-
-        var allyEls    = Array.from(document.querySelectorAll('#dr-side-ally .dr-b-avatar'));
-        var enemyEls   = Array.from(document.querySelectorAll('#dr-side-enemy .dr-b-avatar'));
-        var resultIcon = document.getElementById('dr-result-icon');
-        var hbarAlly   = document.getElementById('dr-hbar-ally');
-        var hbarEnemy  = document.getElementById('dr-hbar-enemy');
-        var resultText = document.getElementById('dr-b-result-text');
-
-        gsap.set(allyEls,  {x: -30, opacity: 0});
-        gsap.set(enemyEls, {x:  30, opacity: 0});
-
-        await sleep(400);
-
-        // Герои появляются
-        gsap.to(allyEls,  {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
-        gsap.to(enemyEls, {x: 0, opacity: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out'});
-
-        await sleep(300);
-
-        // Сближение
-        gsap.to(allyEls,  {x:  18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
-        gsap.to(enemyEls, {x: -18, scale: 1.08, duration: 0.3, ease: 'power2.in'});
-
-        await sleep(400);
-
-        // Удар: частицы + shake + отдача
-        spawnParticles(win);
-        gsap.to('#dr-battle-screen', {x: -7, duration: 0.05, yoyo: true, repeat: 7, ease: 'none',
-            onComplete: function() { gsap.set('#dr-battle-screen', {x: 0}); }});
-        gsap.to(allyEls,  {x: -3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
-        gsap.to(enemyEls, {x:  3, scale: 0.96, duration: 0.15, ease: 'power2.out'});
-
-        await sleep(150);
-
-        // Шкала + фон страницы + текст
-        gsap.to(hbarAlly,  {width: win ? '66%' : '34%', duration: 0.9, ease: 'power2.out'});
-        gsap.to(hbarEnemy, {width: win ? '34%' : '66%', duration: 0.9, ease: 'power2.out'});
-        setBattleBackground(win);
-        if (resultText) {
-            resultText.textContent = win ? 'Доминирование на линии' : 'Сложная линия для нас';
-            gsap.fromTo(resultText, {opacity: 0, y: 8}, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
-        }
-
-        await sleep(900);
-
-        // Герои возвращаются
-        gsap.to(allyEls.concat(enemyEls), {x: 0, scale: 1, duration: 0.3, ease: 'back.out(1)'});
-
-        // SVG иконка результата
-        if (resultIcon) {
-            resultIcon.innerHTML = win ? WIN_SVG : LOSS_SVG;
-            if (win) {
-                gsap.fromTo(resultIcon, {scale: 0, opacity: 0}, {scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)'});
-            } else {
-                gsap.fromTo(resultIcon, {y: -30, opacity: 0}, {y: 0, opacity: 1, duration: 0.4, ease: 'power2.out'});
-            }
-        }
-
-        var dot = document.getElementById('dr-dot-' + index);
-        if (dot) dot.className = 'dr-dot ' + (win ? 'dr-dot-win' : 'dr-dot-loss');
-
-        await sleep(600);
-    }
-
-    // ── Шаг 2: Синергия команды — pentagon layout ───────────────────
-    async function playSynergy() {
-        var synPairs = data.synergy_pairs || [];
-        var allyIds  = (data.ally_ids    || []).slice();
-
-        // Fallback: derive ally hero list from duels if backend didn't return ally_ids
-        if (!allyIds.length && data.duels) {
-            var _seen = {};
-            data.duels.forEach(function(d) {
-                (d.ally_heroes || []).forEach(function(h) {
-                    if (!_seen[h.hero_id]) { _seen[h.hero_id] = true; allyIds.push(h.hero_id); }
-                });
-            });
-        }
-
-        if (!synPairs.length || allyIds.length < 2) {
-            if (!synPairs.length) console.warn('[synergy] synergy_pairs missing — restart backend to apply API update');
-            return;
-        }
-
-        var synScreen = document.getElementById('dr-synergy-screen');
-        var NS = 'http://www.w3.org/2000/svg';
-
-        // ── Build DOM ────────────────────────────────────────────────
-        var dotsHtml = synPairs.map(function(_, pi) {
-            return '<div class="dr-dot" id="dr-syn-dot-' + pi + '"></div>';
-        }).join('');
-
-        synScreen.innerHTML = (
-            '<div class="dr-syn-title">Командная синергия</div>' +
-            '<div class="dr-syn-penta" id="dr-syn-penta"></div>' +
-            '<div class="dr-syn-score-wrap">' +
-                '<div class="dr-syn-total" id="dr-syn-total">+0.0</div>' +
-                '<div class="dr-syn-delta" id="dr-syn-delta"></div>' +
-            '</div>' +
-            '<div class="dr-dots" style="margin-top:8px;">' + dotsHtml + '</div>'
-        );
-
-        var penta   = document.getElementById('dr-syn-penta');
-        var totalEl = document.getElementById('dr-syn-total');
-        var deltaEl = document.getElementById('dr-syn-delta');
-
-        // SVG canvas (positioned absolute over penta, pointer-events:none)
-        var svgEl = document.createElementNS(NS, 'svg');
-        svgEl.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
-        penta.appendChild(svgEl);
-
-        // Hero slots — positioned by JS after layout
-        var SLOT_HALF = 25; // half of 50px slot
-        var slots = allyIds.map(function(heroId, i) {
-            var slot = document.createElement('div');
-            slot.id = 'dr-syn-slot-' + i;
-            slot.className = 'dr-syn-slot';
-            var img = document.createElement('img');
-            img.src = _icon(heroId);
-            img.className = 'dr-syn-av';
-            img.onerror = function() { this.style.opacity = 0; };
-            slot.appendChild(img);
-            penta.appendChild(slot);
-            return slot;
-        });
-
-        // ── Fade in screen ───────────────────────────────────────────
-        var overlay = document.getElementById('dr-bg-overlay');
-        if (overlay) gsap.to(overlay, {opacity: 0.2, duration: 0.5});
-        synScreen.style.display = 'block';
-        gsap.fromTo(synScreen, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power2.out'});
-
-        await sleep(200);
-        if (_drafterSkip) return;
-
-        // ── Pentagon geometry ────────────────────────────────────────
-        var RADIUS   = 88;
-        var pentaW   = penta.offsetWidth || 300;
-        var cx       = pentaW / 2;
-        var cy       = RADIUS + 30;                            // top vertex at y=30
-        var bottomY  = cy + RADIUS * Math.sin(2 * Math.PI / 5); // ≈ cy+71
-        var pentaH   = Math.ceil(bottomY + SLOT_HALF + 10);   // bottom slot edge + padding
-
-        var pts = allyIds.map(function(_, i) {
-            return {
-                x: cx + RADIUS * Math.cos(i * 2 * Math.PI / 5 - Math.PI / 2),
-                y: cy + RADIUS * Math.sin(i * 2 * Math.PI / 5 - Math.PI / 2)
-            };
-        });
-
-        // Apply geometry
-        penta.style.height = pentaH + 'px';
-        svgEl.setAttribute('width',   pentaW);
-        svgEl.setAttribute('height',  pentaH);
-        svgEl.setAttribute('viewBox', '0 0 ' + pentaW + ' ' + pentaH);
-
-        slots.forEach(function(slot, i) {
-            slot.style.left = (pts[i].x - SLOT_HALF) + 'px';
-            slot.style.top  = (pts[i].y - SLOT_HALF) + 'px';
-        });
-
-        // ── Hero entrance: simple fade-in with subtle scale ──────────
-        gsap.set(slots, {scale: 0.85, opacity: 0});
-        for (var hi = 0; hi < slots.length; hi++) {
-            if (_drafterSkip) return;
-            gsap.to(slots[hi], {scale: 1, opacity: 1, duration: 0.3, ease: 'power2.out'});
-            await sleep(110);
-        }
-
-        await sleep(240);
-        if (_drafterSkip) return;
-
-        // ── SVG helpers ──────────────────────────────────────────────
-        function mkSvg(tag, attrs) {
-            var el = document.createElementNS(NS, tag);
-            Object.keys(attrs).forEach(function(k) { el.setAttribute(k, attrs[k]); });
-            return el;
-        }
-
-        // Perimeter = adjacent vertices (index diff 1 or wraps 0↔n-1)
-        var N = allyIds.length;
-        function isPerimeter(i1, i2) {
-            var a = Math.min(i1, i2), b = Math.max(i1, i2);
-            return (b - a === 1) || (a === 0 && b === N - 1);
-        }
-
-        // Build two-layer bezier (glow + main), returns {glow, main}
-        function buildBezier(i1, i2, color, intensity) {
-            var p1 = pts[i1], p2 = pts[i2];
-            var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-            var dx = cx - mx, dy = cy - my;
-            var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            var ux = dx / dist, uy = dy / dist;
-            // Perimeter bends outward (negative = away from center)
-            // Diagonals bend inward (positive = toward center)
-            var off = isPerimeter(i1, i2)
-                ? -(28 + intensity * 14)
-                :  (22 + intensity * 10);
-            var cpx = mx + ux * off, cpy = my + uy * off;
-            var d = 'M ' + p1.x.toFixed(1) + ' ' + p1.y.toFixed(1)
-                  + ' Q ' + cpx.toFixed(1) + ' ' + cpy.toFixed(1)
-                  + ' ' + p2.x.toFixed(1) + ' ' + p2.y.toFixed(1);
-
-            var glow = mkSvg('path', {d: d, stroke: color, 'stroke-width': '7',
-                                      fill: 'none', 'stroke-linecap': 'round'});
-            glow.style.opacity = '0';
-            var main = mkSvg('path', {d: d, stroke: color, 'stroke-width': '2',
-                                      fill: 'none', 'stroke-linecap': 'round'});
-            main.style.opacity = '0';
-            svgEl.appendChild(glow);
-            svgEl.appendChild(main);
-
-            var len = main.getTotalLength();
-            gsap.set(main, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
-            gsap.set(glow, {attr: {'stroke-dasharray': len, 'stroke-dashoffset': len}});
-            return {glow: glow, main: main};
-        }
-
-        // ── 10 пар ──────────────────────────────────────────────────
-        var running = 0;
-
-        for (var pi = 0; pi < synPairs.length; pi++) {
-            if (_drafterSkip) return;
-
-            var pair  = synPairs[pi];
-            var idx1  = allyIds.indexOf(pair.hero_id1);
-            var idx2  = allyIds.indexOf(pair.hero_id2);
-            if (idx1 < 0 || idx2 < 0) continue;
-
-            var val       = pair.value;
-            var intensity = Math.min(Math.abs(val) / 18, 1);
-            var lineColor = val > 0 ? '#50d29b' : '#dc5046';
-
-            // Progress dots
-            if (pi > 0) {
-                var pd = document.getElementById('dr-syn-dot-' + (pi - 1));
-                if (pd) pd.className = 'dr-dot ' + (synPairs[pi-1].value >= 0 ? 'dr-dot-win' : 'dr-dot-loss');
-            }
-            var cd = document.getElementById('dr-syn-dot-' + pi);
-            if (cd) cd.className = 'dr-dot dr-dot-active';
-
-            // Highlight active pair, dim rest
-            slots.forEach(function(sl, si) {
-                var on = si === idx1 || si === idx2;
-                gsap.to(sl, {opacity: on ? 1 : 0.2, scale: on ? 1.1 : 1,
-                             duration: 0.18, ease: 'power2.out'});
-            });
-
-            await sleep(80);
-            if (_drafterSkip) return;
-
-            // Draw bezier
-            svgEl.innerHTML = '';
-            var bez = buildBezier(idx1, idx2, lineColor, intensity);
-
-            // Endpoint dots
-            [idx1, idx2].forEach(function(i) {
-                svgEl.appendChild(mkSvg('circle', {
-                    cx: pts[i].x.toFixed(1), cy: pts[i].y.toFixed(1),
-                    r: '4', fill: lineColor
-                }));
-            });
-
-            gsap.to(bez.main, {attr: {'stroke-dashoffset': 0}, opacity: 1,
-                               duration: 0.35, ease: 'power2.inOut'});
-            gsap.to(bez.glow, {attr: {'stroke-dashoffset': 0}, opacity: 0.22,
-                               duration: 0.35, ease: 'power2.inOut'});
-
-            // Score counter (total stays in place)
-            var newRunning = running + val;
-            (function(from, to) {
-                var obj = {v: from};
-                gsap.to(obj, {v: to, duration: 0.35, ease: 'power2.out',
-                    onUpdate: function() {
-                        var sign = obj.v > 0.05 ? '+' : (obj.v < -0.05 ? '' : '+');
-                        totalEl.textContent = sign + obj.v.toFixed(1);
-                        totalEl.style.color = obj.v > 0.5  ? '#50d29b'
-                                            : obj.v < -0.5 ? '#dc5046' : '#e5c875';
-                    }
-                });
-            })(running, newRunning);
-            running = newRunning;
-
-            // Delta: slide up from below, then exit upward
-            var dSign = val >= 0 ? '+' : '';
-            deltaEl.textContent = dSign + val.toFixed(1);
-            deltaEl.style.color = lineColor;
-            gsap.fromTo(deltaEl, {opacity: 0, y: 12}, {opacity: 1, y: 0,
-                                  duration: 0.25, ease: 'power2.out'});
-
-            await sleep(480);
-            if (_drafterSkip) return;
-
-            gsap.to([bez.main, bez.glow], {opacity: 0, duration: 0.2});
-            gsap.to(deltaEl, {opacity: 0, y: -10, duration: 0.22, ease: 'power2.in'});
-
-            await sleep(160);
-        }
-
-        // Mark last dot
-        var lastDot = document.getElementById('dr-syn-dot-' + (synPairs.length - 1));
-        if (lastDot) {
-            lastDot.className = 'dr-dot ' + (synPairs[synPairs.length - 1].value >= 0
-                                             ? 'dr-dot-win' : 'dr-dot-loss');
-        }
-
-        if (_drafterSkip) return;
-
-        // Reset all heroes, clear SVG
-        slots.forEach(function(sl) { gsap.to(sl, {opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(1)'}); });
-        gsap.set(deltaEl, {opacity: 0, y: 0});
-        svgEl.innerHTML = '';
-
-        await sleep(280);
-        if (_drafterSkip) return;
-
-        // ── Final score card ─────────────────────────────────────────
-        var finalScore = data.synergy_score || 0;
-        var cardColor  = finalScore >= 24 ? '#50d29b' : finalScore >= 16 ? '#e5c875' : '#dc5046';
-
-        var card = document.createElement('div');
-        card.className = 'dr-syn-card';
-        card.innerHTML = (
-            '<div class="dr-syn-card-label">СИНЕРГИЯ</div>' +
-            '<div class="dr-syn-card-val" id="dr-syn-fval" style="color:' + cardColor + ';">0.0</div>' +
-            '<div class="dr-syn-card-sub">из 33 очков</div>'
-        );
-        synScreen.appendChild(card);
-
-        gsap.fromTo(card, {opacity: 0, scale: 0.88, y: 8},
-                          {opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'back.out(1.5)'});
-
-        var fvalEl = document.getElementById('dr-syn-fval');
-        var cnt = {v: 0};
-        gsap.to(cnt, {v: finalScore, duration: 0.7, ease: 'power2.out',
-            onUpdate: function() { fvalEl.textContent = cnt.v.toFixed(1); }
-        });
-
-        await sleep(2200);
-        if (_drafterSkip) return;
-
-        // Fade out and hand off to showFinal
-        gsap.to(synScreen, {opacity: 0, duration: 0.4, ease: 'power2.in', onComplete: function() {
-            synScreen.style.display = 'none';
-            gsap.set(synScreen, {opacity: 1});
-        }});
-        await sleep(420);
-    }
-
-    async function runBattles() {
-        for (var i = 0; i < duels.length; i++) {
-            if (_drafterSkip) return;
-            await playBattle(i, duels[i]);
-        }
-        if (_drafterSkip) return;
-        gsap.set(battleScreen, {clearProps: 'x'});
-        battleScreen.style.display = 'none';
-        await playSynergy();
-        if (_drafterSkip) return;
+    function skipAnim() {
+        if (_skip) return;
+        _skip = true;
+        try { gsap.globalTimeline.clear(); } catch(e) {}
+        confrontScreen.style.display = 'none';
+        synergyScreen.style.display  = 'none';
+        gsap.set([confrontScreen, synergyScreen], {clearProps: 'opacity,scale'});
         var sb = document.getElementById('dr-skip-btn');
         if (sb) sb.remove();
         showFinal();
     }
 
-    // ── Шаг 2: финальный экран ───────────────────────────────────────────
-    function showFinal() {
-        var sb = document.getElementById('dr-skip-btn');
-        if (sb) sb.remove();
-
-        var _sfOverlay = document.getElementById('dr-bg-overlay');
-        if (_sfOverlay) gsap.to(_sfOverlay, {opacity: 0, duration: 0.5, ease: 'power2.out'});
-
-        var total = Math.round(data.total_score || 0);
-        var rank, rankColor, rankDesc, rankGlow;
-        if (total >= 85) {
-            rank = 'SSS'; rankColor = '#fbbf24'; rankDesc = 'Абсолютный драфтер';             rankGlow = true;
-        } else if (total >= 80) {
-            rank = 'S';   rankColor = '#fbbf24'; rankDesc = 'Как ты это сделал?';           rankGlow = true;
-        } else if (total >= 65) {
-            rank = 'A';   rankColor = '#a78bfa'; rankDesc = 'Хороший драфт!';               rankGlow = false;
-        } else if (total >= 50) {
-            rank = 'B';   rankColor = '#60a5fa'; rankDesc = 'Неплохо, но можно лучше';      rankGlow = false;
-        } else {
-            rank = 'C';   rankColor = '#9ca3af'; rankDesc = 'Надо тренироваться, братанчик'; rankGlow = false;
-        }
-
-        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
-        var isRecord = total > best;
-        if (isRecord) {
-            localStorage.setItem('drafter_best_score', total);
-            var bestLabel = document.getElementById('drafter-best-score');
-            if (bestLabel) bestLabel.textContent = total;
-        }
-
-        // ── Битвы линий ──────────────────────────────────────────────────
-        var laneCardsHtml = duels.map(function(duel) {
-            var synColor = duel.win ? '#10b981' : '#ef4444';
-            var absSyn   = Math.abs(duel.synergy || 0);
-            var pct      = Math.min(95, Math.max(15, 50 + absSyn * 4));
-            var pctRound = Math.round(pct);
-
-            var allyAvatars = (duel.ally_heroes || []).map(function(h) {
-                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
-            }).join('');
-            var enemyAvatars = (duel.enemy_heroes || []).map(function(h) {
-                return '<div class="lane-avatar"><img src="' + _icon(h.hero_id) + '" width="24" height="24" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
-            }).join('');
-
-            // Победившая половина: наша (левая) если win, вражеская (правая) если нет
-            var allyFillHtml  = duel.win
-                ? '<div class="lane-ally-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#10b981;"></div>'
-                : '';
-            var enemyFillHtml = !duel.win
-                ? '<div class="lane-enemy-fill" data-pct="' + pctRound + '" style="width:0%;height:100%;background:#ef4444;"></div>'
-                : '';
-
-            // Подпись: одно число, прижатое к победившей стороне
-            var labelHtml = duel.win
-                ? '<span class="lane-bar-val" style="color:#10b981;">' + pctRound + '%</span><span></span>'
-                : '<span></span><span class="lane-bar-val" style="color:#ef4444;text-align:right;">' + pctRound + '%</span>';
-
-            return (
-                '<div class="lane-card">' +
-                    '<div class="lane-header">' +
-                        '<span style="font-size:11px;font-weight:700;color:#e5e7eb;">' + duel.name + '</span>' +
-                        '<span style="font-size:11px;font-weight:700;color:' + synColor + ';">' + (duel.synergy != null ? duel.synergy.toFixed(2) : '\u2014') + '</span>' +
-                    '</div>' +
-                    '<div class="lane-teams">' +
-                        '<div class="lane-team">' +
-                            '<div class="lane-team-label">\u041c\u042b</div>' +
-                            '<div class="lane-heroes">' + allyAvatars + '</div>' +
-                        '</div>' +
-                        '<div class="lane-team right">' +
-                            '<div class="lane-team-label" style="text-align:right;">\u0412\u0420\u0410\u0413\u0418</div>' +
-                            '<div class="lane-heroes">' + enemyAvatars + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="lane-bar-center">' +
-                        '<div class="lane-bar-ally-half">' + allyFillHtml + '</div>' +
-                        '<div class="lane-bar-enemy-half">' + enemyFillHtml + '</div>' +
-                    '</div>' +
-                    '<div class="lane-bar-labels">' + labelHtml + '</div>' +
-                '</div>'
-            );
-        }).join('');
-
-        // ── Ключевые матчапы ─────────────────────────────────────────────
-        var comments = data.comments || [];
-        var matchupCardsHtml = comments.slice(0, 4).map(function(c) {
-            if (c.kind === 'synergy') {
-                var n1   = _name(c.hero_id1);
-                var n2   = _name(c.hero_id2);
-                var sign = c.value >= 0 ? '+' : '';
-                return (
-                    '<div class="matchup-card" style="border-left:2px solid #8b5cf6;background:rgba(139,92,246,0.08);">' +
-                        '<div class="mc-heroes">' +
-                            '<div class="mc-av"><img src="' + _icon(c.hero_id1) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                            '<span class="mc-sep">+</span>' +
-                            '<div class="mc-av"><img src="' + _icon(c.hero_id2) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                        '</div>' +
-                        '<div class="mc-info">' +
-                            '<div class="mc-text">' + n1 + ' + ' + n2 + '</div>' +
-                            '<div style="font-size:8px;color:#8b5cf6;">\u0421\u0438\u043d\u0435\u0440\u0433\u0438\u044f</div>' +
-                        '</div>' +
-                        '<div class="mc-val" style="color:#8b5cf6;">' + sign + c.value.toFixed(1) + '</div>' +
-                    '</div>'
-                );
-            }
-            if (c.kind === 'matchup') {
-                var allyName  = _name(c.ally_hero_id);
-                var enemyName = _name(c.enemy_hero_id);
-                if (c.value > 0) {
-                    return (
-                        '<div class="matchup-card" style="border-left:2px solid #10b981;background:rgba(16,185,129,0.08);">' +
-                            '<div class="mc-heroes">' +
-                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                                '<span class="mc-sep">vs</span>' +
-                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                            '</div>' +
-                            '<div class="mc-info">' +
-                                '<div class="mc-text">' + allyName + ' \u043a\u043e\u043d\u0442\u0440\u0438\u0442</div>' +
-                                '<div style="font-size:8px;color:#10b981;">' + enemyName + '</div>' +
-                            '</div>' +
-                            '<div class="mc-val" style="color:#10b981;">+' + c.value.toFixed(1) + '</div>' +
-                        '</div>'
-                    );
-                } else {
-                    return (
-                        '<div class="matchup-card" style="border-left:2px solid #ef4444;background:rgba(239,68,68,0.08);">' +
-                            '<div class="mc-heroes">' +
-                                '<div class="mc-av"><img src="' + _icon(c.ally_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                                '<span class="mc-sep">vs</span>' +
-                                '<div class="mc-av"><img src="' + _icon(c.enemy_hero_id) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>' +
-                            '</div>' +
-                            '<div class="mc-info">' +
-                                '<div class="mc-text">' + allyName + ' \u043f\u0440\u043e\u0438\u0433\u0440\u044b\u0432\u0430\u0435\u0442</div>' +
-                                '<div style="font-size:8px;color:#ef4444;">' + enemyName + '</div>' +
-                            '</div>' +
-                            '<div class="mc-val" style="color:#ef4444;">' + c.value.toFixed(1) + '</div>' +
-                        '</div>'
-                    );
-                }
-            }
-            return '';
-        }).join('');
-
-        var warnComment = comments.find(function(c) { return c.type === 'warn' && c.kind === 'position'; });
-        var warnCardHtml = '';
-        if (warnComment && warnComment.hero_ids && warnComment.hero_ids.length > 0) {
-            var avatarsHtml = warnComment.hero_ids.map(function(hid) {
-                return '<div class="mc-av"><img src="' + _icon(hid) + '" width="22" height="22" style="object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'"></div>';
-            }).join('');
-            warnCardHtml = (
-                '<div class="matchup-card" style="border-left:2px solid #f59e0b;background:rgba(245,158,11,0.08);">' +
-                    '<div class="mc-heroes">' + avatarsHtml + '</div>' +
-                    '<div class="mc-info">' +
-                        '<div class="mc-text" style="color:#f59e0b;">\u043d\u0430 \u043d\u0435\u0442\u0438\u043f\u0438\u0447\u043d\u043e\u0439 \u043f\u043e\u0437\u0438\u0446\u0438\u0438</div>' +
-                    '</div>' +
-                    '<div class="mc-val" style="color:#f59e0b;">&#x26A0;</div>' +
-                '</div>'
-            );
-        }
-
-        finalScreen.style.display = 'block';
-        finalScreen.innerHTML = (
-            '<div class="dr-fin-wrap">' +
-                '<div class="dr-fin-rank-wrap" style="display:flex;flex-direction:column;align-items:center;width:100%;">' +
-                    '<div class="dr-fin-rank-label">\u0422\u0412\u041e\u042f \u041e\u0426\u0415\u041d\u041a\u0410</div>' +
-                    '<div class="dr-fin-letter" id="dr-fin-letter" style="color:' + rankColor + ';opacity:0;">' + rank + '</div>' +
-                    (isRecord ? '<div class="dr-fin-record">\ud83c\udfc6 \u041d\u043e\u0432\u044b\u0439 \u0440\u0435\u043a\u043e\u0440\u0434!</div>' : '') +
-                    '<div class="dr-fin-desc">' + rankDesc + '</div>' +
-                '</div>' +
-                '<div style="width:100%;margin-bottom:6px;">' +
-                    '<div class="dr-fin-block-title">\u0411\u0418\u0422\u0412\u042b \u041b\u0418\u041d\u0418\u0419</div>' +
-                    '<div>' + laneCardsHtml + '</div>' +
-                '</div>' +
-                (matchupCardsHtml || warnCardHtml ? (
-                    '<div style="width:100%;margin-bottom:6px;">' +
-                        '<div class="dr-fin-block-title">\u041a\u041b\u042e\u0427\u0415\u0412\u042b\u0415 \u041c\u0410\u0422\u0427\u0410\u041f\u042b</div>' +
-                        '<div>' + matchupCardsHtml + warnCardHtml + '</div>' +
-                    '</div>'
-                ) : '') +
-                '<button class="dr-fin-btn" id="dr-fin-btn" onclick="loadDrafterMatch()">\u27f3 \u041d\u041e\u0412\u042b\u0419 \u041c\u0410\u0422\u0427</button>' +
-            '</div>'
-        );
-
-        // Анимация прогресс-баров — только победившая половина
-        Array.from(finalScreen.querySelectorAll('.lane-card')).forEach(function(card, i) {
-            var fill = card.querySelector('.lane-ally-fill') || card.querySelector('.lane-enemy-fill');
-            if (!fill) return;
-            var pct      = parseFloat(fill.getAttribute('data-pct'));
-            var barDelay = 0.3 + (2 + i) * 0.12 + 0.4;
-            gsap.fromTo(fill, {width: '0%'}, {width: pct + '%', duration: 0.8, ease: 'power2.out', delay: barDelay});
-        });
-
-        // Буква — отдельная pop-анимация (rank-pop)
-        var letterEl = document.getElementById('dr-fin-letter');
-        gsap.fromTo(letterEl,
-            {scale: 0.05, opacity: 0},
-            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)', delay: 0.5, onComplete: function() {
-                if (rankGlow) {
-                    gsap.to(letterEl, {textShadow: '0 0 30px rgba(251,191,36,0.9)', yoyo: true, repeat: -1, duration: 1.5, ease: 'sine.inOut'});
-                }
-            }}
-        );
-
-        // Stagger-анимация в DOM-порядке — охватывает все видимые элементы включая заголовки секций
-        var animEls = Array.from(finalScreen.querySelectorAll(
-            '.dr-fin-rank-wrap, .dr-fin-block-title, .lane-card, .matchup-card, #dr-fin-btn'
-        ));
-        gsap.fromTo(animEls,
-            {opacity: 0, y: 16},
-            {opacity: 1, y: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out', delay: 0.3}
-        );
-    }
-
-    // Skip button — top-right pill, appended to body so position:fixed is viewport-relative
     var _skipBtn = document.createElement('button');
     _skipBtn.id = 'dr-skip-btn';
     _skipBtn.className = 'dr-skip-btn';
     _skipBtn.textContent = 'Пропустить';
-    _skipBtn.addEventListener('click', skipDrafterAnim);
-    document.body.appendChild(_skipBtn);
-    gsap.fromTo(_skipBtn, {opacity: 0, x: 12}, {opacity: 1, x: 0, duration: 0.35, delay: 0.5, ease: 'power2.out'});
+    _skipBtn.addEventListener('click', skipAnim);
+    // Append to <html> so no body-level wrapper, transform, or overflow can
+    // break position: fixed in mobile WebViews.
+    document.documentElement.appendChild(_skipBtn);
+    _skipBtn.style.opacity = '0';
+    setTimeout(function() {
+        _skipBtn.style.transition = 'opacity 0.35s ease-out';
+        _skipBtn.style.opacity = '1';
+    }, 400);
 
-    runBattles();
+    // ─── STEP 1 · ПРОТИВОСТОЯНИЕ (1А сильнейший → 1Б слабейший) ─────
+    async function playConfront() {
+        if (!allyIds.length || !enemyIds.length || !matchupPairs.length) return;
+
+        function pairValue(allyId, enemyId) {
+            for (var k = 0; k < matchupPairs.length; k++) {
+                var p = matchupPairs[k];
+                if (p.ally_id === allyId && p.enemy_id === enemyId) return p.value;
+            }
+            return 0;
+        }
+
+        var allyTotals = allyIds.map(function(allyId) {
+            var perEnemy = enemyIds.map(function(enemyId) {
+                return { enemyId: enemyId, value: pairValue(allyId, enemyId) };
+            });
+            var sum = perEnemy.reduce(function(s, e) { return s + e.value; }, 0);
+            return { allyId: allyId, sum: sum, perEnemy: perEnemy };
+        });
+
+        var sorted = allyTotals.slice().sort(function(a, b) { return b.sum - a.sum; });
+        var strongest = sorted[0];
+        var weakest   = sorted[sorted.length - 1];
+
+        function cardHtml(side, t) {
+            var labelText  = side === 'best' ? 'СИЛЬНЕЙШИЙ' : 'СЛАБЕЙШИЙ';
+            var labelColor = side === 'best' ? 'var(--positive)' : 'var(--negative)';
+            var sumColor   = t.sum > 0.5 ? 'var(--positive)' : t.sum < -0.5 ? 'var(--negative)' : 'var(--warning)';
+
+            var rowsHtml = t.perEnemy.map(function(e) {
+                var c = e.value > 0.1 ? 'var(--positive)'
+                      : e.value < -0.1 ? 'var(--negative)'
+                      : 'rgba(255,255,255,0.18)';
+                var w = Math.min(100, Math.abs(e.value) * 14);
+                var posClass = e.value >= 0 ? 'is-pos' : 'is-neg';
+                return (
+                    '<div class="dr-cf-row">' +
+                        '<img class="dr-cf-row-icon" src="' + _icon(e.enemyId) + '" onerror="this.style.opacity=0">' +
+                        '<div class="dr-cf-row-bar">' +
+                            '<div class="dr-cf-row-mid"></div>' +
+                            '<div class="dr-cf-row-fill ' + posClass + '" data-pct="' + w.toFixed(1) + '" style="background:' + c + ';width:0%;"></div>' +
+                        '</div>' +
+                        '<div class="dr-cf-row-val" style="color:' + c + ';">' + (e.value >= 0 ? '+' : '') + e.value.toFixed(1) + '</div>' +
+                    '</div>'
+                );
+            }).join('');
+
+            return (
+                '<div class="dr-cf-card dr-cf-card--' + side + ' dr-cf-card--solo">' +
+                    '<div class="dr-cf-card-label" style="color:' + labelColor + ';">' + labelText + '</div>' +
+                    '<div class="dr-cf-card-portrait">' +
+                        '<img src="' + _icon(t.allyId) + '" onerror="this.style.opacity=0">' +
+                    '</div>' +
+                    '<div class="dr-cf-card-name">' + _name(t.allyId) + '</div>' +
+                    '<div class="dr-cf-card-total" style="color:' + sumColor + ';" data-target="' + t.sum.toFixed(2) + '">+0.0</div>' +
+                    '<div class="dr-cf-card-rowlabel">vs враги</div>' +
+                    '<div class="dr-cf-card-rows">' + rowsHtml + '</div>' +
+                '</div>'
+            );
+        }
+
+        confrontScreen.style.display = 'block';
+
+        async function showBeat(side, t) {
+            confrontScreen.innerHTML = (
+                '<div class="dr-cf-grid dr-cf-grid--single">' +
+                    cardHtml(side, t) +
+                '</div>'
+            );
+
+            var card = confrontScreen.querySelector('.dr-cf-card');
+
+            gsap.set(card, {opacity: 0, y: 20});
+            gsap.to(card,  {opacity: 1, y: 0, duration: 0.55, ease: 'power3.out'});
+
+            await sleep(720);
+            if (_skip) return;
+
+            var totalEl = card.querySelector('.dr-cf-card-total');
+            var target  = parseFloat(totalEl.getAttribute('data-target'));
+            var c = {v: 0};
+            gsap.to(c, {
+                v: target, duration: 0.8, ease: 'power2.out',
+                onUpdate: function() {
+                    totalEl.textContent = (c.v >= 0 ? '+' : '') + c.v.toFixed(1);
+                }
+            });
+
+            var fills = card.querySelectorAll('.dr-cf-row-fill');
+            fills.forEach(function(fill, fi) {
+                var pct = parseFloat(fill.getAttribute('data-pct'));
+                gsap.to(fill, {
+                    width: pct + '%',
+                    duration: 0.5,
+                    delay: 0.18 + fi * 0.05,
+                    ease: 'power2.out'
+                });
+            });
+
+            await sleep(2200);
+            if (_skip) return;
+
+            gsap.to(confrontScreen, {opacity: 0, duration: 0.35, ease: 'power2.in'});
+            await sleep(380);
+            gsap.set(confrontScreen, {opacity: 1});
+        }
+
+        await showBeat('best',  strongest);
+        if (_skip) return;
+        await showBeat('worst', weakest);
+        if (_skip) return;
+
+        confrontScreen.style.display = 'none';
+    }
+
+    // ─── STEP 2 · СИНЕРГИЯ — pentagon redone ────────────────────────
+    async function playSynergy() {
+        if (allyIds.length < 2 || !synergyPairs.length) return;
+
+        var W    = Math.min(340, document.documentElement.clientWidth - 40);
+        var H    = W;
+        var cx   = W / 2;
+        var cy   = H / 2;
+        var R    = W * 0.36;
+        var SLOT = 54;
+
+        var pts = allyIds.map(function(_, i) {
+            var ang = i * 2 * Math.PI / 5 - Math.PI / 2;
+            return { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) };
+        });
+
+        function pairValue(i, j) {
+            var a = allyIds[i], b = allyIds[j];
+            for (var k = 0; k < synergyPairs.length; k++) {
+                var p = synergyPairs[k];
+                if ((p.hero_id1 === a && p.hero_id2 === b) ||
+                    (p.hero_id1 === b && p.hero_id2 === a)) return p.value;
+            }
+            return 0;
+        }
+
+        var allValues = [];
+        var edges = [];
+        for (var i = 0; i < allyIds.length; i++) {
+            for (var j = i + 1; j < allyIds.length; j++) {
+                var v = pairValue(i, j);
+                allValues.push(v);
+                edges.push({ i: i, j: j, v: v });
+            }
+        }
+        var maxAbs = Math.max.apply(null, allValues.map(function(v) { return Math.abs(v); }).concat([1]));
+        edges.forEach(function(e) { e.intensity = Math.abs(e.v) / maxAbs; });
+        edges.sort(function(a, b) { return Math.abs(a.v) - Math.abs(b.v); });
+
+        var sumSyn = allValues.reduce(function(s, v) { return s + v; }, 0);
+
+        var bgPolyPts = pts.map(function(p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+
+        var svg =
+            '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="overflow:visible;display:block;">' +
+                '<polygon class="dr-syn-frame" points="' + bgPolyPts + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3 4"/>' +
+                edges.map(function(e) {
+                    var p1 = pts[e.i], p2 = pts[e.j];
+                    var color = e.v > 0.1 ? '#3db87a' : e.v < -0.1 ? '#e5534b' : '#56565f';
+                    var sw    = 1 + e.intensity * 3.6;
+                    return '<line class="dr-syn-edge" data-i="' + e.i + '" data-j="' + e.j + '" data-v="' + e.v.toFixed(2) + '" ' +
+                           'x1="' + p1.x.toFixed(1) + '" y1="' + p1.y.toFixed(1) + '" ' +
+                           'x2="' + p2.x.toFixed(1) + '" y2="' + p2.y.toFixed(1) + '" ' +
+                           'stroke="' + color + '" stroke-width="' + sw.toFixed(2) + '" ' +
+                           'stroke-linecap="round" opacity="0" />';
+                }).join('') +
+            '</svg>';
+
+        var verticesHtml = pts.map(function(p, i) {
+            return '<div class="dr-syn-vertex" data-i="' + i + '" ' +
+                   'style="left:' + (p.x - SLOT/2).toFixed(1) + 'px;top:' + (p.y - SLOT/2).toFixed(1) + 'px;width:' + SLOT + 'px;height:' + SLOT + 'px;">' +
+                       '<img src="' + _icon(allyIds[i]) + '" onerror="this.style.opacity=0">' +
+                   '</div>';
+        }).join('');
+
+        synergyScreen.innerHTML = (
+            '<div class="dr-step-label">СОЮЗНАЯ СИНЕРГИЯ</div>' +
+            '<div class="dr-syn-stage" style="width:' + W + 'px;height:' + H + 'px;">' +
+                svg + verticesHtml +
+            '</div>' +
+            '<div class="dr-syn-summary">' +
+                '<span class="dr-syn-summary-label">Сумма</span>' +
+                '<span class="dr-syn-summary-val" id="dr-syn-cval">+0.0</span>' +
+            '</div>'
+        );
+
+        synergyScreen.style.display = 'flex';
+
+        var stepEl   = synergyScreen.querySelector('.dr-step-label');
+        var stage    = synergyScreen.querySelector('.dr-syn-stage');
+        var frame    = synergyScreen.querySelector('.dr-syn-frame');
+        var vertices = synergyScreen.querySelectorAll('.dr-syn-vertex');
+        var edgeEls  = synergyScreen.querySelectorAll('.dr-syn-edge');
+        var summary  = synergyScreen.querySelector('.dr-syn-summary');
+        var cValEl   = document.getElementById('dr-syn-cval');
+
+        gsap.set(stepEl,   {opacity: 0, y: -8});
+        gsap.set(stage,    {opacity: 0, scale: 0.92});
+        gsap.set(vertices, {opacity: 0, scale: 0.4});
+        gsap.set(summary,  {opacity: 0, y: 8});
+        gsap.set(frame,    {opacity: 0});
+
+        gsap.to(stepEl, {opacity: 1, y: 0, duration: 0.4, ease: 'power2.out'});
+        gsap.to(stage,  {opacity: 1, scale: 1, duration: 0.55, delay: 0.1, ease: 'power3.out'});
+        gsap.to(frame,  {opacity: 1, duration: 0.6, delay: 0.25, ease: 'power2.out'});
+
+        await sleep(380);
+        if (_skip) return;
+
+        gsap.to(vertices, {
+            opacity: 1, scale: 1, duration: 0.55,
+            stagger: { each: 0.07, from: 'start' },
+            ease: 'back.out(1.5)'
+        });
+
+        await sleep(700);
+        if (_skip) return;
+
+        for (var idx = 0; idx < edgeEls.length; idx++) {
+            if (_skip) return;
+            var edge = edgeEls[idx];
+            var len  = edge.getTotalLength();
+            edge.style.strokeDasharray  = len;
+            edge.style.strokeDashoffset = len;
+            edge.style.opacity = 1;
+
+            var pair = edges[idx];
+            var v1   = vertices[pair.i];
+            var v2   = vertices[pair.j];
+
+            gsap.to(edge, { strokeDashoffset: 0, duration: 0.30, ease: 'power2.inOut' });
+            gsap.fromTo([v1, v2],
+                { scale: 1 },
+                { scale: 1.10, duration: 0.16, yoyo: true, repeat: 1, ease: 'power1.inOut' });
+
+            await sleep(380);
+        }
+        if (_skip) return;
+
+        gsap.to(summary, {opacity: 1, y: 0, duration: 0.45, ease: 'power2.out'});
+        var cnt = {v: 0};
+        gsap.to(cnt, {
+            v: sumSyn, duration: 0.85, ease: 'power2.out',
+            onUpdate: function() {
+                cValEl.textContent = (cnt.v >= 0 ? '+' : '') + cnt.v.toFixed(1);
+                cValEl.style.color = cnt.v > 3 ? 'var(--positive)'
+                                  : cnt.v < -3 ? 'var(--negative)'
+                                  : 'var(--warning)';
+            }
+        });
+
+        await sleep(1500);
+        if (_skip) return;
+
+        gsap.to(synergyScreen, {opacity: 0, duration: 0.4, ease: 'power2.in'});
+        await sleep(420);
+        synergyScreen.style.display = 'none';
+        gsap.set(synergyScreen, {opacity: 1});
+    }
+
+    // ─── STEP 3 · МАТРИЦА + RANK ────────────────────────────────────
+    function showFinal() {
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+
+        var total = Math.round(data.total_score || 0);
+        var rank, rankColor, rankDesc;
+        if (total >= 85)      { rank = 'SSS'; rankColor = 'var(--warning)';  rankDesc = 'Абсолютный драфтер'; }
+        else if (total >= 80) { rank = 'S';   rankColor = 'var(--warning)';  rankDesc = 'Как ты это сделал?'; }
+        else if (total >= 65) { rank = 'A';   rankColor = 'var(--accent)';   rankDesc = 'Хороший драфт'; }
+        else if (total >= 50) { rank = 'B';   rankColor = 'var(--text-primary)'; rankDesc = 'Неплохо, но можно лучше'; }
+        else                  { rank = 'C';   rankColor = 'var(--text-secondary)'; rankDesc = 'Надо тренироваться, братанчик'; }
+
+        var best = parseInt(localStorage.getItem('drafter_best_score') || '0', 10);
+        var isRecord = total > best;
+        if (isRecord) localStorage.setItem('drafter_best_score', total);
+
+        function matchupValue(allyId, enemyId) {
+            for (var k = 0; k < matchupPairs.length; k++) {
+                var p = matchupPairs[k];
+                if (p.ally_id === allyId && p.enemy_id === enemyId) return p.value;
+            }
+            return 0;
+        }
+        function synergyValue(a, b) {
+            if (a === b) return null;
+            for (var k = 0; k < synergyPairs.length; k++) {
+                var p = synergyPairs[k];
+                if ((p.hero_id1 === a && p.hero_id2 === b) ||
+                    (p.hero_id1 === b && p.hero_id2 === a)) return p.value;
+            }
+            return 0;
+        }
+
+        var maxAbsMu  = matchupPairs.reduce(function(m, p) { return Math.max(m, Math.abs(p.value)); }, 1);
+        var maxAbsSyn = synergyPairs.reduce(function(m, p) { return Math.max(m, Math.abs(p.value)); }, 1);
+
+        function cellBg(v, maxAbs) {
+            if (v === null) return 'rgba(255,255,255,0.02)';
+            if (Math.abs(v) < 0.1) return 'rgba(255,255,255,0.03)';
+            var alpha = Math.min(0.45, 0.08 + Math.abs(v) / maxAbs * 0.40);
+            return v > 0
+                ? 'rgba(61, 184, 122, ' + alpha.toFixed(3) + ')'
+                : 'rgba(229, 83, 75, ' + alpha.toFixed(3) + ')';
+        }
+        function cellTxt(v) {
+            if (v === null)   return 'rgba(255,255,255,0.18)';
+            if (v > 0.5)      return '#a8e7c4';
+            if (v < -0.5)     return '#f3aaa6';
+            return 'var(--text-secondary)';
+        }
+        function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(1); }
+        function sumColorCls(s) {
+            return s > 0.5 ? 'var(--positive)' : s < -0.5 ? 'var(--negative)' : 'var(--warning)';
+        }
+
+        // ── Matrix 1: ally × enemy (advantage) ──────────────────────────
+        var muHeader = '<div class="dr-mx-cell dr-mx-corner"></div>' +
+            enemyIds.map(function(id) {
+                return '<div class="dr-mx-cell dr-mx-head dr-mx-head-enemy"><img src="' + _icon(id) + '" onerror="this.style.opacity=0"></div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>';
+
+        var muRows = allyIds.map(function(allyId) {
+            var rowSum = 0;
+            var cellsHtml = enemyIds.map(function(enemyId) {
+                var v = matchupValue(allyId, enemyId);
+                rowSum += v;
+                return '<div class="dr-mx-cell dr-mx-data" style="background:' + cellBg(v, maxAbsMu) + ';color:' + cellTxt(v) + ';">' + fmt(v) + '</div>';
+            }).join('');
+            return '<div class="dr-mx-row">' +
+                '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(allyId) + '" onerror="this.style.opacity=0"></div>' +
+                cellsHtml +
+                '<div class="dr-mx-cell dr-mx-rowsum" style="color:' + sumColorCls(rowSum) + ';">' + fmt(rowSum) + '</div>' +
+            '</div>';
+        }).join('');
+
+        var muColSums = enemyIds.map(function(enemyId) {
+            return allyIds.reduce(function(s, allyId) { return s + matchupValue(allyId, enemyId); }, 0);
+        });
+        var muGrand = muColSums.reduce(function(s, v) { return s + v; }, 0);
+        var muColRow = '<div class="dr-mx-row dr-mx-row-tot">' +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>' +
+            muColSums.map(function(s) {
+                return '<div class="dr-mx-cell dr-mx-colsum" style="color:' + sumColorCls(s) + ';">' + fmt(s) + '</div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-grand" style="color:' + (muGrand >= 0 ? 'var(--positive)' : 'var(--negative)') + ';">' + fmt(muGrand) + '</div>' +
+        '</div>';
+
+        // ── Matrix 2: ally × ally (synergy, symmetric) ──────────────────
+        var synHeader = '<div class="dr-mx-cell dr-mx-corner"></div>' +
+            allyIds.map(function(id) {
+                return '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(id) + '" onerror="this.style.opacity=0"></div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>';
+
+        var synRows = allyIds.map(function(rowId) {
+            var rowSum = 0;
+            var cellsHtml = allyIds.map(function(colId) {
+                var v = synergyValue(rowId, colId);
+                if (v === null) {
+                    return '<div class="dr-mx-cell dr-mx-data dr-mx-diag" style="background:' + cellBg(null) + ';color:' + cellTxt(null) + ';">—</div>';
+                }
+                rowSum += v;
+                return '<div class="dr-mx-cell dr-mx-data" style="background:' + cellBg(v, maxAbsSyn) + ';color:' + cellTxt(v) + ';">' + fmt(v) + '</div>';
+            }).join('');
+            return '<div class="dr-mx-row">' +
+                '<div class="dr-mx-cell dr-mx-head dr-mx-head-ally"><img src="' + _icon(rowId) + '" onerror="this.style.opacity=0"></div>' +
+                cellsHtml +
+                '<div class="dr-mx-cell dr-mx-rowsum" style="color:' + sumColorCls(rowSum) + ';">' + fmt(rowSum) + '</div>' +
+            '</div>';
+        }).join('');
+
+        var synColSums = allyIds.map(function(colId) {
+            return allyIds.reduce(function(s, rowId) {
+                var v = synergyValue(rowId, colId);
+                return s + (v === null ? 0 : v);
+            }, 0);
+        });
+        var synGrand = synColSums.reduce(function(s, v) { return s + v; }, 0) / 2;
+        var synColRow = '<div class="dr-mx-row dr-mx-row-tot">' +
+            '<div class="dr-mx-cell dr-mx-totals-head">Итог</div>' +
+            synColSums.map(function(s) {
+                return '<div class="dr-mx-cell dr-mx-colsum" style="color:' + sumColorCls(s) + ';">' + fmt(s) + '</div>';
+            }).join('') +
+            '<div class="dr-mx-cell dr-mx-grand" style="color:' + (synGrand >= 0 ? 'var(--positive)' : 'var(--negative)') + ';">' + fmt(synGrand) + '</div>' +
+        '</div>';
+
+        finalScreen.style.display = 'block';
+        finalScreen.innerHTML = (
+            '<div class="dr-fin-wrap">' +
+                '<div class="dr-fin-rank-block">' +
+                    '<div class="dr-fin-rank-label">ОЦЕНКА ДРАФТА</div>' +
+                    '<div class="dr-fin-rank-letter" id="dr-fin-letter" style="color:' + rankColor + ';">' + rank + '</div>' +
+                    '<div class="dr-fin-score" id="dr-fin-score" style="color:' + rankColor + ';">0</div>' +
+                    '<div class="dr-fin-desc">' + rankDesc + '</div>' +
+                    (isRecord ? '<div class="dr-fin-record">Новый рекорд</div>' : '') +
+                '</div>' +
+                '<div class="dr-fin-block">' +
+                    '<div class="dr-fin-block-title">МАТРИЦА ПРЕИМУЩЕСТВА</div>' +
+                    '<div class="dr-fin-block-sub">наши герои × вражеские</div>' +
+                    '<div class="dr-mx-grid">' +
+                        '<div class="dr-mx-row dr-mx-row-head">' + muHeader + '</div>' +
+                        muRows +
+                        muColRow +
+                    '</div>' +
+                '</div>' +
+                '<div class="dr-fin-block">' +
+                    '<div class="dr-fin-block-title">МАТРИЦА СИНЕРГИИ</div>' +
+                    '<div class="dr-fin-block-sub">наши герои между собой</div>' +
+                    '<div class="dr-mx-grid">' +
+                        '<div class="dr-mx-row dr-mx-row-head">' + synHeader + '</div>' +
+                        synRows +
+                        synColRow +
+                    '</div>' +
+                '</div>' +
+                '<button class="dr-fin-btn" onclick="loadDrafterMatch()">↻  НОВЫЙ МАТЧ</button>' +
+            '</div>'
+        );
+
+        var letterEl = document.getElementById('dr-fin-letter');
+        gsap.fromTo(letterEl,
+            {scale: 0.2, opacity: 0},
+            {scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.6)', delay: 0.15});
+
+        var scoreEl = document.getElementById('dr-fin-score');
+        var sCount = {v: 0};
+        gsap.to(sCount, {
+            v: total, duration: 1.1, ease: 'power2.out', delay: 0.45,
+            onUpdate: function() { scoreEl.textContent = Math.round(sCount.v); }
+        });
+
+        var dataCells = finalScreen.querySelectorAll('.dr-mx-data');
+        gsap.fromTo(dataCells,
+            {opacity: 0, scale: 0.85},
+            {
+                opacity: 1, scale: 1, duration: 0.32,
+                stagger: { each: 0.022, from: 'start' },
+                ease: 'power2.out', delay: 0.7
+            });
+
+        var staggerEls = Array.from(finalScreen.querySelectorAll(
+            '.dr-fin-rank-label, .dr-fin-desc, .dr-fin-record, .dr-fin-block-title, .dr-fin-block-sub, ' +
+            '.dr-mx-row-head .dr-mx-head, .dr-mx-row .dr-mx-head, .dr-mx-rowsum, ' +
+            '.dr-mx-row-tot .dr-mx-cell, .dr-fin-btn'
+        ));
+        gsap.fromTo(staggerEls,
+            {opacity: 0, y: 6},
+            {opacity: 1, y: 0, duration: 0.32, stagger: 0.025, ease: 'power2.out', delay: 0.1});
+    }
+
+    (async function runFlow() {
+        await playConfront();
+        if (_skip) return;
+        await playSynergy();
+        if (_skip) return;
+        var sb = document.getElementById('dr-skip-btn');
+        if (sb) sb.remove();
+        showFinal();
+    })();
 }
 
 function _drafterCommentText(c) {

@@ -1,3 +1,6 @@
+import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -6,6 +9,7 @@ import time
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +154,7 @@ from sqlalchemy.orm.attributes import flag_modified
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables, engine
 from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
-from backend.db import get_user_id_by_token, init_tokens_table, init_hero_matchups_cache_table, save_feedback
+from backend.db import get_user_id_by_token, create_token_for_user, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
@@ -165,6 +169,7 @@ from backend.stats_db import (
     get_hero_build_cache,
     get_app_cache_value,
     set_hero_build_cache,
+    get_latest_match_patch,
 )
 from backend.config import BAYESIAN_SMOOTHING_C
 
@@ -269,8 +274,77 @@ class TelegramUserData(BaseModel):
     photo_url: str | None = None
 
 
+class RefreshTokenRequest(BaseModel):
+    """Silent token refresh через валидный Telegram WebApp initData."""
+    init_data: str
+
+
+class RefreshTokenResponse(BaseModel):
+    token: str
+
+
+# ── Telegram WebApp initData validation ───────────────────────────────────
+# Максимальный возраст auth_date в initData (защита от replay).
+_INIT_DATA_MAX_AGE_SECONDS = 86400  # 24 часа
+
+
+def _validate_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
+    """Проверяет HMAC-подпись initData по схеме из документации Telegram.
+    Возвращает словарь параметров при успехе или None при ошибке."""
+    if not init_data:
+        return None
+    try:
+        pairs = parse_qsl(init_data, keep_blank_values=True)
+    except ValueError:
+        return None
+
+    params = dict(pairs)
+    received_hash = params.pop("hash", None)
+    if not received_hash:
+        return None
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(computed_hash, received_hash):
+        return None
+
+    try:
+        auth_date = int(params.get("auth_date", "0"))
+    except ValueError:
+        return None
+    if auth_date <= 0 or (time.time() - auth_date) > _INIT_DATA_MAX_AGE_SECONDS:
+        return None
+
+    return params
+
+
 
 # ========== API Endpoints ==========
+
+@app.post("/api/refresh_token", response_model=RefreshTokenResponse)
+async def refresh_token(data: RefreshTokenRequest):
+    """Выдаёт новый токен по валидному Telegram WebApp initData.
+    Нужен для silent refresh когда старый токен истёк (24ч),
+    чтобы пользователю не приходилось заново нажимать /start в боте."""
+    params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
+    if params is None:
+        raise HTTPException(status_code=401, detail="Invalid initData signature")
+
+    user_json = params.get("user")
+    if not user_json:
+        raise HTTPException(status_code=401, detail="No user in initData")
+
+    try:
+        user_payload = json.loads(user_json)
+        user_id = int(user_payload["id"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid user payload")
+
+    new_token = await asyncio.to_thread(create_token_for_user, user_id)
+    return RefreshTokenResponse(token=new_token)
+
 
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
@@ -1059,7 +1133,16 @@ async def api_meta():
     if raw is None:
         raise HTTPException(status_code=503, detail="dota_builds.json not found")
 
-    patch = raw.get("patch", "")
+    patch = raw.get("patch") or ""
+    if not patch:
+        fallback_patch = get_latest_match_patch()
+        if fallback_patch:
+            patch = fallback_patch
+            logger.info("[meta] patch from matches table: %s", patch)
+        else:
+            logger.info("[meta] patch unavailable (neither dota_builds nor matches)")
+    else:
+        logger.info("[meta] patch from dota_builds.json: %s", patch)
 
     pos_keys = ["pos%201", "pos%202", "pos%203", "pos%204", "pos%205"]
     # _DOTA_TO_STRATZ_POS: "pos%20N" -> "POSITION_N"
@@ -1114,6 +1197,24 @@ async def api_meta():
     _meta_cache = {"patch": patch, "positions": result_positions}
     _meta_cache_time = time.time()
     return _meta_cache
+
+
+@app.get("/api/news")
+async def api_news():
+    """Returns the most recent Dota 2 news item from the dota_news table.
+
+    Response: {"title": str, "link": str, "published_at": str|null} or {} when empty.
+    """
+    rows = await asyncio.to_thread(get_latest_news_guids, 1)
+    if not rows:
+        return {}
+    row = rows[0]
+    published = row.get("published_at")
+    return {
+        "title": row.get("title") or "",
+        "link": row.get("link") or "",
+        "published_at": published.isoformat() if published is not None else None,
+    }
 
 
 class FeedbackRequest(BaseModel):
@@ -1265,61 +1366,7 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     ally_ids = [h.hero_id for h in data.ally]
     enemy_ids = [h.hero_id for h in data.enemy]
 
-    # ── position maps ──────────────────────────────────────────────────────
-    # Keys are normalised to "pos N" so lookups work regardless of input format
-    ally_by_pos: dict[str, int] = {}
-    for h in data.ally:
-        num = _pos_str_to_num(h.position)
-        if num is not None:
-            ally_by_pos[f"pos {num}"] = h.hero_id
-
-    enemy_by_pos: dict[str, int] = {}
-    for h in data.enemy:
-        num = _pos_str_to_num(h.position)
-        if num is not None:
-            enemy_by_pos[f"pos {num}"] = h.hero_id
-
-    # ── helpers ───────────────────────────────────────────────────────────
-    def _vs(ally_id: int | None, enemy_id: int | None) -> float:
-        if ally_id is None or enemy_id is None:
-            return 0.0
-        return float((matchups.get(str(ally_id)) or {}).get("vs", {}).get(str(enemy_id), {}).get("synergy", 0.0))
-
-    def _lane_syn(ally_pos_ids: list[int | None], enemy_pos_ids: list[int | None]) -> float:
-        vals = [_vs(a, e) for a in ally_pos_ids for e in enemy_pos_ids]
-        return sum(vals) / len(vals) if vals else 0.0
-
-    # ── 3 битвы линий ─────────────────────────────────────────────────────
-    # Лёгкая: наши pos1+pos5 vs вражеские pos3+pos4
-    a_easy  = [ally_by_pos.get("pos 1"),  ally_by_pos.get("pos 5")]
-    e_easy  = [enemy_by_pos.get("pos 3"), enemy_by_pos.get("pos 4")]
-    # Мид:    наш pos2 vs вражеский pos2
-    a_mid   = [ally_by_pos.get("pos 2")]
-    e_mid   = [enemy_by_pos.get("pos 2")]
-    # Сложная: наши pos3+pos4 vs вражеские pos1+pos5
-    a_hard  = [ally_by_pos.get("pos 3"),  ally_by_pos.get("pos 4")]
-    e_hard  = [enemy_by_pos.get("pos 1"), enemy_by_pos.get("pos 5")]
-
-    def _lane_entry(name: str, a_ids: list, e_ids: list) -> dict:
-        syn = _lane_syn(a_ids, e_ids)
-        return {
-            "name": name,
-            "ally_heroes":  [{"hero_id": hid} for hid in a_ids if hid is not None],
-            "enemy_heroes": [{"hero_id": hid} for hid in e_ids if hid is not None],
-            "synergy": round(syn, 2),
-            "win": syn > 0,
-        }
-
-    duels = [
-        _lane_entry("Лёгкая линия", a_easy, e_easy),
-        _lane_entry("Мид",          a_mid,  e_mid),
-        _lane_entry("Сложная линия", a_hard, e_hard),
-    ]
-
-    # ── Компонент 1: Линии (0-33.33) — 100/9 за победу на линии ────────────
-    lane_component = sum(100.0 / 9 if d["win"] else 0.0 for d in duels)
-
-    # ── Компонент 2: Синергия команды (0-33.33) — 10 пар союзников ──────────
+    # ── Компонент 1: Синергия команды (0-50) — 10 пар союзников ─────────────
     # Усредняем обе стороны, чтобы результат не зависел от порядка ввода героев:
     # поле "with" асимметрично (дельта от базового WR у каждого героя своя).
     synergy_pairs: list[tuple[int, int, float]] = []
@@ -1332,9 +1379,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             synergy_pairs.append((a, b, val))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(100.0 / 3, (avg_synergy + 5) / 10 * (100.0 / 3)))
+    synergy_component = max(0.0, min(50.0, (avg_synergy + 5) / 10 * 50.0))
 
-    # ── Компонент 3: Матчап против врагов (0-33.33) — 25 пар наш vs вражеский
+    # ── Компонент 2: Матчап против врагов (0-50) — 25 пар наш vs вражеский ──
     matchup_pairs: list[tuple[int, int, float]] = []
     for a in ally_ids:
         for e in enemy_ids:
@@ -1342,10 +1389,9 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             matchup_pairs.append((a, e, float(val)))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
-    matchup_component = max(0.0, min(100.0 / 3, (matchup_score + 5) / 10 * (100.0 / 3)))
+    matchup_component = max(0.0, min(50.0, (matchup_score + 5) / 10 * 50.0))
 
-    # ── Компонент 4: Позиции — отключён от total_score, всегда 0 ────────────
-    # Предупреждения о неправильных позициях в comments сохранены.
+    # ── Позиции — не влияют на total_score, только comments ─────────────────
     pos_scores: list[tuple[int, bool]] = []
     for h in data.ally:
         chosen = _pos_str_to_num(h.position)
@@ -1353,10 +1399,10 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
         on_valid = chosen is not None and chosen in valid_positions
         pos_scores.append((h.hero_id, on_valid))
 
-    position_component = 0.0  # не влияет на total_score
+    position_component = 0.0
 
-    # ── total_score = 3 компонента, макс 100 ────────────────────────────────
-    total_score = lane_component + synergy_component + matchup_component
+    # ── total_score = 2 компонента, макс 100 ────────────────────────────────
+    total_score = synergy_component + matchup_component
 
     # ── comments ──────────────────────────────────────────────────────────
     comments: list[dict] = []
@@ -1410,7 +1456,6 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
 
     return {
         "total_score": round(total_score, 1),
-        "lane_score": round(lane_component, 2),
         "synergy_score": round(synergy_component, 2),
         "matchup_score": round(matchup_component, 2),
         "position_score": round(position_component, 2),
@@ -1419,7 +1464,11 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             {"hero_id1": a, "hero_id2": b, "value": round(v, 2)}
             for a, b, v in synergy_pairs
         ],
-        "duels": duels,
+        "matchup_pairs": [
+            {"ally_id": a, "enemy_id": e, "value": round(v, 2)}
+            for a, e, v in matchup_pairs
+        ],
+        "enemy_ids": enemy_ids,
         "comments": comments,
     }
 
