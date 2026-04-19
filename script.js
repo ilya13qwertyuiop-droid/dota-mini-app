@@ -302,11 +302,6 @@
 
         const USER_TOKEN = getTokenFromUrl();
 
-        // Фоновая загрузка профиля при старте — не блокирует интерфейс
-        if (USER_TOKEN) {
-            setTimeout(function() { initProfile(); }, 0);
-        }
-
         // Сохранение результата на backend
         async function saveResultToBackend(result) {
             if (!USER_TOKEN) {
@@ -3965,13 +3960,13 @@ async function _loadItemsDb() {
     }
 }
 
-// Загружаем мету и items_db при старте (главная открыта по умолчанию)
+// Загружаем мету при старте (главная открыта по умолчанию).
+// items_db грузим лениво — при открытии героя (loadHeroBuild) или драфтера (initDrafter).
 (function() {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() { initHomeScreen(); _loadItemsDb(); });
+        document.addEventListener('DOMContentLoaded', function() { initHomeScreen(); });
     } else {
         initHomeScreen();
-        _loadItemsDb();
     }
 }());
 
@@ -4017,6 +4012,9 @@ function initDrafter() {
     // Показать экран драфта, скрыть результат
     document.getElementById('drafter-main').style.display = 'block';
     document.getElementById('drafter-result').style.display = 'none';
+
+    // items_db нужен для предметов в результатах оценки драфта
+    if (!_itemsDbLoaded) _loadItemsDb();
 
     // Bind catalog button (idempotent — guarded by _heroesCatalogBound)
     if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
