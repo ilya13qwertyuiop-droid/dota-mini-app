@@ -3618,7 +3618,10 @@ function _loadHomeHeroWidget() {
                 return;
             }
             _HOME_HERO_LAST = { heroId: heroId, build: data };
-            _renderHomeHeroWidget(heroId, data);
+            // items_db нужен для иконок предметов в виджете — ждём его перед рендером,
+            // чтобы не показывать пустые слоты с последующим re-render.
+            var ready = _itemsDbLoaded ? Promise.resolve() : _loadItemsDb();
+            return ready.then(function() { _renderHomeHeroWidget(heroId, data); });
         })
         .catch(function(e) {
             console.warn('[home hero] failed:', e);
