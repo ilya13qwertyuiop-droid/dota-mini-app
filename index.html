@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=121" />
+    <link rel="stylesheet" href="styles.css?v=122" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -202,26 +202,40 @@
 
       <!-- Страница доната -->
       <div id="page-donate" class="page">
-        <div class="dashboard-header">
-          <h1><i class="h1-icon ph ph-heart" aria-hidden="true"></i>Поддержать автора</h1>
+        <div class="donate-header">
+          <button type="button" class="donate-back" aria-label="Назад" onclick="goBackFromDonate()">← Назад</button>
+          <div class="donate-header-title">Поддержать автора</div>
+          <div class="donate-header-spacer"></div>
         </div>
 
-        <div class="card donate-card">
-          <p class="donate-text">
-            Этот бот живёт на серверах и использует платные API.<br>
-            Если он оказался полезным — ты можешь добровольно помочь покрыть
-            часть расходов. Любая поддержка очень помогает развитию проекта
-            и мотивации делать новые фичи.
-          </p>
+        <div class="donate-content">
+          <div class="donate-metrics">
+            <div class="donate-metric">
+              <div class="donate-metric-value">50&nbsp;000+</div>
+              <div class="donate-metric-label">Игроков пользуются</div>
+            </div>
+            <div class="donate-metric">
+              <div class="donate-metric-value">Бесплатно</div>
+              <div class="donate-metric-label">Без рекламы</div>
+            </div>
+            <div class="donate-metric">
+              <div class="donate-metric-value">~165€/мес</div>
+              <div class="donate-metric-label">Сервер и API</div>
+            </div>
+            <div class="donate-metric">
+              <div class="donate-metric-value">Один</div>
+              <div class="donate-metric-label">Разработчик</div>
+            </div>
+          </div>
 
-          <button class="donate-da-btn" onclick="openDonationAlerts()">
-            Поддержать через Donation Alerts
-          </button>
+          <div class="donate-letter">
+            <div class="donate-letter-from">От Зафера</div>
+            <p class="donate-letter-text">Привет, я Зафер. Делаю D2Helper один, в свободное время. Если приложение помогает в игре — буду рад любой поддержке: она покрывает серверы и даёт время делать новые фичи.</p>
+          </div>
+
+          <button type="button" class="donate-cta" onclick="openDonationAlerts()">Задонатить</button>
+          <div class="donate-note">Откроется Donation Alerts</div>
         </div>
-
-        <button class="btn-back donate-back-btn" onclick="goBackFromDonate()">
-          Назад
-        </button>
       </div>
 
       <!-- Страница квизов -->
