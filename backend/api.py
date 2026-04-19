@@ -1379,7 +1379,7 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             synergy_pairs.append((a, b, val))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(50.0, (avg_synergy + 5) / 10 * 50.0))
+    synergy_component = max(0.0, min(50.0, (avg_synergy + 3) / 6 * 50.0))
 
     # ── Компонент 2: Матчап против врагов (0-50) — 25 пар наш vs вражеский ──
     matchup_pairs: list[tuple[int, int, float]] = []
@@ -1389,7 +1389,7 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             matchup_pairs.append((a, e, float(val)))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
-    matchup_component = max(0.0, min(50.0, (matchup_score + 5) / 10 * 50.0))
+    matchup_component = max(0.0, min(50.0, (matchup_score + 3) / 6 * 50.0))
 
     # ── Позиции — не влияют на total_score, только comments ─────────────────
     pos_scores: list[tuple[int, bool]] = []
