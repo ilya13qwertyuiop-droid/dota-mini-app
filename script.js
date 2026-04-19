@@ -3697,7 +3697,6 @@ function _renderHomeHeroWidget(heroId, build) {
     var posKey = 'POSITION_' + posNum;
     var posImg = _META_POS_IMG[posKey] || '';
     var posLabel = _META_POS_LABELS[posKey] || '';
-    var wrPct = (posData && typeof posData.win_rate === 'number') ? Math.round(posData.win_rate * 100) : null;
 
     var sixslot = ((posData && posData.sixslot) || [])
         .slice()
@@ -3714,8 +3713,6 @@ function _renderHomeHeroWidget(heroId, build) {
         }
     }
 
-    var wrHtml = wrPct != null ? '<div class="home-hero-wr">' + wrPct + '%</div>' : '';
-
     body.innerHTML =
         '<div class="home-hero-head">' +
             '<div class="home-hero-icon"><img src="' + _escHtml(iconUrl) + '" alt="" onerror="this.style.display=\'none\'"></div>' +
@@ -3726,7 +3723,6 @@ function _renderHomeHeroWidget(heroId, build) {
                     _escHtml(posLabel) +
                 '</div>' +
             '</div>' +
-            wrHtml +
         '</div>' +
         '<div class="home-hero-items">' + itemSlots.join('') + '</div>';
 }
