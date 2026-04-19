@@ -4482,7 +4482,13 @@ function showToast(msg) {
     }, 3500);
 }
 
+var _lastSubmitDraftTs = 0;
+
 async function submitDraft() {
+    var now = Date.now();
+    if (now - _lastSubmitDraftTs < 5000) return;
+    _lastSubmitDraftTs = now;
+
     var ally = _drafterAllyPick.filter(Boolean);
     var enemy = _drafterEnemyPick.filter(function(h) { return h && h.hero_id; });
 
