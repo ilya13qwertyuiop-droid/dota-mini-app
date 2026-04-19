@@ -1390,8 +1390,8 @@ margin-top: var(--space-4);
 }
 
 .profile-stat-label {
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
   color: var(--text-tertiary);
   font-weight: var(--font-medium);
@@ -1424,9 +1424,9 @@ margin-top: var(--space-4);
 }
 
 .profile-stat-sub {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--text-secondary);
-  line-height: 1.2;
+  line-height: var(--leading-snug);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
@@ -1447,8 +1447,8 @@ margin-top: var(--space-4);
 
 .profile-card .section-eyebrow,
 .profile-stat .section-eyebrow {
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
   color: var(--text-tertiary);
   font-weight: var(--font-medium);
@@ -2651,8 +2651,8 @@ margin-top: var(--space-4);
 
 /* Секционные eyebrow-лейблы — переопределяем для главной */
 .home-card .section-eyebrow {
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
   color: var(--text-tertiary);
   font-weight: var(--font-medium);
@@ -2804,12 +2804,12 @@ margin-top: var(--space-4);
 
 .home-meta-hero-wr {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: var(--font-semibold);
   color: var(--positive);
   text-align: center;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-normal);
   line-height: 1;
 }
 
@@ -3119,11 +3119,11 @@ margin-top: var(--space-4);
 
 /* ── Новость ─────────────────────────────────────────────────────── */
 .home-news-label {
-  font-size: 9px;
-  font-weight: 700;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-bold);
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wider);
 }
 
 .home-news {
@@ -3978,6 +3978,8 @@ margin-top: var(--space-4);
   letter-spacing: var(--tracking-normal);
 }
 .drafter-hist-rank--s { color: var(--warning); }
+.drafter-hist-rank--a { color: var(--accent); }
+.drafter-hist-rank--b { color: var(--text-primary); }
 .drafter-hist-rank--neutral { color: var(--text-secondary); }
 
 .drafter-hist-meta {
