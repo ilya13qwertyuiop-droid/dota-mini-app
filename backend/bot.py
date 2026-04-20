@@ -144,6 +144,11 @@ MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
 SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "-1002005211472")  # chat_id канала спонсора
 
+# user_id, для которых проверка подписки пропускается (список через запятую в SKIP_SUBSCRIPTION_CHECK_IDS)
+SKIP_CHECK_USER_IDS: frozenset[int] = frozenset(
+    int(x) for x in os.environ.get("SKIP_SUBSCRIPTION_CHECK_IDS", "").split(",") if x.strip().lstrip("-").isdigit()
+)
+
 # Telegram user_id администраторов — имеют доступ к /admin_feedback
 ADMIN_IDS: frozenset[int] = frozenset({556944111})
 API_BASE_URL = "https://dotaquiz.blog"
@@ -161,6 +166,8 @@ async def is_subscriber(bot: Bot, user_id: int) -> bool:
     Каждый вызов делает свежий запрос getChatMember к Telegram API.
     При любой ошибке возвращает False и не падает.
     """
+    if user_id in SKIP_CHECK_USER_IDS:
+        return True
     if not CHECK_CHAT_ID:
         return False
     try:
