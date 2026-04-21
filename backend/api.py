@@ -153,8 +153,8 @@ from sqlalchemy.orm.attributes import flag_modified
 
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables, engine
-from backend.models import UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
-from backend.db import get_user_id_by_token, create_token_for_user, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids
+from backend.models import BannedUser as DBBannedUser, UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
+from backend.db import get_user_id_by_token, create_token_for_user, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids, is_user_banned, get_banned_user_ids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
@@ -1498,6 +1498,7 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
             ) AS top5_sum,
             COUNT(*) AS draft_count
         FROM draft_results d1
+        WHERE d1.user_id NOT IN (SELECT user_id FROM banned_users)
         GROUP BY d1.user_id
         ORDER BY top5_sum DESC
         LIMIT 25
@@ -1543,6 +1544,9 @@ async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db
     if not user_id:
         return {"rank": None, "top5_sum": None}
 
+    if is_user_banned(user_id):
+        return {"banned": True, "rank": None, "top5_sum": None}
+
     from sqlalchemy import text
 
     # ── Шаг 1: top5_sum пользователя (быстро: WHERE user_id + LIMIT 5) ──
@@ -1570,6 +1574,7 @@ async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db
                        ROW_NUMBER() OVER (PARTITION BY user_id
                                          ORDER BY total_score DESC) AS rn
                 FROM draft_results
+                WHERE user_id NOT IN (SELECT user_id FROM banned_users)
             ) t
             WHERE rn <= 5
             GROUP BY user_id

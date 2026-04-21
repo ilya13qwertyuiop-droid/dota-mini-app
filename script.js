@@ -332,7 +332,7 @@
             if (_refreshInFlight) return _refreshInFlight;
             const initData = _getInitData();
             if (!initData) {
-                _showAuthError('Откройте приложение через Telegram');
+                _showAuthError('Вернитесь в чат с ботом и нажмите кнопку /start');
                 return null;
             }
             const API = window.API_BASE_URL || '/api';
@@ -1501,6 +1501,12 @@ async function _renderDrafterPlace() {
         const resp = await apiFetch(`${window.API_BASE_URL}/draft/leaderboard/me?token=${encodeURIComponent(USER_TOKEN)}`);
         if (!resp.ok) throw new Error(`API error: ${resp.status}`);
         const me = await resp.json();
+
+        if (me && me.banned === true) {
+            if (placeEl) placeEl.textContent = '—';
+            if (subEl) subEl.textContent = 'Ваш аккаунт отстранён от участия в лидерборде за нарушение правил';
+            return;
+        }
 
         if (!me || me.rank === null || me.rank === undefined) {
             if (placeEl) placeEl.textContent = '—';
