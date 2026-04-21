@@ -317,6 +317,7 @@ def get_top_drafters(month: int, year: int, limit: int = 3) -> list[dict]:
             FROM draft_results d1
             WHERE d1.created_at >= :month_start
               AND d1.created_at < :month_end
+              AND d1.user_id NOT IN (SELECT user_id FROM banned_users)
             GROUP BY d1.user_id
             ORDER BY top5_sum DESC
             LIMIT :limit
