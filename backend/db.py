@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
+from backend.models import BannedUser, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +418,69 @@ def mark_news_notified(guid: str) -> None:
         if row is not None:
             row.notified_at = datetime.now(timezone.utc)
             session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard ban management
+# ---------------------------------------------------------------------------
+
+def is_user_banned(user_id: int) -> bool:
+    with SessionLocal() as session:
+        return session.get(BannedUser, user_id) is not None
+
+
+def get_banned_user_ids() -> set[int]:
+    with SessionLocal() as session:
+        return {row.user_id for row in session.query(BannedUser.user_id).all()}
+
+
+def ban_user(user_id: int, banned_by: int | None = None, reason: str | None = None) -> bool:
+    """Adds user_id to banned_users. Returns True if newly banned, False if already banned."""
+    with SessionLocal() as session:
+        existing = session.get(BannedUser, user_id)
+        if existing is not None:
+            return False
+        session.add(BannedUser(
+            user_id=user_id,
+            reason=reason,
+            banned_at=datetime.now(timezone.utc),
+            banned_by=banned_by,
+        ))
+        session.commit()
+        return True
+
+
+def unban_user(user_id: int) -> bool:
+    """Removes user_id from banned_users. Returns True if removed, False if not banned."""
+    with SessionLocal() as session:
+        existing = session.get(BannedUser, user_id)
+        if existing is None:
+            return False
+        session.delete(existing)
+        session.commit()
+        return True
+
+
+def find_user_id_by_username(username: str) -> int | None:
+    """Finds user_id by Telegram @username stored in user_profiles.settings.
+
+    Case-insensitive; @-prefix is stripped. Returns None if not found.
+    """
+    handle = username.lstrip("@").strip().lower()
+    if not handle:
+        return None
+    with SessionLocal() as session:
+        profiles = (
+            session.query(UserProfile)
+            .filter(UserProfile.settings.isnot(None))
+            .all()
+        )
+        for p in profiles:
+            s = p.settings or {}
+            uname = s.get("username")
+            if isinstance(uname, str) and uname.lstrip("@").lower() == handle:
+                return p.user_id
+    return None
 
 
 def get_latest_news_guids(limit: int = 3) -> list[dict]:
