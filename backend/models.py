@@ -312,6 +312,24 @@ class Feedback(Base):
 
 
 # ---------------------------------------------------------------------------
+# Leaderboard moderation
+# ---------------------------------------------------------------------------
+
+class BannedUser(Base):
+    """Users banned from the draft leaderboard by an admin."""
+    __tablename__ = "banned_users"
+
+    user_id = Column(BigInteger, primary_key=True)
+    reason = Column(Text, nullable=True)
+    banned_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    banned_by = Column(BigInteger, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # Analytics events
 # ---------------------------------------------------------------------------
 

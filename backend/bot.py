@@ -96,6 +96,9 @@ from db import (
     get_top_drafters,
     upsert_user_profile_settings,
     toggle_notify_news,
+    ban_user,
+    unban_user,
+    find_user_id_by_username,
 )
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
@@ -1568,6 +1571,79 @@ async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+def _parse_ban_target(args: list[str]) -> tuple[int | None, str | None]:
+    """Parses /ban or /unban args. Returns (user_id, error_message).
+
+    First positional arg is either a numeric user_id or @username.
+    @username is resolved via user_profiles.settings.username.
+    """
+    if not args:
+        return None, "Использование: /ban [user_id или @username] [причина]"
+    target = args[0].strip()
+    if not target:
+        return None, "Использование: /ban [user_id или @username] [причина]"
+    if target.startswith("@") or not target.lstrip("-").isdigit():
+        resolved = find_user_id_by_username(target)
+        if resolved is None:
+            return None, f"Пользователь {target} не найден в user_profiles."
+        return resolved, None
+    try:
+        return int(target), None
+    except ValueError:
+        return None, f"Некорректный user_id: {target}"
+
+
+async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Банит пользователя из лидерборда. Только для администраторов."""
+    admin_id = update.effective_user.id
+    if admin_id not in ADMIN_IDS:
+        return
+
+    args = context.args or []
+    target_id, err = _parse_ban_target(args)
+    if err:
+        await update.message.reply_text(err)
+        return
+
+    reason = " ".join(args[1:]).strip() or None
+    try:
+        newly_banned = await asyncio.to_thread(ban_user, target_id, admin_id, reason)
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("❌ Не удалось применить бан.")
+        return
+
+    if newly_banned:
+        suffix = f" · причина: {reason}" if reason else ""
+        await update.message.reply_text(f"🚫 Пользователь {target_id} забанен в лидерборде.{suffix}")
+    else:
+        await update.message.reply_text(f"Пользователь {target_id} уже забанен.")
+
+
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Снимает бан лидерборда с пользователя. Только для администраторов."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    args = context.args or []
+    target_id, err = _parse_ban_target(args)
+    if err:
+        await update.message.reply_text(err.replace("/ban", "/unban"))
+        return
+
+    try:
+        removed = await asyncio.to_thread(unban_user, target_id)
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("❌ Не удалось снять бан.")
+        return
+
+    if removed:
+        await update.message.reply_text(f"✅ Бан снят с пользователя {target_id}.")
+    else:
+        await update.message.reply_text(f"Пользователь {target_id} не был забанен.")
+
+
 async def force_update_builds_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     """Принудительно запускает обновление кеша сборок. Только для администраторов."""
     if update.effective_user.id not in ADMIN_IDS:
@@ -1700,6 +1776,8 @@ def main():
     application.add_handler(CommandHandler("stats_mode",          timed_handler("/stats_mode")(stats_mode_command)))
     application.add_handler(CommandHandler("force_update_builds", timed_handler("/force_update_builds")(force_update_builds_command)))
     application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))
+    application.add_handler(CommandHandler("ban",                 timed_handler("/ban")(ban_command)))
+    application.add_handler(CommandHandler("unban",               timed_handler("/unban")(unban_command)))
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(
