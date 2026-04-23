@@ -1294,34 +1294,56 @@ def _hero_valid_pos_nums(hero_id: int, threshold: float = 0.15) -> set[int]:
 
 
 
+# Hero pools per position — hero_id lists derived from
+# heroes-carry.js / heroes-mid.js / heroes-offlane.js / heroes-pos45.js
+_DRAFT_POOL_POS1 = [
+    102, 73, 1, 4, 61, 81, 56, 49, 6, 41, 72, 8, 145, 54, 48, 136, 94, 114,
+    10, 89, 53, 57, 44, 12, 15, 32, 11, 93, 35, 67, 18, 46, 109, 95, 70, 63,
+    21, 42,
+]
+_DRAFT_POOL_POS2 = [
+    107, 7, 59, 49, 137, 28, 98, 19, 61, 56, 145, 80, 82, 114, 10, 32, 11,
+    35, 46, 47, 74, 90, 52, 25, 36, 113, 38, 43, 97, 136, 53, 88, 16, 126,
+    92, 13, 39, 86, 101, 17, 34, 22,
+]
+_DRAFT_POOL_POS3 = [
+    73, 2, 99, 96, 81, 135, 69, 49, 107, 7, 103, 59, 23, 155, 104, 77, 129,
+    60, 57, 110, 137, 14, 28, 71, 29, 98, 19, 108, 85, 42, 61, 15, 47, 55,
+    36, 102, 38, 65, 78, 43, 33, 97, 136, 16, 120, 92, 21,
+]
+_DRAFT_POOL_POS4 = [
+    26, 27, 31, 123, 20, 64, 30, 84, 100, 14, 37, 5, 50, 101, 68, 86, 105,
+    75, 40, 91, 83, 128, 85, 111, 112, 121, 22, 131, 119, 21, 74, 79, 45,
+    51, 63, 35, 97, 3, 9, 57, 53, 71, 110, 102, 136, 62, 88, 58, 66, 7, 19,
+    107, 90, 65, 103, 87, 155,
+]
+_DRAFT_POOL_POS5 = [
+    26, 30, 27, 64, 5, 31, 84, 37, 40, 101, 75, 105, 68, 22, 50, 21, 20,
+    123, 85, 128, 112, 119, 83, 121, 100, 91, 53, 51, 45, 131, 79, 3, 102,
+    57, 58, 87, 155, 111,
+]
+
+_DRAFT_POOLS_BY_POS = {
+    1: _DRAFT_POOL_POS1,
+    2: _DRAFT_POOL_POS2,
+    3: _DRAFT_POOL_POS3,
+    4: _DRAFT_POOL_POS4,
+    5: _DRAFT_POOL_POS5,
+}
+
+
 @app.get("/api/draft/random")
 async def api_draft_random():
-    """Returns a random enemy draft from draft_matches.json."""
-    matches = _load_draft_matches_file()
-    if not matches:
-        raise HTTPException(status_code=503, detail="draft_matches.json not available")
-
-    match = random.choice(list(matches.values()))
-    match_id = match.get("match_id", 0)
-
-    # Randomly pick radiant or dire as the enemy
-    if random.random() < 0.5:
-        heroes_raw = match.get("radiant") or match.get("radiant_heroes") or []
-    else:
-        heroes_raw = match.get("dire") or match.get("dire_heroes") or []
-
+    """Returns a random enemy draft generated from per-position hero pools."""
     enemy = []
-    for entry in heroes_raw:
-        if isinstance(entry, dict):
-            hero_id = entry.get("hero_id")
-            position = entry.get("position", "")
-        else:
-            hero_id = entry
-            position = ""
-        if hero_id:
-            enemy.append({"hero_id": int(hero_id), "position": position})
+    used_ids: set[int] = set()
+    for pos in (1, 2, 3, 4, 5):
+        candidates = [hid for hid in _DRAFT_POOLS_BY_POS[pos] if hid not in used_ids]
+        hero_id = random.choice(candidates)
+        used_ids.add(hero_id)
+        enemy.append({"hero_id": hero_id, "position": f"pos {pos}"})
 
-    return {"match_id": match_id, "enemy": enemy}
+    return {"match_id": 0, "enemy": enemy}
 
 
 class DraftHeroEntry(BaseModel):
