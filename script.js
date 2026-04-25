@@ -4154,6 +4154,7 @@ var _analysisMatchups   = null;     // { "1": { vs: {...}, with: {...} }, ... }
 var _analysisPopularity = null;     // { "1": totalMatches, ... }
 var _analysisDataLoading = false;
 var _ANALYSIS_MIN_MATCH_COUNT = 30; // ниже — слишком шумно, игнорируем
+var _analysisDebugTraceLeft = 0;    // декрементируется в _computeAnalysisScore — лимит подробных логов на рендер
 
 function setDrafterMode(mode) {
     if (mode !== 'training' && mode !== 'analysis') mode = 'training';
@@ -4202,6 +4203,34 @@ function _ensureAnalysisData() {
         console.warn('[analysis] data load failed:', e);
     }).then(function() {
         _analysisDataLoading = false;
+
+        // ── DIAG: что приехало с бэка ────────────────────────────
+        try {
+            var mu = _analysisMatchups;
+            var po = _analysisPopularity;
+            console.log('[analysis][diag] matchups loaded?', !!mu, 'popularity loaded?', !!po);
+            if (mu) {
+                var keys = Object.keys(mu);
+                console.log('[analysis][diag] matchups: total heroes =', keys.length,
+                            '| sample keys =', keys.slice(0, 5));
+                var sampleKey = keys[0];
+                var sample = mu[sampleKey];
+                if (sample) {
+                    var vsKeys = sample['vs'] ? Object.keys(sample['vs']) : [];
+                    var wKeys  = sample['with'] ? Object.keys(sample['with']) : [];
+                    console.log('[analysis][diag] sample hero', sampleKey, '→ vs cnt =', vsKeys.length,
+                                ', with cnt =', wKeys.length,
+                                ', first vs entry =', sample['vs'] && sample['vs'][vsKeys[0]],
+                                ', first with entry =', sample['with'] && sample['with'][wKeys[0]]);
+                }
+            }
+            if (po) {
+                var poKeys = Object.keys(po);
+                console.log('[analysis][diag] popularity: total heroes =', poKeys.length,
+                            '| sample =', poKeys.slice(0, 3).map(function(k){return k+':'+po[k];}));
+            }
+        } catch (e) { console.warn('[analysis][diag] inspect failed:', e); }
+
         // Если sheet открыт, перерисовать grid с реальными данными
         var sheet = document.getElementById('analysis-sheet');
         if (sheet && !sheet.hidden) renderAnalysisSheetGrid();
@@ -4294,14 +4323,26 @@ function closeAnalysisSheet() {
 }
 
 function _computeAnalysisScore(heroId) {
-    if (!_analysisMatchups) return 0;
+    var trace = _analysisDebugTraceLeft > 0;
+    if (trace) _analysisDebugTraceLeft--;
+
+    if (!_analysisMatchups) {
+        if (trace) console.log('[analysis][score]', heroId, '— matchups NOT LOADED, returning 0');
+        return 0;
+    }
     var entry = _analysisMatchups[String(heroId)];
-    if (!entry) return 0;
+    if (!entry) {
+        if (trace) console.log('[analysis][score]', heroId, '— no entry in matchups (key tried:', String(heroId), ')');
+        return 0;
+    }
 
     var allies  = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
     var enemies = (_analysisActiveSide === 'light') ? _analysisDark  : _analysisLight;
 
     var score = 0;
+    var allyContribs = [];
+    var enemyContribs = [];
+
     var withMap = entry['with'] || {};
     for (var i = 0; i < allies.length; i++) {
         var aid = allies[i];
@@ -4309,6 +4350,9 @@ function _computeAnalysisScore(heroId) {
         var w = withMap[String(aid)];
         if (w && (w.matchCount || 0) >= _ANALYSIS_MIN_MATCH_COUNT) {
             score += w.synergy || 0;
+            if (trace) allyContribs.push({ allyId: aid, synergy: w.synergy, matchCount: w.matchCount });
+        } else if (trace) {
+            allyContribs.push({ allyId: aid, skipped: true, raw: w });
         }
     }
     var vsMap = entry['vs'] || {};
@@ -4318,7 +4362,22 @@ function _computeAnalysisScore(heroId) {
         var v = vsMap[String(eid)];
         if (v && (v.matchCount || 0) >= _ANALYSIS_MIN_MATCH_COUNT) {
             score += v.synergy || 0;
+            if (trace) enemyContribs.push({ enemyId: eid, synergy: v.synergy, matchCount: v.matchCount });
+        } else if (trace) {
+            enemyContribs.push({ enemyId: eid, skipped: true, raw: v });
         }
+    }
+
+    if (trace) {
+        console.log('[analysis][score] hero', heroId,
+                    '| side =', _analysisActiveSide,
+                    '| allies =', allies.filter(Boolean),
+                    '| enemies =', enemies.filter(Boolean),
+                    '| with-keys cnt =', Object.keys(withMap).length,
+                    '| vs-keys cnt =', Object.keys(vsMap).length,
+                    '| ally contribs =', allyContribs,
+                    '| enemy contribs =', enemyContribs,
+                    '| FINAL score =', score);
     }
     return score;
 }
@@ -4344,6 +4403,17 @@ function renderAnalysisSheetGrid() {
 
     var hasContext = _analysisHasAnyPick();
     var pop = _analysisPopularity || {};
+
+    // ── DIAG: контекст рендера + бюджет подробных логов ───────────
+    _analysisDebugTraceLeft = 3;
+    console.log('[analysis][render] activeSide =', _analysisActiveSide,
+                '| activeSlot =', _analysisActiveSlot,
+                '| light =', _analysisLight.filter(Boolean),
+                '| dark =', _analysisDark.filter(Boolean),
+                '| hasContext =', hasContext,
+                '| matchupsLoaded =', !!_analysisMatchups,
+                '| popularityLoaded =', !!_analysisPopularity,
+                '| query =', JSON.stringify(query));
 
     // Собираем уникальных героев
     var seen = new Set();
