@@ -1346,6 +1346,56 @@ async def api_draft_random():
     return {"match_id": 0, "enemy": enemy}
 
 
+# Cache for popularity payload — derived from dota_builds.json once per process.
+_draft_popularity_cache: dict[str, int] | None = None
+
+
+@app.get("/api/draft/matchups_all")
+async def api_draft_matchups_all():
+    """Returns full hero_matchups.json blob.
+
+    Used by the frontend "Анализ" mode of the Drafter to compute live recommendations
+    on the client without round-trips. ~1.2 MB; cached server-side and gzip-compressed
+    over the wire (uvicorn handles content-encoding when the client sends Accept-Encoding).
+    """
+    matchups = _load_hero_matchups_file()
+    if matchups is None:
+        raise HTTPException(status_code=503, detail="Matchups data not available")
+    return matchups
+
+
+@app.get("/api/draft/popularity")
+async def api_draft_popularity():
+    """Returns {hero_id: total_matches} derived from dota_builds.json.
+
+    Used as the default ordering for the Анализ picker when no heroes are placed yet
+    (and as a tiebreaker when scores tie). Tiny payload (~125 entries).
+    """
+    global _draft_popularity_cache
+    if _draft_popularity_cache is not None:
+        return _draft_popularity_cache
+
+    builds = _load_dota_builds_file()
+    if builds is None:
+        raise HTTPException(status_code=503, detail="Builds data not available")
+
+    out: dict[str, int] = {}
+    for hero_key, positions in builds.items():
+        if not isinstance(positions, dict):
+            continue
+        total = 0
+        for pos_data in positions.values():
+            if not isinstance(pos_data, dict):
+                continue
+            n = pos_data.get("num_matches")
+            if isinstance(n, (int, float)):
+                total += int(n)
+        out[str(hero_key)] = total
+
+    _draft_popularity_cache = out
+    return out
+
+
 class DraftHeroEntry(BaseModel):
     hero_id: int
     position: str = ""
