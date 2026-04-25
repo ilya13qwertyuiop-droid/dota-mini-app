@@ -4134,6 +4134,278 @@ function initDrafter() {
         renderDrafterSlots();
         renderDrafterGrid();
     }
+
+    // Восстановить ранее выбранный режим (по умолчанию — Тренировка)
+    var savedMode = null;
+    try { savedMode = localStorage.getItem('drafter_mode'); } catch (e) {}
+    setDrafterMode(savedMode === 'analysis' ? 'analysis' : 'training');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Drafter — режим «Анализ»
+   ──────────────────────────────────────────────────────────────── */
+
+var _drafterMode = 'training';
+var _analysisLight = [null, null, null, null, null];
+var _analysisDark  = [null, null, null, null, null];
+var _analysisActiveSide = 'light';
+var _analysisActiveSlot = -1;
+var _analysisMatchups   = null;     // { "1": { vs: {...}, with: {...} }, ... }
+var _analysisPopularity = null;     // { "1": totalMatches, ... }
+var _analysisDataLoading = false;
+var _ANALYSIS_MIN_MATCH_COUNT = 30; // ниже — слишком шумно, игнорируем
+
+function setDrafterMode(mode) {
+    if (mode !== 'training' && mode !== 'analysis') mode = 'training';
+    _drafterMode = mode;
+    try { localStorage.setItem('drafter_mode', mode); } catch (e) {}
+
+    var trainingPanel = document.getElementById('drafter-mode-training');
+    var analysisPanel = document.getElementById('drafter-mode-analysis');
+    if (trainingPanel) trainingPanel.hidden = (mode !== 'training');
+    if (analysisPanel) analysisPanel.hidden = (mode !== 'analysis');
+
+    var tabs = document.querySelectorAll('.drafter-mode-tab');
+    tabs.forEach(function(t) {
+        var isActive = t.getAttribute('data-mode') === mode;
+        t.classList.toggle('drafter-mode-tab--active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    if (mode === 'analysis') {
+        _ensureAnalysisData();
+        renderAnalysisSlots();
+    } else {
+        // При выходе из Анализа закрыть открытый picker
+        closeAnalysisSheet();
+    }
+}
+
+function _ensureAnalysisData() {
+    if (_analysisMatchups && _analysisPopularity) return;
+    if (_analysisDataLoading) return;
+    _analysisDataLoading = true;
+
+    var base = window.API_BASE_URL;
+    var p1 = _analysisMatchups
+        ? Promise.resolve(null)
+        : apiFetch(base + '/draft/matchups_all')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { if (d) _analysisMatchups = d; });
+    var p2 = _analysisPopularity
+        ? Promise.resolve(null)
+        : apiFetch(base + '/draft/popularity')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { if (d) _analysisPopularity = d; });
+
+    Promise.all([p1, p2]).catch(function(e) {
+        console.warn('[analysis] data load failed:', e);
+    }).then(function() {
+        _analysisDataLoading = false;
+        // Если sheet открыт, перерисовать grid с реальными данными
+        var sheet = document.getElementById('analysis-sheet');
+        if (sheet && !sheet.hidden) renderAnalysisSheetGrid();
+    });
+}
+
+function _analysisAllPicks() {
+    return _analysisLight.concat(_analysisDark).filter(Boolean);
+}
+
+function _analysisHasAnyPick() {
+    return _analysisAllPicks().length > 0;
+}
+
+function renderAnalysisSlots() {
+    _renderAnalysisSide('light');
+    _renderAnalysisSide('dark');
+    var hint = document.getElementById('analysis-hint');
+    if (hint) hint.hidden = _analysisHasAnyPick();
+}
+
+function _renderAnalysisSide(side) {
+    var el = document.getElementById('analysis-' + side + '-slots');
+    if (!el) return;
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+        var hero = arr[i];
+        var cls = 'drafter-slot analysis-slot analysis-slot--' + side;
+        if (hero) cls += ' analysis-slot--filled drafter-slot--filled';
+        html += '<div class="' + cls + '" onclick="analysisSlotClick(\'' + side + '\',' + i + ')">';
+        if (hero) {
+            var iconUrl = _drafterHeroIcon(hero);
+            if (iconUrl) {
+                html += '<img src="' + iconUrl + '" alt="" class="drafter-slot-img">';
+            } else {
+                html += '<span style="font-size:10px;color:#aaa;">#' + hero + '</span>';
+            }
+        } else {
+            html += '<span class="analysis-slot-empty">+</span>';
+        }
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function analysisSlotClick(side, slotIndex) {
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    if (arr[slotIndex]) {
+        // Тап на занятый слот — удалить героя
+        arr[slotIndex] = null;
+        renderAnalysisSlots();
+        // Если sheet открыт — пересчитать рекомендации
+        var sheet = document.getElementById('analysis-sheet');
+        if (sheet && !sheet.hidden) renderAnalysisSheetGrid();
+        return;
+    }
+    openAnalysisSheet(side, slotIndex);
+}
+
+function openAnalysisSheet(side, slotIndex) {
+    _analysisActiveSide = side;
+    _analysisActiveSlot = slotIndex;
+
+    var sheet = document.getElementById('analysis-sheet');
+    var title = document.getElementById('analysis-sheet-title');
+    var search = document.getElementById('analysis-sheet-search');
+    if (!sheet) return;
+
+    if (title) {
+        var sideLabel = (side === 'light') ? 'Силы Света' : 'Силы Тьмы';
+        title.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
+    }
+    if (search) search.value = '';
+
+    sheet.hidden = false;
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    renderAnalysisSheetGrid();
+}
+
+function closeAnalysisSheet() {
+    var sheet = document.getElementById('analysis-sheet');
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    _analysisActiveSlot = -1;
+}
+
+function _computeAnalysisScore(heroId) {
+    if (!_analysisMatchups) return 0;
+    var entry = _analysisMatchups[String(heroId)];
+    if (!entry) return 0;
+
+    var allies  = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+    var enemies = (_analysisActiveSide === 'light') ? _analysisDark  : _analysisLight;
+
+    var score = 0;
+    var withMap = entry['with'] || {};
+    for (var i = 0; i < allies.length; i++) {
+        var aid = allies[i];
+        if (!aid || aid === heroId) continue;
+        var w = withMap[String(aid)];
+        if (w && (w.matchCount || 0) >= _ANALYSIS_MIN_MATCH_COUNT) {
+            score += w.synergy || 0;
+        }
+    }
+    var vsMap = entry['vs'] || {};
+    for (var j = 0; j < enemies.length; j++) {
+        var eid = enemies[j];
+        if (!eid) continue;
+        var v = vsMap[String(eid)];
+        if (v && (v.matchCount || 0) >= _ANALYSIS_MIN_MATCH_COUNT) {
+            score += v.synergy || 0;
+        }
+    }
+    return score;
+}
+
+function onAnalysisSheetSearch() {
+    renderAnalysisSheetGrid();
+}
+
+function renderAnalysisSheetGrid() {
+    var grid = document.getElementById('analysis-sheet-grid');
+    if (!grid) return;
+
+    if (!window.dotaHeroIds) {
+        grid.innerHTML = '<div class="analysis-sheet-empty">Герои не загружены</div>';
+        return;
+    }
+
+    var searchEl = document.getElementById('analysis-sheet-search');
+    var query = searchEl ? searchEl.value.toLowerCase().trim() : '';
+
+    // Уже выбранные на ОБОИХ сторонах — исключаем
+    var pickedSet = new Set(_analysisAllPicks());
+
+    var hasContext = _analysisHasAnyPick();
+    var pop = _analysisPopularity || {};
+
+    // Собираем уникальных героев
+    var seen = new Set();
+    var heroes = [];
+    Object.keys(window.dotaHeroIds).forEach(function(name) {
+        var id = window.dotaHeroIds[name];
+        if (seen.has(id)) return;
+        seen.add(id);
+        if (pickedSet.has(id)) return;
+        if (query && name.toLowerCase().indexOf(query) === -1) return;
+        var score = hasContext ? _computeAnalysisScore(id) : 0;
+        var popularity = pop[String(id)] || 0;
+        heroes.push({ id: id, name: name, score: score, pop: popularity });
+    });
+
+    heroes.sort(function(a, b) {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.pop !== a.pop) return b.pop - a.pop;
+        return a.name.localeCompare(b.name);
+    });
+
+    // Без поиска — топ-20; с поиском — все совпадения (до разумного предела)
+    var limit = query ? heroes.length : 20;
+    heroes = heroes.slice(0, limit);
+
+    if (heroes.length === 0) {
+        grid.innerHTML = '<div class="analysis-sheet-empty">' + (query ? 'Не найдено' : 'Нет данных') + '</div>';
+        return;
+    }
+
+    var html = '';
+    heroes.forEach(function(h) {
+        var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
+        var safeName = String(h.name).replace(/"/g, '&quot;');
+        html += '<div class="analysis-pick-card" onclick="selectAnalysisHero(' + h.id + ')" title="' + safeName + '">';
+        if (iconUrl) {
+            html += '<img class="analysis-pick-card-img" src="' + iconUrl + '" alt="' + safeName + '">';
+        } else {
+            html += '<div class="analysis-pick-card-img drafter-grid-img-empty"></div>';
+        }
+        html += '<div class="analysis-pick-card-name">' + _escHtml(h.name) + '</div>';
+        if (hasContext) {
+            var tone = h.score > 0.05 ? 'positive' : (h.score < -0.05 ? 'negative' : 'neutral');
+            var sign = h.score > 0 ? '+' : (h.score < 0 ? '−' : '');
+            var abs  = Math.abs(h.score).toFixed(1);
+            html += '<div class="analysis-pick-card-score analysis-pick-card-score--' + tone + '">' + sign + abs + '</div>';
+        }
+        html += '</div>';
+    });
+
+    grid.innerHTML = html;
+}
+
+function selectAnalysisHero(heroId) {
+    if (_analysisActiveSlot < 0 || _analysisActiveSlot > 4) return;
+    var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+    arr[_analysisActiveSlot] = heroId;
+
+    if (navigator.vibrate) navigator.vibrate(15);
+
+    closeAnalysisSheet();
+    renderAnalysisSlots();
 }
 
 async function loadDrafterMatch() {
