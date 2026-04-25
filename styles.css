@@ -4901,13 +4901,14 @@ margin-top: var(--space-4);
 .analysis-slot--light::before { top: 0; bottom: auto; background: var(--text-primary); opacity: 0.45; }
 .analysis-slot--dark::before  { bottom: 0; top: auto; background: var(--negative); opacity: 0.45; }
 .analysis-slot--filled::before { opacity: 0.8; }
-.analysis-slot-empty {
-  font-size: 22px;
-  line-height: 1;
-  color: var(--text-tertiary);
-  font-weight: 300;
-  user-select: none;
+
+/* Активный слот в режиме «Анализ» — открыт picker для него.
+   Используем acent-soft + acent border, чтобы соответствовать стилю Тренировки. */
+.analysis-slot.analysis-slot--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
+.analysis-slot.analysis-slot--active::before { opacity: 1; }
 
 .analysis-hint {
   font-size: var(--text-2xs);
@@ -4917,6 +4918,70 @@ margin-top: var(--space-4);
   letter-spacing: 0.02em;
 }
 .analysis-hint[hidden] { display: none; }
+
+/* ── Empty state карточка для режима «Анализ» ──────────────────── */
+.analysis-empty {
+  margin: 0 var(--space-3) var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+}
+.analysis-empty[hidden] { display: none; }
+
+.analysis-empty-eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--font-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.analysis-empty-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+  letter-spacing: -0.005em;
+}
+
+.analysis-empty-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-empty-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.analysis-empty-row-mark {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: var(--font-medium);
+  color: var(--text-tertiary);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+.analysis-empty-mark-pos { color: var(--positive); }
+.analysis-empty-mark-neg { color: var(--negative); margin-left: 1px; }
+.analysis-empty-row-text { flex: 1; min-width: 0; }
 
 /* ── Bottom sheet picker для режима «Анализ» ───────────────────── */
 .analysis-sheet {
@@ -5012,6 +5077,29 @@ margin-top: var(--space-4);
   padding: 0 var(--space-3) var(--space-3);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.analysis-sheet-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 4px;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  user-select: none;
+}
+.analysis-sheet-divider::before,
+.analysis-sheet-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.06);
 }
 
 .analysis-pick-card {
