@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=123" />
+    <link rel="stylesheet" href="styles.css?v=124" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -620,7 +620,25 @@
                 <div class="drafter-slots-grid" id="analysis-dark-slots"></div>
               </div>
             </div>
-            <div class="analysis-hint" id="analysis-hint">Тапни любой слот, чтобы добавить героя</div>
+            <div class="analysis-empty" id="analysis-empty">
+              <div class="analysis-empty-eyebrow">Песочница</div>
+              <div class="analysis-empty-title">Симулируй любую расстановку</div>
+              <div class="analysis-empty-rows">
+                <div class="analysis-empty-row">
+                  <div class="analysis-empty-row-mark">+</div>
+                  <div class="analysis-empty-row-text">Тапни пустой слот — откроется список с лучшими героями для этой позиции</div>
+                </div>
+                <div class="analysis-empty-row">
+                  <div class="analysis-empty-row-mark"><span class="analysis-empty-mark-pos">+</span><span class="analysis-empty-mark-neg">−</span></div>
+                  <div class="analysis-empty-row-text">Score рядом с героем = синергия со своими + матчап против чужих</div>
+                </div>
+                <div class="analysis-empty-row">
+                  <div class="analysis-empty-row-mark">↺</div>
+                  <div class="analysis-empty-row-text">Тап на занятый слот — снимает героя. Пересчёт мгновенный</div>
+                </div>
+              </div>
+            </div>
+            <div class="analysis-hint" id="analysis-hint" hidden>Тапни любой слот, чтобы добавить героя</div>
           </div>
 
           </div><!-- /drafter-draft-content -->
@@ -935,6 +953,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=146"></script>
+    <script defer src="script.js?v=147"></script>
   </body>
 </html>
