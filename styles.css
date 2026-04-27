@@ -3197,22 +3197,6 @@ margin-top: var(--space-4);
   color: var(--text-tertiary);
 }
 
-/* ── Баннер ────────────────────────────────────────────────────────── */
-.home-banner {
-  display: block;
-  width: 100%;
-  border-radius: 14px;
-  overflow: hidden;
-  margin-bottom: var(--space-4);
-  line-height: 0;
-}
-
-.home-banner img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
 /* ── Действия: Отзыв · Поддержать ─────────────────────────────────── */
 .home-actions {
   display: grid;
