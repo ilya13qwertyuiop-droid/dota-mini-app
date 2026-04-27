@@ -5109,15 +5109,15 @@ margin-top: var(--space-4);
   position: relative;
   width: 100%;
   max-width: 640px;
-  height: calc(var(--tg-viewport-height, 100vh) * 0.8);
-  max-height: calc(var(--tg-viewport-height, 100vh) * 0.8);
+  height: calc((var(--tg-viewport-height, 100vh) - var(--nav-height, 56px)) * 0.8);
+  max-height: calc((var(--tg-viewport-height, 100vh) - var(--nav-height, 56px)) * 0.8);
   display: flex;
   flex-direction: column;
   background: var(--bg-base);
   border-top: 1px solid rgba(255,255,255,0.08);
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+  padding-bottom: calc(var(--nav-height, 56px) + max(env(safe-area-inset-bottom, 0px), 16px));
   box-shadow: 0 -8px 24px rgba(0,0,0,0.45);
 }
 
