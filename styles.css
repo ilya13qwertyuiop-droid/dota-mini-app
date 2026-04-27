@@ -5020,7 +5020,8 @@ margin-top: var(--space-4);
   position: relative;
   width: 100%;
   max-width: 640px;
-  max-height: 78vh;
+  height: 80vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-base);
@@ -5096,9 +5097,8 @@ margin-top: var(--space-4);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
-  height: 0;
 }
 
 .analysis-sheet-divider {
