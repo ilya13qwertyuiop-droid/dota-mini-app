@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=124" />
+    <link rel="stylesheet" href="styles.css?v=125" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -613,25 +613,26 @@
                 <div class="drafter-slots-grid" id="analysis-dark-slots"></div>
               </div>
             </div>
-            <div class="analysis-empty" id="analysis-empty">
-              <div class="analysis-empty-eyebrow">Песочница</div>
-              <div class="analysis-empty-title">Симулируй любую расстановку</div>
-              <div class="analysis-empty-rows">
-                <div class="analysis-empty-row">
-                  <div class="analysis-empty-row-mark">+</div>
-                  <div class="analysis-empty-row-text">Тапни пустой слот — откроется список с лучшими героями для этой позиции</div>
+            <div class="analysis-stats" id="analysis-stats" hidden>
+              <div class="analysis-stats-totals">
+                <div class="analysis-stats-team analysis-stats-team--light">
+                  <div class="analysis-stats-eyebrow">Свет</div>
+                  <div class="analysis-stats-total" id="analysis-stats-total-light">0.0</div>
                 </div>
-                <div class="analysis-empty-row">
-                  <div class="analysis-empty-row-mark"><span class="analysis-empty-mark-pos">+</span><span class="analysis-empty-mark-neg">−</span></div>
-                  <div class="analysis-empty-row-text">Score рядом с героем = синергия со своими + матчап против чужих</div>
-                </div>
-                <div class="analysis-empty-row">
-                  <div class="analysis-empty-row-mark">↺</div>
-                  <div class="analysis-empty-row-text">Тап на занятый слот — снимает героя. Пересчёт мгновенный</div>
+                <div class="analysis-stats-team analysis-stats-team--dark">
+                  <div class="analysis-stats-eyebrow">Тьма</div>
+                  <div class="analysis-stats-total" id="analysis-stats-total-dark">0.0</div>
                 </div>
               </div>
+              <div class="analysis-stats-row" id="analysis-stats-best-pair">
+                <div class="analysis-stats-eyebrow">Сильнейшая пара</div>
+                <div class="analysis-stats-row-body" id="analysis-stats-best-body">—</div>
+              </div>
+              <div class="analysis-stats-row" id="analysis-stats-worst-mu">
+                <div class="analysis-stats-eyebrow">Слабый матчап</div>
+                <div class="analysis-stats-row-body" id="analysis-stats-worst-body">—</div>
+              </div>
             </div>
-            <div class="analysis-hint" id="analysis-hint" hidden>Тапни любой слот, чтобы добавить героя</div>
           </div>
 
           </div><!-- /drafter-draft-content -->
@@ -946,6 +947,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=147"></script>
+    <script defer src="script.js?v=148"></script>
   </body>
 </html>

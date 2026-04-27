@@ -4288,11 +4288,161 @@ function _analysisHasAnyPick() {
     return _analysisAllPicks().length > 0;
 }
 
+/* Достаёт synergy-значение из matchups для пары (heroId → mapKey → otherId).
+   Возвращает null если запись отсутствует или matchCount ниже порога. */
+function _analysisGetPairValue(heroId, mapKey, otherId) {
+    if (!_analysisMatchups) return null;
+    var entry = _analysisMatchups[String(heroId)];
+    if (!entry) return null;
+    var map = entry[mapKey];
+    if (!map) return null;
+    var rec = map[String(otherId)];
+    if (!rec) return null;
+    if ((rec.matchCount || 0) < _ANALYSIS_MIN_MATCH_COUNT) return null;
+    return rec.synergy || 0;
+}
+
+/* Симметричная синергия пары союзников: avg(with[a][b], with[b][a]),
+   если хоть одно значение есть. Совместимо с формулой из /api/draft/evaluate. */
+function _analysisPairSynergy(a, b) {
+    var v1 = _analysisGetPairValue(a, 'with', b);
+    var v2 = _analysisGetPairValue(b, 'with', a);
+    if (v1 == null && v2 == null) return null;
+    if (v1 == null) return v2;
+    if (v2 == null) return v1;
+    return (v1 + v2) / 2;
+}
+
+/* Возвращает все валидные пары синергии внутри стороны: [{a, b, value}]. */
+function _analysisCollectSynergies(heroes) {
+    var out = [];
+    for (var i = 0; i < heroes.length; i++) {
+        for (var j = i + 1; j < heroes.length; j++) {
+            var v = _analysisPairSynergy(heroes[i], heroes[j]);
+            if (v != null) out.push({ a: heroes[i], b: heroes[j], value: v });
+        }
+    }
+    return out;
+}
+
+/* Возвращает все валидные пары матчапов между сторонами с точки зрения
+   первой стороны (perspective): vs[perspective][other].synergy. */
+function _analysisCollectMatchups(perspective, other) {
+    var out = [];
+    for (var i = 0; i < perspective.length; i++) {
+        for (var j = 0; j < other.length; j++) {
+            var v = _analysisGetPairValue(perspective[i], 'vs', other[j]);
+            if (v != null) out.push({ self: perspective[i], opp: other[j], value: v });
+        }
+    }
+    return out;
+}
+
+function _analysisSumValues(arr) {
+    var s = 0;
+    for (var i = 0; i < arr.length; i++) s += arr[i].value;
+    return s;
+}
+
+function _renderAnalysisStats() {
+    var box = document.getElementById('analysis-stats');
+    if (!box) return;
+
+    var light = _analysisLight.filter(Boolean);
+    var dark  = _analysisDark.filter(Boolean);
+
+    if (light.length + dark.length === 0) {
+        box.hidden = true;
+        return;
+    }
+    box.hidden = false;
+
+    var lightSyn = _analysisCollectSynergies(light);
+    var darkSyn  = _analysisCollectSynergies(dark);
+    var lightVsDark = _analysisCollectMatchups(light, dark);
+    var darkVsLight = _analysisCollectMatchups(dark, light);
+
+    var lightTotal = _analysisSumValues(lightSyn) + _analysisSumValues(lightVsDark);
+    var darkTotal  = _analysisSumValues(darkSyn)  + _analysisSumValues(darkVsLight);
+
+    _setAnalysisTotal('analysis-stats-total-light', lightTotal);
+    _setAnalysisTotal('analysis-stats-total-dark', darkTotal);
+
+    // Сильнейшая пара: max value среди всех внутрикомандных синергий обеих сторон.
+    var allSyn = lightSyn.concat(darkSyn);
+    var bestRow = document.getElementById('analysis-stats-best-pair');
+    var bestBody = document.getElementById('analysis-stats-best-body');
+    if (allSyn.length === 0) {
+        bestBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        bestBody.innerHTML = 'Добавь двух союзников на одну сторону';
+    } else {
+        var best = allSyn[0];
+        for (var i = 1; i < allSyn.length; i++) if (allSyn[i].value > best.value) best = allSyn[i];
+        bestBody.className = 'analysis-stats-row-body';
+        bestBody.innerHTML = _analysisRenderPair(best.a, best.b, '+', best.value, ' + ');
+    }
+    bestRow.hidden = false;
+
+    // Слабый матчап: пара (свой, чужой) с самой большой |value|, показываем
+    // как поражение проигрывающей стороны (т.е. знак минус для проигравшего).
+    var worstRow = document.getElementById('analysis-stats-worst-mu');
+    var worstBody = document.getElementById('analysis-stats-worst-body');
+    var allMu = lightVsDark.concat(darkVsLight);
+    if (allMu.length === 0) {
+        worstBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        worstBody.innerHTML = 'Добавь героев на обе стороны';
+    } else {
+        var pickWorst = allMu[0];
+        for (var k = 1; k < allMu.length; k++) {
+            if (Math.abs(allMu[k].value) > Math.abs(pickWorst.value)) pickWorst = allMu[k];
+        }
+        // Тот, кто проигрывает = чьё value < 0 (или opp если value > 0)
+        var loser, winner;
+        if (pickWorst.value < 0) { loser = pickWorst.self; winner = pickWorst.opp; }
+        else                     { loser = pickWorst.opp;  winner = pickWorst.self; }
+        var displayValue = -Math.abs(pickWorst.value);
+        worstBody.className = 'analysis-stats-row-body';
+        worstBody.innerHTML = _analysisRenderPair(loser, winner, '-', displayValue, ' vs ');
+    }
+    worstRow.hidden = false;
+}
+
+function _setAnalysisTotal(id, value) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var tone = value > 0.05 ? 'positive' : (value < -0.05 ? 'negative' : 'neutral');
+    var sign = value > 0 ? '+' : (value < 0 ? '−' : '');
+    el.className = 'analysis-stats-total analysis-stats-total--' + tone;
+    el.textContent = sign + Math.abs(value).toFixed(1);
+}
+
+function _analysisRenderPair(idA, idB, forcedSign, value, separator) {
+    var nameA = (window.dotaHeroIdToName && window.dotaHeroIdToName[idA]) || ('#' + idA);
+    var nameB = (window.dotaHeroIdToName && window.dotaHeroIdToName[idB]) || ('#' + idB);
+    var iconA = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(nameA) : '';
+    var iconB = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(nameB) : '';
+    var safeA = String(nameA).replace(/"/g, '&quot;');
+    var safeB = String(nameB).replace(/"/g, '&quot;');
+    var tone, sign;
+    if (forcedSign === '+') { tone = 'positive'; sign = '+'; }
+    else if (forcedSign === '-') { tone = 'negative'; sign = '−'; }
+    else {
+        tone = value > 0.05 ? 'positive' : (value < -0.05 ? 'negative' : 'neutral');
+        sign = value > 0 ? '+' : (value < 0 ? '−' : '');
+    }
+    var html = '<div class="analysis-stats-pair">';
+    html += '<img class="analysis-stats-pair-icon" src="' + iconA + '" alt="' + safeA + '">';
+    html += '<span class="analysis-stats-pair-sep">' + _escHtml(separator.trim()) + '</span>';
+    html += '<img class="analysis-stats-pair-icon" src="' + iconB + '" alt="' + safeB + '">';
+    html += '</div>';
+    html += '<span class="analysis-stats-value analysis-stats-value--' + tone + '">' + sign + Math.abs(value).toFixed(1) + '</span>';
+    return html;
+}
+
 function renderAnalysisSlots() {
     _renderAnalysisSide('light');
     _renderAnalysisSide('dark');
-    var empty = document.getElementById('analysis-empty');
-    if (empty) empty.hidden = _analysisHasAnyPick();
+    _renderAnalysisStats();
 }
 
 function _renderAnalysisSide(side) {
