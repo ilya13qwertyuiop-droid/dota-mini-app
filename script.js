@@ -3,6 +3,14 @@
 
         let TELEGRAM_USER_ID = null;
 
+        // Fallback: если Telegram WebApp недоступен (браузерный dev), всё равно
+        // публикуем --tg-viewport-height для bottom sheet'ов; обновляем по resize.
+        function _publishViewportFallback() {
+            document.documentElement.style.setProperty('--tg-viewport-height', window.innerHeight + 'px');
+        }
+        _publishViewportFallback();
+        window.addEventListener('resize', _publishViewportFallback);
+
         function initTelegramUser() {
             if (!tg) {
                 console.warn('Telegram WebApp object not found');
@@ -11,6 +19,16 @@
 
             tg.ready();
             tg.expand();
+
+            // Хук на Telegram Viewport API — публикуем актуальную visible-высоту
+            // в CSS-переменную --tg-viewport-height. Используется bottom sheet'ами
+            // (режим Анализ драфтера), для которых vh ненадёжен в WebView.
+            const _publishViewportHeight = () => {
+                const h = tg.viewportHeight || window.innerHeight;
+                document.documentElement.style.setProperty('--tg-viewport-height', h + 'px');
+            };
+            _publishViewportHeight();
+            try { tg.onEvent('viewportChanged', _publishViewportHeight); } catch (e) {}
 
             const unsafe = tg.initDataUnsafe || {};
 
@@ -4249,9 +4267,10 @@ function setDrafterMode(mode) {
         _ensureAnalysisData();
         renderAnalysisSlots();
     } else {
-        // При выходе из Анализа закрыть любой открытый sheet
+        // При выходе из Анализа закрыть любой открытый sheet и undo-toast
         closeAnalysisSheet();
         closeHeroDetailSheet();
+        _hideAnalysisUndoToast();
     }
 }
 
@@ -4477,20 +4496,20 @@ function renderAnalysisSlots() {
     _renderAnalysisSide('light');
     _renderAnalysisSide('dark');
     _renderAnalysisStats();
+    var hint = document.getElementById('analysis-hint');
+    if (hint) hint.hidden = _analysisHasAnyPick();
 }
 
 function _renderAnalysisSide(side) {
     var el = document.getElementById('analysis-' + side + '-slots');
     if (!el) return;
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
-    var isActiveSide = (_analysisSheetMode != null && _analysisActiveSide === side);
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = arr[i];
         var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
         var cls = 'drafter-slot analysis-slot analysis-slot--' + side;
         if (hero) cls += ' analysis-slot--filled drafter-slot--filled';
-        if (isActiveSide && i === _analysisActiveSlot) cls += ' analysis-slot--active';
         html += '<div class="' + cls + '" onclick="analysisSlotClick(\'' + side + '\',' + i + ')">';
         if (hero) {
             var iconUrl = _drafterHeroIcon(hero);
@@ -4499,11 +4518,17 @@ function _renderAnalysisSide(side) {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero + '</span>';
             }
-            // Net-contribution бейдж: synergy с союзниками + matchup против врагов
-            var net = _computeAnalysisScore(hero, side);
-            var netTone = net > 0.05 ? 'positive' : (net < -0.05 ? 'negative' : 'neutral');
-            var netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
-            html += '<span class="analysis-slot-net analysis-slot-net--' + netTone + '">' + netSign + Math.abs(net).toFixed(1) + '</span>';
+            // Net-contribution бейдж: synergy с союзниками + matchup против врагов.
+            // Пока matchups ещё не подгрузились — рисуем «—» вместо «0.0» (это «нет данных»,
+            // а не «нулевой вклад»).
+            if (!_analysisMatchups) {
+                html += '<span class="analysis-slot-net analysis-slot-net--loading">—</span>';
+            } else {
+                var net = _computeAnalysisScore(hero, side);
+                var netTone = net > 0.05 ? 'positive' : (net < -0.05 ? 'negative' : 'neutral');
+                var netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
+                html += '<span class="analysis-slot-net analysis-slot-net--' + netTone + '">' + netSign + Math.abs(net).toFixed(1) + '</span>';
+            }
             html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
         } else {
             html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon" alt="">';
@@ -4545,7 +4570,6 @@ function openAnalysisSheet(side, slotIndex) {
     sheet.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    renderAnalysisSlots();
     renderAnalysisSheetGrid();
 }
 
@@ -4557,7 +4581,6 @@ function closeAnalysisSheet() {
     document.body.style.overflow = '';
     _analysisActiveSlot = -1;
     if (_analysisSheetMode === 'picker') _analysisSheetMode = null;
-    renderAnalysisSlots();
 }
 
 /* ── Bottom sheet с деталями уже выбранного героя ───────────────── */
@@ -4580,8 +4603,6 @@ function openHeroDetailSheet(side, slotIndex) {
     sheet.hidden = false;
     sheet.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
-
-    renderAnalysisSlots();
 }
 
 function closeHeroDetailSheet() {
@@ -4592,15 +4613,67 @@ function closeHeroDetailSheet() {
     document.body.style.overflow = '';
     _analysisActiveSlot = -1;
     if (_analysisSheetMode === 'detail') _analysisSheetMode = null;
-    renderAnalysisSlots();
 }
 
 function removeAnalysisHeroFromDetail() {
     if (_analysisActiveSlot < 0 || _analysisActiveSlot > 4) return;
     var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
-    arr[_analysisActiveSlot] = null;
+    var removedSide = _analysisActiveSide;
+    var removedSlot = _analysisActiveSlot;
+    var removedHeroId = arr[removedSlot];
+    arr[removedSlot] = null;
     if (navigator.vibrate) navigator.vibrate(15);
     closeHeroDetailSheet();
+    renderAnalysisSlots();
+    _showAnalysisUndoToast(removedHeroId, removedSide, removedSlot);
+}
+
+/* ── Undo toast для удалённого героя ──────────────────────────────── */
+
+var _analysisUndoTimer = null;
+
+function _showAnalysisUndoToast(heroId, side, slotIndex) {
+    if (!heroId) return;
+    var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('#' + heroId);
+
+    var el = document.getElementById('analysis-undo-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'analysis-undo-toast';
+        el.className = 'analysis-undo-toast';
+        document.body.appendChild(el);
+    }
+    el.innerHTML =
+        '<span class="analysis-undo-toast-text">' + _escHtml(heroName) + ' удалён</span>' +
+        '<button class="analysis-undo-toast-btn" type="button">Вернуть</button>';
+    var btn = el.querySelector('.analysis-undo-toast-btn');
+    if (btn) btn.onclick = function() { _undoAnalysisRemoval(heroId, side, slotIndex); };
+
+    // requestAnimationFrame чтобы opacity-transition реально сработал, если toast только что создан
+    requestAnimationFrame(function() { el.classList.add('analysis-undo-toast--visible'); });
+
+    clearTimeout(_analysisUndoTimer);
+    _analysisUndoTimer = setTimeout(function() { _hideAnalysisUndoToast(); }, 4000);
+}
+
+function _hideAnalysisUndoToast() {
+    var el = document.getElementById('analysis-undo-toast');
+    if (el) el.classList.remove('analysis-undo-toast--visible');
+    clearTimeout(_analysisUndoTimer);
+    _analysisUndoTimer = null;
+}
+
+function _undoAnalysisRemoval(heroId, side, slotIndex) {
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    // Слот успели заполнить чем-то другим — undo отменяется
+    if (arr[slotIndex]) { _hideAnalysisUndoToast(); return; }
+    // Этого героя уже добавили обратно где-то ещё — undo отменяется
+    if (_analysisAllPicks().indexOf(heroId) !== -1) { _hideAnalysisUndoToast(); return; }
+
+    arr[slotIndex] = heroId;
+    if (navigator.vibrate) navigator.vibrate(10);
+    _hideAnalysisUndoToast();
+    renderAnalysisSlots();
 }
 
 function _renderHeroDetailSheet(heroId, side, slotIndex) {
