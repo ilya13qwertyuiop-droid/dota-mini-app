@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=122" />
+    <link rel="stylesheet" href="styles.css?v=124" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -94,7 +94,6 @@
         </div>
 
         <!-- Новость (скрыто, пока нет данных) -->
-        <!--
         <button class="home-news" id="home-news" onclick="homeNewsClick()" hidden>
           <span class="home-news-label">Последнее обновление</span>
           <span class="home-news-row">
@@ -106,12 +105,6 @@
             </span>
           </span>
         </button>
-        -->
-
-        <!-- Баннер -->
-        <a class="home-banner" href="https://sirena.world/kwk825" target="_blank" rel="noopener">
-          <img src="/staging/banner.png" alt="">
-        </a>
 
         <!-- Действия -->
         <div class="home-actions">
@@ -534,8 +527,17 @@
           </div>
           <div class="drafter-top-divider"></div>
 
+          <!-- Переключатель режимов: Тренировка / Анализ -->
+          <div class="drafter-mode-tabs" role="tablist" aria-label="Режим драфтера">
+            <button class="drafter-mode-tab drafter-mode-tab--active" role="tab" aria-selected="true" data-mode="training" onclick="setDrafterMode('training')">Тренировка</button>
+            <button class="drafter-mode-tab" role="tab" aria-selected="false" data-mode="analysis" onclick="setDrafterMode('analysis')">Анализ</button>
+          </div>
+
           <!-- Основной контент драфта -->
           <div id="drafter-draft-content">
+
+          <!-- Панель режима «Тренировка» -->
+          <div id="drafter-mode-training">
 
           <!-- Доска драфта: враги сверху, своя команда снизу, разделены линией фронта -->
           <div class="draft-board">
@@ -592,7 +594,67 @@
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
           </div>
+          </div><!-- /drafter-mode-training -->
+
+          <!-- Панель режима «Анализ»: симметричная песочница без подсчёта итога -->
+          <div id="drafter-mode-analysis" hidden>
+            <div class="draft-board analysis-board">
+              <div class="draft-board-row">
+                <div class="draft-board-header">
+                  <div class="draft-board-label analysis-board-label--light">СИЛЫ СВЕТА</div>
+                </div>
+                <div class="drafter-slots-grid" id="analysis-light-slots"></div>
+              </div>
+              <div class="draft-board-divider" aria-hidden="true"></div>
+              <div class="draft-board-row">
+                <div class="draft-board-header">
+                  <div class="draft-board-label analysis-board-label--dark">СИЛЫ ТЬМЫ</div>
+                </div>
+                <div class="drafter-slots-grid" id="analysis-dark-slots"></div>
+              </div>
+            </div>
+            <div class="analysis-empty" id="analysis-empty">
+              <div class="analysis-empty-eyebrow">Песочница</div>
+              <div class="analysis-empty-title">Симулируй любую расстановку</div>
+              <div class="analysis-empty-rows">
+                <div class="analysis-empty-row">
+                  <div class="analysis-empty-row-mark">+</div>
+                  <div class="analysis-empty-row-text">Тапни пустой слот — откроется список с лучшими героями для этой позиции</div>
+                </div>
+                <div class="analysis-empty-row">
+                  <div class="analysis-empty-row-mark"><span class="analysis-empty-mark-pos">+</span><span class="analysis-empty-mark-neg">−</span></div>
+                  <div class="analysis-empty-row-text">Score рядом с героем = синергия со своими + матчап против чужих</div>
+                </div>
+                <div class="analysis-empty-row">
+                  <div class="analysis-empty-row-mark">↺</div>
+                  <div class="analysis-empty-row-text">Тап на занятый слот — снимает героя. Пересчёт мгновенный</div>
+                </div>
+              </div>
+            </div>
+            <div class="analysis-hint" id="analysis-hint" hidden>Тапни любой слот, чтобы добавить героя</div>
+          </div>
+
           </div><!-- /drafter-draft-content -->
+
+          <!-- Bottom sheet picker для режима «Анализ» -->
+          <div id="analysis-sheet" class="analysis-sheet" hidden aria-hidden="true">
+            <div class="analysis-sheet-backdrop" onclick="closeAnalysisSheet()"></div>
+            <div class="analysis-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="analysis-sheet-title">
+              <div class="analysis-sheet-grip" aria-hidden="true"></div>
+              <div class="analysis-sheet-header">
+                <div class="analysis-sheet-title" id="analysis-sheet-title">Выбор героя</div>
+                <button class="analysis-sheet-close" onclick="closeAnalysisSheet()" aria-label="Закрыть">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="analysis-sheet-search-wrap">
+                <input type="text" id="analysis-sheet-search" class="drafter-search analysis-sheet-search" placeholder="Найти героя…" oninput="onAnalysisSheetSearch()" autocomplete="off">
+              </div>
+              <div class="analysis-sheet-grid" id="analysis-sheet-grid"></div>
+            </div>
+          </div>
         </div>
 
         <!-- Страница результата -->
@@ -884,6 +946,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=145"></script>
+    <script defer src="script.js?v=147"></script>
   </body>
 </html>
