@@ -4150,7 +4150,7 @@ var _analysisLight = [null, null, null, null, null];
 var _analysisDark  = [null, null, null, null, null];
 var _analysisActiveSide = 'light';
 var _analysisActiveSlot = -1;
-var _analysisSheetOpen = false;
+var _analysisSheetMode = null; // null | 'picker' | 'detail'
 var _analysisMatchups   = null;     // { "1": { vs: {...}, with: {...} }, ... }
 var _analysisPopularity = null;     // { "1": totalMatches, ... }
 var _analysisDataLoading = false;
@@ -4249,8 +4249,9 @@ function setDrafterMode(mode) {
         _ensureAnalysisData();
         renderAnalysisSlots();
     } else {
-        // При выходе из Анализа закрыть открытый picker
+        // При выходе из Анализа закрыть любой открытый sheet
         closeAnalysisSheet();
+        closeHeroDetailSheet();
     }
 }
 
@@ -4275,8 +4276,16 @@ function _ensureAnalysisData() {
         console.warn('[analysis] data load failed:', e);
     }).then(function() {
         _analysisDataLoading = false;
-        // Если sheet открыт, перерисовать grid с реальными данными
-        if (_analysisSheetOpen) renderAnalysisSheetGrid();
+        // Если открыт sheet — обновляем его содержимое с реальными данными
+        if (_analysisSheetMode === 'picker') {
+            renderAnalysisSheetGrid();
+        } else if (_analysisSheetMode === 'detail') {
+            var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+            var hid = arr[_analysisActiveSlot];
+            if (hid) _renderHeroDetailSheet(hid, _analysisActiveSide, _analysisActiveSlot);
+        }
+        // Слоты тоже зависят от matchups (net-contribution бейджи)
+        if (_drafterMode === 'analysis') renderAnalysisSlots();
     });
 }
 
@@ -4383,11 +4392,36 @@ function _renderAnalysisStats() {
     }
     bestRow.hidden = false;
 
+    // Кросс-сторонние матчапы: best (max положительный) и worst (max |value|).
+    var allMu = lightVsDark.concat(darkVsLight);
+
+    // Лучший матчап: пара (свой, чужой) с максимальным положительным значением.
+    // Показываем как победу выигрывающей стороны (всегда +).
+    var bestMuRow  = document.getElementById('analysis-stats-best-mu');
+    var bestMuBody = document.getElementById('analysis-stats-best-mu-body');
+    var bestMu = null;
+    for (var bi = 0; bi < allMu.length; bi++) {
+        if (allMu[bi].value > 0 && (bestMu == null || allMu[bi].value > bestMu.value)) {
+            bestMu = allMu[bi];
+        }
+    }
+    if (allMu.length === 0) {
+        bestMuBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        bestMuBody.innerHTML = 'Добавь героев на обе стороны';
+    } else if (bestMu == null) {
+        bestMuBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        bestMuBody.innerHTML = 'Нет выигрышных матчапов';
+    } else {
+        // self = победитель (положительное value), opp = проигрывающий
+        bestMuBody.className = 'analysis-stats-row-body';
+        bestMuBody.innerHTML = _analysisRenderPair(bestMu.self, bestMu.opp, '+', bestMu.value, ' vs ');
+    }
+    bestMuRow.hidden = false;
+
     // Слабый матчап: пара (свой, чужой) с самой большой |value|, показываем
     // как поражение проигрывающей стороны (т.е. знак минус для проигравшего).
     var worstRow = document.getElementById('analysis-stats-worst-mu');
     var worstBody = document.getElementById('analysis-stats-worst-body');
-    var allMu = lightVsDark.concat(darkVsLight);
     if (allMu.length === 0) {
         worstBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
         worstBody.innerHTML = 'Добавь героев на обе стороны';
@@ -4449,7 +4483,7 @@ function _renderAnalysisSide(side) {
     var el = document.getElementById('analysis-' + side + '-slots');
     if (!el) return;
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
-    var isActiveSide = (_analysisSheetOpen && _analysisActiveSide === side);
+    var isActiveSide = (_analysisSheetMode != null && _analysisActiveSide === side);
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = arr[i];
@@ -4465,6 +4499,11 @@ function _renderAnalysisSide(side) {
             } else {
                 html += '<span style="font-size:10px;color:#aaa;">#' + hero + '</span>';
             }
+            // Net-contribution бейдж: synergy с союзниками + matchup против врагов
+            var net = _computeAnalysisScore(hero, side);
+            var netTone = net > 0.05 ? 'positive' : (net < -0.05 ? 'negative' : 'neutral');
+            var netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
+            html += '<span class="analysis-slot-net analysis-slot-net--' + netTone + '">' + netSign + Math.abs(net).toFixed(1) + '</span>';
             html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
         } else {
             html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon" alt="">';
@@ -4477,21 +4516,19 @@ function _renderAnalysisSide(side) {
 function analysisSlotClick(side, slotIndex) {
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
     if (arr[slotIndex]) {
-        // Тап на занятый слот — удалить героя
-        arr[slotIndex] = null;
-        renderAnalysisSlots();
-        // Если sheet открыт — пересчитать рекомендации
-        var sheet = document.getElementById('analysis-sheet');
-        if (sheet && !sheet.hidden) renderAnalysisSheetGrid();
+        // Тап на занятый слот — открыть детали героя
+        openHeroDetailSheet(side, slotIndex);
         return;
     }
     openAnalysisSheet(side, slotIndex);
 }
 
 function openAnalysisSheet(side, slotIndex) {
+    if (_analysisSheetMode === 'detail') closeHeroDetailSheet();
+
     _analysisActiveSide = side;
     _analysisActiveSlot = slotIndex;
-    _analysisSheetOpen = true;
+    _analysisSheetMode = 'picker';
 
     var sheet = document.getElementById('analysis-sheet');
     var title = document.getElementById('analysis-sheet-title');
@@ -4519,17 +4556,144 @@ function closeAnalysisSheet() {
     sheet.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
     _analysisActiveSlot = -1;
-    _analysisSheetOpen = false;
+    if (_analysisSheetMode === 'picker') _analysisSheetMode = null;
     renderAnalysisSlots();
 }
 
-function _computeAnalysisScore(heroId) {
+/* ── Bottom sheet с деталями уже выбранного героя ───────────────── */
+
+function openHeroDetailSheet(side, slotIndex) {
+    if (_analysisSheetMode === 'picker') closeAnalysisSheet();
+
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    var heroId = arr[slotIndex];
+    if (!heroId) return;
+
+    _analysisActiveSide = side;
+    _analysisActiveSlot = slotIndex;
+    _analysisSheetMode = 'detail';
+
+    _renderHeroDetailSheet(heroId, side, slotIndex);
+
+    var sheet = document.getElementById('analysis-hero-detail-sheet');
+    if (!sheet) return;
+    sheet.hidden = false;
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    renderAnalysisSlots();
+}
+
+function closeHeroDetailSheet() {
+    var sheet = document.getElementById('analysis-hero-detail-sheet');
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    _analysisActiveSlot = -1;
+    if (_analysisSheetMode === 'detail') _analysisSheetMode = null;
+    renderAnalysisSlots();
+}
+
+function removeAnalysisHeroFromDetail() {
+    if (_analysisActiveSlot < 0 || _analysisActiveSlot > 4) return;
+    var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+    arr[_analysisActiveSlot] = null;
+    if (navigator.vibrate) navigator.vibrate(15);
+    closeHeroDetailSheet();
+}
+
+function _renderHeroDetailSheet(heroId, side, slotIndex) {
+    var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('#' + heroId);
+    var portraitUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+
+    var portraitEl = document.getElementById('analysis-detail-portrait');
+    var nameEl = document.getElementById('analysis-detail-name');
+    var posEl  = document.getElementById('analysis-detail-pos');
+    var netEl  = document.getElementById('analysis-detail-net');
+
+    if (portraitEl) {
+        portraitEl.src = portraitUrl;
+        portraitEl.alt = heroName;
+    }
+    if (nameEl) nameEl.textContent = heroName;
+    if (posEl) {
+        var sideLabel = (side === 'light') ? 'Силы Света' : 'Силы Тьмы';
+        posEl.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
+    }
+    if (netEl) {
+        var netValue = _computeAnalysisScore(heroId, side);
+        var tone = netValue > 0.05 ? 'positive' : (netValue < -0.05 ? 'negative' : 'neutral');
+        var sign = netValue > 0 ? '+' : (netValue < 0 ? '−' : '');
+        netEl.className = 'analysis-detail-net-value analysis-detail-net-value--' + tone;
+        netEl.textContent = sign + Math.abs(netValue).toFixed(1);
+    }
+
+    var alliesArr  = ((side === 'light') ? _analysisLight : _analysisDark);
+    var enemiesArr = ((side === 'light') ? _analysisDark  : _analysisLight);
+    var allies  = alliesArr.filter(function(id) { return id && id !== heroId; });
+    var enemies = enemiesArr.filter(Boolean);
+
+    var alliesData = allies.map(function(id) {
+        return { id: id, value: _analysisGetPairValue(heroId, 'with', id) };
+    });
+    var enemiesData = enemies.map(function(id) {
+        return { id: id, value: _analysisGetPairValue(heroId, 'vs', id) };
+    });
+
+    // Сортировка: по убыванию |value|; пары без данных — в конец
+    var sortByImpact = function(a, b) {
+        if (a.value == null && b.value == null) return 0;
+        if (a.value == null) return 1;
+        if (b.value == null) return -1;
+        return Math.abs(b.value) - Math.abs(a.value);
+    };
+    alliesData.sort(sortByImpact);
+    enemiesData.sort(sortByImpact);
+
+    var alliesEl  = document.getElementById('analysis-detail-allies');
+    var enemiesEl = document.getElementById('analysis-detail-enemies');
+    if (alliesEl) {
+        alliesEl.innerHTML = alliesData.length === 0
+            ? '<div class="analysis-detail-empty">Нет союзников</div>'
+            : alliesData.map(_renderHeroDetailRow).join('');
+    }
+    if (enemiesEl) {
+        enemiesEl.innerHTML = enemiesData.length === 0
+            ? '<div class="analysis-detail-empty">Нет врагов</div>'
+            : enemiesData.map(_renderHeroDetailRow).join('');
+    }
+}
+
+function _renderHeroDetailRow(item) {
+    var name = (window.dotaHeroIdToName && window.dotaHeroIdToName[item.id]) || ('#' + item.id);
+    var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+    var safeName = String(name).replace(/"/g, '&quot;');
+
+    var valueHtml;
+    if (item.value == null) {
+        valueHtml = '<span class="analysis-detail-row-value analysis-detail-row-value--neutral">—</span>';
+    } else {
+        var tone = item.value > 0.05 ? 'positive' : (item.value < -0.05 ? 'negative' : 'neutral');
+        var sign = item.value > 0 ? '+' : (item.value < 0 ? '−' : '');
+        valueHtml = '<span class="analysis-detail-row-value analysis-detail-row-value--' + tone + '">' + sign + Math.abs(item.value).toFixed(1) + '</span>';
+    }
+
+    return '<div class="analysis-detail-row">' +
+        '<img class="analysis-detail-row-icon" src="' + iconUrl + '" alt="' + safeName + '">' +
+        '<span class="analysis-detail-row-name">' + _escHtml(name) + '</span>' +
+        valueHtml +
+        '</div>';
+}
+
+function _computeAnalysisScore(heroId, sideOverride) {
     if (!_analysisMatchups) return 0;
     var entry = _analysisMatchups[String(heroId)];
     if (!entry) return 0;
 
-    var allies  = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
-    var enemies = (_analysisActiveSide === 'light') ? _analysisDark  : _analysisLight;
+    var side = sideOverride || _analysisActiveSide;
+    var allies  = (side === 'light') ? _analysisLight : _analysisDark;
+    var enemies = (side === 'light') ? _analysisDark  : _analysisLight;
 
     var score = 0;
     var withMap = entry['with'] || {};
