@@ -1545,9 +1545,77 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     }
 
 
+def _normalize_ally_heroes(raw):
+    """Парсит ally_heroes из сырой строки SQL.
+
+    SQLite возвращает JSON как str, PostgreSQL JSONB — как list. Нормализуем
+    к list[int] или None.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            v = json.loads(raw)
+            return v if isinstance(v, list) else None
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _compute_top5_sums_per_user(db_rows) -> dict[int, tuple[float, int]]:
+    """Применяет правило «максимум 2 результата на уникальный союзный состав».
+
+    Для каждого пользователя:
+    1. Группируем результаты по отсортированному кортежу ally_heroes.
+       Если ally_heroes NULL/пустой — каждый результат считается уникальным
+       составом (исторические записи без сохранённого состава не дедупятся).
+    2. Внутри группы оставляем 2 наивысших total_score.
+    3. Из общего пула берём топ-5 и суммируем.
+
+    Args:
+        db_rows: iterable объектов с .user_id, .total_score, .ally_heroes.
+    Returns:
+        {user_id: (top5_sum, draft_count)}.
+    """
+    per_user: dict[int, list[tuple[float, tuple]]] = {}
+    counts: dict[int, int] = {}
+    for idx, r in enumerate(db_rows):
+        uid = r.user_id
+        ally = _normalize_ally_heroes(r.ally_heroes)
+        if ally:
+            try:
+                key = tuple(sorted(int(h) for h in ally))
+            except (ValueError, TypeError):
+                key = ("__row__", idx)
+        else:
+            key = ("__row__", idx)  # NULL/пустой состав — каждая запись уникальна
+        per_user.setdefault(uid, []).append((float(r.total_score), key))
+        counts[uid] = counts.get(uid, 0) + 1
+
+    result: dict[int, tuple[float, int]] = {}
+    for uid, rows in per_user.items():
+        by_comp: dict[tuple, list[float]] = {}
+        for score, key in rows:
+            by_comp.setdefault(key, []).append(score)
+        pool: list[float] = []
+        for scores in by_comp.values():
+            scores.sort(reverse=True)
+            pool.extend(scores[:2])
+        pool.sort(reverse=True)
+        top5_sum = sum(pool[:5])
+        result[uid] = (top5_sum, counts[uid])
+    return result
+
+
 @app.get("/api/draft/leaderboard")
 async def api_draft_leaderboard(db: Session = Depends(get_db)):
-    """Топ-25 пользователей по сумме топ-5 результатов."""
+    """Топ-25 пользователей по сумме топ-5 результатов.
+
+    Правило: на уникальный союзный состав (sorted ally_heroes) засчитываются
+    максимум 2 лучших результата.
+    """
     global _leaderboard_cache, _leaderboard_cache_ts
 
     if _leaderboard_cache is not None and time.time() - _leaderboard_cache_ts < 300:
@@ -1556,45 +1624,34 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
     from sqlalchemy import text
 
     rows = db.execute(text("""
-        SELECT
-            d1.user_id,
-            (
-                SELECT COALESCE(SUM(total_score), 0)
-                FROM (
-                    SELECT total_score
-                    FROM draft_results d2
-                    WHERE d2.user_id = d1.user_id
-                    ORDER BY total_score DESC
-                    LIMIT 5
-                )
-            ) AS top5_sum,
-            COUNT(*) AS draft_count
-        FROM draft_results d1
-        WHERE d1.user_id NOT IN (SELECT user_id FROM banned_users)
-        GROUP BY d1.user_id
-        ORDER BY top5_sum DESC
-        LIMIT 25
+        SELECT user_id, total_score, ally_heroes
+        FROM draft_results
+        WHERE user_id NOT IN (SELECT user_id FROM banned_users)
     """)).fetchall()
 
-    user_ids = [r.user_id for r in rows]
+    per_user = _compute_top5_sums_per_user(rows)
+    ranked = sorted(per_user.items(), key=lambda kv: kv[1][0], reverse=True)
+    top25 = ranked[:25]
+
+    user_ids = [uid for uid, _ in top25]
     profiles = {
         p.user_id: p
         for p in db.query(DBUserProfile).filter(DBUserProfile.user_id.in_(user_ids)).all()
     }
 
     result = []
-    for rank, row in enumerate(rows, 1):
-        profile = profiles.get(row.user_id)
+    for rank, (uid, (top5_sum, draft_count)) in enumerate(top25, 1):
+        profile = profiles.get(uid)
         settings = (profile.settings if profile else None) or {}
-        username = settings.get("first_name") or settings.get("username") or f"Игрок {row.user_id}"
+        username = settings.get("first_name") or settings.get("username") or f"Игрок {uid}"
         photo_url = settings.get("photo_url") or None
         result.append({
             "rank": rank,
-            "user_id": row.user_id,
+            "user_id": uid,
             "username": username,
             "photo_url": photo_url,
-            "top5_sum": round(row.top5_sum, 1),
-            "draft_count": row.draft_count,
+            "top5_sum": round(top5_sum, 1),
+            "draft_count": draft_count,
         })
 
     _leaderboard_cache = result
@@ -1606,9 +1663,7 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
 async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db)):
     """Место и счёт текущего пользователя среди всех участников.
 
-    Два быстрых запроса вместо одного RANK() OVER на весь стол:
-    1. Сумма топ-5 результатов пользователя — фильтр по user_id + LIMIT 5.
-    2. Количество пользователей с большей суммой → ранг = count + 1.
+    Использует то же правило дедупа по союзному составу, что и /leaderboard.
     """
     if not token:
         return {"rank": None, "top5_sum": None}
@@ -1621,41 +1676,20 @@ async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db
 
     from sqlalchemy import text
 
-    # ── Шаг 1: top5_sum пользователя (быстро: WHERE user_id + LIMIT 5) ──
-    sum_row = db.execute(text("""
-        SELECT COALESCE(SUM(total_score), 0) AS top5_sum
-        FROM (
-            SELECT total_score FROM draft_results
-            WHERE user_id = :uid
-            ORDER BY total_score DESC
-            LIMIT 5
-        )
-    """), {"uid": user_id}).fetchone()
+    rows = db.execute(text("""
+        SELECT user_id, total_score, ally_heroes
+        FROM draft_results
+        WHERE user_id NOT IN (SELECT user_id FROM banned_users)
+    """)).fetchall()
 
-    my_sum = float(sum_row.top5_sum) if sum_row else 0.0
-    if my_sum == 0.0:
+    per_user = _compute_top5_sums_per_user(rows)
+    my = per_user.get(user_id)
+    if not my or my[0] == 0.0:
         return {"rank": None, "top5_sum": None}
 
-    # ── Шаг 2: сколько пользователей лучше → ранг без RANK() OVER ───────
-    count_row = db.execute(text("""
-        SELECT COUNT(*) AS better_count
-        FROM (
-            SELECT user_id
-            FROM (
-                SELECT user_id, total_score,
-                       ROW_NUMBER() OVER (PARTITION BY user_id
-                                         ORDER BY total_score DESC) AS rn
-                FROM draft_results
-                WHERE user_id NOT IN (SELECT user_id FROM banned_users)
-            ) t
-            WHERE rn <= 5
-            GROUP BY user_id
-            HAVING SUM(total_score) > :my_sum
-        )
-    """), {"my_sum": my_sum}).fetchone()
-
-    rank = int(count_row.better_count) + 1 if count_row else 1
-    return {"rank": rank, "top5_sum": round(my_sum, 1)}
+    my_sum = my[0]
+    better_count = sum(1 for v in per_user.values() if v[0] > my_sum)
+    return {"rank": better_count + 1, "top5_sum": round(my_sum, 1)}
 
 
 @app.get("/api/draft/history")
