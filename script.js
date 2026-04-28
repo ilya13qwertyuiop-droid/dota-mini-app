@@ -3481,14 +3481,25 @@ function renderHeroesCatalog() {
         tile.addEventListener('click', function () {
             var name = tile.getAttribute('data-hero-name');
             if (!name) return;
-            closeHeroesCatalog();
             if (_catalogContext === 'drafter') {
                 var hid = window.dotaHeroIds && window.dotaHeroIds[name];
-                if (hid && typeof selectDrafterHero === 'function') {
+                if (!hid) { closeHeroesCatalog(); return; }
+                // Та же проверка, что в обычном гриде драфтера: герой,
+                // уже занятый вражеской командой, не может быть выбран.
+                var isEnemy = _drafterEnemyPick.some(function (e) {
+                    return e && e.hero_id === hid;
+                });
+                if (isEnemy) {
+                    showToast('Этот герой уже у врагов');
+                    return;
+                }
+                closeHeroesCatalog();
+                if (typeof selectDrafterHero === 'function') {
                     selectDrafterHero(hid);
                 }
                 return;
             }
+            closeHeroesCatalog();
             if (matchupPage && typeof matchupPage.selectHero === 'function') {
                 matchupPage.selectHero(name);
             }
