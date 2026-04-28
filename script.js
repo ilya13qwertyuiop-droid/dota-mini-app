@@ -3,6 +3,14 @@
 
         let TELEGRAM_USER_ID = null;
 
+        // Fallback: если Telegram WebApp недоступен (браузерный dev), всё равно
+        // публикуем --tg-viewport-height для bottom sheet'ов; обновляем по resize.
+        function _publishViewportFallback() {
+            document.documentElement.style.setProperty('--tg-viewport-height', window.innerHeight + 'px');
+        }
+        _publishViewportFallback();
+        window.addEventListener('resize', _publishViewportFallback);
+
         function initTelegramUser() {
             if (!tg) {
                 console.warn('Telegram WebApp object not found');
@@ -11,6 +19,16 @@
 
             tg.ready();
             tg.expand();
+
+            // Хук на Telegram Viewport API — публикуем актуальную visible-высоту
+            // в CSS-переменную --tg-viewport-height. Используется bottom sheet'ами
+            // (режим Анализ драфтера), для которых vh ненадёжен в WebView.
+            const _publishViewportHeight = () => {
+                const h = tg.viewportHeight || window.innerHeight;
+                document.documentElement.style.setProperty('--tg-viewport-height', h + 'px');
+            };
+            _publishViewportHeight();
+            try { tg.onEvent('viewportChanged', _publishViewportHeight); } catch (e) {}
 
             const unsafe = tg.initDataUnsafe || {};
 
@@ -3463,14 +3481,25 @@ function renderHeroesCatalog() {
         tile.addEventListener('click', function () {
             var name = tile.getAttribute('data-hero-name');
             if (!name) return;
-            closeHeroesCatalog();
             if (_catalogContext === 'drafter') {
                 var hid = window.dotaHeroIds && window.dotaHeroIds[name];
-                if (hid && typeof selectDrafterHero === 'function') {
+                if (!hid) { closeHeroesCatalog(); return; }
+                // Та же проверка, что в обычном гриде драфтера: герой,
+                // уже занятый вражеской командой, не может быть выбран.
+                var isEnemy = _drafterEnemyPick.some(function (e) {
+                    return e && e.hero_id === hid;
+                });
+                if (isEnemy) {
+                    showToast('Этот герой уже у врагов');
+                    return;
+                }
+                closeHeroesCatalog();
+                if (typeof selectDrafterHero === 'function') {
                     selectDrafterHero(hid);
                 }
                 return;
             }
+            closeHeroesCatalog();
             if (matchupPage && typeof matchupPage.selectHero === 'function') {
                 matchupPage.selectHero(name);
             }
@@ -4134,6 +4163,764 @@ function initDrafter() {
         renderDrafterSlots();
         renderDrafterGrid();
     }
+
+    // Восстановить ранее выбранный режим (по умолчанию — Тренировка)
+    var savedMode = null;
+    try { savedMode = localStorage.getItem('drafter_mode'); } catch (e) {}
+    setDrafterMode(savedMode === 'analysis' ? 'analysis' : 'training');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Drafter — режим «Анализ»
+   ──────────────────────────────────────────────────────────────── */
+
+var _drafterMode = 'training';
+var _analysisLight = [null, null, null, null, null];
+var _analysisDark  = [null, null, null, null, null];
+var _analysisActiveSide = 'light';
+var _analysisActiveSlot = -1;
+var _analysisSheetMode = null; // null | 'picker' | 'detail'
+var _analysisMatchups   = null;     // { "1": { vs: {...}, with: {...} }, ... }
+var _analysisPopularity = null;     // { "1": totalMatches, ... }
+var _analysisDataLoading = false;
+var _ANALYSIS_MIN_MATCH_COUNT = 30; // ниже — слишком шумно, игнорируем
+
+// Русские алиасы для поиска. Покрывают героев из HERO_PRIMARY_POSITIONS.
+// Несколько имён через запятую → каждое участвует в поиске как отдельный токен.
+var _ANALYSIS_HERO_NAMES_RU = {
+    1: 'антимаг,ам', 2: 'акс,топор', 3: 'бэйн', 4: 'бс,бладсикер,кровосос',
+    5: 'кристалка,цм,crystal maiden,кристал мейден', 6: 'дроу,лучница', 7: 'эс,шейкер,земля',
+    8: 'джаг,джагер', 9: 'мира,мирана', 10: 'морф,морфлинг', 11: 'сф,невермор,нм',
+    12: 'пл,фантом ленсер,клоны', 13: 'пак', 14: 'пудж,хук', 15: 'разор,молния',
+    16: 'санд кинг,ск,песочник', 17: 'шторм,сторм', 18: 'свен', 19: 'тини,каменный',
+    20: 'венга,венж,венджфул', 21: 'вр,виндрейнджер,винда', 22: 'зевс,зеус', 23: 'кунка,адмирал',
+    25: 'лина', 26: 'лион', 27: 'шаман,сс,шадоу шаман', 28: 'слардар,рыба',
+    29: 'тайд,тайдхантер', 30: 'вд,вич доктор', 31: 'лич', 32: 'рики',
+    33: 'энигма,чёрная дыра', 34: 'тинкер', 35: 'снайпер,снайп', 36: 'некр,некрофос',
+    37: 'варлок,локи', 38: 'бм,бистмастер', 39: 'кв,квин,квин оф пэйн', 40: 'вено,веномансер',
+    41: 'войд,фэйслесс', 42: 'врейс,врейс кинг,скелет', 43: 'дп,дэт профет', 44: 'па,фантомка',
+    45: 'пугна', 46: 'та,темплар', 47: 'випер', 48: 'луна',
+    49: 'дк,драгон найт', 50: 'даззл', 51: 'клок,клокверк', 52: 'лешрак',
+    53: 'нп,натурс,фурион', 54: 'лайф,лайфстилер,нейкс', 55: 'дс,дарк сир', 56: 'клинкз,клинк',
+    57: 'омник,омнинайт', 58: 'энча,энчантресс', 59: 'хускар', 60: 'нс,найт сталкер',
+    61: 'брудмазер,брудуха', 62: 'бх,баунти', 63: 'ткач,виверь,вивер', 64: 'джакиро',
+    65: 'батрайдер', 66: 'чен', 67: 'спектра,спектре', 68: 'аа,апа,апарик',
+    69: 'дум', 70: 'урса,медведь', 71: 'сб,спирит брейкер', 72: 'гиро,гирокоптер',
+    73: 'алхим,алчимик', 74: 'инвокер,инвок,карл', 75: 'силенсер,сай', 76: 'од,оверворлд,outworld',
+    77: 'ликан,волки', 78: 'брю,брюмастер,панда', 79: 'шд,шадоу демон', 80: 'друид,лоун друид',
+    81: 'ск,чаос найт', 82: 'мипо', 83: 'трент,тент', 84: 'огр,огра',
+    85: 'андаин,скелет,undying', 86: 'рубик', 87: 'дизраптор,диса', 88: 'никс',
+    89: 'нага,сирена', 90: 'кота,kota,keeper', 91: 'ио,виспер,wisp', 92: 'визаж',
+    93: 'сларк', 94: 'медуза', 95: 'тролль,тролл', 96: 'кентавр,центавр',
+    97: 'магнус', 98: 'таймбер,timber', 99: 'бристл,бб,brist', 100: 'таск',
+    101: 'скай,скайвраф', 102: 'абба', 103: 'элдер,титан', 104: 'лк,легион',
+    105: 'тачис,techies', 106: 'эмбер,эс,ember', 107: 'ес,earth spirit', 108: 'ундерлорд,анделорд',
+    109: 'тб,террорблейд', 110: 'фен,феникс', 111: 'оракл', 112: 'вв,винтер виверн',
+    113: 'арк,арк варден', 114: 'мк,манки кинг,обезьяна', 119: 'дарк виллоу,виллоу',
+    120: 'панго,пангольер', 121: 'грим,гримстрок', 123: 'худвинк,белка',
+    126: 'войд спирит,вс', 128: 'снап,снапфаер,лиса', 129: 'марс',
+    131: 'рингмастер', 135: 'давн,давнбрейкер', 136: 'марси', 137: 'примал,бист,праймал',
+    138: 'муэрта,муерта', 145: 'кез', 155: 'ларго'
+};
+
+// Lazy-built lower-cased search index: { id: ['name1', 'name2', ...] }
+var _analysisSearchIndex = null;
+
+function _buildAnalysisSearchIndex() {
+    var idx = {};
+    if (window.dotaHeroIds) {
+        Object.keys(window.dotaHeroIds).forEach(function(name) {
+            var id = window.dotaHeroIds[name];
+            if (!idx[id]) idx[id] = [];
+            idx[id].push(name.toLowerCase());
+        });
+    }
+    Object.keys(_ANALYSIS_HERO_NAMES_RU).forEach(function(idStr) {
+        var id = parseInt(idStr, 10);
+        if (!idx[id]) idx[id] = [];
+        _ANALYSIS_HERO_NAMES_RU[idStr].split(',').forEach(function(ru) {
+            var s = ru.trim().toLowerCase();
+            if (s) idx[id].push(s);
+        });
+    });
+    return idx;
+}
+
+function _analysisHeroMatchesQuery(heroId, query) {
+    if (!query) return true;
+    if (!_analysisSearchIndex) _analysisSearchIndex = _buildAnalysisSearchIndex();
+    var names = _analysisSearchIndex[heroId];
+    if (!names) return false;
+    for (var i = 0; i < names.length; i++) {
+        if (names[i].indexOf(query) !== -1) return true;
+    }
+    return false;
+}
+
+function setDrafterMode(mode) {
+    if (mode !== 'training' && mode !== 'analysis') mode = 'training';
+    _drafterMode = mode;
+    try { localStorage.setItem('drafter_mode', mode); } catch (e) {}
+
+    var trainingPanel = document.getElementById('drafter-mode-training');
+    var analysisPanel = document.getElementById('drafter-mode-analysis');
+    if (trainingPanel) trainingPanel.hidden = (mode !== 'training');
+    if (analysisPanel) analysisPanel.hidden = (mode !== 'analysis');
+
+    var tabs = document.querySelectorAll('.drafter-mode-tab');
+    tabs.forEach(function(t) {
+        var isActive = t.getAttribute('data-mode') === mode;
+        t.classList.toggle('drafter-mode-tab--active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    if (mode === 'analysis') {
+        _ensureAnalysisData();
+        renderAnalysisSlots();
+    } else {
+        // При выходе из Анализа закрыть любой открытый sheet и undo-toast
+        closeAnalysisSheet();
+        closeHeroDetailSheet();
+        _hideAnalysisUndoToast();
+    }
+}
+
+function _ensureAnalysisData() {
+    if (_analysisMatchups && _analysisPopularity) return;
+    if (_analysisDataLoading) return;
+    _analysisDataLoading = true;
+
+    var base = window.API_BASE_URL;
+    var p1 = _analysisMatchups
+        ? Promise.resolve(null)
+        : apiFetch(base + '/draft/matchups_all')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { if (d) _analysisMatchups = d; });
+    var p2 = _analysisPopularity
+        ? Promise.resolve(null)
+        : apiFetch(base + '/draft/popularity')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { if (d) _analysisPopularity = d; });
+
+    Promise.all([p1, p2]).catch(function(e) {
+        console.warn('[analysis] data load failed:', e);
+    }).then(function() {
+        _analysisDataLoading = false;
+        // Если открыт sheet — обновляем его содержимое с реальными данными
+        if (_analysisSheetMode === 'picker') {
+            renderAnalysisSheetGrid();
+        } else if (_analysisSheetMode === 'detail') {
+            var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+            var hid = arr[_analysisActiveSlot];
+            if (hid) _renderHeroDetailSheet(hid, _analysisActiveSide, _analysisActiveSlot);
+        }
+        // Слоты тоже зависят от matchups (net-contribution бейджи)
+        if (_drafterMode === 'analysis') renderAnalysisSlots();
+    });
+}
+
+function _analysisAllPicks() {
+    return _analysisLight.concat(_analysisDark).filter(Boolean);
+}
+
+function _analysisHasAnyPick() {
+    return _analysisAllPicks().length > 0;
+}
+
+/* Достаёт synergy-значение из matchups для пары (heroId → mapKey → otherId).
+   Возвращает null если запись отсутствует или matchCount ниже порога. */
+function _analysisGetPairValue(heroId, mapKey, otherId) {
+    if (!_analysisMatchups) return null;
+    var entry = _analysisMatchups[String(heroId)];
+    if (!entry) return null;
+    var map = entry[mapKey];
+    if (!map) return null;
+    var rec = map[String(otherId)];
+    if (!rec) return null;
+    if ((rec.matchCount || 0) < _ANALYSIS_MIN_MATCH_COUNT) return null;
+    return rec.synergy || 0;
+}
+
+/* Симметричная синергия пары союзников: avg(with[a][b], with[b][a]),
+   если хоть одно значение есть. Совместимо с формулой из /api/draft/evaluate. */
+function _analysisPairSynergy(a, b) {
+    var v1 = _analysisGetPairValue(a, 'with', b);
+    var v2 = _analysisGetPairValue(b, 'with', a);
+    if (v1 == null && v2 == null) return null;
+    if (v1 == null) return v2;
+    if (v2 == null) return v1;
+    return (v1 + v2) / 2;
+}
+
+/* Возвращает все валидные пары синергии внутри стороны: [{a, b, value}]. */
+function _analysisCollectSynergies(heroes) {
+    var out = [];
+    for (var i = 0; i < heroes.length; i++) {
+        for (var j = i + 1; j < heroes.length; j++) {
+            var v = _analysisPairSynergy(heroes[i], heroes[j]);
+            if (v != null) out.push({ a: heroes[i], b: heroes[j], value: v });
+        }
+    }
+    return out;
+}
+
+/* Возвращает все валидные пары матчапов между сторонами с точки зрения
+   первой стороны (perspective): vs[perspective][other].synergy. */
+function _analysisCollectMatchups(perspective, other) {
+    var out = [];
+    for (var i = 0; i < perspective.length; i++) {
+        for (var j = 0; j < other.length; j++) {
+            var v = _analysisGetPairValue(perspective[i], 'vs', other[j]);
+            if (v != null) out.push({ self: perspective[i], opp: other[j], value: v });
+        }
+    }
+    return out;
+}
+
+function _analysisSumValues(arr) {
+    var s = 0;
+    for (var i = 0; i < arr.length; i++) s += arr[i].value;
+    return s;
+}
+
+function _renderAnalysisStats() {
+    var box = document.getElementById('analysis-stats');
+    if (!box) return;
+
+    var light = _analysisLight.filter(Boolean);
+    var dark  = _analysisDark.filter(Boolean);
+
+    if (light.length + dark.length === 0) {
+        box.hidden = true;
+        return;
+    }
+    box.hidden = false;
+
+    var lightSyn = _analysisCollectSynergies(light);
+    var darkSyn  = _analysisCollectSynergies(dark);
+    var lightVsDark = _analysisCollectMatchups(light, dark);
+    var darkVsLight = _analysisCollectMatchups(dark, light);
+
+    var lightTotal = _analysisSumValues(lightSyn) + _analysisSumValues(lightVsDark);
+    var darkTotal  = _analysisSumValues(darkSyn)  + _analysisSumValues(darkVsLight);
+
+    _setAnalysisTotal('analysis-stats-total-light', lightTotal);
+    _setAnalysisTotal('analysis-stats-total-dark', darkTotal);
+
+    // Сильнейшая пара: max value среди всех внутрикомандных синергий обеих сторон.
+    var allSyn = lightSyn.concat(darkSyn);
+    var bestRow = document.getElementById('analysis-stats-best-pair');
+    var bestBody = document.getElementById('analysis-stats-best-body');
+    if (allSyn.length === 0) {
+        bestBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        bestBody.innerHTML = 'Добавь двух союзников на одну сторону';
+    } else {
+        var best = allSyn[0];
+        for (var i = 1; i < allSyn.length; i++) if (allSyn[i].value > best.value) best = allSyn[i];
+        bestBody.className = 'analysis-stats-row-body';
+        bestBody.innerHTML = _analysisRenderPair(best.a, best.b, '+', best.value, ' + ');
+    }
+    bestRow.hidden = false;
+
+    // Кросс-сторонние матчапы: best (max положительный) и worst (max |value|).
+    var allMu = lightVsDark.concat(darkVsLight);
+
+    // Лучший матчап: пара (свой, чужой) с максимальным положительным значением.
+    // Показываем как победу выигрывающей стороны (всегда +).
+    var bestMuRow  = document.getElementById('analysis-stats-best-mu');
+    var bestMuBody = document.getElementById('analysis-stats-best-mu-body');
+    var bestMu = null;
+    for (var bi = 0; bi < allMu.length; bi++) {
+        if (allMu[bi].value > 0 && (bestMu == null || allMu[bi].value > bestMu.value)) {
+            bestMu = allMu[bi];
+        }
+    }
+    if (allMu.length === 0) {
+        bestMuBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        bestMuBody.innerHTML = 'Добавь героев на обе стороны';
+    } else if (bestMu == null) {
+        bestMuBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        bestMuBody.innerHTML = 'Нет выигрышных матчапов';
+    } else {
+        // self = победитель (положительное value), opp = проигрывающий
+        bestMuBody.className = 'analysis-stats-row-body';
+        bestMuBody.innerHTML = _analysisRenderPair(bestMu.self, bestMu.opp, '+', bestMu.value, ' vs ');
+    }
+    bestMuRow.hidden = false;
+
+    // Слабый матчап: пара (свой, чужой) с самой большой |value|, показываем
+    // как поражение проигрывающей стороны (т.е. знак минус для проигравшего).
+    var worstRow = document.getElementById('analysis-stats-worst-mu');
+    var worstBody = document.getElementById('analysis-stats-worst-body');
+    if (allMu.length === 0) {
+        worstBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+        worstBody.innerHTML = 'Добавь героев на обе стороны';
+    } else {
+        var pickWorst = allMu[0];
+        for (var k = 1; k < allMu.length; k++) {
+            if (Math.abs(allMu[k].value) > Math.abs(pickWorst.value)) pickWorst = allMu[k];
+        }
+        // Тот, кто проигрывает = чьё value < 0 (или opp если value > 0)
+        var loser, winner;
+        if (pickWorst.value < 0) { loser = pickWorst.self; winner = pickWorst.opp; }
+        else                     { loser = pickWorst.opp;  winner = pickWorst.self; }
+        var displayValue = -Math.abs(pickWorst.value);
+        worstBody.className = 'analysis-stats-row-body';
+        worstBody.innerHTML = _analysisRenderPair(loser, winner, '-', displayValue, ' vs ');
+    }
+    worstRow.hidden = false;
+}
+
+function _setAnalysisTotal(id, value) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var tone = value > 0.05 ? 'positive' : (value < -0.05 ? 'negative' : 'neutral');
+    var sign = value > 0 ? '+' : (value < 0 ? '−' : '');
+    el.className = 'analysis-stats-total analysis-stats-total--' + tone;
+    el.textContent = sign + Math.abs(value).toFixed(1);
+}
+
+function _analysisRenderPair(idA, idB, forcedSign, value, separator) {
+    var nameA = (window.dotaHeroIdToName && window.dotaHeroIdToName[idA]) || ('#' + idA);
+    var nameB = (window.dotaHeroIdToName && window.dotaHeroIdToName[idB]) || ('#' + idB);
+    var iconA = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(nameA) : '';
+    var iconB = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(nameB) : '';
+    var safeA = String(nameA).replace(/"/g, '&quot;');
+    var safeB = String(nameB).replace(/"/g, '&quot;');
+    var tone, sign;
+    if (forcedSign === '+') { tone = 'positive'; sign = '+'; }
+    else if (forcedSign === '-') { tone = 'negative'; sign = '−'; }
+    else {
+        tone = value > 0.05 ? 'positive' : (value < -0.05 ? 'negative' : 'neutral');
+        sign = value > 0 ? '+' : (value < 0 ? '−' : '');
+    }
+    var html = '<div class="analysis-stats-pair">';
+    html += '<img class="analysis-stats-pair-icon" src="' + iconA + '" alt="' + safeA + '">';
+    html += '<span class="analysis-stats-pair-sep">' + _escHtml(separator.trim()) + '</span>';
+    html += '<img class="analysis-stats-pair-icon" src="' + iconB + '" alt="' + safeB + '">';
+    html += '</div>';
+    html += '<span class="analysis-stats-value analysis-stats-value--' + tone + '">' + sign + Math.abs(value).toFixed(1) + '</span>';
+    return html;
+}
+
+function renderAnalysisSlots() {
+    _renderAnalysisSide('light');
+    _renderAnalysisSide('dark');
+    _renderAnalysisStats();
+    var hint = document.getElementById('analysis-hint');
+    if (hint) hint.hidden = _analysisHasAnyPick();
+}
+
+function _renderAnalysisSide(side) {
+    var el = document.getElementById('analysis-' + side + '-slots');
+    if (!el) return;
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+        var hero = arr[i];
+        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
+        var cls = 'drafter-slot analysis-slot analysis-slot--' + side;
+        if (hero) cls += ' analysis-slot--filled drafter-slot--filled';
+        html += '<div class="' + cls + '" onclick="analysisSlotClick(\'' + side + '\',' + i + ')">';
+        if (hero) {
+            var iconUrl = _drafterHeroIcon(hero);
+            if (iconUrl) {
+                html += '<img src="' + iconUrl + '" alt="" class="drafter-slot-img">';
+            } else {
+                html += '<span style="font-size:10px;color:#aaa;">#' + hero + '</span>';
+            }
+            // Net-contribution бейдж: synergy с союзниками + matchup против врагов.
+            // Пока matchups ещё не подгрузились — рисуем «—» вместо «0.0» (это «нет данных»,
+            // а не «нулевой вклад»).
+            if (!_analysisMatchups) {
+                html += '<span class="analysis-slot-net analysis-slot-net--loading">—</span>';
+            } else {
+                var net = _computeAnalysisScore(hero, side);
+                var netTone = net > 0.05 ? 'positive' : (net < -0.05 ? 'negative' : 'neutral');
+                var netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
+                html += '<span class="analysis-slot-net analysis-slot-net--' + netTone + '">' + netSign + Math.abs(net).toFixed(1) + '</span>';
+            }
+            html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
+        } else {
+            html += '<img src="' + posSrc + '" class="drafter-slot-pos-icon" alt="">';
+        }
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function analysisSlotClick(side, slotIndex) {
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    if (arr[slotIndex]) {
+        // Тап на занятый слот — открыть детали героя
+        openHeroDetailSheet(side, slotIndex);
+        return;
+    }
+    openAnalysisSheet(side, slotIndex);
+}
+
+function openAnalysisSheet(side, slotIndex) {
+    if (_analysisSheetMode === 'detail') closeHeroDetailSheet();
+
+    _analysisActiveSide = side;
+    _analysisActiveSlot = slotIndex;
+    _analysisSheetMode = 'picker';
+
+    var sheet = document.getElementById('analysis-sheet');
+    var title = document.getElementById('analysis-sheet-title');
+    var search = document.getElementById('analysis-sheet-search');
+    if (!sheet) return;
+
+    if (title) {
+        var sideLabel = (side === 'light') ? 'Силы Света' : 'Силы Тьмы';
+        title.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
+    }
+    if (search) search.value = '';
+
+    sheet.hidden = false;
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    renderAnalysisSheetGrid();
+}
+
+function closeAnalysisSheet() {
+    var sheet = document.getElementById('analysis-sheet');
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    _analysisActiveSlot = -1;
+    if (_analysisSheetMode === 'picker') _analysisSheetMode = null;
+}
+
+/* ── Bottom sheet с деталями уже выбранного героя ───────────────── */
+
+function openHeroDetailSheet(side, slotIndex) {
+    if (_analysisSheetMode === 'picker') closeAnalysisSheet();
+
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    var heroId = arr[slotIndex];
+    if (!heroId) return;
+
+    _analysisActiveSide = side;
+    _analysisActiveSlot = slotIndex;
+    _analysisSheetMode = 'detail';
+
+    _renderHeroDetailSheet(heroId, side, slotIndex);
+
+    var sheet = document.getElementById('analysis-hero-detail-sheet');
+    if (!sheet) return;
+    sheet.hidden = false;
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeHeroDetailSheet() {
+    var sheet = document.getElementById('analysis-hero-detail-sheet');
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    _analysisActiveSlot = -1;
+    if (_analysisSheetMode === 'detail') _analysisSheetMode = null;
+}
+
+function removeAnalysisHeroFromDetail() {
+    if (_analysisActiveSlot < 0 || _analysisActiveSlot > 4) return;
+    var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+    var removedSide = _analysisActiveSide;
+    var removedSlot = _analysisActiveSlot;
+    var removedHeroId = arr[removedSlot];
+    arr[removedSlot] = null;
+    if (navigator.vibrate) navigator.vibrate(15);
+    closeHeroDetailSheet();
+    renderAnalysisSlots();
+    _showAnalysisUndoToast(removedHeroId, removedSide, removedSlot);
+}
+
+/* ── Undo toast для удалённого героя ──────────────────────────────── */
+
+var _analysisUndoTimer = null;
+
+function _showAnalysisUndoToast(heroId, side, slotIndex) {
+    if (!heroId) return;
+    var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('#' + heroId);
+
+    var el = document.getElementById('analysis-undo-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'analysis-undo-toast';
+        el.className = 'analysis-undo-toast';
+        document.body.appendChild(el);
+    }
+    el.innerHTML =
+        '<span class="analysis-undo-toast-text">' + _escHtml(heroName) + ' удалён</span>' +
+        '<button class="analysis-undo-toast-btn" type="button">Вернуть</button>';
+    var btn = el.querySelector('.analysis-undo-toast-btn');
+    if (btn) btn.onclick = function() { _undoAnalysisRemoval(heroId, side, slotIndex); };
+
+    // requestAnimationFrame чтобы opacity-transition реально сработал, если toast только что создан
+    requestAnimationFrame(function() { el.classList.add('analysis-undo-toast--visible'); });
+
+    clearTimeout(_analysisUndoTimer);
+    _analysisUndoTimer = setTimeout(function() { _hideAnalysisUndoToast(); }, 4000);
+}
+
+function _hideAnalysisUndoToast() {
+    var el = document.getElementById('analysis-undo-toast');
+    if (el) el.classList.remove('analysis-undo-toast--visible');
+    clearTimeout(_analysisUndoTimer);
+    _analysisUndoTimer = null;
+}
+
+function _undoAnalysisRemoval(heroId, side, slotIndex) {
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    // Слот успели заполнить чем-то другим — undo отменяется
+    if (arr[slotIndex]) { _hideAnalysisUndoToast(); return; }
+    // Этого героя уже добавили обратно где-то ещё — undo отменяется
+    if (_analysisAllPicks().indexOf(heroId) !== -1) { _hideAnalysisUndoToast(); return; }
+
+    arr[slotIndex] = heroId;
+    if (navigator.vibrate) navigator.vibrate(10);
+    _hideAnalysisUndoToast();
+    renderAnalysisSlots();
+}
+
+function _renderHeroDetailSheet(heroId, side, slotIndex) {
+    var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('#' + heroId);
+    var portraitUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+
+    var portraitEl = document.getElementById('analysis-detail-portrait');
+    var nameEl = document.getElementById('analysis-detail-name');
+    var posEl  = document.getElementById('analysis-detail-pos');
+    var netEl  = document.getElementById('analysis-detail-net');
+
+    if (portraitEl) {
+        portraitEl.src = portraitUrl;
+        portraitEl.alt = heroName;
+    }
+    if (nameEl) nameEl.textContent = heroName;
+    if (posEl) {
+        var sideLabel = (side === 'light') ? 'Силы Света' : 'Силы Тьмы';
+        posEl.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
+    }
+    if (netEl) {
+        var netValue = _computeAnalysisScore(heroId, side);
+        var tone = netValue > 0.05 ? 'positive' : (netValue < -0.05 ? 'negative' : 'neutral');
+        var sign = netValue > 0 ? '+' : (netValue < 0 ? '−' : '');
+        netEl.className = 'analysis-detail-net-value analysis-detail-net-value--' + tone;
+        netEl.textContent = sign + Math.abs(netValue).toFixed(1);
+    }
+
+    var alliesArr  = ((side === 'light') ? _analysisLight : _analysisDark);
+    var enemiesArr = ((side === 'light') ? _analysisDark  : _analysisLight);
+    var allies  = alliesArr.filter(function(id) { return id && id !== heroId; });
+    var enemies = enemiesArr.filter(Boolean);
+
+    var alliesData = allies.map(function(id) {
+        return { id: id, value: _analysisGetPairValue(heroId, 'with', id) };
+    });
+    var enemiesData = enemies.map(function(id) {
+        return { id: id, value: _analysisGetPairValue(heroId, 'vs', id) };
+    });
+
+    // Сортировка: по убыванию |value|; пары без данных — в конец
+    var sortByImpact = function(a, b) {
+        if (a.value == null && b.value == null) return 0;
+        if (a.value == null) return 1;
+        if (b.value == null) return -1;
+        return Math.abs(b.value) - Math.abs(a.value);
+    };
+    alliesData.sort(sortByImpact);
+    enemiesData.sort(sortByImpact);
+
+    var alliesEl  = document.getElementById('analysis-detail-allies');
+    var enemiesEl = document.getElementById('analysis-detail-enemies');
+    if (alliesEl) {
+        alliesEl.innerHTML = alliesData.length === 0
+            ? '<div class="analysis-detail-empty">Нет союзников</div>'
+            : alliesData.map(_renderHeroDetailRow).join('');
+    }
+    if (enemiesEl) {
+        enemiesEl.innerHTML = enemiesData.length === 0
+            ? '<div class="analysis-detail-empty">Нет врагов</div>'
+            : enemiesData.map(_renderHeroDetailRow).join('');
+    }
+}
+
+function _renderHeroDetailRow(item) {
+    var name = (window.dotaHeroIdToName && window.dotaHeroIdToName[item.id]) || ('#' + item.id);
+    var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+    var safeName = String(name).replace(/"/g, '&quot;');
+
+    var valueHtml;
+    if (item.value == null) {
+        valueHtml = '<span class="analysis-detail-row-value analysis-detail-row-value--neutral">—</span>';
+    } else {
+        var tone = item.value > 0.05 ? 'positive' : (item.value < -0.05 ? 'negative' : 'neutral');
+        var sign = item.value > 0 ? '+' : (item.value < 0 ? '−' : '');
+        valueHtml = '<span class="analysis-detail-row-value analysis-detail-row-value--' + tone + '">' + sign + Math.abs(item.value).toFixed(1) + '</span>';
+    }
+
+    return '<div class="analysis-detail-row">' +
+        '<img class="analysis-detail-row-icon" src="' + iconUrl + '" alt="' + safeName + '">' +
+        '<span class="analysis-detail-row-name">' + _escHtml(name) + '</span>' +
+        valueHtml +
+        '</div>';
+}
+
+function _computeAnalysisScore(heroId, sideOverride) {
+    if (!_analysisMatchups) return 0;
+    var entry = _analysisMatchups[String(heroId)];
+    if (!entry) return 0;
+
+    var side = sideOverride || _analysisActiveSide;
+    var allies  = (side === 'light') ? _analysisLight : _analysisDark;
+    var enemies = (side === 'light') ? _analysisDark  : _analysisLight;
+
+    var score = 0;
+    var withMap = entry['with'] || {};
+    for (var i = 0; i < allies.length; i++) {
+        var aid = allies[i];
+        if (!aid || aid === heroId) continue;
+        var w = withMap[String(aid)];
+        if (w && (w.matchCount || 0) >= _ANALYSIS_MIN_MATCH_COUNT) {
+            score += w.synergy || 0;
+        }
+    }
+    var vsMap = entry['vs'] || {};
+    for (var j = 0; j < enemies.length; j++) {
+        var eid = enemies[j];
+        if (!eid) continue;
+        var v = vsMap[String(eid)];
+        if (v && (v.matchCount || 0) >= _ANALYSIS_MIN_MATCH_COUNT) {
+            score += v.synergy || 0;
+        }
+    }
+    return score;
+}
+
+function onAnalysisSheetSearch() {
+    renderAnalysisSheetGrid();
+}
+
+function renderAnalysisSheetGrid() {
+    var grid = document.getElementById('analysis-sheet-grid');
+    if (!grid) return;
+
+    if (!window.dotaHeroIds) {
+        grid.innerHTML = '<div class="analysis-sheet-empty">Герои не загружены</div>';
+        return;
+    }
+
+    var searchEl = document.getElementById('analysis-sheet-search');
+    var query = searchEl ? searchEl.value.toLowerCase().trim() : '';
+    var hasContext = _analysisHasAnyPick();
+    var pop = _analysisPopularity || {};
+    var pickedSet = new Set(_analysisAllPicks());
+
+    // Позиция активного слота: slotIndex (0-4) → pos (1-5).
+    // Для поиска позиция игнорируется (один общий список).
+    var slotPos = (_analysisActiveSlot >= 0) ? (_analysisActiveSlot + 1) : null;
+
+    // Собираем уникальных героев. dotaHeroIds может содержать алиасы на один id —
+    // дедуп по id, при поиске учитываем все имена + русские алиасы.
+    var seen = new Set();
+    var heroes = [];
+    Object.keys(window.dotaHeroIds).forEach(function(name) {
+        var id = window.dotaHeroIds[name];
+        if (seen.has(id)) return;
+        seen.add(id);
+        if (pickedSet.has(id)) return;
+        if (query && !_analysisHeroMatchesQuery(id, query)) return;
+        var score = hasContext ? _computeAnalysisScore(id) : 0;
+        var popularity = pop[String(id)] || 0;
+        var primaryPos = (typeof HERO_PRIMARY_POSITIONS !== 'undefined') ? HERO_PRIMARY_POSITIONS[id] : null;
+        heroes.push({ id: id, name: name, score: score, pop: popularity, pos: primaryPos });
+    });
+
+    var sortFn = function(a, b) {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.pop !== a.pop) return b.pop - a.pop;
+        return a.name.localeCompare(b.name);
+    };
+
+    var html = '';
+
+    if (query || slotPos == null) {
+        // Поиск или нет позиции — единый плоский список (до 60).
+        heroes.sort(sortFn);
+        var flat = heroes.slice(0, query ? heroes.length : 20);
+        if (flat.length === 0) {
+            grid.innerHTML = '<div class="analysis-sheet-empty">' + (query ? 'Не найдено' : 'Нет данных') + '</div>';
+            return;
+        }
+        flat.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
+    } else {
+        // Группировка: подходящие позиции сначала, потом остальные.
+        var primary = [];
+        var others  = [];
+        heroes.forEach(function(h) {
+            if (h.pos === slotPos) primary.push(h);
+            else others.push(h);
+        });
+        primary.sort(sortFn);
+        others.sort(sortFn);
+
+        // Лимиты по группам (с прокруткой можно больше).
+        primary = primary.slice(0, 30);
+        others  = others.slice(0, 20);
+
+        if (primary.length === 0 && others.length === 0) {
+            grid.innerHTML = '<div class="analysis-sheet-empty">Нет данных</div>';
+            return;
+        }
+
+        if (primary.length > 0) {
+            html += '<div class="analysis-sheet-divider">Позиция ' + slotPos + '</div>';
+            primary.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
+        }
+        if (others.length > 0) {
+            html += '<div class="analysis-sheet-divider">Другие позиции</div>';
+            others.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
+        }
+    }
+
+    grid.innerHTML = html;
+    // При новом рендере прокручиваем наверх, чтобы лучшие герои были видны
+    grid.scrollTop = 0;
+}
+
+function _renderAnalysisPickCard(h, hasContext) {
+    var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
+    var safeName = String(h.name).replace(/"/g, '&quot;');
+    var html = '<div class="analysis-pick-card" onclick="selectAnalysisHero(' + h.id + ')" title="' + safeName + '">';
+    if (iconUrl) {
+        html += '<img class="analysis-pick-card-img" src="' + iconUrl + '" alt="' + safeName + '">';
+    } else {
+        html += '<div class="analysis-pick-card-img drafter-grid-img-empty"></div>';
+    }
+    html += '<div class="analysis-pick-card-name">' + _escHtml(h.name) + '</div>';
+    if (hasContext) {
+        var tone = h.score > 0.05 ? 'positive' : (h.score < -0.05 ? 'negative' : 'neutral');
+        var sign = h.score > 0 ? '+' : (h.score < 0 ? '−' : '');
+        var abs  = Math.abs(h.score).toFixed(1);
+        html += '<div class="analysis-pick-card-score analysis-pick-card-score--' + tone + '">' + sign + abs + '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function selectAnalysisHero(heroId) {
+    if (_analysisActiveSlot < 0 || _analysisActiveSlot > 4) return;
+    var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
+    arr[_analysisActiveSlot] = heroId;
+
+    if (navigator.vibrate) navigator.vibrate(15);
+
+    closeAnalysisSheet();
+    renderAnalysisSlots();
 }
 
 async function loadDrafterMatch() {
