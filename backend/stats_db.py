@@ -223,6 +223,26 @@ def init_stats_tables() -> None:
 # Runtime settings helpers
 # ---------------------------------------------------------------------------
 
+def get_latest_match_patch() -> Optional[str]:
+    """Returns the `patch` string of the most recent match by start_time, or None.
+
+    Used by /api/meta as a fallback when dota_builds.json does not carry a
+    patch field — the matches table always has the authoritative live patch.
+    """
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT patch FROM matches "
+                    "WHERE patch IS NOT NULL AND patch != '' "
+                    "ORDER BY start_time DESC LIMIT 1"
+                )
+            ).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 def get_stats_mode() -> str:
     """Returns the current stats mode: 'normal' or 'strict'.
 

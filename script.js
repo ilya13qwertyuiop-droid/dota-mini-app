@@ -5570,6 +5570,14 @@ async function showDrafterHistory() {
     }
 }
 
+function _lbCurrentMonthLabel() {
+    // "Май 2026" — текущий календарный месяц для подзаголовка лидерборда.
+    var d = new Date();
+    var month = d.toLocaleDateString('ru-RU', { month: 'long' });
+    month = month.charAt(0).toUpperCase() + month.slice(1);
+    return month + ' ' + d.getFullYear();
+}
+
 function _lbBuildHeader(PAGE_ID) {
     var header = document.createElement('div');
     header.className = 'drafter-fp-header';
@@ -5584,7 +5592,13 @@ function _lbBuildHeader(PAGE_ID) {
 
     var title = document.createElement('div');
     title.className = 'drafter-fp-title';
-    title.textContent = 'Топ драфтеров';
+    var titleMain = document.createElement('div');
+    titleMain.textContent = 'Топ драфтеров';
+    title.appendChild(titleMain);
+    var titleMonth = document.createElement('div');
+    titleMonth.className = 'drafter-fp-title-month';
+    titleMonth.textContent = _lbCurrentMonthLabel();
+    title.appendChild(titleMonth);
     header.appendChild(title);
 
     var spacer = document.createElement('div');
@@ -5592,41 +5606,6 @@ function _lbBuildHeader(PAGE_ID) {
     header.appendChild(spacer);
 
     return header;
-}
-
-function _lbBuildPrizeBanner() {
-    var banner = document.createElement('div');
-    banner.className = 'lb-prize-banner';
-
-    var img = document.createElement('img');
-    img.src = '/images/arcana.gif';
-    img.className = 'lb-prize-gif';
-    img.alt = '';
-    img.loading = 'lazy';
-    img.decoding = 'async';
-    img.setAttribute('aria-hidden', 'true');
-    banner.appendChild(img);
-
-    var info = document.createElement('div');
-    info.className = 'lb-prize-info';
-
-    var title = document.createElement('div');
-    title.className = 'lb-prize-title';
-    title.textContent = 'Арканы каждый месяц';
-    info.appendChild(title);
-
-    var sub = document.createElement('div');
-    sub.className = 'lb-prize-sub';
-    sub.textContent = 'Топ-3 получают аркану на выбор в конце месяца';
-    info.appendChild(sub);
-
-    var month = document.createElement('div');
-    month.className = 'lb-prize-month';
-    month.textContent = 'апрель 2026';
-    info.appendChild(month);
-
-    banner.appendChild(info);
-    return banner;
 }
 
 function _lbBuildNote() {
@@ -5798,7 +5777,6 @@ function _lbRenderRowsInto(content, rows) {
 function _lbBuildScaffold(PAGE_ID) {
     var frag = document.createDocumentFragment();
     frag.appendChild(_lbBuildHeader(PAGE_ID));
-    frag.appendChild(_lbBuildPrizeBanner());
     frag.appendChild(_lbBuildNote());
     var content = document.createElement('div');
     content.className = 'drafter-fp-content';
