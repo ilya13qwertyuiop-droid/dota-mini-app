@@ -1609,12 +1609,20 @@ def _compute_top5_sums_per_user(db_rows) -> dict[int, tuple[float, int]]:
     return result
 
 
+def _current_month_start_utc() -> datetime:
+    """Начало текущего календарного месяца в UTC. Используется как нижняя
+    граница для месячного лидерборда — каждый 1-е число рейтинг обнуляется."""
+    now = datetime.now(timezone.utc)
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 @app.get("/api/draft/leaderboard")
 async def api_draft_leaderboard(db: Session = Depends(get_db)):
-    """Топ-25 пользователей по сумме топ-5 результатов.
+    """Топ-25 пользователей по сумме топ-5 результатов за текущий месяц.
 
     Правило: на уникальный союзный состав (sorted ally_heroes) засчитываются
-    максимум 2 лучших результата.
+    максимум 2 лучших результата. Считаются только драфты текущего календарного
+    месяца — рейтинг обнуляется 1-го числа каждого месяца.
     """
     global _leaderboard_cache, _leaderboard_cache_ts
 
@@ -1627,7 +1635,8 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
         SELECT user_id, total_score, ally_heroes
         FROM draft_results
         WHERE user_id NOT IN (SELECT user_id FROM banned_users)
-    """)).fetchall()
+          AND created_at >= :month_start
+    """), {"month_start": _current_month_start_utc()}).fetchall()
 
     per_user = _compute_top5_sums_per_user(rows)
     ranked = sorted(per_user.items(), key=lambda kv: kv[1][0], reverse=True)
@@ -1661,9 +1670,10 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
 
 @app.get("/api/draft/leaderboard/me")
 async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db)):
-    """Место и счёт текущего пользователя среди всех участников.
+    """Место и счёт текущего пользователя среди всех участников за текущий месяц.
 
-    Использует то же правило дедупа по союзному составу, что и /leaderboard.
+    Использует то же правило дедупа по союзному составу и тот же месячный
+    фильтр, что и /leaderboard.
     """
     if not token:
         return {"rank": None, "top5_sum": None}
@@ -1680,7 +1690,8 @@ async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db
         SELECT user_id, total_score, ally_heroes
         FROM draft_results
         WHERE user_id NOT IN (SELECT user_id FROM banned_users)
-    """)).fetchall()
+          AND created_at >= :month_start
+    """), {"month_start": _current_month_start_utc()}).fetchall()
 
     per_user = _compute_top5_sums_per_user(rows)
     my = per_user.get(user_id)
