@@ -4220,51 +4220,14 @@ margin-top: var(--space-4);
   border-radius: 50%;
 }
 
-/* ── Баннер приза ──────────────────────────────────────────────── */
-.lb-prize-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin: var(--space-2) var(--space-4) var(--space-3);
-  background: var(--bg-surface);
-  border: 0.5px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3);
-}
-.lb-prize-gif {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-  flex-shrink: 0;
-}
-.lb-prize-info {
-  min-width: 0;
-  flex: 1;
-}
-.lb-prize-title {
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-.lb-prize-sub {
+/* ── Подзаголовок месяца в шапке лидерборда ────────────────────── */
+.drafter-fp-title-month {
   font-size: var(--text-2xs);
-  color: var(--text-secondary);
-  line-height: var(--leading-snug);
-  margin-bottom: var(--space-1);
-}
-.lb-prize-month {
-  display: inline-block;
-  background: var(--bg-elevated);
-  border: 0.5px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 2px var(--space-2);
-  font-size: var(--text-2xs);
-  color: var(--text-tertiary);
   font-weight: var(--font-medium);
-  letter-spacing: var(--tracking-wide);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
+  margin-top: 2px;
 }
 
 /* ── Заметка ───────────────────────────────────────────────────── */
