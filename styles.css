@@ -4849,6 +4849,14 @@ margin-top: var(--space-4);
 .analysis-slot--dark::before  { bottom: 0; top: auto; background: var(--negative); opacity: 0.45; }
 .analysis-slot--filled::before { opacity: 0.8; }
 
+/* Активный слот в режиме «Анализ» — открыт picker для него.
+   Accent border + soft fill, как у активного слота в Тренировке. */
+.analysis-slot.analysis-slot--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.analysis-slot.analysis-slot--active::before { opacity: 1; }
+
 /* Net-contribution бейдж на занятом слоте (правый-верхний угол).
    Не перехватывает клики — slot click открывает детали. */
 .analysis-slot-net {
@@ -4872,6 +4880,42 @@ margin-top: var(--space-4);
 .analysis-slot-net--neutral  { color: var(--text-secondary); }
 .analysis-slot-net--loading  { color: var(--text-secondary); opacity: 0.5; }
 
+/* Полоса действий под доской — пока что только кнопка «Очистить всё».
+   Видна когда хоть один герой выбран. */
+.analysis-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 var(--space-3) var(--space-3);
+}
+.analysis-actions[hidden] { display: none; }
+
+.analysis-clear-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.analysis-clear-btn:hover,
+.analysis-clear-btn:focus-visible {
+  color: var(--negative);
+  border-color: rgba(229, 83, 75, 0.45);
+  background: rgba(229, 83, 75, 0.06);
+  outline: none;
+}
+.analysis-clear-btn:active {
+  background: rgba(229, 83, 75, 0.12);
+}
+
 /* Подсказка под доской — видна только пока ни одного героя не выбрано */
 .analysis-hint {
   margin: 0 var(--space-3) var(--space-3);
@@ -4886,12 +4930,13 @@ margin-top: var(--space-4);
 }
 .analysis-hint[hidden] { display: none; }
 
-/* Undo-toast после удаления героя (выше z-index, чем sheet'ы) */
+/* Undo-toast после удаления героя — наверху экрана, под шапкой драфтера.
+   Z-index выше sheet'ов, чтобы toast не перекрывался кнопкой «Удалить» в detail sheet'е. */
 .analysis-undo-toast {
   position: fixed;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--nav-height) + 12px);
-  transform: translate(-50%, 8px);
+  top: calc(env(safe-area-inset-top, 0px) + 80px);
+  transform: translate(-50%, -8px);
   width: calc(100% - 24px);
   max-width: 360px;
   box-sizing: border-box;
