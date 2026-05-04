@@ -4833,10 +4833,10 @@ margin-top: var(--space-4);
 .drafter-mode-tab:active { transform: none; }
 
 /* ── Analysis board: симметричные стороны Light / Dark ─────────── */
-.analysis-board-label--light { color: var(--text-primary); }
+.analysis-board-label--light { color: var(--positive); }
 .analysis-board-label--light::before {
-  background: var(--text-primary);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.18);
+  background: var(--positive);
+  box-shadow: 0 0 0 1px rgba(61, 184, 122, 0.25);
 }
 .analysis-board-label--dark { color: var(--negative); }
 .analysis-board-label--dark::before {
@@ -4852,7 +4852,7 @@ margin-top: var(--space-4);
   -webkit-user-select: none;
   user-select: none;
 }
-.analysis-slot--light::before { top: 0; bottom: auto; background: var(--text-primary); opacity: 0.45; }
+.analysis-slot--light::before { top: 0; bottom: auto; background: var(--positive); opacity: 0.45; }
 .analysis-slot--dark::before  { bottom: 0; top: auto; background: var(--negative); opacity: 0.45; }
 .analysis-slot--filled::before { opacity: 0.8; }
 
@@ -4886,42 +4886,6 @@ margin-top: var(--space-4);
 .analysis-slot-net--negative { color: var(--negative); }
 .analysis-slot-net--neutral  { color: var(--text-secondary); }
 .analysis-slot-net--loading  { color: var(--text-secondary); opacity: 0.5; }
-
-/* Полоса действий под доской — пока что только кнопка «Очистить всё».
-   Видна когда хоть один герой выбран. */
-.analysis-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin: 0 var(--space-3) var(--space-3);
-}
-.analysis-actions[hidden] { display: none; }
-
-.analysis-clear-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.1);
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-2xs);
-  font-weight: var(--font-medium);
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.analysis-clear-btn:hover,
-.analysis-clear-btn:focus-visible {
-  color: var(--negative);
-  border-color: rgba(229, 83, 75, 0.45);
-  background: rgba(229, 83, 75, 0.06);
-  outline: none;
-}
-.analysis-clear-btn:active {
-  background: rgba(229, 83, 75, 0.12);
-}
 
 /* Undo-toast после удаления героя — наверху экрана, под шапкой драфтера.
    Z-index выше sheet'ов, чтобы toast не перекрывался кнопкой «Удалить» в detail sheet'е. */
@@ -4996,14 +4960,17 @@ margin-top: var(--space-4);
 }
 .analysis-stats[hidden] { display: none; }
 
+/* Eyebrow-метка категории — единый стиль для тоталов и стат-строк */
 .analysis-stats-eyebrow {
   font-size: var(--text-2xs);
   font-weight: var(--font-bold);
   letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
   color: var(--text-tertiary);
+  line-height: 1.2;
 }
 
+/* ── Тоталы по командам ─────────────────────────────────────── */
 .analysis-stats-totals {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -5012,7 +4979,7 @@ margin-top: var(--space-4);
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .analysis-stats-team--light {
   border-right: 1px solid rgba(255,255,255,0.06);
@@ -5021,62 +4988,68 @@ margin-top: var(--space-4);
 .analysis-stats-total {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: var(--font-bold);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   line-height: 1;
   color: var(--text-primary);
 }
 .analysis-stats-total--positive { color: var(--positive); }
 .analysis-stats-total--negative { color: var(--negative); }
-.analysis-stats-total--neutral  { color: var(--text-secondary); }
+.analysis-stats-total--neutral  { color: var(--text-tertiary); }
 
+/* ── Стат-строки (сильнейшая пара / лучший / слабый матчап) ─── */
 .analysis-stats-row {
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  padding: var(--space-3);
   border-top: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .analysis-stats-row[hidden] { display: none; }
 
 .analysis-stats-row-body {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--text-xs);
+  gap: 10px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
-  min-height: 28px;
+  min-height: 32px;
 }
-.analysis-stats-row-body--empty { color: var(--text-muted); }
+/* Em-dash placeholder в зеро-стейте — тот же mono-вес, что у настоящих значений,
+   чтобы в null-/data-rendering ячейке текст не «прыгал» по baseline */
+.analysis-stats-row-body--empty {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-bold);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  letter-spacing: 0.01em;
+}
 
 .analysis-stats-pair {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
 .analysis-stats-pair-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
   object-fit: cover;
   display: block;
   flex-shrink: 0;
 }
 .analysis-stats-pair-sep {
-  font-size: 10px;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
   color: var(--text-tertiary);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.analysis-stats-pair-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
+
 .analysis-stats-value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
