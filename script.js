@@ -441,6 +441,9 @@
         }
 
         function switchPage(pageName, event) {
+            // Скрыть undo-toast Анализа — он position:fixed и иначе виден на новой странице
+            if (typeof _hideAnalysisUndoToast === 'function') _hideAnalysisUndoToast();
+
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
@@ -4185,10 +4188,16 @@ var _analysisPopularity = null;     // { "1": { total, positions: { "1": {matche
 var _analysisDataLoading = false;
 var _ANALYSIS_MIN_MATCH_COUNT = 30; // ниже — слишком шумно, игнорируем
 
+// Параметры meta_bonus от per-position win_rate.
+// Применяется и в _computeAnalysisScore, и в empty-board бейдже picker'а.
+var _ANALYSIS_META_MIN_MATCHES = 200; // меньше — выборка не доверительная, бейдж = "—"
+var _ANALYSIS_META_CENTER = 0.5;       // нейтральный winrate (50%) — точка отсчёта
+var _ANALYSIS_META_SCALE  = 10;        // множитель отклонения от центра в score-единицы
+
 // Русские алиасы для поиска. Покрывают героев из HERO_PRIMARY_POSITIONS.
 // Несколько имён через запятую → каждое участвует в поиске как отдельный токен.
 var _ANALYSIS_HERO_NAMES_RU = {
-    1: 'антимаг,ам', 2: 'акс,топор', 3: 'бэйн', 4: 'бс,бладсикер,кровосос',
+    1: 'антимаг,ам,antimage', 2: 'акс,топор', 3: 'бэйн', 4: 'бс,бладсикер,кровосос',
     5: 'кристалка,цм,crystal maiden,кристал мейден', 6: 'дроу,лучница', 7: 'эс,шейкер,земля',
     8: 'джаг,джагер', 9: 'мира,мирана', 10: 'морф,морфлинг', 11: 'сф,невермор,нм',
     12: 'пл,фантом ленсер,клоны', 13: 'пак', 14: 'пудж,хук', 15: 'разор,молния',
@@ -4261,6 +4270,10 @@ function setDrafterMode(mode) {
     if (mode !== 'training' && mode !== 'analysis') mode = 'training';
     _drafterMode = mode;
     try { localStorage.setItem('drafter_mode', mode); } catch (e) {}
+
+    // Гигиена long-press flag — иначе застрявший true после быстрого
+    // переключения mode подавит первый нормальный tap при возврате в Анализ.
+    _analysisLongPressFired = false;
 
     var trainingPanel = document.getElementById('drafter-mode-training');
     var analysisPanel = document.getElementById('drafter-mode-analysis');
@@ -4903,8 +4916,8 @@ function _computeAnalysisScore(heroId, sideOverride, slotIndexOverride) {
         var posData = (heroPop && heroPop.positions)
             ? heroPop.positions[String(slotIdx + 1)]
             : null;
-        if (posData && (posData.matches || 0) >= 200 && posData.win_rate != null) {
-            score += (posData.win_rate - 0.5) * 10;
+        if (posData && (posData.matches || 0) >= _ANALYSIS_META_MIN_MATCHES && posData.win_rate != null) {
+            score += (posData.win_rate - _ANALYSIS_META_CENTER) * _ANALYSIS_META_SCALE;
         }
     }
 
@@ -5048,11 +5061,11 @@ function _renderAnalysisPickCard(h, hasContext) {
         html += '<div class="analysis-pick-card-score analysis-pick-card-score--' + tone + '">' + sign + abs + '</div>';
     } else {
         // Empty-board — meta-score из per-position win_rate в том же формате;
-        // при matches<200 или отсутствии данных — «—» нейтральным цветом.
-        if (h.matchesAtSlot < 200 || h.winRateAtSlot == null) {
+        // при matches < _ANALYSIS_META_MIN_MATCHES или отсутствии данных — «—» нейтральным.
+        if (h.matchesAtSlot < _ANALYSIS_META_MIN_MATCHES || h.winRateAtSlot == null) {
             html += '<div class="analysis-pick-card-score analysis-pick-card-score--neutral">—</div>';
         } else {
-            var metaScore = (h.winRateAtSlot - 0.5) * 10;
+            var metaScore = (h.winRateAtSlot - _ANALYSIS_META_CENTER) * _ANALYSIS_META_SCALE;
             var mTone = metaScore > 0.05 ? 'positive' : (metaScore < -0.05 ? 'negative' : 'neutral');
             var mSign = metaScore > 0 ? '+' : (metaScore < 0 ? '−' : '');
             var mAbs  = Math.abs(metaScore).toFixed(1);
