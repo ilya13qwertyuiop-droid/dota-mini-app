@@ -4327,6 +4327,14 @@ function _analysisHasAnyPick() {
     return _analysisAllPicks().length > 0;
 }
 
+// slotIndex 0..4 → русское название роли. Используется в заголовках picker'а
+// и детального листа. Падает на «слот N» для невалидных индексов.
+var _ANALYSIS_SLOT_ROLES = ['Керри', 'Мид', 'Оффлейн', 'Поддержка', 'Полная поддержка'];
+function _analysisSlotRoleLabel(slotIndex) {
+    if (slotIndex >= 0 && slotIndex <= 4) return _ANALYSIS_SLOT_ROLES[slotIndex];
+    return 'слот ' + (slotIndex + 1);
+}
+
 /* Достаёт synergy-значение из matchups для пары (heroId → mapKey → otherId).
    Возвращает null если запись отсутствует или matchCount ниже порога. */
 function _analysisGetPairValue(heroId, mapKey, otherId) {
@@ -4648,7 +4656,7 @@ function openAnalysisSheet(side, slotIndex) {
 
     if (title) {
         var sideLabel = (side === 'light') ? 'Силы Света' : 'Силы Тьмы';
-        title.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
+        title.textContent = sideLabel + ' · ' + _analysisSlotRoleLabel(slotIndex);
     }
     if (search) search.value = '';
 
@@ -4780,7 +4788,7 @@ function _renderHeroDetailSheet(heroId, side, slotIndex) {
     if (nameEl) nameEl.textContent = heroName;
     if (posEl) {
         var sideLabel = (side === 'light') ? 'Силы Света' : 'Силы Тьмы';
-        posEl.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
+        posEl.textContent = sideLabel + ' · ' + _analysisSlotRoleLabel(slotIndex);
     }
     if (netEl) {
         var netValue = _computeAnalysisScore(heroId, side, slotIndex);
