@@ -4496,8 +4496,8 @@ function renderAnalysisSlots() {
     _renderAnalysisSide('light');
     _renderAnalysisSide('dark');
     _renderAnalysisStats();
-    var actions = document.getElementById('analysis-actions');
-    if (actions) actions.hidden = !_analysisHasAnyPick();
+    var clearBtn = document.getElementById('analysis-clear-btn');
+    if (clearBtn) clearBtn.hidden = !_analysisHasAnyPick();
 }
 
 function clearAllAnalysisHeroes() {

@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=132" />
+    <link rel="stylesheet" href="styles.css?v=133" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -602,6 +602,7 @@
               <div class="draft-board-row">
                 <div class="draft-board-header">
                   <div class="draft-board-label analysis-board-label--light">СИЛЫ СВЕТА</div>
+                  <button type="button" id="analysis-clear-btn" class="draft-board-action" onclick="clearAllAnalysisHeroes()" hidden>Очистить всё</button>
                 </div>
                 <div class="drafter-slots-grid" id="analysis-light-slots"></div>
               </div>
@@ -612,9 +613,6 @@
                 </div>
                 <div class="drafter-slots-grid" id="analysis-dark-slots"></div>
               </div>
-            </div>
-            <div class="analysis-actions" id="analysis-actions" hidden>
-              <button type="button" class="analysis-clear-btn" onclick="clearAllAnalysisHeroes()">Очистить всё</button>
             </div>
             <div class="analysis-stats" id="analysis-stats">
               <div class="analysis-stats-totals">
@@ -991,6 +989,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=154"></script>
+    <script defer src="script.js?v=155"></script>
   </body>
 </html>
