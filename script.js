@@ -4390,44 +4390,33 @@ function _renderAnalysisStats() {
     var light = _analysisLight.filter(Boolean);
     var dark  = _analysisDark.filter(Boolean);
 
-    if (light.length + dark.length === 0) {
-        box.hidden = true;
-        return;
-    }
-    box.hidden = false;
-
     var lightSyn = _analysisCollectSynergies(light);
     var darkSyn  = _analysisCollectSynergies(dark);
     var lightVsDark = _analysisCollectMatchups(light, dark);
     var darkVsLight = _analysisCollectMatchups(dark, light);
 
+    // Тоталы: «—» если на этой стороне ноль героев, иначе посчитанная сумма.
     var lightTotal = _analysisSumValues(lightSyn) + _analysisSumValues(lightVsDark);
     var darkTotal  = _analysisSumValues(darkSyn)  + _analysisSumValues(darkVsLight);
-
-    _setAnalysisTotal('analysis-stats-total-light', lightTotal);
-    _setAnalysisTotal('analysis-stats-total-dark', darkTotal);
+    _setAnalysisTotal('analysis-stats-total-light', lightTotal, light.length === 0);
+    _setAnalysisTotal('analysis-stats-total-dark',  darkTotal,  dark.length  === 0);
 
     // Сильнейшая пара: max value среди всех внутрикомандных синергий обеих сторон.
     var allSyn = lightSyn.concat(darkSyn);
-    var bestRow = document.getElementById('analysis-stats-best-pair');
     var bestBody = document.getElementById('analysis-stats-best-body');
     if (allSyn.length === 0) {
-        bestBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
-        bestBody.innerHTML = 'Добавь двух союзников на одну сторону';
+        _setAnalysisRowEmpty(bestBody);
     } else {
         var best = allSyn[0];
         for (var i = 1; i < allSyn.length; i++) if (allSyn[i].value > best.value) best = allSyn[i];
         bestBody.className = 'analysis-stats-row-body';
         bestBody.innerHTML = _analysisRenderPair(best.a, best.b, '+', best.value, ' + ');
     }
-    bestRow.hidden = false;
 
-    // Кросс-сторонние матчапы: best (max положительный) и worst (max |value|).
+    // Кросс-сторонние матчапы.
     var allMu = lightVsDark.concat(darkVsLight);
 
-    // Лучший матчап: пара (свой, чужой) с максимальным положительным значением.
-    // Показываем как победу выигрывающей стороны (всегда +).
-    var bestMuRow  = document.getElementById('analysis-stats-best-mu');
+    // Лучший матчап: max положительное value.
     var bestMuBody = document.getElementById('analysis-stats-best-mu-body');
     var bestMu = null;
     for (var bi = 0; bi < allMu.length; bi++) {
@@ -4435,32 +4424,22 @@ function _renderAnalysisStats() {
             bestMu = allMu[bi];
         }
     }
-    if (allMu.length === 0) {
-        bestMuBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
-        bestMuBody.innerHTML = 'Добавь героев на обе стороны';
-    } else if (bestMu == null) {
-        bestMuBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
-        bestMuBody.innerHTML = 'Нет выигрышных матчапов';
+    if (bestMu == null) {
+        _setAnalysisRowEmpty(bestMuBody);
     } else {
-        // self = победитель (положительное value), opp = проигрывающий
         bestMuBody.className = 'analysis-stats-row-body';
         bestMuBody.innerHTML = _analysisRenderPair(bestMu.self, bestMu.opp, '+', bestMu.value, ' vs ');
     }
-    bestMuRow.hidden = false;
 
-    // Слабый матчап: пара (свой, чужой) с самой большой |value|, показываем
-    // как поражение проигрывающей стороны (т.е. знак минус для проигравшего).
-    var worstRow = document.getElementById('analysis-stats-worst-mu');
+    // Слабый матчап: max |value|, показываем как поражение проигрывающей стороны.
     var worstBody = document.getElementById('analysis-stats-worst-body');
     if (allMu.length === 0) {
-        worstBody.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
-        worstBody.innerHTML = 'Добавь героев на обе стороны';
+        _setAnalysisRowEmpty(worstBody);
     } else {
         var pickWorst = allMu[0];
         for (var k = 1; k < allMu.length; k++) {
             if (Math.abs(allMu[k].value) > Math.abs(pickWorst.value)) pickWorst = allMu[k];
         }
-        // Тот, кто проигрывает = чьё value < 0 (или opp если value > 0)
         var loser, winner;
         if (pickWorst.value < 0) { loser = pickWorst.self; winner = pickWorst.opp; }
         else                     { loser = pickWorst.opp;  winner = pickWorst.self; }
@@ -4468,12 +4447,22 @@ function _renderAnalysisStats() {
         worstBody.className = 'analysis-stats-row-body';
         worstBody.innerHTML = _analysisRenderPair(loser, winner, '-', displayValue, ' vs ');
     }
-    worstRow.hidden = false;
 }
 
-function _setAnalysisTotal(id, value) {
+function _setAnalysisRowEmpty(bodyEl) {
+    if (!bodyEl) return;
+    bodyEl.className = 'analysis-stats-row-body analysis-stats-row-body--empty';
+    bodyEl.innerHTML = '—';
+}
+
+function _setAnalysisTotal(id, value, isEmpty) {
     var el = document.getElementById(id);
     if (!el) return;
+    if (isEmpty) {
+        el.className = 'analysis-stats-total analysis-stats-total--neutral';
+        el.textContent = '—';
+        return;
+    }
     var tone = value > 0.05 ? 'positive' : (value < -0.05 ? 'negative' : 'neutral');
     var sign = value > 0 ? '+' : (value < 0 ? '−' : '');
     el.className = 'analysis-stats-total analysis-stats-total--' + tone;
@@ -4507,11 +4496,8 @@ function renderAnalysisSlots() {
     _renderAnalysisSide('light');
     _renderAnalysisSide('dark');
     _renderAnalysisStats();
-    var hasPick = _analysisHasAnyPick();
-    var hint = document.getElementById('analysis-hint');
-    if (hint) hint.hidden = hasPick;
     var actions = document.getElementById('analysis-actions');
-    if (actions) actions.hidden = !hasPick;
+    if (actions) actions.hidden = !_analysisHasAnyPick();
 }
 
 function clearAllAnalysisHeroes() {
@@ -4529,6 +4515,10 @@ function clearAllAnalysisHeroes() {
 function _renderAnalysisSide(side) {
     var el = document.getElementById('analysis-' + side + '-slots');
     if (!el) return;
+    if (!el._lpAttached) {
+        _attachAnalysisLongPress(el, side);
+        el._lpAttached = true;
+    }
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
     // Подсветка активного слота — только когда открыт picker (не detail sheet)
     var isActiveSide = (_analysisSheetMode === 'picker' && _analysisActiveSide === side);
@@ -4568,6 +4558,12 @@ function _renderAnalysisSide(side) {
 }
 
 function analysisSlotClick(side, slotIndex) {
+    // Если только что отработал long-press на этом слоте — подавляем
+    // последующий click чтобы не открывать picker для уже опустошённого слота.
+    if (_analysisLongPressFired) {
+        _analysisLongPressFired = false;
+        return;
+    }
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
     if (arr[slotIndex]) {
         // Тап на занятый слот — открыть детали героя
@@ -4575,6 +4571,67 @@ function analysisSlotClick(side, slotIndex) {
         return;
     }
     openAnalysisSheet(side, slotIndex);
+}
+
+/* ── Long-press на занятый слот = мгновенное удаление + undo toast ──── */
+
+var _ANALYSIS_LONG_PRESS_MS = 500;
+var _ANALYSIS_LONG_PRESS_MOVE_THRESHOLD = 8; // px — толерантность к джиттеру пальца
+var _analysisLongPressTimer = null;
+var _analysisLongPressFired = false;
+var _analysisLongPressStartX = 0;
+var _analysisLongPressStartY = 0;
+
+function _attachAnalysisLongPress(container, side) {
+    container.addEventListener('pointerdown', function(e) {
+        var slot = e.target.closest('.analysis-slot');
+        if (!slot || !container.contains(slot)) return;
+        if (!slot.classList.contains('analysis-slot--filled')) return;
+
+        var idx = Array.prototype.indexOf.call(container.children, slot);
+        if (idx < 0) return;
+
+        _analysisLongPressFired = false;
+        _analysisLongPressStartX = e.clientX;
+        _analysisLongPressStartY = e.clientY;
+
+        clearTimeout(_analysisLongPressTimer);
+        _analysisLongPressTimer = setTimeout(function() {
+            _analysisLongPressTimer = null;
+            _analysisLongPressFired = true;
+            _instantRemoveAnalysisHero(side, idx);
+        }, _ANALYSIS_LONG_PRESS_MS);
+    });
+
+    container.addEventListener('pointermove', function(e) {
+        if (!_analysisLongPressTimer) return;
+        var dx = e.clientX - _analysisLongPressStartX;
+        var dy = e.clientY - _analysisLongPressStartY;
+        if (Math.abs(dx) > _ANALYSIS_LONG_PRESS_MOVE_THRESHOLD ||
+            Math.abs(dy) > _ANALYSIS_LONG_PRESS_MOVE_THRESHOLD) {
+            clearTimeout(_analysisLongPressTimer);
+            _analysisLongPressTimer = null;
+        }
+    });
+
+    var cancel = function() {
+        clearTimeout(_analysisLongPressTimer);
+        _analysisLongPressTimer = null;
+    };
+    container.addEventListener('pointerup', cancel);
+    container.addEventListener('pointercancel', cancel);
+    container.addEventListener('pointerleave', cancel);
+}
+
+function _instantRemoveAnalysisHero(side, slotIndex) {
+    var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    var heroId = arr[slotIndex];
+    if (!heroId) return;
+    arr[slotIndex] = null;
+    // Двойной короткий buzz — чтобы тактильно отличался от обычного tap-feedback
+    if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
+    renderAnalysisSlots();
+    _showAnalysisUndoToast(heroId, side, slotIndex);
 }
 
 function openAnalysisSheet(side, slotIndex) {

@@ -4844,7 +4844,14 @@ margin-top: var(--space-4);
   box-shadow: 0 0 0 1px rgba(229,83,75,0.25);
 }
 
-.analysis-slot { cursor: pointer; }
+.analysis-slot {
+  cursor: pointer;
+  /* Подавляем системные long-press действия (iOS image preview / Android context menu),
+     чтобы наш long-press handler работал без перехвата. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .analysis-slot--light::before { top: 0; bottom: auto; background: var(--text-primary); opacity: 0.45; }
 .analysis-slot--dark::before  { bottom: 0; top: auto; background: var(--negative); opacity: 0.45; }
 .analysis-slot--filled::before { opacity: 0.8; }
@@ -4915,20 +4922,6 @@ margin-top: var(--space-4);
 .analysis-clear-btn:active {
   background: rgba(229, 83, 75, 0.12);
 }
-
-/* Подсказка под доской — видна только пока ни одного героя не выбрано */
-.analysis-hint {
-  margin: 0 var(--space-3) var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-2xs);
-  color: var(--text-tertiary);
-  text-align: center;
-  letter-spacing: 0.02em;
-  line-height: 1.4;
-  border: 1px dashed rgba(255,255,255,0.08);
-  border-radius: var(--radius-md);
-}
-.analysis-hint[hidden] { display: none; }
 
 /* Undo-toast после удаления героя — наверху экрана, под шапкой драфтера.
    Z-index выше sheet'ов, чтобы toast не перекрывался кнопкой «Удалить» в detail sheet'е. */
