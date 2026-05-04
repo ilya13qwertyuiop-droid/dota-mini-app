@@ -4403,9 +4403,19 @@ function _renderAnalysisStats() {
     var lightVsDark = _analysisCollectMatchups(light, dark);
     var darkVsLight = _analysisCollectMatchups(dark, light);
 
-    // Тоталы: «—» если на этой стороне ноль героев, иначе посчитанная сумма.
-    var lightTotal = _analysisSumValues(lightSyn) + _analysisSumValues(lightVsDark);
-    var darkTotal  = _analysisSumValues(darkSyn)  + _analysisSumValues(darkVsLight);
+    // Тоталы = сумма net-contribution бейджей всех героев стороны.
+    // Итерируем 5-слотный массив с исходным индексом (нужен для meta_bonus
+    // в _computeAnalysisScore — учитывает win_rate на позиции слота).
+    var lightTotal = 0;
+    for (var li = 0; li < _analysisLight.length; li++) {
+        var lid = _analysisLight[li];
+        if (lid) lightTotal += _computeAnalysisScore(lid, 'light', li);
+    }
+    var darkTotal = 0;
+    for (var di = 0; di < _analysisDark.length; di++) {
+        var did = _analysisDark[di];
+        if (did) darkTotal += _computeAnalysisScore(did, 'dark', di);
+    }
     _setAnalysisTotal('analysis-stats-total-light', lightTotal, light.length === 0);
     _setAnalysisTotal('analysis-stats-total-dark',  darkTotal,  dark.length  === 0);
 
