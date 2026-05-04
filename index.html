@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=130" />
+    <link rel="stylesheet" href="styles.css?v=131" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -614,6 +614,9 @@
               </div>
             </div>
             <div class="analysis-hint" id="analysis-hint">Тапни слот → выбор героя по позиции и контексту</div>
+            <div class="analysis-actions" id="analysis-actions" hidden>
+              <button type="button" class="analysis-clear-btn" onclick="clearAllAnalysisHeroes()">Очистить всё</button>
+            </div>
             <div class="analysis-stats" id="analysis-stats" hidden>
               <div class="analysis-stats-totals">
                 <div class="analysis-stats-team analysis-stats-team--light">
@@ -989,6 +992,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=152"></script>
+    <script defer src="script.js?v=153"></script>
   </body>
 </html>

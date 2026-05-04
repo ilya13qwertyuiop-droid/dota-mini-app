@@ -4507,20 +4507,38 @@ function renderAnalysisSlots() {
     _renderAnalysisSide('light');
     _renderAnalysisSide('dark');
     _renderAnalysisStats();
+    var hasPick = _analysisHasAnyPick();
     var hint = document.getElementById('analysis-hint');
-    if (hint) hint.hidden = _analysisHasAnyPick();
+    if (hint) hint.hidden = hasPick;
+    var actions = document.getElementById('analysis-actions');
+    if (actions) actions.hidden = !hasPick;
+}
+
+function clearAllAnalysisHeroes() {
+    if (!_analysisHasAnyPick()) return;
+    _analysisLight = [null, null, null, null, null];
+    _analysisDark  = [null, null, null, null, null];
+    if (navigator.vibrate) navigator.vibrate(20);
+    // Закрываем любые открытые sheet'ы и undo-toast — они ссылались на удалённых героев
+    closeAnalysisSheet();
+    closeHeroDetailSheet();
+    _hideAnalysisUndoToast();
+    renderAnalysisSlots();
 }
 
 function _renderAnalysisSide(side) {
     var el = document.getElementById('analysis-' + side + '-slots');
     if (!el) return;
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
+    // Подсветка активного слота — только когда открыт picker (не detail sheet)
+    var isActiveSide = (_analysisSheetMode === 'picker' && _analysisActiveSide === side);
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = arr[i];
         var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
         var cls = 'drafter-slot analysis-slot analysis-slot--' + side;
         if (hero) cls += ' analysis-slot--filled drafter-slot--filled';
+        if (isActiveSide && i === _analysisActiveSlot) cls += ' analysis-slot--active';
         html += '<div class="' + cls + '" onclick="analysisSlotClick(\'' + side + '\',' + i + ')">';
         if (hero) {
             var iconUrl = _drafterHeroIcon(hero);
@@ -4581,6 +4599,7 @@ function openAnalysisSheet(side, slotIndex) {
     sheet.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
+    renderAnalysisSlots();         // подсветить активный слот
     renderAnalysisSheetGrid();
 }
 
@@ -4592,6 +4611,7 @@ function closeAnalysisSheet() {
     document.body.style.overflow = '';
     _analysisActiveSlot = -1;
     if (_analysisSheetMode === 'picker') _analysisSheetMode = null;
+    renderAnalysisSlots();         // снять подсветку
 }
 
 /* ── Bottom sheet с деталями уже выбранного героя ───────────────── */
