@@ -4933,19 +4933,17 @@ function renderAnalysisSheetGrid() {
         var popularity = (popData && popData.total) || 0;
         var primaryPos = (typeof HERO_PRIMARY_POSITIONS !== 'undefined') ? HERO_PRIMARY_POSITIONS[id] : null;
 
-        // Per-slot позиционные данные (для пустой доски — sort by win_rate; всегда — low-conf метка)
+        // Per-slot позиционные данные (для пустой доски — sort by win_rate
+        // + рендер meta-score бейджа на карточке).
         var posData = (slotPos != null && popData && popData.positions)
             ? popData.positions[String(slotPos)]
             : null;
         var matchesAtSlot = (posData && typeof posData.matches === 'number') ? posData.matches : 0;
         var winRateAtSlot = (posData && posData.win_rate != null) ? posData.win_rate : null;
-        // Метка «мало данных» показывается только в empty-board режиме (когда сортируем
-        // по win_rate и нужно сигнализировать о слабой выборке).
-        var lowConfidence = !hasContext && matchesAtSlot < 200;
 
         heroes.push({
             id: id, name: name, score: score, pop: popularity, pos: primaryPos,
-            winRateAtSlot: winRateAtSlot, lowConfidence: lowConfidence
+            winRateAtSlot: winRateAtSlot, matchesAtSlot: matchesAtSlot
         });
     });
 
@@ -5025,13 +5023,23 @@ function _renderAnalysisPickCard(h, hasContext) {
     }
     html += '<div class="analysis-pick-card-name">' + _escHtml(h.name) + '</div>';
     if (hasContext) {
+        // С контекстом — обычный score (synergy + matchup + meta_bonus)
         var tone = h.score > 0.05 ? 'positive' : (h.score < -0.05 ? 'negative' : 'neutral');
         var sign = h.score > 0 ? '+' : (h.score < 0 ? '−' : '');
         var abs  = Math.abs(h.score).toFixed(1);
         html += '<div class="analysis-pick-card-score analysis-pick-card-score--' + tone + '">' + sign + abs + '</div>';
-    } else if (h.lowConfidence) {
-        // Empty-board режим: sort идёт по win_rate, сигнализируем о слабой выборке
-        html += '<div class="analysis-pick-card-low-conf">мало данных</div>';
+    } else {
+        // Empty-board — meta-score из per-position win_rate в том же формате;
+        // при matches<200 или отсутствии данных — «—» нейтральным цветом.
+        if (h.matchesAtSlot < 200 || h.winRateAtSlot == null) {
+            html += '<div class="analysis-pick-card-score analysis-pick-card-score--neutral">—</div>';
+        } else {
+            var metaScore = (h.winRateAtSlot - 0.5) * 10;
+            var mTone = metaScore > 0.05 ? 'positive' : (metaScore < -0.05 ? 'negative' : 'neutral');
+            var mSign = metaScore > 0 ? '+' : (metaScore < 0 ? '−' : '');
+            var mAbs  = Math.abs(metaScore).toFixed(1);
+            html += '<div class="analysis-pick-card-score analysis-pick-card-score--' + mTone + '">' + mSign + mAbs + '</div>';
+        }
     }
     html += '</div>';
     return html;
