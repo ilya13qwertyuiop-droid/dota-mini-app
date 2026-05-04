@@ -5233,6 +5233,24 @@ margin-top: var(--space-4);
 .analysis-pick-card-score--negative { color: var(--negative); }
 .analysis-pick-card-score--neutral  { color: var(--text-secondary); }
 
+/* Метка «мало данных» — занимает место score-бейджа в empty-board режиме,
+   когда сортировка идёт по per-position win_rate с малой выборкой. */
+.analysis-pick-card-low-conf {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: var(--font-medium);
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  background: rgba(10, 10, 15, 0.78);
+  padding: 2px 5px;
+  border-radius: 4px;
+  pointer-events: none;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .analysis-sheet-empty {
   grid-column: 1 / -1;
   text-align: center;

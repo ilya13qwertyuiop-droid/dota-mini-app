@@ -1347,7 +1347,7 @@ async def api_draft_random():
 
 
 # Cache for popularity payload — derived from dota_builds.json once per process.
-_draft_popularity_cache: dict[str, int] | None = None
+_draft_popularity_cache: dict[str, dict] | None = None
 
 
 @app.get("/api/draft/matchups_all")
@@ -1366,10 +1366,27 @@ async def api_draft_matchups_all():
 
 @app.get("/api/draft/popularity")
 async def api_draft_popularity():
-    """Returns {hero_id: total_matches} derived from dota_builds.json.
+    """Returns popularity data per hero with per-position breakdown.
 
-    Used as the default ordering for the Анализ picker when no heroes are placed yet
-    (and as a tiebreaker when scores tie). Tiny payload (~125 entries).
+    Schema:
+        {
+          "<hero_id>": {
+            "total": <sum of num_matches across all positions>,
+            "positions": {
+              "<pos_num 1..5>": {"matches": <int>, "win_rate": <float | null>},
+              ...
+            }
+          },
+          ...
+        }
+
+    Source — dota_builds.json. Position keys там URL-encoded ("pos%201"..."pos%205");
+    номер извлекается через _pos_str_to_num. win_rate = num_wins / num_matches,
+    или null если num_matches == 0. Позиции, у которых нет валидного num_matches
+    в исходных данных, в ответе не присутствуют.
+
+    Used by the frontend "Анализ" mode for default ordering, tiebreakers, and
+    per-position popularity/winrate context.
     """
     global _draft_popularity_cache
     if _draft_popularity_cache is not None:
@@ -1379,18 +1396,29 @@ async def api_draft_popularity():
     if builds is None:
         raise HTTPException(status_code=503, detail="Builds data not available")
 
-    out: dict[str, int] = {}
+    out: dict[str, dict] = {}
     for hero_key, positions in builds.items():
         if not isinstance(positions, dict):
             continue
+        per_pos: dict[str, dict] = {}
         total = 0
-        for pos_data in positions.values():
+        for raw_pos_key, pos_data in positions.items():
             if not isinstance(pos_data, dict):
                 continue
-            n = pos_data.get("num_matches")
-            if isinstance(n, (int, float)):
-                total += int(n)
-        out[str(hero_key)] = total
+            pos_num = _pos_str_to_num(raw_pos_key)
+            if pos_num is None:
+                continue
+            matches_raw = pos_data.get("num_matches")
+            if not isinstance(matches_raw, (int, float)):
+                continue
+            matches = int(matches_raw)
+            total += matches
+            wins_raw = pos_data.get("num_wins")
+            win_rate: float | None = None
+            if isinstance(wins_raw, (int, float)) and matches > 0:
+                win_rate = float(wins_raw) / matches
+            per_pos[str(pos_num)] = {"matches": matches, "win_rate": win_rate}
+        out[str(hero_key)] = {"total": total, "positions": per_pos}
 
     _draft_popularity_cache = out
     return out

@@ -4181,7 +4181,7 @@ var _analysisActiveSide = 'light';
 var _analysisActiveSlot = -1;
 var _analysisSheetMode = null; // null | 'picker' | 'detail'
 var _analysisMatchups   = null;     // { "1": { vs: {...}, with: {...} }, ... }
-var _analysisPopularity = null;     // { "1": totalMatches, ... }
+var _analysisPopularity = null;     // { "1": { total, positions: { "1": {matches, win_rate}, ... } }, ... }
 var _analysisDataLoading = false;
 var _ANALYSIS_MIN_MATCH_COUNT = 30; // ниже — слишком шумно, игнорируем
 
@@ -4543,7 +4543,7 @@ function _renderAnalysisSide(side) {
             if (!_analysisMatchups) {
                 html += '<span class="analysis-slot-net analysis-slot-net--loading">—</span>';
             } else {
-                var net = _computeAnalysisScore(hero, side);
+                var net = _computeAnalysisScore(hero, side, i);
                 var netTone = net > 0.05 ? 'positive' : (net < -0.05 ? 'negative' : 'neutral');
                 var netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
                 html += '<span class="analysis-slot-net analysis-slot-net--' + netTone + '">' + netSign + Math.abs(net).toFixed(1) + '</span>';
@@ -4783,7 +4783,7 @@ function _renderHeroDetailSheet(heroId, side, slotIndex) {
         posEl.textContent = sideLabel + ' · слот ' + (slotIndex + 1);
     }
     if (netEl) {
-        var netValue = _computeAnalysisScore(heroId, side);
+        var netValue = _computeAnalysisScore(heroId, side, slotIndex);
         var tone = netValue > 0.05 ? 'positive' : (netValue < -0.05 ? 'negative' : 'neutral');
         var sign = netValue > 0 ? '+' : (netValue < 0 ? '−' : '');
         netEl.className = 'analysis-detail-net-value analysis-detail-net-value--' + tone;
@@ -4847,12 +4847,13 @@ function _renderHeroDetailRow(item) {
         '</div>';
 }
 
-function _computeAnalysisScore(heroId, sideOverride) {
+function _computeAnalysisScore(heroId, sideOverride, slotIndexOverride) {
     if (!_analysisMatchups) return 0;
     var entry = _analysisMatchups[String(heroId)];
     if (!entry) return 0;
 
     var side = sideOverride || _analysisActiveSide;
+    var slotIdx = (slotIndexOverride != null) ? slotIndexOverride : _analysisActiveSlot;
     var allies  = (side === 'light') ? _analysisLight : _analysisDark;
     var enemies = (side === 'light') ? _analysisDark  : _analysisLight;
 
@@ -4875,6 +4876,20 @@ function _computeAnalysisScore(heroId, sideOverride) {
             score += v.synergy || 0;
         }
     }
+
+    // Meta-bonus от per-position win_rate: герой, чей win_rate на этой позиции
+    // выше 50%, получает положительную добавку; ниже — отрицательную.
+    // Гейт по объёму выборки 200 матчей — иначе слишком шумно.
+    if (slotIdx >= 0 && slotIdx <= 4 && _analysisPopularity) {
+        var heroPop = _analysisPopularity[String(heroId)];
+        var posData = (heroPop && heroPop.positions)
+            ? heroPop.positions[String(slotIdx + 1)]
+            : null;
+        if (posData && (posData.matches || 0) >= 200 && posData.win_rate != null) {
+            score += (posData.win_rate - 0.5) * 10;
+        }
+    }
+
     return score;
 }
 
@@ -4911,17 +4926,47 @@ function renderAnalysisSheetGrid() {
         seen.add(id);
         if (pickedSet.has(id)) return;
         if (query && !_analysisHeroMatchesQuery(id, query)) return;
+
         var score = hasContext ? _computeAnalysisScore(id) : 0;
-        var popularity = pop[String(id)] || 0;
+        // Popularity payload теперь объект {total, positions:{...}} — берём total
+        var popData = pop[String(id)];
+        var popularity = (popData && popData.total) || 0;
         var primaryPos = (typeof HERO_PRIMARY_POSITIONS !== 'undefined') ? HERO_PRIMARY_POSITIONS[id] : null;
-        heroes.push({ id: id, name: name, score: score, pop: popularity, pos: primaryPos });
+
+        // Per-slot позиционные данные (для пустой доски — sort by win_rate; всегда — low-conf метка)
+        var posData = (slotPos != null && popData && popData.positions)
+            ? popData.positions[String(slotPos)]
+            : null;
+        var matchesAtSlot = (posData && typeof posData.matches === 'number') ? posData.matches : 0;
+        var winRateAtSlot = (posData && posData.win_rate != null) ? posData.win_rate : null;
+        // Метка «мало данных» показывается только в empty-board режиме (когда сортируем
+        // по win_rate и нужно сигнализировать о слабой выборке).
+        var lowConfidence = !hasContext && matchesAtSlot < 200;
+
+        heroes.push({
+            id: id, name: name, score: score, pop: popularity, pos: primaryPos,
+            winRateAtSlot: winRateAtSlot, lowConfidence: lowConfidence
+        });
     });
 
-    var sortFn = function(a, b) {
-        if (b.score !== a.score) return b.score - a.score;
-        if (b.pop !== a.pop) return b.pop - a.pop;
-        return a.name.localeCompare(b.name);
-    };
+    // На пустой доске score=0 у всех — сортируем по per-position win_rate.
+    // С контекстом — по score (он уже включает meta_bonus от win_rate с гейтом ≥200).
+    var sortFn;
+    if (!hasContext && slotPos != null) {
+        sortFn = function(a, b) {
+            var wA = (a.winRateAtSlot != null) ? a.winRateAtSlot : -Infinity;
+            var wB = (b.winRateAtSlot != null) ? b.winRateAtSlot : -Infinity;
+            if (wB !== wA) return wB - wA;
+            if (b.pop !== a.pop) return b.pop - a.pop;
+            return a.name.localeCompare(b.name);
+        };
+    } else {
+        sortFn = function(a, b) {
+            if (b.score !== a.score) return b.score - a.score;
+            if (b.pop !== a.pop) return b.pop - a.pop;
+            return a.name.localeCompare(b.name);
+        };
+    }
 
     var html = '';
 
@@ -4984,6 +5029,9 @@ function _renderAnalysisPickCard(h, hasContext) {
         var sign = h.score > 0 ? '+' : (h.score < 0 ? '−' : '');
         var abs  = Math.abs(h.score).toFixed(1);
         html += '<div class="analysis-pick-card-score analysis-pick-card-score--' + tone + '">' + sign + abs + '</div>';
+    } else if (h.lowConfidence) {
+        // Empty-board режим: sort идёт по win_rate, сигнализируем о слабой выборке
+        html += '<div class="analysis-pick-card-low-conf">мало данных</div>';
     }
     html += '</div>';
     return html;
