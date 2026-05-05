@@ -5010,10 +5010,21 @@ function renderAnalysisSheetGrid() {
         flat.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
     } else {
         // Группировка: подходящие позиции сначала, потом остальные.
+        // Если _analysisPopularity загружен — используем frequency-based: герой
+        // в primary, если на этой позиции он играется ≥10% от своих матчей
+        // (ловит флексов, которых статический HERO_PRIMARY_POSITIONS не покрывает).
+        // Fallback на статический map пока popularity не подгружен.
         var primary = [];
         var others  = [];
+        var useFrequency = !!_analysisPopularity;
         heroes.forEach(function(h) {
-            if (h.pos === slotPos) primary.push(h);
+            var inPrimary;
+            if (useFrequency) {
+                inPrimary = (h.pop > 0) && ((h.matchesAtSlot / h.pop) >= 0.10);
+            } else {
+                inPrimary = (h.pos === slotPos);
+            }
+            if (inPrimary) primary.push(h);
             else others.push(h);
         });
         primary.sort(sortFn);
@@ -5021,7 +5032,7 @@ function renderAnalysisSheetGrid() {
 
         // Лимиты по группам (с прокруткой можно больше).
         primary = primary.slice(0, 30);
-        others  = others.slice(0, 20);
+        others  = others.slice(0, 60);
 
         if (primary.length === 0 && others.length === 0) {
             grid.innerHTML = '<div class="analysis-sheet-empty">Нет данных</div>';
