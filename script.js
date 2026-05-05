@@ -4515,12 +4515,34 @@ function renderAnalysisSlots() {
     _renderAnalysisSide('dark');
     renderAnalysisBans();
     _renderAnalysisStats();
+    _renderAnalysisOnboarding();
     var clearBtn = document.getElementById('analysis-clear-btn');
     if (clearBtn) clearBtn.hidden = !_analysisHasAnyState();
 }
 
 function _analysisHasAnyState() {
     return _analysisHasAnyPick() || _analysisBans.size > 0;
+}
+
+/* ── Онбординг: одноразовый hint при первом заходе ────────────── */
+
+var _ANALYSIS_ONBOARDING_KEY = 'analysis_onboarded';
+
+function _isAnalysisOnboarded() {
+    try { return localStorage.getItem(_ANALYSIS_ONBOARDING_KEY) === 'true'; }
+    catch (e) { return true; } // если localStorage недоступен — не пытаемся показывать
+}
+
+function _renderAnalysisOnboarding() {
+    var el = document.getElementById('analysis-onboarding');
+    if (el) el.hidden = _isAnalysisOnboarded();
+}
+
+function _markAnalysisOnboarded() {
+    if (_isAnalysisOnboarded()) return;
+    try { localStorage.setItem(_ANALYSIS_ONBOARDING_KEY, 'true'); } catch (e) {}
+    var el = document.getElementById('analysis-onboarding');
+    if (el) el.hidden = true;
 }
 
 function clearAllAnalysisHeroes() {
@@ -4567,6 +4589,7 @@ function renderAnalysisBans() {
 }
 
 function analysisBanSlotClick(idx) {
+    _markAnalysisOnboarded();
     var bansArr = Array.from(_analysisBans);
     if (idx < bansArr.length) {
         // Заполненный слот — разбан
@@ -4657,6 +4680,7 @@ function analysisSlotClick(side, slotIndex) {
         _analysisLongPressFired = false;
         return;
     }
+    _markAnalysisOnboarded();
     var arr = (side === 'light') ? _analysisLight : _analysisDark;
     if (arr[slotIndex]) {
         // Тап на занятый слот — открыть детали героя
@@ -5014,13 +5038,22 @@ function renderAnalysisSheetGrid() {
     // дедуп по id, при поиске учитываем все имена + русские алиасы.
     var seen = new Set();
     var heroes = [];
+    var isBanModeForLoop = (_analysisPickerIntent === 'ban');
     Object.keys(window.dotaHeroIds).forEach(function(name) {
         var id = window.dotaHeroIds[name];
         if (seen.has(id)) return;
         seen.add(id);
         if (pickedSet.has(id)) return;
-        if (_analysisBans.has(id)) return;       // забаненные не попадают ни в pick-, ни в ban-picker
         if (query && !_analysisHeroMatchesQuery(id, query)) return;
+        // Bans:
+        // - в ban-picker'е забаненных не показываем (нечего разбанивать через picker)
+        // - в обычном pick-picker'е без поиска тоже скрываем (не засоряют топ)
+        // - при активном поиске — показываем как disabled (визуально отмечены)
+        var isBanned = _analysisBans.has(id);
+        if (isBanned) {
+            if (isBanModeForLoop) return;
+            if (!query) return;
+        }
 
         var score = hasContext ? _computeAnalysisScore(id) : 0;
         // Popularity payload теперь объект {total, positions:{...}} — берём total
@@ -5038,13 +5071,16 @@ function renderAnalysisSheetGrid() {
 
         heroes.push({
             id: id, name: name, score: score, pop: popularity, pos: primaryPos,
-            winRateAtSlot: winRateAtSlot, matchesAtSlot: matchesAtSlot
+            winRateAtSlot: winRateAtSlot, matchesAtSlot: matchesAtSlot,
+            banned: isBanned
         });
     });
 
     // Ban mode — сортировка по глобальной популярности (most-played first).
     // Empty board + slot-context — по per-position win_rate.
     // Иначе — по score (включает meta_bonus от win_rate с гейтом ≥200).
+    // Во всех случаях: banned-герои выпадают в самый низ (только видны при поиске
+    // в pick-режиме, не должны конкурировать за внимание с доступными пиками).
     var isBanMode = (_analysisPickerIntent === 'ban');
     var sortFn;
     if (isBanMode) {
@@ -5054,6 +5090,7 @@ function renderAnalysisSheetGrid() {
         };
     } else if (!hasContext && slotPos != null) {
         sortFn = function(a, b) {
+            if (a.banned !== b.banned) return a.banned ? 1 : -1;
             var wA = (a.winRateAtSlot != null) ? a.winRateAtSlot : -Infinity;
             var wB = (b.winRateAtSlot != null) ? b.winRateAtSlot : -Infinity;
             if (wB !== wA) return wB - wA;
@@ -5062,6 +5099,7 @@ function renderAnalysisSheetGrid() {
         };
     } else {
         sortFn = function(a, b) {
+            if (a.banned !== b.banned) return a.banned ? 1 : -1;
             if (b.score !== a.score) return b.score - a.score;
             if (b.pop !== a.pop) return b.pop - a.pop;
             return a.name.localeCompare(b.name);
@@ -5122,14 +5160,20 @@ function renderAnalysisSheetGrid() {
 function _renderAnalysisPickCard(h, hasContext) {
     var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(h.name) : '';
     var safeName = String(h.name).replace(/"/g, '&quot;');
-    var html = '<div class="analysis-pick-card" onclick="selectAnalysisHero(' + h.id + ')" title="' + safeName + '">';
+    var clsBanned = h.banned ? ' analysis-pick-card--banned' : '';
+    var titleAttr = safeName + (h.banned ? ' — забанен' : '');
+    var onclick = h.banned ? '' : ' onclick="selectAnalysisHero(' + h.id + ')"';
+    var html = '<div class="analysis-pick-card' + clsBanned + '"' + onclick + ' title="' + titleAttr + '">';
     if (iconUrl) {
         html += '<img class="analysis-pick-card-img" src="' + iconUrl + '" alt="' + safeName + '">';
     } else {
         html += '<div class="analysis-pick-card-img drafter-grid-img-empty"></div>';
     }
     html += '<div class="analysis-pick-card-name">' + _escHtml(h.name) + '</div>';
-    if (hasContext) {
+    // Score-бейджи не показываем для забаненных — они недоступны и любые числа вводят в заблуждение
+    if (h.banned) {
+        // no badge
+    } else if (hasContext) {
         // С контекстом — обычный score (synergy + matchup + meta_bonus)
         var tone = h.score > 0.05 ? 'positive' : (h.score < -0.05 ? 'negative' : 'neutral');
         var sign = h.score > 0 ? '+' : (h.score < 0 ? '−' : '');
