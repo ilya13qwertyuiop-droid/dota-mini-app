@@ -5009,48 +5009,35 @@ function renderAnalysisSheetGrid() {
         }
         flat.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
     } else {
-        // Группировка: подходящие позиции сначала, потом остальные.
-        // Frequency-based: герой в primary если на этой позиции играется ≥10%
-        // от своих матчей (ловит флексов, которых HERO_PRIMARY_POSITIONS не покрывает).
-        // Fallback per-hero на статический map когда:
-        //   - _analysisPopularity ещё не загружен глобально, ИЛИ
-        //   - у этого конкретного героя нет валидных данных в payload'е
-        //     (отсутствует / старый плоский формат / новый герой без статистики).
+        // Одна группа «Позиция N» через frequency-based фильтр: герой попадает
+        // если на этой позиции играется ≥7% от своих матчей. Порог отсекает
+        // явно неоптимальные пики (типа Anti-Mage mid 5.8%, Tinker sup5 6.4%),
+        // оставляя реальные мета-флексы (Pudge mid 8.1%, Sniper sup4 9.4%).
+        // Шум дополнительно фильтруется минимум-50-матчей floor'ом источника.
+        // Fallback per-hero на статический map когда нет данных в popularity
+        // payload'е (новый герой / старый формат / попадание до загрузки данных).
+        // Героев, не проходящих порог, в picker'е не показываем — для них
+        // остаётся поиск по имени.
         var primary = [];
-        var others  = [];
         heroes.forEach(function(h) {
             var hasFreqData = h.pop > 0 && typeof h.matchesAtSlot === 'number';
             var inPrimary;
             if (hasFreqData) {
-                inPrimary = (h.matchesAtSlot / h.pop) >= 0.10;
+                inPrimary = (h.matchesAtSlot / h.pop) >= 0.07;
             } else {
                 inPrimary = (h.pos === slotPos);
             }
             if (inPrimary) primary.push(h);
-            else others.push(h);
         });
         primary.sort(sortFn);
-        others.sort(sortFn);
 
-        // Primary не режем — порог 10% сам по себе бьёт по релевантности
-        // (≤30-40 героев на позицию максимум). Прежний slice(0, 30) обрезал
-        // часто-играемых, но средне-винрейтных героев типа Invoker'а на миде.
-        // Лимит остаётся только у "других позиций" — там список не ограничен.
-        others = others.slice(0, 60);
-
-        if (primary.length === 0 && others.length === 0) {
+        if (primary.length === 0) {
             grid.innerHTML = '<div class="analysis-sheet-empty">Нет данных</div>';
             return;
         }
 
-        if (primary.length > 0) {
-            html += '<div class="analysis-sheet-divider">Позиция ' + slotPos + '</div>';
-            primary.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
-        }
-        if (others.length > 0) {
-            html += '<div class="analysis-sheet-divider">Другие позиции</div>';
-            others.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
-        }
+        html += '<div class="analysis-sheet-divider">Позиция ' + slotPos + '</div>';
+        primary.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
     }
 
     grid.innerHTML = html;
