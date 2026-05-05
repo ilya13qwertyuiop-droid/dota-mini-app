@@ -4950,6 +4950,88 @@ margin-top: var(--space-4);
   background: rgba(123, 139, 184, 0.18);
 }
 
+/* ── Блок банов: 10 слотов в одну строку между доской и аналитикой ─ */
+.analysis-bans-row {
+  margin: 0 var(--space-3) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.analysis-bans-header {
+  margin-bottom: 8px;
+}
+
+.analysis-bans-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--font-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  line-height: 1.2;
+}
+
+.analysis-bans-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+}
+
+.analysis-ban-slot {
+  aspect-ratio: 1;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+
+.analysis-ban-slot--empty {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+.analysis-ban-slot--empty:active { opacity: 0.85; }
+
+.analysis-ban-slot-empty-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.analysis-ban-slot--filled {
+  border-color: rgba(229, 83, 75, 0.3);
+}
+
+.analysis-ban-slot-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: grayscale(0.55) brightness(0.7);
+}
+
+/* Диагональное красное перечёркивание поверх портрета забаненного героя */
+.analysis-ban-slot--filled::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -10%;
+  width: 120%;
+  height: 0;
+  border-top: 2px solid var(--negative);
+  transform: rotate(45deg);
+  transform-origin: center;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
 /* ── Live-аналитика для режима «Анализ» ────────────────────────── */
 .analysis-stats {
   margin: 0 var(--space-3) var(--space-3);
