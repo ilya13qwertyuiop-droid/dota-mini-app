@@ -5316,6 +5316,46 @@ margin-top: var(--space-4);
 .analysis-pick-card-score--negative { color: var(--negative); }
 .analysis-pick-card-score--neutral  { color: var(--text-secondary); }
 
+/* Забаненный герой в pick-picker'е (показывается только при активном поиске).
+   Визуальная метафора как у ban-row слотов на доске — diagonal red strike + gray-out. */
+.analysis-pick-card--banned {
+  cursor: default;
+  opacity: 0.55;
+}
+.analysis-pick-card--banned .analysis-pick-card-img {
+  filter: grayscale(0.6) brightness(0.65);
+}
+.analysis-pick-card--banned::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -10%;
+  width: 120%;
+  height: 0;
+  border-top: 2px solid var(--negative);
+  transform: rotate(45deg);
+  transform-origin: center;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* Онбординг-подсказка для первого захода — исчезает после первого тапа слота. */
+.analysis-onboarding {
+  margin: 0 var(--space-3) var(--space-3);
+  padding: 10px var(--space-3);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.analysis-onboarding[hidden] { display: none; }
+.analysis-onboarding-strong {
+  color: var(--text-primary);
+  font-weight: var(--font-medium);
+}
+
 .analysis-sheet-empty {
   grid-column: 1 / -1;
   text-align: center;
