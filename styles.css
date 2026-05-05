@@ -5339,9 +5339,11 @@ margin-top: var(--space-4);
   pointer-events: none;
 }
 
-/* Онбординг-подсказка для первого захода — исчезает после первого тапа слота. */
+/* Онбординг-подсказка для первого захода — исчезает после первого тапа слота.
+   Top margin 12px нужен чтобы оторваться от mode-tabs (у них bottom margin: 0
+   и визуально они тоже card-style — без gap'а сливаются в один блок). */
 .analysis-onboarding {
-  margin: 0 var(--space-3) var(--space-3);
+  margin: var(--space-3) var(--space-3) var(--space-3);
   padding: 10px var(--space-3);
   background: var(--accent-soft);
   border: 1px solid var(--accent-border);
