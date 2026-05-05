@@ -5010,19 +5010,31 @@ function renderAnalysisSheetGrid() {
         flat.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
     } else {
         // Группировка: подходящие позиции сначала, потом остальные.
-        // Если _analysisPopularity загружен — используем frequency-based: герой
-        // в primary, если на этой позиции он играется ≥10% от своих матчей
-        // (ловит флексов, которых статический HERO_PRIMARY_POSITIONS не покрывает).
-        // Fallback на статический map пока popularity не подгружен.
+        // Frequency-based: герой в primary если на этой позиции играется ≥10%
+        // от своих матчей (ловит флексов, которых HERO_PRIMARY_POSITIONS не покрывает).
+        // Fallback per-hero на статический map когда:
+        //   - _analysisPopularity ещё не загружен глобально, ИЛИ
+        //   - у этого конкретного героя нет валидных данных в payload'е
+        //     (отсутствует / старый плоский формат / новый герой без статистики).
         var primary = [];
         var others  = [];
-        var useFrequency = !!_analysisPopularity;
         heroes.forEach(function(h) {
+            var hasFreqData = h.pop > 0 && typeof h.matchesAtSlot === 'number';
             var inPrimary;
-            if (useFrequency) {
-                inPrimary = (h.pop > 0) && ((h.matchesAtSlot / h.pop) >= 0.10);
+            if (hasFreqData) {
+                inPrimary = (h.matchesAtSlot / h.pop) >= 0.10;
             } else {
                 inPrimary = (h.pos === slotPos);
+            }
+            // DIAG: Invoker (id=74) на слоте Мид (slotPos=2)
+            if (h.id === 74 && slotPos === 2) {
+                console.log('[analysis][diag] Invoker id=74 slotPos=2',
+                    '| matchesAtSlot =', h.matchesAtSlot,
+                    '| pop(total) =', h.pop,
+                    '| share =', (h.pop > 0 ? (h.matchesAtSlot / h.pop).toFixed(3) : 'N/A'),
+                    '| hasFreqData =', hasFreqData,
+                    '| primaryPos(static) =', h.pos,
+                    '| inPrimary =', inPrimary);
             }
             if (inPrimary) primary.push(h);
             else others.push(h);
