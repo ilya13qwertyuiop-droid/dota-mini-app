@@ -4180,9 +4180,12 @@ function initDrafter() {
 var _drafterMode = 'training';
 var _analysisLight = [null, null, null, null, null];
 var _analysisDark  = [null, null, null, null, null];
+var _analysisBans  = new Set();    // global bans — hero IDs исключены из picker'а
 var _analysisActiveSide = 'light';
 var _analysisActiveSlot = -1;
 var _analysisSheetMode = null; // null | 'picker' | 'detail'
+var _analysisPickerIntent = 'pick'; // 'pick' | 'ban' — поведение picker'а
+var _ANALYSIS_MAX_BANS = 10;
 var _analysisMatchups   = null;     // { "1": { vs: {...}, with: {...} }, ... }
 var _analysisPopularity = null;     // { "1": { total, positions: { "1": {matches, win_rate}, ... } }, ... }
 var _analysisDataLoading = false;
@@ -4295,6 +4298,7 @@ function setDrafterMode(mode) {
         closeAnalysisSheet();
         closeHeroDetailSheet();
         _hideAnalysisUndoToast();
+        _analysisPickerIntent = 'pick';
     }
 }
 
@@ -4461,23 +4465,6 @@ function _renderAnalysisStats() {
         bestMuBody.className = 'analysis-stats-row-body';
         bestMuBody.innerHTML = _analysisRenderPair(bestMu.self, bestMu.opp, '+', bestMu.value, ' vs ');
     }
-
-    // Слабый матчап: max |value|, показываем как поражение проигрывающей стороны.
-    var worstBody = document.getElementById('analysis-stats-worst-body');
-    if (allMu.length === 0) {
-        _setAnalysisRowEmpty(worstBody);
-    } else {
-        var pickWorst = allMu[0];
-        for (var k = 1; k < allMu.length; k++) {
-            if (Math.abs(allMu[k].value) > Math.abs(pickWorst.value)) pickWorst = allMu[k];
-        }
-        var loser, winner;
-        if (pickWorst.value < 0) { loser = pickWorst.self; winner = pickWorst.opp; }
-        else                     { loser = pickWorst.opp;  winner = pickWorst.self; }
-        var displayValue = -Math.abs(pickWorst.value);
-        worstBody.className = 'analysis-stats-row-body';
-        worstBody.innerHTML = _analysisRenderPair(loser, winner, '-', displayValue, ' vs ');
-    }
 }
 
 function _setAnalysisRowEmpty(bodyEl) {
@@ -4526,21 +4513,96 @@ function _analysisRenderPair(idA, idB, forcedSign, value, separator) {
 function renderAnalysisSlots() {
     _renderAnalysisSide('light');
     _renderAnalysisSide('dark');
+    renderAnalysisBans();
     _renderAnalysisStats();
     var clearBtn = document.getElementById('analysis-clear-btn');
-    if (clearBtn) clearBtn.hidden = !_analysisHasAnyPick();
+    if (clearBtn) clearBtn.hidden = !_analysisHasAnyState();
+}
+
+function _analysisHasAnyState() {
+    return _analysisHasAnyPick() || _analysisBans.size > 0;
 }
 
 function clearAllAnalysisHeroes() {
-    if (!_analysisHasAnyPick()) return;
+    if (!_analysisHasAnyState()) return;
     _analysisLight = [null, null, null, null, null];
     _analysisDark  = [null, null, null, null, null];
+    _analysisBans.clear();
     if (navigator.vibrate) navigator.vibrate(20);
     // Закрываем любые открытые sheet'ы и undo-toast — они ссылались на удалённых героев
     closeAnalysisSheet();
     closeHeroDetailSheet();
     _hideAnalysisUndoToast();
     renderAnalysisSlots();
+}
+
+/* ── Блок банов: рендер строки + обработчик слотов ───────────── */
+
+function renderAnalysisBans() {
+    var el = document.getElementById('analysis-bans-slots');
+    if (!el) return;
+    var bansArr = Array.from(_analysisBans);
+    var html = '';
+    for (var i = 0; i < _ANALYSIS_MAX_BANS; i++) {
+        if (i < bansArr.length) {
+            var heroId = bansArr[i];
+            var heroName = (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) || ('#' + heroId);
+            var iconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
+            var safeName = String(heroName).replace(/"/g, '&quot;');
+            html += '<div class="analysis-ban-slot analysis-ban-slot--filled" onclick="analysisBanSlotClick(' + i + ')" title="' + safeName + ' — снять бан">';
+            if (iconUrl) {
+                html += '<img class="analysis-ban-slot-img" src="' + iconUrl + '" alt="">';
+            }
+            html += '</div>';
+        } else {
+            html += '<div class="analysis-ban-slot analysis-ban-slot--empty" onclick="analysisBanSlotClick(' + i + ')" title="Добавить бан">';
+            html += '<svg class="analysis-ban-slot-empty-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">';
+            html += '<circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/>';
+            html += '<line x1="3.7" y1="12.3" x2="12.3" y2="3.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
+            html += '</svg>';
+            html += '</div>';
+        }
+    }
+    el.innerHTML = html;
+}
+
+function analysisBanSlotClick(idx) {
+    var bansArr = Array.from(_analysisBans);
+    if (idx < bansArr.length) {
+        // Заполненный слот — разбан
+        _analysisBans.delete(bansArr[idx]);
+        if (navigator.vibrate) navigator.vibrate(15);
+        renderAnalysisSlots();
+        // Если picker открыт — пересобрать (разбаненный герой снова доступен)
+        if (_analysisSheetMode === 'picker') renderAnalysisSheetGrid();
+    } else {
+        // Пустой слот — открыть picker в режиме бана
+        openAnalysisBanPicker();
+    }
+}
+
+function openAnalysisBanPicker() {
+    if (_analysisBans.size >= _ANALYSIS_MAX_BANS) return;
+    if (_analysisSheetMode === 'detail') closeHeroDetailSheet();
+
+    _analysisActiveSide = 'light';   // не релевантно для ban-mode, но не ломаем state
+    _analysisActiveSlot = -1;        // нет slot-контекста
+    _analysisSheetMode = 'picker';
+    _analysisPickerIntent = 'ban';
+
+    var sheet = document.getElementById('analysis-sheet');
+    var title = document.getElementById('analysis-sheet-title');
+    var search = document.getElementById('analysis-sheet-search');
+    if (!sheet) return;
+
+    if (title) title.textContent = 'Бан героя';
+    if (search) search.value = '';
+
+    sheet.hidden = false;
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    renderAnalysisSheetGrid();
 }
 
 function _renderAnalysisSide(side) {
@@ -4698,8 +4760,9 @@ function closeAnalysisSheet() {
     sheet.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
     _analysisActiveSlot = -1;
+    _analysisPickerIntent = 'pick';     // сбрасываем intent на дефолтный
     if (_analysisSheetMode === 'picker') _analysisSheetMode = null;
-    renderAnalysisSlots();         // снять подсветку
+    renderAnalysisSlots();              // снять подсветку
 }
 
 /* ── Bottom sheet с деталями уже выбранного героя ───────────────── */
@@ -4956,6 +5019,7 @@ function renderAnalysisSheetGrid() {
         if (seen.has(id)) return;
         seen.add(id);
         if (pickedSet.has(id)) return;
+        if (_analysisBans.has(id)) return;       // забаненные не попадают ни в pick-, ни в ban-picker
         if (query && !_analysisHeroMatchesQuery(id, query)) return;
 
         var score = hasContext ? _computeAnalysisScore(id) : 0;
@@ -4978,10 +5042,17 @@ function renderAnalysisSheetGrid() {
         });
     });
 
-    // На пустой доске score=0 у всех — сортируем по per-position win_rate.
-    // С контекстом — по score (он уже включает meta_bonus от win_rate с гейтом ≥200).
+    // Ban mode — сортировка по глобальной популярности (most-played first).
+    // Empty board + slot-context — по per-position win_rate.
+    // Иначе — по score (включает meta_bonus от win_rate с гейтом ≥200).
+    var isBanMode = (_analysisPickerIntent === 'ban');
     var sortFn;
-    if (!hasContext && slotPos != null) {
+    if (isBanMode) {
+        sortFn = function(a, b) {
+            if (b.pop !== a.pop) return b.pop - a.pop;
+            return a.name.localeCompare(b.name);
+        };
+    } else if (!hasContext && slotPos != null) {
         sortFn = function(a, b) {
             var wA = (a.winRateAtSlot != null) ? a.winRateAtSlot : -Infinity;
             var wB = (b.winRateAtSlot != null) ? b.winRateAtSlot : -Infinity;
@@ -4999,10 +5070,13 @@ function renderAnalysisSheetGrid() {
 
     var html = '';
 
-    if (query || slotPos == null) {
-        // Поиск или нет позиции — единый плоский список (до 60).
+    if (isBanMode || query || slotPos == null) {
+        // Ban mode / поиск / нет позиции — единый плоский список.
+        // В ban-режиме показываем всех (≤125), для пика без поиска — топ-20.
         heroes.sort(sortFn);
-        var flat = heroes.slice(0, query ? heroes.length : 20);
+        var flat;
+        if (isBanMode) flat = heroes;
+        else flat = heroes.slice(0, query ? heroes.length : 20);
         if (flat.length === 0) {
             grid.innerHTML = '<div class="analysis-sheet-empty">' + (query ? 'Не найдено' : 'Нет данных') + '</div>';
             return;
@@ -5079,6 +5153,25 @@ function _renderAnalysisPickCard(h, hasContext) {
 }
 
 function selectAnalysisHero(heroId) {
+    if (_analysisPickerIntent === 'ban') {
+        // Ban mode — добавить героя в баны, sheet оставляем открытым,
+        // чтобы можно было быстро забанить серию героев подряд.
+        if (_analysisBans.has(heroId)) return;
+        if (_analysisBans.size >= _ANALYSIS_MAX_BANS) {
+            closeAnalysisSheet();
+            return;
+        }
+        _analysisBans.add(heroId);
+        if (navigator.vibrate) navigator.vibrate(15);
+        renderAnalysisBans();
+        // Пересобрать grid — забаненный герой исчезает из списка
+        if (_analysisBans.size >= _ANALYSIS_MAX_BANS) {
+            closeAnalysisSheet();
+        } else {
+            renderAnalysisSheetGrid();
+        }
+        return;
+    }
     if (_analysisActiveSlot < 0 || _analysisActiveSlot > 4) return;
     var arr = (_analysisActiveSide === 'light') ? _analysisLight : _analysisDark;
     arr[_analysisActiveSlot] = heroId;
