@@ -5026,25 +5026,17 @@ function renderAnalysisSheetGrid() {
             } else {
                 inPrimary = (h.pos === slotPos);
             }
-            // DIAG: Invoker (id=74) на слоте Мид (slotPos=2)
-            if (h.id === 74 && slotPos === 2) {
-                console.log('[analysis][diag] Invoker id=74 slotPos=2',
-                    '| matchesAtSlot =', h.matchesAtSlot,
-                    '| pop(total) =', h.pop,
-                    '| share =', (h.pop > 0 ? (h.matchesAtSlot / h.pop).toFixed(3) : 'N/A'),
-                    '| hasFreqData =', hasFreqData,
-                    '| primaryPos(static) =', h.pos,
-                    '| inPrimary =', inPrimary);
-            }
             if (inPrimary) primary.push(h);
             else others.push(h);
         });
         primary.sort(sortFn);
         others.sort(sortFn);
 
-        // Лимиты по группам (с прокруткой можно больше).
-        primary = primary.slice(0, 30);
-        others  = others.slice(0, 60);
+        // Primary не режем — порог 10% сам по себе бьёт по релевантности
+        // (≤30-40 героев на позицию максимум). Прежний slice(0, 30) обрезал
+        // часто-играемых, но средне-винрейтных героев типа Invoker'а на миде.
+        // Лимит остаётся только у "других позиций" — там список не ограничен.
+        others = others.slice(0, 60);
 
         if (primary.length === 0 && others.length === 0) {
             grid.innerHTML = '<div class="analysis-sheet-empty">Нет данных</div>';
