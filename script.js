@@ -5122,20 +5122,22 @@ function renderAnalysisSheetGrid() {
         flat.forEach(function(h) { html += _renderAnalysisPickCard(h, hasContext); });
     } else {
         // Одна группа «Позиция N» через frequency-based фильтр: герой попадает
-        // если на этой позиции играется ≥7% от своих матчей. Порог отсекает
-        // явно неоптимальные пики (типа Anti-Mage mid 5.8%, Tinker sup5 6.4%),
-        // оставляя реальные мета-флексы (Pudge mid 8.1%, Sniper sup4 9.4%).
+        // если на этой позиции играется ≥ порога от своих матчей. Порог
+        // динамический: 0.07 пока на доске <4 героев (свободный exploration),
+        // 0.10 когда героев ≥4 — сужаем до бесспорных мета-флексов.
         // Шум дополнительно фильтруется минимум-50-матчей floor'ом источника.
         // Fallback per-hero на статический map когда нет данных в popularity
         // payload'е (новый герой / старый формат / попадание до загрузки данных).
         // Героев, не проходящих порог, в picker'е не показываем — для них
         // остаётся поиск по имени.
+        var pickedCount = _analysisLight.filter(Boolean).length + _analysisDark.filter(Boolean).length;
+        var freqThreshold = pickedCount < 4 ? 0.07 : 0.10;
         var primary = [];
         heroes.forEach(function(h) {
             var hasFreqData = h.pop > 0 && typeof h.matchesAtSlot === 'number';
             var inPrimary;
             if (hasFreqData) {
-                inPrimary = (h.matchesAtSlot / h.pop) >= 0.07;
+                inPrimary = (h.matchesAtSlot / h.pop) >= freqThreshold;
             } else {
                 inPrimary = (h.pos === slotPos);
             }
