@@ -4168,17 +4168,19 @@ function initDrafter() {
         renderDrafterGrid();
     }
 
-    // Восстановить ранее выбранный режим (по умолчанию — Тренировка)
+    // Восстановить ранее выбранный режим (по умолчанию — Анализ).
+    // Ключ bumped до v2, чтобы старые сохранённые 'training' не перебивали
+    // новый дефолт у уже существующих пользователей.
     var savedMode = null;
-    try { savedMode = localStorage.getItem('drafter_mode'); } catch (e) {}
-    setDrafterMode(savedMode === 'analysis' ? 'analysis' : 'training');
+    try { savedMode = localStorage.getItem('drafter_mode_v2'); } catch (e) {}
+    setDrafterMode(savedMode === 'training' ? 'training' : 'analysis');
 }
 
 /* ════════════════════════════════════════════════════════════════
    Drafter — режим «Анализ»
    ──────────────────────────────────────────────────────────────── */
 
-var _drafterMode = 'training';
+var _drafterMode = 'analysis';
 var _analysisLight = [null, null, null, null, null];
 var _analysisDark  = [null, null, null, null, null];
 var _analysisBans  = new Set();    // global bans — hero IDs исключены из picker'а
@@ -4271,9 +4273,9 @@ function _analysisHeroMatchesQuery(heroId, query) {
 }
 
 function setDrafterMode(mode) {
-    if (mode !== 'training' && mode !== 'analysis') mode = 'training';
+    if (mode !== 'training' && mode !== 'analysis') mode = 'analysis';
     _drafterMode = mode;
-    try { localStorage.setItem('drafter_mode', mode); } catch (e) {}
+    try { localStorage.setItem('drafter_mode_v2', mode); } catch (e) {}
 
     // Гигиена long-press flag — иначе застрявший true после быстрого
     // переключения mode подавит первый нормальный tap при возврате в Анализ.
