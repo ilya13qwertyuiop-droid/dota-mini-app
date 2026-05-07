@@ -25,6 +25,12 @@ _dota_builds_file_cache: dict | None = None
 # hero_matchups.json — read once per process lifetime
 _hero_matchups_file_cache: dict | None = None
 
+# hero_matchups.json — raw JSON bytes, used by /api/draft/matchups_all to avoid
+# re-serializing the 2.4 MB dict on every request (jsonable_encoder + json.dumps
+# on this blob takes ~4 s per call). The endpoint just proxies the file as-is,
+# so we serve the raw bytes directly.
+_hero_matchups_json_bytes: bytes | None = None
+
 # draft_matches.json — read once per process lifetime
 _draft_matches_file_cache: list | None = None
 
@@ -123,6 +129,22 @@ def _load_hero_matchups_file() -> dict | None:
     return _hero_matchups_file_cache
 
 
+def _load_hero_matchups_bytes() -> bytes | None:
+    """Return raw hero_matchups.json bytes for endpoints that proxy the file as-is."""
+    global _hero_matchups_json_bytes
+    if _hero_matchups_json_bytes is not None:
+        return _hero_matchups_json_bytes
+    path = Path(__file__).resolve().parent.parent / "hero_matchups.json"
+    if not path.exists():
+        return None
+    try:
+        _hero_matchups_json_bytes = path.read_bytes()
+    except Exception as e:
+        logger.warning("[hero_matchups] Failed to read hero_matchups.json bytes: %s", e)
+        return None
+    return _hero_matchups_json_bytes
+
+
 def _load_draft_matches_file() -> list | None:
     """Return parsed draft_matches.json, caching the result in memory."""
     global _draft_matches_file_cache
@@ -142,8 +164,9 @@ def _load_draft_matches_file() -> list | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-from fastapi import FastAPI, HTTPException, Depends, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 
@@ -190,6 +213,11 @@ init_stats_tables()       # migration: adds rank_bucket column if missing
 _init_rl_table()          # rate limiting table for /api/draft/evaluate
 # --- DB init end ---
 
+# Warm up file-backed caches so the first request to each worker doesn't pay the
+# cold-start cost (file read + parse). Each uvicorn worker runs this once.
+_load_hero_matchups_bytes()
+_load_hero_matchups_file()
+
 
 # Production: uvicorn backend.api:app --workers 4 --timeout-keep-alive 30
 app = FastAPI(title="Dota Mini App Backend")
@@ -204,6 +232,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")
@@ -1355,13 +1385,14 @@ async def api_draft_matchups_all():
     """Returns full hero_matchups.json blob.
 
     Used by the frontend "Анализ" mode of the Drafter to compute live recommendations
-    on the client without round-trips. ~1.2 MB; cached server-side and gzip-compressed
-    over the wire (uvicorn handles content-encoding when the client sends Accept-Encoding).
+    on the client without round-trips. ~2.4 MB; raw bytes are cached at startup and
+    served directly to skip jsonable_encoder + json.dumps (~4 s on this blob).
+    GZipMiddleware handles compression on the wire.
     """
-    matchups = _load_hero_matchups_file()
-    if matchups is None:
+    data = _load_hero_matchups_bytes()
+    if data is None:
         raise HTTPException(status_code=503, detail="Matchups data not available")
-    return matchups
+    return Response(content=data, media_type="application/json")
 
 
 @app.get("/api/draft/popularity")
