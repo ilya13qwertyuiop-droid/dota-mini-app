@@ -35,8 +35,10 @@ _hero_matchups_json_bytes: bytes | None = None
 _draft_matches_file_cache: list | None = None
 
 # /api/hero/{hero_id}/build — full response per hero, TTL 30 min
+# Stores pre-serialized JSON strings (not dicts) to skip jsonable_encoder +
+# json.dumps on every cache hit (~3.5 s per call on this payload).
 BUILD_CACHE_TTL = 1800
-_build_cache: dict[int, tuple[float, dict]] = {}  # {hero_id: (timestamp, data)}
+_build_cache: dict[int, tuple[float, str]] = {}  # {hero_id: (timestamp, json_str)}
 
 # /api/draft/leaderboard — TTL 5 min
 _leaderboard_cache: list | None = None
@@ -960,7 +962,7 @@ async def api_hero_build(hero_id: int):
     # ── In-memory build cache ─────────────────────────────────────────────
     _cached_entry = _build_cache.get(hero_id)
     if _cached_entry is not None and (time.time() - _cached_entry[0]) < BUILD_CACHE_TTL:
-        return _cached_entry[1]
+        return Response(content=_cached_entry[1], media_type="application/json")
 
     # ── Static data from pre-built cache ─────────────────────────────────
     cached = get_hero_build_cache(hero_id)
@@ -1029,8 +1031,9 @@ async def api_hero_build(hero_id: int):
             "positions":   dota_keys_sorted,
             "dota_builds": dota_builds,
         }
-        _build_cache[hero_id] = (time.time(), _response)
-        return _response
+        _serialized = json.dumps(_response)
+        _build_cache[hero_id] = (time.time(), _serialized)
+        return Response(content=_serialized, media_type="application/json")
 
     # ── Fallback: old stratz + live DB logic ──────────────────────────────
     raw_map = get_app_cache_value("ability_id_to_name") or {}
@@ -1081,8 +1084,9 @@ async def api_hero_build(hero_id: int):
             "core_items":       core_items_fb,
         },
     }
-    _build_cache[hero_id] = (time.time(), _response)
-    return _response
+    _serialized = json.dumps(_response)
+    _build_cache[hero_id] = (time.time(), _serialized)
+    return Response(content=_serialized, media_type="application/json")
 
 
 # ========== Hero Positions ==========
