@@ -4274,6 +4274,7 @@ function _analysisHeroMatchesQuery(heroId, query) {
 
 function setDrafterMode(mode) {
     if (mode !== 'training' && mode !== 'analysis') mode = 'analysis';
+    var prevMode = _drafterMode;
     _drafterMode = mode;
     try { localStorage.setItem('drafter_mode_v2', mode); } catch (e) {}
 
@@ -4302,6 +4303,13 @@ function setDrafterMode(mode) {
         closeHeroDetailSheet();
         _hideAnalysisUndoToast();
         _analysisPickerIntent = 'pick';
+        // При возврате из Анализа в Тренировку — обновить вражеский драфт.
+        // Гард по _drafterMatchLoaded отсекает первый init-вызов: там матч ещё
+        // грузится отдельным loadDrafterMatch() и второй параллельный запрос
+        // не нужен.
+        if (prevMode === 'analysis' && _drafterMatchLoaded) {
+            loadDrafterMatch();
+        }
     }
 }
 
