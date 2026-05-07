@@ -2,3 +2,13 @@ backend/.env
 ARCHITECTURE.md
 .claude/
 stratz_data.json
+dota_builds.json
+hero_matchups.json
+draft_matches.json
+CLAUDE.md
+.impeccable.md
+.gitignore
+
+# Skill plugins (taste-skill via npx skills add)
+.agents/
+skills-lock.json

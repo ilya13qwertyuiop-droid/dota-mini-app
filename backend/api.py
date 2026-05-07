@@ -25,12 +25,20 @@ _dota_builds_file_cache: dict | None = None
 # hero_matchups.json — read once per process lifetime
 _hero_matchups_file_cache: dict | None = None
 
+# hero_matchups.json — raw JSON bytes, used by /api/draft/matchups_all to avoid
+# re-serializing the 2.4 MB dict on every request (jsonable_encoder + json.dumps
+# on this blob takes ~4 s per call). The endpoint just proxies the file as-is,
+# so we serve the raw bytes directly.
+_hero_matchups_json_bytes: bytes | None = None
+
 # draft_matches.json — read once per process lifetime
 _draft_matches_file_cache: list | None = None
 
 # /api/hero/{hero_id}/build — full response per hero, TTL 30 min
+# Stores pre-serialized JSON strings (not dicts) to skip jsonable_encoder +
+# json.dumps on every cache hit (~3.5 s per call on this payload).
 BUILD_CACHE_TTL = 1800
-_build_cache: dict[int, tuple[float, dict]] = {}  # {hero_id: (timestamp, data)}
+_build_cache: dict[int, tuple[float, str]] = {}  # {hero_id: (timestamp, json_str)}
 
 # /api/draft/leaderboard — TTL 5 min
 _leaderboard_cache: list | None = None
@@ -123,6 +131,22 @@ def _load_hero_matchups_file() -> dict | None:
     return _hero_matchups_file_cache
 
 
+def _load_hero_matchups_bytes() -> bytes | None:
+    """Return raw hero_matchups.json bytes for endpoints that proxy the file as-is."""
+    global _hero_matchups_json_bytes
+    if _hero_matchups_json_bytes is not None:
+        return _hero_matchups_json_bytes
+    path = Path(__file__).resolve().parent.parent / "hero_matchups.json"
+    if not path.exists():
+        return None
+    try:
+        _hero_matchups_json_bytes = path.read_bytes()
+    except Exception as e:
+        logger.warning("[hero_matchups] Failed to read hero_matchups.json bytes: %s", e)
+        return None
+    return _hero_matchups_json_bytes
+
+
 def _load_draft_matches_file() -> list | None:
     """Return parsed draft_matches.json, caching the result in memory."""
     global _draft_matches_file_cache
@@ -142,8 +166,9 @@ def _load_draft_matches_file() -> list | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-from fastapi import FastAPI, HTTPException, Depends, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 
@@ -190,6 +215,11 @@ init_stats_tables()       # migration: adds rank_bucket column if missing
 _init_rl_table()          # rate limiting table for /api/draft/evaluate
 # --- DB init end ---
 
+# Warm up file-backed caches so the first request to each worker doesn't pay the
+# cold-start cost (file read + parse). Each uvicorn worker runs this once.
+_load_hero_matchups_bytes()
+_load_hero_matchups_file()
+
 
 # Production: uvicorn backend.api:app --workers 4 --timeout-keep-alive 30
 app = FastAPI(title="Dota Mini App Backend")
@@ -204,6 +234,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")
@@ -930,7 +962,7 @@ async def api_hero_build(hero_id: int):
     # ── In-memory build cache ─────────────────────────────────────────────
     _cached_entry = _build_cache.get(hero_id)
     if _cached_entry is not None and (time.time() - _cached_entry[0]) < BUILD_CACHE_TTL:
-        return _cached_entry[1]
+        return Response(content=_cached_entry[1], media_type="application/json")
 
     # ── Static data from pre-built cache ─────────────────────────────────
     cached = get_hero_build_cache(hero_id)
@@ -999,8 +1031,9 @@ async def api_hero_build(hero_id: int):
             "positions":   dota_keys_sorted,
             "dota_builds": dota_builds,
         }
-        _build_cache[hero_id] = (time.time(), _response)
-        return _response
+        _serialized = json.dumps(_response)
+        _build_cache[hero_id] = (time.time(), _serialized)
+        return Response(content=_serialized, media_type="application/json")
 
     # ── Fallback: old stratz + live DB logic ──────────────────────────────
     raw_map = get_app_cache_value("ability_id_to_name") or {}
@@ -1051,8 +1084,9 @@ async def api_hero_build(hero_id: int):
             "core_items":       core_items_fb,
         },
     }
-    _build_cache[hero_id] = (time.time(), _response)
-    return _response
+    _serialized = json.dumps(_response)
+    _build_cache[hero_id] = (time.time(), _serialized)
+    return Response(content=_serialized, media_type="application/json")
 
 
 # ========== Hero Positions ==========
@@ -1347,7 +1381,7 @@ async def api_draft_random():
 
 
 # Cache for popularity payload — derived from dota_builds.json once per process.
-_draft_popularity_cache: dict[str, int] | None = None
+_draft_popularity_cache: dict[str, dict] | None = None
 
 
 @app.get("/api/draft/matchups_all")
@@ -1355,21 +1389,39 @@ async def api_draft_matchups_all():
     """Returns full hero_matchups.json blob.
 
     Used by the frontend "Анализ" mode of the Drafter to compute live recommendations
-    on the client without round-trips. ~1.2 MB; cached server-side and gzip-compressed
-    over the wire (uvicorn handles content-encoding when the client sends Accept-Encoding).
+    on the client without round-trips. ~2.4 MB; raw bytes are cached at startup and
+    served directly to skip jsonable_encoder + json.dumps (~4 s on this blob).
+    GZipMiddleware handles compression on the wire.
     """
-    matchups = _load_hero_matchups_file()
-    if matchups is None:
+    data = _load_hero_matchups_bytes()
+    if data is None:
         raise HTTPException(status_code=503, detail="Matchups data not available")
-    return matchups
+    return Response(content=data, media_type="application/json")
 
 
 @app.get("/api/draft/popularity")
 async def api_draft_popularity():
-    """Returns {hero_id: total_matches} derived from dota_builds.json.
+    """Returns popularity data per hero with per-position breakdown.
 
-    Used as the default ordering for the Анализ picker when no heroes are placed yet
-    (and as a tiebreaker when scores tie). Tiny payload (~125 entries).
+    Schema:
+        {
+          "<hero_id>": {
+            "total": <sum of num_matches across all positions>,
+            "positions": {
+              "<pos_num 1..5>": {"matches": <int>, "win_rate": <float | null>},
+              ...
+            }
+          },
+          ...
+        }
+
+    Source — dota_builds.json. Position keys там URL-encoded ("pos%201"..."pos%205");
+    номер извлекается через _pos_str_to_num. win_rate = num_wins / num_matches,
+    или null если num_matches == 0. Позиции, у которых нет валидного num_matches
+    в исходных данных, в ответе не присутствуют.
+
+    Used by the frontend "Анализ" mode for default ordering, tiebreakers, and
+    per-position popularity/winrate context.
     """
     global _draft_popularity_cache
     if _draft_popularity_cache is not None:
@@ -1379,18 +1431,29 @@ async def api_draft_popularity():
     if builds is None:
         raise HTTPException(status_code=503, detail="Builds data not available")
 
-    out: dict[str, int] = {}
+    out: dict[str, dict] = {}
     for hero_key, positions in builds.items():
         if not isinstance(positions, dict):
             continue
+        per_pos: dict[str, dict] = {}
         total = 0
-        for pos_data in positions.values():
+        for raw_pos_key, pos_data in positions.items():
             if not isinstance(pos_data, dict):
                 continue
-            n = pos_data.get("num_matches")
-            if isinstance(n, (int, float)):
-                total += int(n)
-        out[str(hero_key)] = total
+            pos_num = _pos_str_to_num(raw_pos_key)
+            if pos_num is None:
+                continue
+            matches_raw = pos_data.get("num_matches")
+            if not isinstance(matches_raw, (int, float)):
+                continue
+            matches = int(matches_raw)
+            total += matches
+            wins_raw = pos_data.get("num_wins")
+            win_rate: float | None = None
+            if isinstance(wins_raw, (int, float)) and matches > 0:
+                win_rate = float(wins_raw) / matches
+            per_pos[str(pos_num)] = {"matches": matches, "win_rate": win_rate}
+        out[str(hero_key)] = {"total": total, "positions": per_pos}
 
     _draft_popularity_cache = out
     return out

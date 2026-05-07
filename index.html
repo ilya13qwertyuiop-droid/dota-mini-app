@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=130" />
+    <link rel="stylesheet" href="styles.css?v=139" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -527,7 +527,11 @@
           </div>
           <div class="drafter-top-divider"></div>
 
-
+          <!-- Переключатель режимов: Тренировка / Анализ -->
+          <div class="drafter-mode-tabs" role="tablist" aria-label="Режим драфтера">
+            <button class="drafter-mode-tab drafter-mode-tab--active" role="tab" aria-selected="true" data-mode="analysis" onclick="setDrafterMode('analysis')">Анализ</button>
+            <button class="drafter-mode-tab" role="tab" aria-selected="false" data-mode="training" onclick="setDrafterMode('training')">Тренировка</button>
+          </div>
 
           <!-- Основной контент драфта -->
           <div id="drafter-draft-content">
@@ -544,7 +548,6 @@
               </div>
               <div class="drafter-slots-grid" id="drafter-enemy-slots"></div>
             </div>
-            <div class="draft-board-divider" aria-hidden="true"></div>
             <div class="draft-board-row draft-board-row--ally">
               <div class="draft-board-header">
                 <div class="draft-board-label draft-board-label--ally">ТВОЯ КОМАНДА</div>
@@ -594,14 +597,17 @@
 
           <!-- Панель режима «Анализ»: симметричная песочница без подсчёта итога -->
           <div id="drafter-mode-analysis" hidden>
+            <div class="analysis-onboarding" id="analysis-onboarding" hidden>
+              <span class="analysis-onboarding-strong">Тапни по слоту</span>, чтобы добавить героя. Поможет с пиком прямо во время игры.
+            </div>
             <div class="draft-board analysis-board">
               <div class="draft-board-row">
                 <div class="draft-board-header">
                   <div class="draft-board-label analysis-board-label--light">СИЛЫ СВЕТА</div>
+                  <button type="button" id="analysis-clear-btn" class="draft-board-action" onclick="clearAllAnalysisHeroes()" hidden>Очистить всё</button>
                 </div>
                 <div class="drafter-slots-grid" id="analysis-light-slots"></div>
               </div>
-              <div class="draft-board-divider" aria-hidden="true"></div>
               <div class="draft-board-row">
                 <div class="draft-board-header">
                   <div class="draft-board-label analysis-board-label--dark">СИЛЫ ТЬМЫ</div>
@@ -609,25 +615,32 @@
                 <div class="drafter-slots-grid" id="analysis-dark-slots"></div>
               </div>
             </div>
-            <div class="analysis-empty" id="analysis-empty">
-              <div class="analysis-empty-eyebrow">Песочница</div>
-              <div class="analysis-empty-title">Симулируй любую расстановку</div>
-              <div class="analysis-empty-rows">
-                <div class="analysis-empty-row">
-                  <div class="analysis-empty-row-mark">+</div>
-                  <div class="analysis-empty-row-text">Тапни пустой слот — откроется список с лучшими героями для этой позиции</div>
+            <div class="analysis-bans-row">
+              <div class="analysis-bans-header">
+                <div class="analysis-bans-label">БАНЫ</div>
+              </div>
+              <div class="analysis-bans-grid" id="analysis-bans-slots"></div>
+            </div>
+            <div class="analysis-stats" id="analysis-stats">
+              <div class="analysis-stats-totals">
+                <div class="analysis-stats-team analysis-stats-team--light">
+                  <div class="analysis-stats-eyebrow">Свет</div>
+                  <div class="analysis-stats-total" id="analysis-stats-total-light">0.0</div>
                 </div>
-                <div class="analysis-empty-row">
-                  <div class="analysis-empty-row-mark"><span class="analysis-empty-mark-pos">+</span><span class="analysis-empty-mark-neg">−</span></div>
-                  <div class="analysis-empty-row-text">Score рядом с героем = синергия со своими + матчап против чужих</div>
-                </div>
-                <div class="analysis-empty-row">
-                  <div class="analysis-empty-row-mark">↺</div>
-                  <div class="analysis-empty-row-text">Тап на занятый слот — снимает героя. Пересчёт мгновенный</div>
+                <div class="analysis-stats-team analysis-stats-team--dark">
+                  <div class="analysis-stats-eyebrow">Тьма</div>
+                  <div class="analysis-stats-total" id="analysis-stats-total-dark">0.0</div>
                 </div>
               </div>
+              <div class="analysis-stats-row" id="analysis-stats-best-pair">
+                <div class="analysis-stats-eyebrow">Сильнейшая пара</div>
+                <div class="analysis-stats-row-body" id="analysis-stats-best-body">—</div>
+              </div>
+              <div class="analysis-stats-row" id="analysis-stats-best-mu">
+                <div class="analysis-stats-eyebrow">Лучший матчап</div>
+                <div class="analysis-stats-row-body" id="analysis-stats-best-mu-body">—</div>
+              </div>
             </div>
-            <div class="analysis-hint" id="analysis-hint" hidden>Тапни любой слот, чтобы добавить героя</div>
           </div>
 
           </div><!-- /drafter-draft-content -->
@@ -649,6 +662,43 @@
                 <input type="text" id="analysis-sheet-search" class="drafter-search analysis-sheet-search" placeholder="Найти героя…" oninput="onAnalysisSheetSearch()" autocomplete="off">
               </div>
               <div class="analysis-sheet-grid" id="analysis-sheet-grid"></div>
+            </div>
+          </div>
+
+          <!-- Bottom sheet с деталями уже выбранного героя -->
+          <div id="analysis-hero-detail-sheet" class="analysis-sheet" hidden aria-hidden="true">
+            <div class="analysis-sheet-backdrop" onclick="closeHeroDetailSheet()"></div>
+            <div class="analysis-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="analysis-detail-name">
+              <div class="analysis-sheet-grip" aria-hidden="true"></div>
+              <div class="analysis-detail-header">
+                <img id="analysis-detail-portrait" class="analysis-detail-portrait" src="" alt="">
+                <div class="analysis-detail-meta">
+                  <div class="analysis-detail-name" id="analysis-detail-name">—</div>
+                  <div class="analysis-detail-pos" id="analysis-detail-pos"></div>
+                </div>
+                <div class="analysis-detail-net-wrap">
+                  <div class="analysis-stats-eyebrow">Net</div>
+                  <div class="analysis-detail-net-value" id="analysis-detail-net">0.0</div>
+                </div>
+                <button class="analysis-sheet-close analysis-detail-close" onclick="closeHeroDetailSheet()" aria-label="Закрыть">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="analysis-detail-scroll">
+                <div class="analysis-detail-section">
+                  <div class="analysis-stats-eyebrow">С союзниками</div>
+                  <div id="analysis-detail-allies" class="analysis-detail-list"></div>
+                </div>
+                <div class="analysis-detail-section">
+                  <div class="analysis-stats-eyebrow">Против врагов</div>
+                  <div id="analysis-detail-enemies" class="analysis-detail-list"></div>
+                </div>
+              </div>
+              <div class="analysis-detail-footer">
+                <button class="analysis-detail-remove" onclick="removeAnalysisHeroFromDetail()">Удалить героя</button>
+              </div>
             </div>
           </div>
         </div>
@@ -942,6 +992,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=153"></script>
+    <script defer src="script.js?v=168"></script>
   </body>
 </html>

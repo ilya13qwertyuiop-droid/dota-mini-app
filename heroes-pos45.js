@@ -6,34 +6,34 @@ window.heroPos4Data = {
       id: 'dependence',
       question: 'От чего ты больше хочешь зависеть в игре?',
       answers: [
-        { text: '⚡ От уровня и КД кнопок.', tags: ['from_level'] },
-        { text: '🔧 От утилити-предметов.', tags: ['from_items'] }
+        { text: 'От уровня и КД кнопок.', icon: 'ph-lightning', tags: ['from_level'] },
+        { text: 'От утилити-предметов.', icon: 'ph-package', tags: ['from_items'] }
       ]
     },
     {
       id: 'fight_style',
       question: 'Что ты больше всего хочешь делать в драках?',
       answers: [
-        { text: '🧊 Давать контроль (стан, сайленс, замедление).', tags: ['from_control'] },
-        { text: '💥 Наносить урон (нюки, магический прокаст).', tags: ['from_damage'] },
-        { text: '💚 Сейвить и баффать союзников (хилл, щит, сейв).', tags: ['from_save'] }
+        { text: 'Давать контроль (стан, сайленс, замедление).', icon: 'ph-lock', tags: ['from_control'] },
+        { text: 'Наносить урон (нюки, магический прокаст).', icon: 'ph-lightning', tags: ['from_damage'] },
+        { text: 'Сейвить и баффать союзников (хилл, щит, сейв).', icon: 'ph-hand-heart', tags: ['from_save'] }
       ]
     },
     {
       id: 'difficulty',
       question: 'Тебе нравятся сложные герои?',
       answers: [
-        { text: '🎓 Да, мне нравятся сложные герои.', tags: ['hard'] },
-        { text: '😊 Нет, мне не нравятся сложные герои.', tags: ['easy'] }
+        { text: 'Да, мне нравятся сложные герои.', icon: 'ph-fire', tags: ['hard'] },
+        { text: 'Нет, мне не нравятся сложные герои.', icon: 'ph-leaf', tags: ['easy'] }
       ]
     },
     {
       id: 'role_in_fight',
       question: 'Какую роль тебе больше всего хочется выполнять в драках?',
       answers: [
-        { text: '🚀 Инициация — первым врываться и начинать файты.', tags: ['from_initiation'] },
-        { text: '🛡️ Контр-инициация — ждать врыва врага и переворачивать файт.', tags: ['from_counterinitiation'] },
-        { text: '🎯 Позиционная игра — держать позицию и откидывать кнопки.', tags: ['from_position'] }
+        { text: 'Инициация — первым врываться и начинать файты.', icon: 'ph-rocket-launch', tags: ['from_initiation'] },
+        { text: 'Контр-инициация — ждать врыва врага и переворачивать файт.', icon: 'ph-shield-check', tags: ['from_counterinitiation'] },
+        { text: 'Позиционная игра — держать позицию и откидывать кнопки.', icon: 'ph-anchor', tags: ['from_position'] }
       ]
     }
   ],
