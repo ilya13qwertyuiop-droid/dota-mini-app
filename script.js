@@ -6763,29 +6763,21 @@ function _drafterCommentText(c) {
         previewMode: false,   // показывать ли preview-пейн в Мой профиль
     };
 
-    // Tier 1-8 для семантического data-tier (цветовые ступени в CSS).
+    // Tier 1-8: Рекрут=1 … Титан=8.
     function _tmRankTier(rank) {
         var i = TM_RANKS.indexOf(rank);
         return i >= 0 ? i + 1 : 0;
     }
 
-    // SVG-медаль ранга — без внешних CDN, монотонная, живёт на дизайн-токенах.
-    // Реальные Dota-медали (золото/серебро/бронза с лучами) клэшат с Linear-style
-    // палитрой проекта; абстракция в духе "tactical clarity" нативнее.
-    function _tmRankMedalHtml(rank, modifier) {
+    // Реальные иконки рангов из проекта — /rank_icons/medal_N.png (N=1..8).
+    // Размер задаётся CSS-классом (.tm-rank-icon / --sm / --xs).
+    function _tmRankIconImg(rank, modifier) {
         var tier = _tmRankTier(rank);
         if (!tier) return '';
-        var cls = 'tm-rank-medal' + (modifier ? ' ' + modifier : '');
-        return '' +
-            '<div class="' + cls + '" data-tier="' + tier + '" aria-label="Тир ' + tier + '">' +
-                '<svg viewBox="0 0 40 44" aria-hidden="true">' +
-                    '<path d="M20 2 L36 8 L36 26 C36 33 29 41 20 43 C11 41 4 33 4 26 L4 8 Z" ' +
-                        'fill="currentColor" fill-opacity="0.10" ' +
-                        'stroke="currentColor" stroke-opacity="0.45" stroke-width="1" stroke-linejoin="round"/>' +
-                    '<path d="M10 11 L30 11" stroke="currentColor" stroke-opacity="0.28" stroke-width="0.8"/>' +
-                '</svg>' +
-                '<span class="tm-rank-medal-num">' + tier + '</span>' +
-            '</div>';
+        var cls = 'tm-rank-icon' + (modifier ? ' ' + modifier : '');
+        return '<img class="' + cls + '" src="/rank_icons/medal_' + tier + '.png" ' +
+            'alt="' + _tmEsc(rank || ('Тир ' + tier)) + '" ' +
+            'onerror="this.style.display=\'none\'">';
     }
 
     function _tmPosIcon(p) { return '/images/positions/pos_' + p + '.png'; }
@@ -6807,6 +6799,37 @@ function _drafterCommentText(c) {
         return { name: name, url: url };
     }
     function _tmGetToken() { return (typeof USER_TOKEN === 'string' && USER_TOKEN) ? USER_TOKEN : ''; }
+
+    // ── Telegram identity helpers ──────────────────────────────────────
+    function _tmDisplayName(p) {
+        if (!p) return '';
+        var first = (p.first_name || '').trim();
+        var last  = (p.last_name  || '').trim();
+        var full  = (first + ' ' + last).trim();
+        if (full) return full;
+        if (p.username) return '@' + p.username;
+        return 'Игрок ' + (p.user_id || '');
+    }
+    function _tmAvatarInitial(p) {
+        var src = (p && (p.first_name || p.username || '')).trim();
+        var ch = src.charAt(0);
+        return ch ? ch.toUpperCase() : '·';
+    }
+    // Авотарка как в существующем _renderAvatar профиля: <img> при наличии
+    // photo_url, иначе круг с инициалом на --bg-elevated.
+    function _tmAvatarHtml(p, modifier) {
+        var cls = 'tm-player-avatar' + (modifier ? ' ' + modifier : '');
+        if (p && p.photo_url) {
+            return '<div class="' + cls + '">' +
+                '<img src="' + _tmEsc(p.photo_url) + '" alt="" ' +
+                'onerror="var w=this.parentNode;w.classList.add(\'tm-player-avatar--fallback\');w.textContent=\'' +
+                _tmEsc(_tmAvatarInitial(p)) + '\';">' +
+            '</div>';
+        }
+        return '<div class="' + cls + ' tm-player-avatar--fallback">' +
+            _tmEsc(_tmAvatarInitial(p)) +
+        '</div>';
+    }
 
     // ── Entry point from home widget ────────────────────────────────────
     window.goToTeammates = function () {
@@ -6903,7 +6926,10 @@ function _drafterCommentText(c) {
 
     function _renderPlayerCard(p, opts) {
         opts = opts || {};
-        var medalHtml = _tmRankMedalHtml(p.rank);
+
+        var avatarHtml = _tmAvatarHtml(p);
+        var displayName = _tmDisplayName(p);
+        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
 
         var posIcons = (p.positions || []).map(function (n) {
             return '<img class="tm-player-pos-icon" src="' + _tmEsc(_tmPosIcon(n)) + '" alt="Поз ' + n + '">';
@@ -6930,11 +6956,20 @@ function _drafterCommentText(c) {
             '</span>';
         }).join('');
 
-        // Мета-строка под рангом: "3 500 ч · НА ПОБЕДУ".
-        var meta2 = [];
-        if (p.hours != null) meta2.push('<span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span><span class="tm-player-meta-dot">ч</span>');
+        // Мета-строка под ником: [medal] Легенда · 3 500 ч · НА ПОБЕДУ
+        var metaParts = [];
+        if (p.rank) {
+            metaParts.push(
+                '<span class="tm-player-rank">' + rankIcon +
+                '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>'
+            );
+        }
+        if (p.hours != null) {
+            metaParts.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+        }
         var mood = TM_MOOD_LABELS[p.mood] || p.mood || '';
-        if (mood) meta2.push('<span class="tm-player-meta-mood">' + _tmEsc(mood) + '</span>');
+        if (mood) metaParts.push('<span class="tm-player-meta-mood">' + _tmEsc(mood) + '</span>');
+        var metaJoiner = ' <span class="tm-player-meta-dot">·</span> ';
 
         // CTA — кнопка или "Это твоя карточка" в preview
         var ctaHtml;
@@ -6951,11 +6986,11 @@ function _drafterCommentText(c) {
         return [
             '<article class="tm-player-card" data-user-id="' + (p.user_id || '') + '">',
               '<header class="tm-player-head">',
-                medalHtml,
+                avatarHtml,
                 '<div class="tm-player-id">',
-                  '<div class="tm-player-rank-name">' + _tmEsc(p.rank || '—') + '</div>',
-                  (meta2.length
-                    ? '<div class="tm-player-meta-row">' + meta2.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>'
+                  '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
+                  (metaParts.length
+                    ? '<div class="tm-player-meta-row">' + metaParts.join(metaJoiner) + '</div>'
                     : ''),
                 '</div>',
               '</header>',
@@ -6995,12 +7030,20 @@ function _drafterCommentText(c) {
 
     // ── Filters ─────────────────────────────────────────────────────────
     function renderFilters() {
+        // Ранги: 8 кнопок-медалек 4×2 grid, только иконка + title (нативный
+        // tooltip), без текстовых лейблов — компактно и сканируется визуально.
         var rankWrap = document.getElementById('tm-filter-rank');
         if (rankWrap) {
             var active = _tm.filters.rank;
-            rankWrap.innerHTML = TM_RANKS.map(function (r) {
-                var cls = (r === active) ? 'tm-filter-chip tm-filter-chip--active' : 'tm-filter-chip';
-                return '<button type="button" class="' + cls + '" onclick="tmToggleFilterRank(\'' + _tmEsc(r) + '\')">' + _tmEsc(r) + '</button>';
+            rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
+                var tier = i + 1;
+                var cls = (r === active) ? 'tm-filter-rank-btn tm-filter-rank-btn--active' : 'tm-filter-rank-btn';
+                return '<button type="button" class="' + cls + '" ' +
+                    'title="' + _tmEsc(r) + '" aria-label="' + _tmEsc(r) + '" ' +
+                    'onclick="tmToggleFilterRank(\'' + _tmEsc(r) + '\')">' +
+                    '<img src="/rank_icons/medal_' + tier + '.png" alt="" ' +
+                    'onerror="this.style.display=\'none\'">' +
+                '</button>';
             }).join('');
         }
         var posWrap = document.getElementById('tm-filter-pos');
@@ -7009,7 +7052,10 @@ function _drafterCommentText(c) {
             for (var i = 0; i < _tm.filters.positions.length; i++) activeSet[_tm.filters.positions[i]] = true;
             posWrap.innerHTML = [1,2,3,4,5].map(function (n) {
                 var cls = activeSet[n] ? 'tm-filter-pos-btn tm-filter-pos-btn--active' : 'tm-filter-pos-btn';
-                return '<button type="button" class="' + cls + '" onclick="tmToggleFilterPos(' + n + ')"><img src="' + _tmPosIcon(n) + '" alt="' + n + '"></button>';
+                return '<button type="button" class="' + cls + '" ' +
+                    'title="Позиция ' + n + '" aria-label="Позиция ' + n + '" ' +
+                    'onclick="tmToggleFilterPos(' + n + ')">' +
+                    '<img src="' + _tmPosIcon(n) + '" alt=""></button>';
             }).join('');
         }
     }
@@ -7100,7 +7146,7 @@ function _drafterCommentText(c) {
             rankWrap.innerHTML = TM_RANKS.map(function (r) {
                 var cls = (r === p.rank) ? 'tm-rank-card tm-rank-card--active' : 'tm-rank-card';
                 return '<button type="button" class="' + cls + '" data-rank="' + _tmEsc(r) + '" onclick="tmSelectRank(\'' + _tmEsc(r) + '\')">' +
-                    _tmRankMedalHtml(r, 'tm-rank-medal--sm') +
+                    _tmRankIconImg(r, 'tm-rank-icon--md') +
                     '<span class="tm-rank-card-label">' + _tmEsc(r) + '</span>' +
                 '</button>';
             }).join('');
@@ -7347,16 +7393,20 @@ function _drafterCommentText(c) {
         }
         wrap.innerHTML = items.map(function (r) {
             var p = r.profile || {};
-            var meta2 = [];
-            if (p.hours != null) meta2.push('<span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span><span class="tm-player-meta-dot">ч</span>');
-            if (p.mood) meta2.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
+            var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--sm');
+            var displayName = _tmDisplayName(p);
+            var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
+            var meta = [];
+            if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
+            if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+            if (p.mood) meta.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
             return [
                 '<div class="tm-incoming-item" data-request-id="' + r.request_id + '">',
                   '<div class="tm-incoming-head">',
-                    _tmRankMedalHtml(p.rank, 'tm-rank-medal--sm'),
+                    avatarHtml,
                     '<div class="tm-player-id">',
-                      '<div class="tm-player-rank-name">' + _tmEsc(p.rank || '—') + '</div>',
-                      (meta2.length ? '<div class="tm-player-meta-row">' + meta2.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : ''),
+                      '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
+                      (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : ''),
                     '</div>',
                   '</div>',
                   (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
@@ -7418,14 +7468,18 @@ function _drafterCommentText(c) {
     function _tmRenderReviewTarget(p) {
         var head = document.getElementById('tm-review-target');
         if (!head) return;
-        var meta2 = [];
-        if (p.hours != null) meta2.push('<span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span><span class="tm-player-meta-dot">ч</span>');
-        if (p.mood) meta2.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
+        var avatarHtml = _tmAvatarHtml(p);
+        var displayName = _tmDisplayName(p);
+        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
+        var meta = [];
+        if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
+        if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+        if (p.mood) meta.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
         head.innerHTML =
-            _tmRankMedalHtml(p.rank) +
+            avatarHtml +
             '<div class="tm-player-id">' +
-              '<div class="tm-player-rank-name">' + _tmEsc(p.rank || '—') + '</div>' +
-              (meta2.length ? '<div class="tm-player-meta-row">' + meta2.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
+              '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>' +
+              (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
             '</div>';
     }
 
