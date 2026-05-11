@@ -7536,30 +7536,75 @@ function _drafterCommentText(c) {
     //   ?tm_incoming=1
     //     → открыть страницу тиммейтов на вкладке "Мой профиль"
     //       (там же показывается секция "Входящие запросы").
-    function _tmCheckDeepLink() {
-        try {
-            var params = new URLSearchParams(window.location.search);
+    //
+    // Порядок инициализации критичен:
+    //   1) Дожидаемся DOMContentLoaded. Скрипт грузится с defer, поэтому к
+    //      моменту его выполнения readyState='interactive', но другие
+    //      DOMContentLoaded-обработчики ещё не отстреляли. Синхронный запуск
+    //      deep-link'а раньше них — и есть основной баг "попадаю на главную".
+    //   2) Дожидаемся валидного токена. Уведомление приходит на URL без
+    //      ?token=, поэтому USER_TOKEN изначально пуст. Первый API-вызов
+    //      (например, GET /profile/<id>) ушёл бы с пустой строкой токена,
+    //      получил 401 и НЕ был бы корректно пересобран в apiFetch
+    //      (текущий ретрай URL не умеет вставлять токен в пустое место).
+    //      Поэтому проактивно выпускаем свежий токен через refreshToken()
+    //      ДО любых deep-link API-вызовов.
 
-            var reviewId = params.get('teammate_review');
+    async function _tmEnsureToken() {
+        // Если токен пришёл в URL — используем как есть.
+        if (_tmGetToken()) return true;
+        // Иначе тянем через initData. refreshToken() сам дедуплицирует
+        // параллельные вызовы через _refreshInFlight, поэтому безопасно
+        // звать его проактивно — никакого двойного запроса не будет.
+        try {
+            var t = (typeof refreshToken === 'function') ? await refreshToken() : null;
+            return !!t;
+        } catch (e) {
+            console.warn('[tm] deep-link: pre-refresh failed:', e);
+            return false;
+        }
+    }
+
+    async function _tmCheckDeepLink() {
+        var params;
+        try { params = new URLSearchParams(window.location.search); }
+        catch (e) { return; }
+
+        var reviewId = params.get('teammate_review');
+        var tmIncoming = (params.get('tm_incoming') === '1');
+        if (!reviewId && !tmIncoming) return;
+
+        // (2) Гарантируем токен перед навигацией. Если не удалось — refreshToken
+        //     уже показал auth-banner; всё равно пытаемся открыть экран, потому
+        //     что иначе пользователь увидит главную и не поймёт, куда вёл клик.
+        await _tmEnsureToken();
+
+        try {
             if (reviewId) {
                 var targetId = params.get('teammate_target');
                 tmOpenReview(parseInt(reviewId, 10), targetId ? parseInt(targetId, 10) : null);
                 return;
             }
-
-            if (params.get('tm_incoming') === '1') {
+            if (tmIncoming) {
                 // setTeammatesTab после goToTeammates перебивает дефолт 'feed',
                 // выставленный внутри initTeammatesPage.
                 goToTeammates();
                 setTeammatesTab('profile');
             }
-        } catch (e) { /* no-op */ }
+        } catch (e) {
+            console.warn('[tm] deep-link handler error:', e);
+        }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _tmCheckDeepLink);
-    } else {
+    // (1) Откладываем запуск ВСЕГДА до DOMContentLoaded.
+    //     Defer-скрипт выполняется при readyState='interactive' — раньше, чем
+    //     ready-listener'ы остальных секций приложения. Старая ветка
+    //     «иначе вызвать сразу» создавала ту самую гонку.
+    if (document.readyState === 'complete') {
+        // Страница уже полностью загружена (поздний reflow / тестовый запуск).
         _tmCheckDeepLink();
+    } else {
+        document.addEventListener('DOMContentLoaded', _tmCheckDeepLink, { once: true });
     }
 })();
 
