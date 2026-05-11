@@ -401,10 +401,22 @@
             if (oldToken && typeof retryUrl === 'string') {
                 retryUrl = retryUrl.split(oldToken).join(newToken);
             }
-            if (oldToken && options && typeof options.body === 'string') {
-                retryOptions = Object.assign({}, options, {
-                    body: options.body.split(oldToken).join(newToken)
-                });
+            if (options && typeof options.body === 'string') {
+                let newBody = options.body;
+                if (oldToken) {
+                    newBody = newBody.split(oldToken).join(newToken);
+                } else {
+                    // oldToken пустой — строковая замена бесполезна.
+                    // Пересобираем JSON-тело, проставляя token явно.
+                    try {
+                        const parsed = JSON.parse(newBody);
+                        if (parsed && typeof parsed === 'object') {
+                            parsed.token = newToken;
+                            newBody = JSON.stringify(parsed);
+                        }
+                    } catch (e) { /* не-JSON тело — оставляем как есть */ }
+                }
+                retryOptions = Object.assign({}, options, { body: newBody });
             }
             return _rawFetch(retryUrl, retryOptions);
         }
@@ -1717,11 +1729,14 @@ function renderProfileHeroes(container, heroes) {
         const matchPercent = hero.matchPercent || 75;
         const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
-        const row = document.createElement('a');
+        const row = document.createElement('div');
         row.className = 'hero-row';
-        row.href = getDota2ProTrackerUrl(heroName);
-        row.target = '_blank';
-        row.rel = 'noopener noreferrer';
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        row.addEventListener('click', () => {
+            goToMatchups();
+            matchupPage.selectHero(heroName);
+        });
 
         const rank = document.createElement('div');
         rank.className = 'hero-row-rank';

@@ -1,0 +1,115 @@
+[33mc51f319[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Update styles.css
+[33mf00fd40[m fix counters
+[33mc6a2311[m add counters
+[33me656df9[m fix ui
+[33m6334e91[m fix ava
+[33m99822fe[m Update api.py
+[33m6dbd655[m Update api.py
+[33m60c63b9[m Update api.py
+[33medadf18[m Update script.js
+[33me12db08[m Delete PROJECT_CONTEXT.md
+[33m8e26848[m fix heroes
+[33m0fde895[m fix heroes
+[33mef69ce3[m fix
+[33m857306a[m fix
+[33mc9923c3[m Update script.js
+[33m48d7e3b[m del
+[33m5eebbb3[m fix heroes
+[33m760c1f6[m pso
+[33m66d9076[m fix pos
+[33md3b7ff0[m pos
+[33mad0a3b3[m fix pos
+[33mcf90444[m Update script.js
+[33m4b3983c[m Update api.py
+[33m023b17d[m Update script.js
+[33mbff266c[m Update bot.py
+[33m4fd274b[m Update bot.py
+[33m56d2268[m Update bot.py
+[33m94ffe7e[m Update bot.py
+[33mbbd735c[m Update script.js
+[33m24343f0[m Update script.js
+[33mc03881a[m Update script.js
+[33m229fe39[m fix
+[33m968686f[m fix prof
+[33m285ad3a[m add profile
+[33m5076395[m Update api.py
+[33mf430eb9[m fix bd
+[33m26dfb91[m Update bot.py
+[33m32eca41[m Update bot.py
+[33m51601b9[m Update bot.py
+[33me62ada9[m fix beck
+[33m87168f4[m add bd
+[33m6132e18[m fix button
+[33mf1d1ca3[m fix ui
+[33mefba944[m fix ui
+[33m80a1daf[m fix ui
+[33m5b97fbc[m fix ui
+[33ma7d6fc6[m fix ui
+[33mc62b013[m fix ui
+[33m2c53f8f[m fix ui
+[33m3a93db7[m Update script.js
+[33m2ac2c3d[m Update script.js
+[33m1a300bb[m fix quiz
+[33m4f2b50e[m Update styles.css
+[33m829ce8b[m fix
+[33maa14b5f[m add d2pt
+[33m15e59b6[m Update index.html
+[33m19323f9[m fix css
+[33m8994501[m fix but
+[33m80b419e[m Update script.js
+[33md365e8e[m Update script.js
+[33mf505681[m Update script.js
+[33m97d35d9[m Update api.py
+[33mf1fee72[m Use token-based subscription check
+[33m5e917c5[m Update bot.py
+[33md880f95[m Update script.js
+[33mf3d644f[m f
+[33m380762d[m fix
+[33m69c19c5[m fix
+[33mbd6b535[m fix sub mini
+[33m97a9ba0[m fix sub
+[33md3fc023[m fix
+[33mebba5dd[m fix cors
+[33mff4c519[m fix sub
+[33m8fb57f3[m fix api
+[33me688f4b[m api
+[33m5cdf237[m fix image
+[33m60149e5[m fix
+[33m4c34092[m add 4\5 pos
+[33m0d870d5[m add offlane
+[33m578580d[m fix
+[33m9abbd1a[m Update index.html
+[33m3edcd65[m fix split
+[33md1609cf[m split
+[33m4b4e2ba[m mid
+[33me7b3ebc[m perenos
+[33mb1bd88a[m add webapp front
+[33m2dd919d[m perenos
+[33ma727256[m Use .env for bot token
+[33me18a99f[m Move projekt to D:\dota_bot with backend and weapp structure
+[33mf612e0f[m icons hero
+[33mb16e379[m fix carry
+[33m7d58672[m fix3
+[33m19c1872[m Update index.html
+[33m293a7c8[m fix
+[33m2a96324[m v3
+[33m62d7e49[m v2
+[33m07c2c23[m Update index.html
+[33m3e04918[m qwiz
+[33m0a9115d[m dashboard
+[33mcbf6c77[m fix
+[33mefc5f2d[m fix
+[33m32c1773[m tags
+[33m358ca59[m Update index.html
+[33m81fc08a[m new button
+[33m8ace1b1[m Гибридные позиции
+[33m19861e5[m button
+[33m936391f[m Фикс Залипания
+[33mc442d41[m ui
+[33mbf920bb[m fix ui
+[33mbd6e85f[m fix
+[33mb52c78e[m Update index.html
+[33m65d1c29[m Update README.md
+[33m062f730[m Added quiz with shuffled answers
+[33m2c4e85a[m Add files via upload
+[33m39ee7a3[m Initial commit
