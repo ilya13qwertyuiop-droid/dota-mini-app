@@ -6754,15 +6754,20 @@ function _drafterCommentText(c) {
         filters: { rank: '', positions: [] },
         feedCursor: null,
         feedLoading: false,
-        incomingLoading: false,   // защита от гонки между авто-poll и manual refresh
         favoriteHeroes: [],   // array of hero_id
         currentTab: 'feed',
         reviewRequestId: null,
         reviewTargetUserId: null,
         reviewSelectedTags: [],
         feedItems: [],
-        previewMode: false,   // показывать ли preview-пейн в Мой профиль
-        pollTimer: null,      // setInterval handle для авто-обновления
+        previewMode: false,
+        pollTimer: null,
+
+        // ── Requests sub-tab state (внутри "Мой профиль") ────────────
+        requestsTab: 'incoming',              // 'incoming' | 'outgoing' | 'history'
+        requestsData:    { incoming: [], outgoing: [], history: [] },
+        requestsLoading: { incoming: false, outgoing: false, history: false },
+        historyCursor: null,
     };
 
     var _TM_POLL_INTERVAL_MS = 30000;  // 30 секунд между авто-обновлениями
@@ -6858,7 +6863,7 @@ function _drafterCommentText(c) {
             }
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
-        loadIncoming();
+        loadRequestsForTab(_tm.requestsTab);
         // Стартуем авто-обновление активной вкладки каждые 30 секунд.
         _tmStartPolling();
     }
@@ -6882,7 +6887,12 @@ function _drafterCommentText(c) {
         if (_tm.currentTab === 'feed') {
             _tmTriggerRefresh('feed');
         } else if (_tm.currentTab === 'profile') {
-            _tmTriggerRefresh('incoming');
+            // Авто-poll'им только incoming/outgoing (быстро меняются).
+            // History — только по manual refresh / переключению на вкладку:
+            // иначе ломалась бы пагинация прямо во время просмотра.
+            if (_tm.requestsTab === 'incoming' || _tm.requestsTab === 'outgoing') {
+                _tmTriggerRefresh('requests');
+            }
         }
     }
 
@@ -6902,14 +6912,14 @@ function _drafterCommentText(c) {
     // соответствующий loader, останавливаем спиннер в finally.
     async function _tmTriggerRefresh(kind) {
         var btn = document.getElementById(
-            kind === 'feed' ? 'tm-feed-refresh' : 'tm-incoming-refresh'
+            kind === 'feed' ? 'tm-feed-refresh' : 'tm-requests-refresh'
         );
         if (btn) btn.classList.add('tm-refresh-btn--spinning');
         try {
             if (kind === 'feed') {
                 await loadFeed(true);
-            } else {
-                await loadIncoming();
+            } else if (kind === 'requests') {
+                await loadRequestsForTab(_tm.requestsTab);
             }
         } finally {
             if (btn) btn.classList.remove('tm-refresh-btn--spinning');
@@ -6923,8 +6933,8 @@ function _drafterCommentText(c) {
         _tmTriggerRefresh('feed');
         if (_tmIsPageActive()) _tmStartPolling();
     };
-    window.tmRefreshIncoming = function () {
-        _tmTriggerRefresh('incoming');
+    window.tmRefreshRequests = function () {
+        _tmTriggerRefresh('requests');
         if (_tmIsPageActive()) _tmStartPolling();
     };
     window.initTeammatesPage = initTeammatesPage;
@@ -7008,10 +7018,15 @@ function _drafterCommentText(c) {
 
         var modes = (p.game_modes || []).map(function (m) { return TM_MODE_LABELS[m] || m; }).join(' · ');
 
-        var commsParts = [];
-        if (p.microphone) commsParts.push('<span class="tm-player-comm-item"><i class="ph ph-microphone-stage" aria-hidden="true"></i>Микрофон</span>');
-        if (p.discord)    commsParts.push('<span class="tm-player-comm-item"><i class="ph ph-chats-circle" aria-hidden="true"></i>Discord</span>');
+        // Comms — иконки inline в мета-строке, не отдельная uppercase-секция.
+        var commsBits = [];
+        if (p.microphone) commsBits.push('<i class="ph ph-microphone-stage" title="Микрофон" aria-hidden="true"></i>');
+        if (p.discord)    commsBits.push('<i class="ph ph-chats-circle" title="Discord" aria-hidden="true"></i>');
+        var commsInline = commsBits.length
+            ? '<span class="tm-player-comms-inline">' + commsBits.join('') + '</span>'
+            : '';
 
+        // Hero-тайлы 32×32 (CSS-стороне).
         var heroes = (p.favorite_heroes || []).map(function (id) {
             var info = _tmHeroIconById(id);
             return '<div class="tm-hero-tile" title="' + _tmEsc(info.name) + '">' +
@@ -7019,15 +7034,17 @@ function _drafterCommentText(c) {
                 '</div>';
         }).join('');
 
+        // Tag — счётчик inline в моно-шрифте, без вложенного pill.
         var tags = (p.tags || []).map(function (t) {
             var cls = t.is_positive ? 'tm-tag--positive' : 'tm-tag--negative';
-            return '<span class="tm-tag ' + cls + '">' +
-                _tmEsc(t.tag) +
-                '<span class="tm-tag-count">' + (t.count || 0) + '</span>' +
-            '</span>';
+            var countHtml = t.count
+                ? '<span class="tm-tag-count">' + t.count + '</span>'
+                : '';
+            return '<span class="tm-tag ' + cls + '">' + _tmEsc(t.tag) + countHtml + '</span>';
         }).join('');
 
-        // Мета-строка под ником: [medal] Легенда · 3 500 ч · НА ПОБЕДУ
+        // Мета-строка: [medal]Легенда · 3 500 ч · На победу [🎤 💬]
+        // Mood без uppercase — обычный текст. Comms прижимаются к концу.
         var metaParts = [];
         if (p.rank) {
             metaParts.push(
@@ -7042,16 +7059,20 @@ function _drafterCommentText(c) {
         if (mood) metaParts.push('<span class="tm-player-meta-mood">' + _tmEsc(mood) + '</span>');
         var metaJoiner = ' <span class="tm-player-meta-dot">·</span> ';
 
-        // CTA — кнопка или "Это твоя карточка" в preview
+        var metaRow = '';
+        if (metaParts.length || commsInline) {
+            metaRow = '<div class="tm-player-meta-row">' +
+                metaParts.join(metaJoiner) +
+                commsInline +
+            '</div>';
+        }
+
+        // CTA: «Позвать» без arrow-icon. В preview — нейтральная подпись.
         var ctaHtml;
         if (opts.self) {
             ctaHtml = '<div class="tm-preview-self-label">Это твоя карточка в ленте</div>';
         } else {
-            ctaHtml =
-                '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">' +
-                    'Хочу играть' +
-                    '<i class="ph ph-arrow-right" aria-hidden="true"></i>' +
-                '</button>';
+            ctaHtml = '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Позвать</button>';
         }
 
         return [
@@ -7060,16 +7081,15 @@ function _drafterCommentText(c) {
                 avatarHtml,
                 '<div class="tm-player-id">',
                   '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
-                  (metaParts.length
-                    ? '<div class="tm-player-meta-row">' + metaParts.join(metaJoiner) + '</div>'
-                    : ''),
+                  metaRow,
                 '</div>',
               '</header>',
-              '<div class="tm-player-spec">',
-                (posIcons ? '<div class="tm-player-positions">' + posIcons + '</div>' : '<div></div>'),
-                (modes ? '<div class="tm-player-modes">' + _tmEsc(modes) + '</div>' : '<div></div>'),
-              '</div>',
-              (commsParts.length ? '<div class="tm-player-comms">' + commsParts.join('') + '</div>' : ''),
+              (posIcons || modes
+                ? '<div class="tm-player-spec">' +
+                    (posIcons ? '<div class="tm-player-positions">' + posIcons + '</div>' : '<div></div>') +
+                    (modes ? '<div class="tm-player-modes">' + _tmEsc(modes) + '</div>' : '<div></div>') +
+                  '</div>'
+                : ''),
               (heroes ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
               (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
               (tags ? '<div class="tm-tags">' + tags + '</div>' : ''),
@@ -7442,13 +7462,14 @@ function _drafterCommentText(c) {
         }
     };
 
-    // ── Incoming requests ───────────────────────────────────────────────
+    // ── Requests: incoming / outgoing / history ─────────────────────────
+    // Единая модель: три параллельных списка в _tm.requestsData, активная
+    // вкладка в _tm.requestsTab. Лоадер пишет в свою ячейку, рендер выбирает
+    // нужную по активной вкладке. Render'еры карточек разделены по типу.
+
     async function loadIncoming() {
-        // Защита от гонки: авто-poll и manual refresh могут вызвать дважды
-        // подряд. Без флага получим два запроса и два render'а, второй
-        // перетрёт первый. С флагом — второй просто отвалится.
-        if (_tm.incomingLoading) return;
-        _tm.incomingLoading = true;
+        if (_tm.requestsLoading.incoming) return;
+        _tm.requestsLoading.incoming = true;
         try {
             var token = _tmGetToken();
             if (!token) return;
@@ -7456,48 +7477,213 @@ function _drafterCommentText(c) {
             if (!resp.ok) return;
             var data;
             try { data = await resp.json(); } catch (e) { data = []; }
-            renderIncoming(data || []);
+            _tm.requestsData.incoming = Array.isArray(data) ? data : [];
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'incoming') _tmRenderRequests();
         } finally {
-            _tm.incomingLoading = false;
+            _tm.requestsLoading.incoming = false;
         }
     }
 
-    function renderIncoming(items) {
-        var wrap = document.getElementById('tm-incoming-list');
-        var countEl = document.getElementById('tm-incoming-count');
-        if (!wrap) return;
-        if (countEl) countEl.textContent = items.length ? String(items.length) : '';
+    async function loadOutgoing() {
+        if (_tm.requestsLoading.outgoing) return;
+        _tm.requestsLoading.outgoing = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            var resp = await apiFetch(TM_API + '/teammates/requests/outgoing?token=' + encodeURIComponent(token));
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = []; }
+            _tm.requestsData.outgoing = Array.isArray(data) ? data : [];
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'outgoing') _tmRenderRequests();
+        } finally {
+            _tm.requestsLoading.outgoing = false;
+        }
+    }
+
+    async function loadHistory(reset) {
+        if (_tm.requestsLoading.history) return;
+        _tm.requestsLoading.history = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            if (reset) {
+                _tm.historyCursor = null;
+                _tm.requestsData.history = [];
+            }
+            var params = new URLSearchParams();
+            params.set('token', token);
+            params.set('limit', '20');
+            if (_tm.historyCursor) params.set('cursor', _tm.historyCursor);
+            var resp = await apiFetch(TM_API + '/teammates/requests/history?' + params.toString());
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = null; }
+            var items = (data && data.items) || [];
+            _tm.requestsData.history = reset ? items : _tm.requestsData.history.concat(items);
+            _tm.historyCursor = data && data.next_cursor;
+            if (_tm.requestsTab === 'history') _tmRenderRequests();
+        } finally {
+            _tm.requestsLoading.history = false;
+        }
+    }
+
+    async function loadRequestsForTab(tab) {
+        if (tab === 'incoming') return loadIncoming();
+        if (tab === 'outgoing') return loadOutgoing();
+        if (tab === 'history')  return loadHistory(true);
+    }
+
+    function _tmUpdateRequestsCounts() {
+        var incEl = document.getElementById('tm-rt-count-incoming');
+        var outEl = document.getElementById('tm-rt-count-outgoing');
+        var inc = _tm.requestsData.incoming.length;
+        var out = _tm.requestsData.outgoing.length;
+        if (incEl) incEl.textContent = inc ? String(inc) : '';
+        if (outEl) outEl.textContent = out ? String(out) : '';
+    }
+
+    function _tmRequestsEmptyState(tab) {
+        var msg;
+        if (tab === 'incoming') {
+            msg = 'Никто пока не звал тебя играть. Включи поиск в Ленте, чтобы быть видимым.';
+        } else if (tab === 'outgoing') {
+            msg = 'Ты пока никому не написал. Найди тиммейта в Ленте.';
+        } else {
+            msg = 'Здесь появятся игроки, с которыми ты сыграешь через D2Helper.';
+        }
+        return '<div class="tm-feed-empty">' + msg + '</div>';
+    }
+
+    function _tmRenderRequests() {
+        var list = document.getElementById('tm-requests-list');
+        if (!list) return;
+        var tab = _tm.requestsTab;
+        var items = _tm.requestsData[tab] || [];
         if (!items.length) {
-            wrap.innerHTML = '<div class="tm-feed-empty">Пока нет входящих запросов</div>';
+            list.innerHTML = _tmRequestsEmptyState(tab);
             return;
         }
-        wrap.innerHTML = items.map(function (r) {
-            var p = r.profile || {};
-            var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--sm');
-            var displayName = _tmDisplayName(p);
-            var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
-            var meta = [];
-            if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
-            if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
-            if (p.mood) meta.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
-            return [
-                '<div class="tm-incoming-item" data-request-id="' + r.request_id + '">',
-                  '<div class="tm-incoming-head">',
-                    avatarHtml,
-                    '<div class="tm-player-id">',
-                      '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
-                      (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : ''),
-                    '</div>',
-                  '</div>',
-                  (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
-                  '<div class="tm-incoming-actions">',
-                    '<button type="button" class="tm-incoming-accept" onclick="tmRespondRequest(' + r.request_id + ', true, this)">Принять</button>',
-                    '<button type="button" class="tm-incoming-decline" onclick="tmRespondRequest(' + r.request_id + ', false, this)">Отклонить</button>',
-                  '</div>',
-                '</div>'
-            ].join('');
-        }).join('');
+        var html;
+        if (tab === 'incoming')       html = items.map(_renderIncomingItem).join('');
+        else if (tab === 'outgoing')  html = items.map(_renderOutgoingItem).join('');
+        else /* history */            html = items.map(_renderHistoryItem).join('');
+        // Load-more для history (если есть next_cursor).
+        if (tab === 'history' && _tm.historyCursor) {
+            html += '<button type="button" class="tm-load-more" onclick="tmLoadMoreHistory()">Показать ещё</button>';
+        }
+        list.innerHTML = html;
     }
+
+    // Общий блок: avatar + name + meta-row. Используется во всех трёх вкладках.
+    function _tmRenderRequestHead(p) {
+        var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--sm');
+        var displayName = _tmDisplayName(p);
+        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
+        var meta = [];
+        if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
+        if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+        if (p.mood) meta.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
+        return '<div class="tm-request-head">' +
+            avatarHtml +
+            '<div class="tm-player-id">' +
+              '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>' +
+              (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
+            '</div>' +
+        '</div>';
+    }
+
+    function _renderIncomingItem(r) {
+        var p = r.profile || {};
+        return [
+            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
+              _tmRenderRequestHead(p),
+              (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
+              '<div class="tm-request-actions">',
+                '<button type="button" class="tm-incoming-accept" onclick="tmRespondRequest(' + r.request_id + ', true, this)">Принять</button>',
+                '<button type="button" class="tm-incoming-decline" onclick="tmRespondRequest(' + r.request_id + ', false, this)">Отклонить</button>',
+              '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    function _renderOutgoingItem(r) {
+        var p = r.profile || {};
+        return [
+            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
+              _tmRenderRequestHead(p),
+              (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
+              '<div class="tm-request-status-row">',
+                '<span class="tm-status-pending"><span class="tm-status-pending-dot" aria-hidden="true"></span>Ждём ответа</span>',
+                '<button type="button" class="tm-outgoing-cancel" onclick="tmCancelRequest(' + r.request_id + ', this)">Отменить</button>',
+              '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    function _renderHistoryItem(r) {
+        var p = r.profile || {};
+        var when = _tmRelativeDate(r.accepted_at);
+        var otherId = r.other_user_id != null ? r.other_user_id : 'null';
+        var actionHtml;
+        if (r.my_review_left) {
+            actionHtml = '<span class="tm-history-done"><i class="ph ph-check-circle" aria-hidden="true"></i>Отзыв оставлен</span>';
+        } else {
+            actionHtml = '<button type="button" class="tm-history-review" onclick="tmOpenReview(' + r.request_id + ', ' + otherId + ')">Оценить игрока</button>';
+        }
+        return [
+            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
+              _tmRenderRequestHead(p),
+              '<div class="tm-request-status-row">',
+                (when ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>' : '<span></span>'),
+                actionHtml,
+              '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    // Относительная дата для истории: «3 ч назад», «2 дн. назад», fallback → «15 мая».
+    function _tmRelativeDate(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var diffMs = Date.now() - d.getTime();
+        if (diffMs < 0) diffMs = 0;
+        var min = Math.floor(diffMs / 60000);
+        var hr  = Math.floor(diffMs / 3600000);
+        var day = Math.floor(diffMs / 86400000);
+        if (min < 1)  return 'только что';
+        if (min < 60) return min + ' мин назад';
+        if (hr  < 24) return hr  + ' ч назад';
+        if (day < 30) return day + ' дн. назад';
+        try {
+            return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+        } catch (e) {
+            return d.toISOString().slice(0, 10);
+        }
+    }
+
+    // ── Tab switching + actions ─────────────────────────────────────────
+
+    window.tmSetRequestsTab = function (tab) {
+        if (tab !== 'incoming' && tab !== 'outgoing' && tab !== 'history') return;
+        _tm.requestsTab = tab;
+        var btns = document.querySelectorAll('.tm-requests-tab');
+        for (var i = 0; i < btns.length; i++) {
+            var isActive = btns[i].getAttribute('data-tm-rt') === tab;
+            btns[i].classList.toggle('tm-requests-tab--active', isActive);
+            btns[i].setAttribute('aria-selected', String(isActive));
+        }
+        // Сначала рендерим то, что уже есть (мгновенный UX), потом грузим свежее.
+        _tmRenderRequests();
+        loadRequestsForTab(tab);
+        // Авто-poll-timer резетим, чтобы 30s отсчёт пошёл от свежей загрузки.
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
+
+    window.tmLoadMoreHistory = function () { loadHistory(false); };
 
     window.tmRespondRequest = async function (requestId, accept, btn) {
         var token = _tmGetToken();
@@ -7511,7 +7697,40 @@ function _drafterCommentText(c) {
             });
             if (!resp.ok) { showToast('Не удалось ответить'); return; }
             showToast(accept ? 'Запрос принят' : 'Запрос отклонён');
-            await loadIncoming();
+            // Optimistic: убираем из incoming сразу. Сервер-truth подтянем рефрешем.
+            _tm.requestsData.incoming = _tm.requestsData.incoming.filter(function (x) {
+                return x.request_id !== requestId;
+            });
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'incoming') _tmRenderRequests();
+            // Если приняли — history теперь устарела, заставим перезагрузить при следующем входе.
+            if (accept) _tm.requestsData.history = [];
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    window.tmCancelRequest = async function (requestId, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/request/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, request_id: requestId })
+            });
+            if (!resp.ok) {
+                if (resp.status === 409) showToast('Запрос уже не активен');
+                else showToast('Не удалось отменить');
+                return;
+            }
+            showToast('Запрос отменён');
+            _tm.requestsData.outgoing = _tm.requestsData.outgoing.filter(function (x) {
+                return x.request_id !== requestId;
+            });
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'outgoing') _tmRenderRequests();
         } finally {
             if (btn) btn.disabled = false;
         }
