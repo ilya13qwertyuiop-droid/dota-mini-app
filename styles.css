@@ -7321,3 +7321,51 @@ margin-top: var(--space-4);
   color: var(--negative);
   border-color: rgba(229, 83, 75, 0.30);
 }
+
+/* ── Refresh-кнопки на вкладках ленты и профиля ────────────────── */
+.tm-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-2);
+}
+.tm-pane-head-title {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: var(--font-medium);
+}
+.tm-refresh-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-tight);
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  margin-left: auto;        /* прижимает к правому краю в section-title */
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.tm-refresh-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.tm-refresh-btn:disabled { opacity: 0.55; cursor: default; }
+.tm-refresh-btn i { font-size: 12px; line-height: 1; }
+/* Когда идёт загрузка — крутим иконку. Класс снимается в finally блоке JS. */
+.tm-refresh-btn--spinning i {
+  animation: tmRefreshSpin 0.8s linear infinite;
+  transform-origin: center;
+}
+@keyframes tmRefreshSpin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}

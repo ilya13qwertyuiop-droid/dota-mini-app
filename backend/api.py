@@ -2053,7 +2053,7 @@ async def api_teammates_profile_upsert(
 
 @app.get("/api/teammates/profile/me")
 async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
-    """Возвращает свой профиль (со статусом поиска) или null."""
+    """Возвращает свой профиль (со статусом поиска и тегами) или null."""
     user_id = _tm_require_user(token)
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
@@ -2063,6 +2063,9 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     out = _tm_serialize_profile(profile, settings)
     out["is_searching"]      = bool(profile.is_searching)
     out["search_expires_at"] = profile.search_expires_at.isoformat() if profile.search_expires_at else None
+    # Теги — те же, что отдаёт публичный /profile/{user_id}, чтобы preview
+    # формы и карточка в ленте показывали одинаковый набор бейджей.
+    out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
     return out
 
 
