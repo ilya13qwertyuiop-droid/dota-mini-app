@@ -1830,6 +1830,10 @@ _TM_ABOUT_MAX_LEN = 200
 _TM_MAX_FAVORITE_HEROES = 3
 _TM_HOURS_MAX = 100000
 
+# Используется в inline-кнопке "Открыть" под уведомлением о новом запросе.
+# Если переменная не задана — уведомление всё равно уйдёт, но без кнопки.
+_TM_MINI_APP_URL = os.environ.get("MINI_APP_URL")
+
 
 def _tm_require_user(token: str) -> int:
     """Validates token and returns user_id, or raises 401."""
@@ -1876,6 +1880,45 @@ def _tm_load_user_settings(db: Session, user_ids: list[int]) -> dict[int, dict]:
         .all()
     )
     return {r.user_id: (r.settings or {}) for r in rows}
+
+
+async def _tm_send_bot_message(
+    chat_id: int,
+    text: str,
+    with_open_button: bool = False,
+) -> None:
+    """Шлёт сообщение пользователю через Bot API. Fire-and-forget: любая ошибка
+    логируется, исключения наружу не выбрасываются — отправка нотификации
+    никогда не должна валить основной запрос.
+
+    Использует тот же raw-httpx-подход, что и /check-subscription выше (минуя
+    python-telegram-bot Application, который живёт в отдельном процессе bot.py).
+    """
+    if not BOT_TOKEN:
+        logger.warning("[tm_notify] BOT_TOKEN missing; skip chat_id=%s", chat_id)
+        return
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload: dict = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if with_open_button and _TM_MINI_APP_URL:
+        payload["reply_markup"] = {
+            "inline_keyboard": [[
+                {"text": "Открыть", "web_app": {"url": _TM_MINI_APP_URL}},
+            ]],
+        }
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.post(url, json=payload)
+        if r.status_code != 200:
+            logger.warning(
+                "[tm_notify] sendMessage chat_id=%s failed: %d %s",
+                chat_id, r.status_code, (r.text or "")[:200],
+            )
+    except Exception as e:
+        logger.warning("[tm_notify] sendMessage chat_id=%s error: %s", chat_id, e)
 
 
 def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[dict]]:
@@ -2164,6 +2207,15 @@ async def api_teammates_request_create(
     db.add(req)
     db.commit()
     db.refresh(req)
+
+    # Telegram-уведомление получателю. Fire-and-forget: если упадёт —
+    # запрос всё равно создан, просто без push'а.
+    await _tm_send_bot_message(
+        chat_id=data.to_user_id,
+        text="👋 Кто-то хочет играть с тобой! Зайди и посмотри входящие запросы.",
+        with_open_button=True,
+    )
+
     return {"ok": True, "request_id": req.id}
 
 
@@ -2190,7 +2242,39 @@ async def api_teammates_request_respond(
     else:
         req.status = "declined"
 
+    # Снимаем строки бэка с FK до сетевых вызовов — не держим транзакцию
+    # открытой на время HTTP к Bot API.
+    from_id = req.from_user_id
+    to_id   = req.to_user_id
+    accepted = (req.status == "accepted")
     db.commit()
+
+    if accepted:
+        # Подтягиваем имена/usernames обоих участников из user_profiles.settings
+        # и шлём каждому контакт другого. Если username нет — хвост опускаем.
+        settings_map = _tm_load_user_settings(db, [from_id, to_id])
+        from_s = settings_map.get(from_id) or {}
+        to_s   = settings_map.get(to_id)   or {}
+
+        from_name = (from_s.get("first_name") or "").strip() or "тиммейт"
+        to_name   = (to_s.get("first_name")   or "").strip() or "тиммейт"
+        from_uname = (from_s.get("username") or "").lstrip("@").strip()
+        to_uname   = (to_s.get("username")   or "").lstrip("@").strip()
+
+        from_uname_tail = f" @{from_uname}" if from_uname else ""
+        to_uname_tail   = f" @{to_uname}"   if to_uname   else ""
+
+        # Отправителю — контакт принявшего.
+        await _tm_send_bot_message(
+            chat_id=from_id,
+            text=f"✅ Твой запрос принят! Напиши {to_name} — он ждёт.{to_uname_tail}",
+        )
+        # Принявшему — контакт отправителя.
+        await _tm_send_bot_message(
+            chat_id=to_id,
+            text=f"✅ Ты принял запрос! Напиши {from_name} — он ждёт.{from_uname_tail}",
+        )
+
     return {"ok": True}
 
 
