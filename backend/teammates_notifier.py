@@ -36,7 +36,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import text
@@ -126,8 +126,23 @@ async def process_pending_reviews() -> int:
     SQLAlchemy + psycopg2 .is_(False) для Boolean-колонки превращается во что-то,
     что не матчит хранимое FALSE. Raw `review_sent = FALSE` ведёт себя
     предсказуемо (и побайтово совпадает с тем, что находит psql).
+
+    Примечание про TZ: cutoff обязан быть TIMEZONE-AWARE (UTC), а НЕ результат
+    `datetime.utcnow()`. Причина:
+      - api.py пишет `accepted_at = datetime.now(timezone.utc)` — tz-aware.
+      - На PostgreSQL c session TZ != UTC (например Europe/Berlin) psycopg2 при
+        INSERT-е конвертит tz-aware значение в session TZ и кладёт в
+        `TIMESTAMP WITHOUT TIME ZONE` колонку как локальное wall-clock-время
+        (т.е. Berlin), без какой-либо tz-метки.
+      - Если передать cutoff как naive UTC (`datetime.utcnow()`), PG сравнит
+        наивное число с наивным числом — две разные временные шкалы как одни
+        и те же значения. Результат: дыра размером с TZ-offset, в которой
+        свежеподошедшие строки не находятся.
+      - Tz-aware cutoff (timestamptz на стороне PG) заставляет PG implicit-
+        cast'нуть `accepted_at` к timestamptz через session TZ, и сравнение
+        идёт по абсолютным моментам времени — корректно при любом server TZ.
     """
-    cutoff = datetime.utcnow() - timedelta(minutes=REVIEW_DELAY_MINUTES)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=REVIEW_DELAY_MINUTES)
 
     # 1) Выбираем кандидатов одним запросом. Поля выбираем явно — нам нужны
     #    только id и два user_id для отправки.
