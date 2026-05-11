@@ -1729,11 +1729,14 @@ function renderProfileHeroes(container, heroes) {
         const matchPercent = hero.matchPercent || 75;
         const heroIconUrl = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(heroName) : '';
 
-        const row = document.createElement('a');
+        const row = document.createElement('div');
         row.className = 'hero-row';
-        row.href = getDota2ProTrackerUrl(heroName);
-        row.target = '_blank';
-        row.rel = 'noopener noreferrer';
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        row.addEventListener('click', () => {
+            goToMatchups();
+            matchupPage.selectHero(heroName);
+        });
 
         const rank = document.createElement('div');
         rank.className = 'hero-row-rank';
