@@ -6736,8 +6736,9 @@ function _drafterCommentText(c) {
 //
 // Логика страницы "Поиск тиммейтов": лента, профиль, заявки, отзывы.
 // Использует существующие apiFetch / USER_TOKEN / showToast / switchPage и
-// существующие хелперы window.dotaHeroIds, window.dotaHeroIdToName,
-// window.getHeroIconUrlByName. Ничего из существующего кода не модифицирует.
+// существующие хелперы window.dotaHeroIds / window.dotaHeroIdToName /
+// window.getHeroIconUrlByName / window.openHeroesCatalog.
+// Ничего из существующего кода не модифицирует.
 
 (function () {
     var TM_API = (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL) || '/api';
@@ -6759,18 +6760,45 @@ function _drafterCommentText(c) {
         reviewTargetUserId: null,
         reviewSelectedTags: [],
         feedItems: [],
+        previewMode: false,   // показывать ли preview-пейн в Мой профиль
     };
 
-    function _tmRankIcon(rank) {
+    // Tier 1-8 для семантического data-tier (цветовые ступени в CSS).
+    function _tmRankTier(rank) {
         var i = TM_RANKS.indexOf(rank);
-        if (i < 0) return '';
-        return 'https://www.dota2.com/apps/dota2/images/battlepass/rank_icons/rank_icon_' + (i + 1) + '.png';
+        return i >= 0 ? i + 1 : 0;
     }
+
+    // SVG-медаль ранга — без внешних CDN, монотонная, живёт на дизайн-токенах.
+    // Реальные Dota-медали (золото/серебро/бронза с лучами) клэшат с Linear-style
+    // палитрой проекта; абстракция в духе "tactical clarity" нативнее.
+    function _tmRankMedalHtml(rank, modifier) {
+        var tier = _tmRankTier(rank);
+        if (!tier) return '';
+        var cls = 'tm-rank-medal' + (modifier ? ' ' + modifier : '');
+        return '' +
+            '<div class="' + cls + '" data-tier="' + tier + '" aria-label="Тир ' + tier + '">' +
+                '<svg viewBox="0 0 40 44" aria-hidden="true">' +
+                    '<path d="M20 2 L36 8 L36 26 C36 33 29 41 20 43 C11 41 4 33 4 26 L4 8 Z" ' +
+                        'fill="currentColor" fill-opacity="0.10" ' +
+                        'stroke="currentColor" stroke-opacity="0.45" stroke-width="1" stroke-linejoin="round"/>' +
+                    '<path d="M10 11 L30 11" stroke="currentColor" stroke-opacity="0.28" stroke-width="0.8"/>' +
+                '</svg>' +
+                '<span class="tm-rank-medal-num">' + tier + '</span>' +
+            '</div>';
+    }
+
     function _tmPosIcon(p) { return '/images/positions/pos_' + p + '.png'; }
     function _tmEsc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
             return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
         });
+    }
+    function _tmFormatHours(h) {
+        if (h == null || isNaN(h)) return '';
+        var n = Math.max(0, parseInt(h, 10) || 0);
+        // 1500 → "1 500", 12345 → "12 345" — узкий пробел для группировки тысяч.
+        return n.toLocaleString('ru-RU').replace(/ /g, ' ');
     }
     function _tmHeroIconById(id) {
         var name = (window.dotaHeroIdToName || {})[id];
@@ -6795,6 +6823,12 @@ function _drafterCommentText(c) {
             _tm.favoriteHeroes = (p && Array.isArray(p.favorite_heroes)) ? p.favorite_heroes.slice() : [];
             renderSearchCta();
             renderProfileForm();
+            // Если профиль уже есть — показываем preview, иначе остаёмся на форме.
+            if (p && p.rank) {
+                tmShowProfilePreview();
+            } else {
+                tmShowProfileForm();
+            }
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
         loadIncoming();
@@ -6867,46 +6901,73 @@ function _drafterCommentText(c) {
         if (loadMore) loadMore.hidden = !_tm.feedCursor;
     }
 
-    function _renderPlayerCard(p) {
-        var rankIcon = _tmRankIcon(p.rank);
+    function _renderPlayerCard(p, opts) {
+        opts = opts || {};
+        var medalHtml = _tmRankMedalHtml(p.rank);
+
         var posIcons = (p.positions || []).map(function (n) {
-            return '<img class="tm-player-pos-icon" src="' + _tmEsc(_tmPosIcon(n)) + '" alt="' + n + '">';
+            return '<img class="tm-player-pos-icon" src="' + _tmEsc(_tmPosIcon(n)) + '" alt="Поз ' + n + '">';
         }).join('');
+
         var modes = (p.game_modes || []).map(function (m) { return TM_MODE_LABELS[m] || m; }).join(' · ');
+
         var commsParts = [];
-        if (p.microphone) commsParts.push('<span class="tm-comm-item"><i class="ph ph-microphone" aria-hidden="true"></i>Микро</span>');
-        if (p.discord) commsParts.push('<span class="tm-comm-item">Discord</span>');
+        if (p.microphone) commsParts.push('<span class="tm-player-comm-item"><i class="ph ph-microphone-stage" aria-hidden="true"></i>Микрофон</span>');
+        if (p.discord)    commsParts.push('<span class="tm-player-comm-item"><i class="ph ph-chats-circle" aria-hidden="true"></i>Discord</span>');
+
         var heroes = (p.favorite_heroes || []).map(function (id) {
             var info = _tmHeroIconById(id);
-            return '<div class="tm-hero-tile" title="' + _tmEsc(info.name) + '"><img src="' + _tmEsc(info.url) + '" alt="" onerror="this.style.display=\'none\'"></div>';
+            return '<div class="tm-hero-tile" title="' + _tmEsc(info.name) + '">' +
+                '<img src="' + _tmEsc(info.url) + '" alt="' + _tmEsc(info.name) + '" onerror="this.style.display=\'none\'">' +
+                '</div>';
         }).join('');
+
         var tags = (p.tags || []).map(function (t) {
             var cls = t.is_positive ? 'tm-tag--positive' : 'tm-tag--negative';
-            return '<span class="tm-tag ' + cls + '">' + _tmEsc(t.tag) + '<span class="tm-tag-count">' + (t.count || 0) + '</span></span>';
+            return '<span class="tm-tag ' + cls + '">' +
+                _tmEsc(t.tag) +
+                '<span class="tm-tag-count">' + (t.count || 0) + '</span>' +
+            '</span>';
         }).join('');
+
+        // Мета-строка под рангом: "3 500 ч · НА ПОБЕДУ".
+        var meta2 = [];
+        if (p.hours != null) meta2.push('<span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span><span class="tm-player-meta-dot">ч</span>');
         var mood = TM_MOOD_LABELS[p.mood] || p.mood || '';
-        var subParts = [];
-        if (p.hours != null) subParts.push(p.hours + ' ч');
-        if (mood) subParts.push(_tmEsc(mood));
+        if (mood) meta2.push('<span class="tm-player-meta-mood">' + _tmEsc(mood) + '</span>');
+
+        // CTA — кнопка или "Это твоя карточка" в preview
+        var ctaHtml;
+        if (opts.self) {
+            ctaHtml = '<div class="tm-preview-self-label">Это твоя карточка в ленте</div>';
+        } else {
+            ctaHtml =
+                '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">' +
+                    'Хочу играть' +
+                    '<i class="ph ph-arrow-right" aria-hidden="true"></i>' +
+                '</button>';
+        }
 
         return [
-            '<article class="tm-player-card" data-user-id="' + p.user_id + '">',
-              '<header class="tm-player-card-head">',
-                '<img class="tm-player-rank-icon" src="' + _tmEsc(rankIcon) + '" alt="" onerror="this.style.display=\'none\'">',
-                '<div class="tm-player-rank-meta">',
-                  '<div class="tm-player-rank-label">' + _tmEsc(p.rank || '—') + '</div>',
-                  '<div class="tm-player-rank-sub">' + subParts.join(' · ') + '</div>',
+            '<article class="tm-player-card" data-user-id="' + (p.user_id || '') + '">',
+              '<header class="tm-player-head">',
+                medalHtml,
+                '<div class="tm-player-id">',
+                  '<div class="tm-player-rank-name">' + _tmEsc(p.rank || '—') + '</div>',
+                  (meta2.length
+                    ? '<div class="tm-player-meta-row">' + meta2.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>'
+                    : ''),
                 '</div>',
               '</header>',
-              '<div class="tm-player-row">',
-                (posIcons ? '<div class="tm-player-positions">' + posIcons + '</div>' : ''),
-                (modes ? '<div class="tm-player-modes">' + _tmEsc(modes) + '</div>' : ''),
+              '<div class="tm-player-spec">',
+                (posIcons ? '<div class="tm-player-positions">' + posIcons + '</div>' : '<div></div>'),
+                (modes ? '<div class="tm-player-modes">' + _tmEsc(modes) + '</div>' : '<div></div>'),
               '</div>',
-              (commsParts.length ? '<div class="tm-player-comms">' + commsParts.join(' · ') + '</div>' : ''),
+              (commsParts.length ? '<div class="tm-player-comms">' + commsParts.join('') + '</div>' : ''),
               (heroes ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
               (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
               (tags ? '<div class="tm-tags">' + tags + '</div>' : ''),
-              '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Хочу играть</button>',
+              ctaHtml,
             '</article>'
         ].join('');
     }
@@ -6968,12 +7029,13 @@ function _drafterCommentText(c) {
     // ── Search toggle ───────────────────────────────────────────────────
     function renderSearchCta() {
         var btn = document.getElementById('tm-search-cta');
-        if (!btn) return;
+        var label = document.getElementById('tm-search-cta-label');
+        if (!btn || !label) return;
         var active = !!(_tm.myProfile && _tm.myProfile.is_searching);
-        btn.textContent = active ? 'Остановить поиск' : 'Искать пати';
+        label.textContent = active ? 'Поиск активен — остановить' : 'Искать пати';
         btn.classList.toggle('tm-search-cta--active', active);
         var hint = document.getElementById('tm-search-hint');
-        if (hint) hint.textContent = active ? 'Поиск активен · видишь и видят тебя' : 'Поиск активен 3 часа';
+        if (hint) hint.textContent = active ? 'Тебя видят другие игроки' : 'Поиск длится 3 часа';
     }
     window.tmToggleSearch = async function () {
         var token = _tmGetToken();
@@ -7001,16 +7063,44 @@ function _drafterCommentText(c) {
         loadFeed(true);
     };
 
+    // ── Profile preview / form switch ───────────────────────────────────
+    window.tmShowProfilePreview = function () {
+        _tm.previewMode = true;
+        var preview = document.getElementById('tm-profile-preview');
+        var form = document.getElementById('tm-profile-form');
+        if (preview) preview.hidden = false;
+        if (form) form.hidden = true;
+        _tmRenderProfilePreview(_tm.myProfile);
+    };
+    window.tmShowProfileForm = function () {
+        _tm.previewMode = false;
+        var preview = document.getElementById('tm-profile-preview');
+        var form = document.getElementById('tm-profile-form');
+        if (preview) preview.hidden = true;
+        if (form) form.hidden = false;
+    };
+    window.tmEditProfile = function () { tmShowProfileForm(); };
+
+    function _tmRenderProfilePreview(profile) {
+        var holder = document.getElementById('tm-preview-card');
+        if (!holder) return;
+        if (!profile || !profile.rank) {
+            holder.innerHTML = '<div class="tm-feed-empty">Профиль ещё не заполнен</div>';
+            return;
+        }
+        holder.innerHTML = _renderPlayerCard(profile, { self: true });
+    }
+
     // ── Profile form ────────────────────────────────────────────────────
     function renderProfileForm() {
         var p = _tm.myProfile || {};
 
         var rankWrap = document.getElementById('tm-rank-scroll');
         if (rankWrap) {
-            rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
+            rankWrap.innerHTML = TM_RANKS.map(function (r) {
                 var cls = (r === p.rank) ? 'tm-rank-card tm-rank-card--active' : 'tm-rank-card';
                 return '<button type="button" class="' + cls + '" data-rank="' + _tmEsc(r) + '" onclick="tmSelectRank(\'' + _tmEsc(r) + '\')">' +
-                    '<img class="tm-rank-card-icon" src="https://www.dota2.com/apps/dota2/images/battlepass/rank_icons/rank_icon_' + (i + 1) + '.png" alt="" onerror="this.style.display=\'none\'">' +
+                    _tmRankMedalHtml(r, 'tm-rank-medal--sm') +
                     '<span class="tm-rank-card-label">' + _tmEsc(r) + '</span>' +
                 '</button>';
             }).join('');
@@ -7111,61 +7201,56 @@ function _drafterCommentText(c) {
         _tm.favoriteHeroes.splice(idx, 1);
         renderHeroSlots();
     };
+    // Reuse существующего каталога героев — никакого собственного picker'а.
+    // Стратегия: вешаем capture-phase listener на оверлей, перехватываем клик
+    // по тайлу до того, как сработает дефолтный обработчик (matchup/drafter),
+    // и подбираем героя в фавориты. MutationObserver на attribute=hidden чистит
+    // listener при закрытии каталога любым способом (X, backdrop, ESC).
     window.tmOpenHeroPicker = function () {
         if (_tm.favoriteHeroes.length >= 3) { showToast('Уже выбрано 3 героя'); return; }
-        var overlay = document.getElementById('tm-hero-picker');
-        if (!overlay) return;
-        _tmRenderHeroPicker('');
-        var s = document.getElementById('tm-hero-picker-search');
-        if (s) s.value = '';
-        overlay.hidden = false;
-        overlay.setAttribute('aria-hidden', 'false');
-        document.body.style.overflow = 'hidden';
-    };
-    window.tmCloseHeroPicker = function () {
-        var overlay = document.getElementById('tm-hero-picker');
-        if (!overlay) return;
-        overlay.hidden = true;
-        overlay.setAttribute('aria-hidden', 'true');
-        document.body.style.overflow = '';
-    };
-    window.tmHeroPickerSearch = function (e) {
-        var q = (e && e.target && e.target.value || '').toLowerCase();
-        _tmRenderHeroPicker(q);
-    };
-    function _tmRenderHeroPicker(query) {
-        var grid = document.getElementById('tm-hero-picker-grid');
-        if (!grid) return;
-        var ids = window.dotaHeroIds || {};
-        var names = [];
-        for (var n in ids) {
-            if (Object.prototype.hasOwnProperty.call(ids, n)) names.push(n);
+        if (typeof window.openHeroesCatalog !== 'function') {
+            console.warn('[tm] openHeroesCatalog недоступен');
+            return;
         }
-        if (query) names = names.filter(function (x) { return x.toLowerCase().indexOf(query) !== -1; });
-        names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
-        // Дедуп по hero_id (Outworld Destroyer / Devourer указывают на 76).
-        var seenId = {};
-        names = names.filter(function (x) {
-            var id = ids[x];
-            if (seenId[id]) return false;
-            seenId[id] = true;
-            return true;
-        });
-        grid.innerHTML = names.map(function (n) {
-            var id = ids[n];
-            var url = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(n) : '';
-            return '<button type="button" class="tm-hero-pick-tile" onclick="tmPickHero(' + id + ')">' +
-                '<img src="' + _tmEsc(url) + '" alt="" onerror="this.style.display=\'none\'">' +
-                '<span>' + _tmEsc(n) + '</span>' +
-            '</button>';
-        }).join('');
-    }
-    window.tmPickHero = function (id) {
-        if (_tm.favoriteHeroes.indexOf(id) !== -1) { tmCloseHeroPicker(); return; }
-        if (_tm.favoriteHeroes.length >= 3) { showToast('Уже выбрано 3 героя'); tmCloseHeroPicker(); return; }
-        _tm.favoriteHeroes.push(id);
-        renderHeroSlots();
-        tmCloseHeroPicker();
+        var overlay = document.getElementById('heroes-catalog-overlay');
+        if (!overlay) return;
+
+        var mo;
+        function cleanup() {
+            overlay.removeEventListener('click', interceptor, true);
+            if (mo) { mo.disconnect(); mo = null; }
+        }
+        function interceptor(e) {
+            var t = e.target;
+            var tile = t && t.closest ? t.closest('.heroes-catalog-tile') : null;
+            if (!tile) return;
+            var name = tile.getAttribute('data-hero-name');
+            if (!name) return;
+            var id = (window.dotaHeroIds || {})[name];
+            if (!id) return;
+            // Гасим bubble-phase handler оригинального каталога.
+            e.stopPropagation();
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            if (_tm.favoriteHeroes.indexOf(id) === -1 && _tm.favoriteHeroes.length < 3) {
+                _tm.favoriteHeroes.push(id);
+                renderHeroSlots();
+            }
+            cleanup();
+            if (typeof window.closeHeroesCatalog === 'function') {
+                window.closeHeroesCatalog();
+            }
+        }
+
+        overlay.addEventListener('click', interceptor, true);
+        // Каталог скрывается через overlay.hidden=true — ловим этот переход.
+        if (typeof MutationObserver === 'function') {
+            mo = new MutationObserver(function () {
+                if (overlay.hidden) cleanup();
+            });
+            mo.observe(overlay, { attributes: true, attributeFilter: ['hidden'] });
+        }
+
+        window.openHeroesCatalog();
     };
 
     window.tmSaveProfile = async function () {
@@ -7231,6 +7316,10 @@ function _drafterCommentText(c) {
                 favorite_heroes: favorite_heroes, about: about
             });
             renderSearchCta();
+            // После сохранения сразу показываем preview — это и фидбек об успехе,
+            // и моментальное превью карточки в ленте.
+            tmShowProfilePreview();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -7249,24 +7338,25 @@ function _drafterCommentText(c) {
 
     function renderIncoming(items) {
         var wrap = document.getElementById('tm-incoming-list');
+        var countEl = document.getElementById('tm-incoming-count');
         if (!wrap) return;
+        if (countEl) countEl.textContent = items.length ? String(items.length) : '';
         if (!items.length) {
             wrap.innerHTML = '<div class="tm-feed-empty">Пока нет входящих запросов</div>';
             return;
         }
         wrap.innerHTML = items.map(function (r) {
             var p = r.profile || {};
-            var rankIcon = _tmRankIcon(p.rank);
-            var subParts = [];
-            if (p.hours != null) subParts.push(p.hours + ' ч');
-            if (p.mood) subParts.push(_tmEsc(TM_MOOD_LABELS[p.mood] || p.mood));
+            var meta2 = [];
+            if (p.hours != null) meta2.push('<span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span><span class="tm-player-meta-dot">ч</span>');
+            if (p.mood) meta2.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
             return [
                 '<div class="tm-incoming-item" data-request-id="' + r.request_id + '">',
                   '<div class="tm-incoming-head">',
-                    '<img class="tm-player-rank-icon" src="' + _tmEsc(rankIcon) + '" alt="" onerror="this.style.display=\'none\'">',
-                    '<div class="tm-player-rank-meta">',
-                      '<div class="tm-player-rank-label">' + _tmEsc(p.rank || '—') + '</div>',
-                      '<div class="tm-player-rank-sub">' + subParts.join(' · ') + '</div>',
+                    _tmRankMedalHtml(p.rank, 'tm-rank-medal--sm'),
+                    '<div class="tm-player-id">',
+                      '<div class="tm-player-rank-name">' + _tmEsc(p.rank || '—') + '</div>',
+                      (meta2.length ? '<div class="tm-player-meta-row">' + meta2.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : ''),
                     '</div>',
                   '</div>',
                   (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
@@ -7328,28 +7418,25 @@ function _drafterCommentText(c) {
     function _tmRenderReviewTarget(p) {
         var head = document.getElementById('tm-review-target');
         if (!head) return;
-        var rankIcon = _tmRankIcon(p.rank);
-        var subParts = [];
-        if (p.hours != null) subParts.push(p.hours + ' ч');
-        if (p.mood) subParts.push(_tmEsc(TM_MOOD_LABELS[p.mood] || p.mood));
+        var meta2 = [];
+        if (p.hours != null) meta2.push('<span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span><span class="tm-player-meta-dot">ч</span>');
+        if (p.mood) meta2.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
         head.innerHTML =
-            '<img class="tm-player-rank-icon" src="' + _tmEsc(rankIcon) + '" alt="" onerror="this.style.display=\'none\'">' +
-            '<div class="tm-player-rank-meta">' +
-              '<div class="tm-player-rank-label">' + _tmEsc(p.rank || '—') + '</div>' +
-              '<div class="tm-player-rank-sub">' + subParts.join(' · ') + '</div>' +
+            _tmRankMedalHtml(p.rank) +
+            '<div class="tm-player-id">' +
+              '<div class="tm-player-rank-name">' + _tmEsc(p.rank || '—') + '</div>' +
+              (meta2.length ? '<div class="tm-player-meta-row">' + meta2.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
             '</div>';
     }
 
     function _tmRenderReviewTags() {
-        var wrap = document.getElementById('tm-review-tags');
-        if (!wrap) return;
-        var pos = TM_POSITIVE_TAGS.map(function (t) {
-            return '<button type="button" class="tm-review-tag tm-review-tag--positive" data-tag="' + _tmEsc(t) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(t) + '\', this)">' + _tmEsc(t) + '</button>';
-        }).join('');
-        var neg = TM_NEGATIVE_TAGS.map(function (t) {
-            return '<button type="button" class="tm-review-tag tm-review-tag--negative" data-tag="' + _tmEsc(t) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(t) + '\', this)">' + _tmEsc(t) + '</button>';
-        }).join('');
-        wrap.innerHTML = pos + neg;
+        var posWrap = document.getElementById('tm-review-tags-positive');
+        var negWrap = document.getElementById('tm-review-tags-negative');
+        var render = function (tag, cls) {
+            return '<button type="button" class="tm-review-tag ' + cls + '" data-tag="' + _tmEsc(tag) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(tag) + '\', this)">' + _tmEsc(tag) + '</button>';
+        };
+        if (posWrap) posWrap.innerHTML = TM_POSITIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--positive'); }).join('');
+        if (negWrap) negWrap.innerHTML = TM_NEGATIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--negative'); }).join('');
     }
 
     window.tmToggleReviewTag = function (tag, btn) {
