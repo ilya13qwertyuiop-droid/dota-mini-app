@@ -401,10 +401,22 @@
             if (oldToken && typeof retryUrl === 'string') {
                 retryUrl = retryUrl.split(oldToken).join(newToken);
             }
-            if (oldToken && options && typeof options.body === 'string') {
-                retryOptions = Object.assign({}, options, {
-                    body: options.body.split(oldToken).join(newToken)
-                });
+            if (options && typeof options.body === 'string') {
+                let newBody = options.body;
+                if (oldToken) {
+                    newBody = newBody.split(oldToken).join(newToken);
+                } else {
+                    // oldToken пустой — строковая замена бесполезна.
+                    // Пересобираем JSON-тело, проставляя token явно.
+                    try {
+                        const parsed = JSON.parse(newBody);
+                        if (parsed && typeof parsed === 'object') {
+                            parsed.token = newToken;
+                            newBody = JSON.stringify(parsed);
+                        }
+                    } catch (e) { /* не-JSON тело — оставляем как есть */ }
+                }
+                retryOptions = Object.assign({}, options, { body: newBody });
             }
             return _rawFetch(retryUrl, retryOptions);
         }
