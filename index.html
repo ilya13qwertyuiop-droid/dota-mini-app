@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=139" />
+    <link rel="stylesheet" href="styles.css?v=140" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -90,6 +90,17 @@
               <div class="home-draft-placeholder">Сыграй свой первый драфт</div>
             </div>
             <div class="home-widget-cta" id="home-draft-cta">Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
+          </button>
+
+          <button class="home-card home-widget home-widget--wide home-widget--teammates" id="home-teammates-widget" onclick="goToTeammates()">
+            <div class="home-widget-head">
+              <span class="section-eyebrow">Тиммейты</span>
+            </div>
+            <div class="home-widget-body home-tm-body">
+              <div class="home-tm-title">Найти тиммейта</div>
+              <div class="home-tm-subtitle">Подбери напарника по рангу, позиции и настрою</div>
+            </div>
+            <div class="home-widget-cta">Открыть <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
           </button>
         </div>
 
@@ -918,6 +929,164 @@
       </div>
 
 
+      <!-- Страница поиска тиммейтов -->
+      <div id="page-teammates" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="switchPage('home')" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Поиск тиммейтов</div>
+        </div>
+
+        <div class="tm-tabs" role="tablist" aria-label="Разделы поиска тиммейтов">
+          <button class="tm-tab tm-tab--active" role="tab" data-tm-tab="feed" onclick="setTeammatesTab('feed')">Лента</button>
+          <button class="tm-tab" role="tab" data-tm-tab="profile" onclick="setTeammatesTab('profile')">Мой профиль</button>
+        </div>
+
+        <!-- Вкладка "Лента" -->
+        <div id="tm-pane-feed" class="tm-pane">
+          <button id="tm-search-cta" class="tm-search-cta" onclick="tmToggleSearch()">Искать пати</button>
+          <div class="tm-search-hint" id="tm-search-hint">Поиск активен 3 часа</div>
+
+          <div class="tm-filters">
+            <div class="tm-filter-row">
+              <span class="tm-filter-label">Ранг</span>
+              <div class="tm-filter-rank-wrap" id="tm-filter-rank"></div>
+            </div>
+            <div class="tm-filter-row">
+              <span class="tm-filter-label">Позиции</span>
+              <div class="tm-filter-pos-wrap" id="tm-filter-pos"></div>
+            </div>
+          </div>
+
+          <div class="tm-feed-list" id="tm-feed-list">
+            <div class="tm-feed-empty">Загрузка…</div>
+          </div>
+          <button type="button" class="tm-load-more" id="tm-load-more" onclick="tmLoadMore()" hidden>Показать ещё</button>
+        </div>
+
+        <!-- Вкладка "Мой профиль" -->
+        <div id="tm-pane-profile" class="tm-pane" hidden>
+          <div class="tm-form-card">
+            <div class="tm-form-label">Ранг</div>
+            <div class="tm-rank-scroll" id="tm-rank-scroll"></div>
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-form-label">Часов в Dota 2</div>
+            <input type="number" inputmode="numeric" min="0" max="100000" class="tm-input" id="tm-hours-input" placeholder="например, 3500">
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-form-label">Позиции</div>
+            <div class="tm-positions" id="tm-positions">
+              <button type="button" class="tm-position-btn" data-pos="1" onclick="tmTogglePos(1, this)"><img src="/images/positions/pos_1.png" alt="1"></button>
+              <button type="button" class="tm-position-btn" data-pos="2" onclick="tmTogglePos(2, this)"><img src="/images/positions/pos_2.png" alt="2"></button>
+              <button type="button" class="tm-position-btn" data-pos="3" onclick="tmTogglePos(3, this)"><img src="/images/positions/pos_3.png" alt="3"></button>
+              <button type="button" class="tm-position-btn" data-pos="4" onclick="tmTogglePos(4, this)"><img src="/images/positions/pos_4.png" alt="4"></button>
+              <button type="button" class="tm-position-btn" data-pos="5" onclick="tmTogglePos(5, this)"><img src="/images/positions/pos_5.png" alt="5"></button>
+            </div>
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-form-label">Режимы</div>
+            <div class="tm-modes" id="tm-modes">
+              <button type="button" class="tm-mode-btn" data-mode="ranked" onclick="tmToggleMode('ranked', this)">Рейтинговый</button>
+              <button type="button" class="tm-mode-btn" data-mode="normal" onclick="tmToggleMode('normal', this)">Обычный</button>
+              <button type="button" class="tm-mode-btn" data-mode="turbo" onclick="tmToggleMode('turbo', this)">Турбо</button>
+            </div>
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-toggle-row">
+              <div class="tm-toggle-info">
+                <div class="tm-form-label tm-form-label--inline">Микрофон</div>
+                <div class="tm-toggle-sub">Готов общаться голосом</div>
+              </div>
+              <button type="button" class="tm-toggle" id="tm-mic-toggle" onclick="tmToggleMic()" aria-pressed="false"><span class="tm-toggle-dot"></span></button>
+            </div>
+            <div class="tm-toggle-divider"></div>
+            <div class="tm-toggle-row">
+              <div class="tm-toggle-info">
+                <div class="tm-form-label tm-form-label--inline">Discord</div>
+                <div class="tm-toggle-sub">Есть аккаунт</div>
+              </div>
+              <button type="button" class="tm-toggle" id="tm-discord-toggle" onclick="tmToggleDiscord()" aria-pressed="false"><span class="tm-toggle-dot"></span></button>
+            </div>
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-form-label">Настрой</div>
+            <div class="tm-mood">
+              <button type="button" class="tm-mood-btn" data-mood="win" onclick="tmSetMood('win')">На победу</button>
+              <button type="button" class="tm-mood-btn" data-mood="fun" onclick="tmSetMood('fun')">Фанюсь</button>
+              <button type="button" class="tm-mood-btn" data-mood="stomp" onclick="tmSetMood('stomp')">Бущу</button>
+            </div>
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-form-label">Любимые герои <span class="tm-form-sub">до 3</span></div>
+            <div class="tm-hero-slots" id="tm-hero-slots"></div>
+          </div>
+
+          <div class="tm-form-card">
+            <div class="tm-form-label">О себе</div>
+            <textarea id="tm-about-input" class="tm-textarea" maxlength="200" placeholder="Когда играешь, что ищешь, чего избегаешь…" oninput="tmUpdateAboutCounter()"></textarea>
+            <div class="tm-char-counter" id="tm-about-counter">0 / 200</div>
+          </div>
+
+          <button id="tm-save-btn" class="tm-save-btn" onclick="tmSaveProfile()">Сохранить профиль</button>
+
+          <div class="tm-form-card tm-incoming-card">
+            <div class="tm-form-label">Входящие запросы</div>
+            <div id="tm-incoming-list">
+              <div class="tm-feed-empty">Загрузка…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Страница оценки игрока (открывается по deep link из бота) -->
+      <div id="page-teammate-review" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="switchPage('home')" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Оценить игрока</div>
+        </div>
+        <div class="tm-form-card">
+          <div class="tm-form-label">Игрок</div>
+          <div class="tm-review-target" id="tm-review-target">
+            <div class="tm-feed-empty">Загрузка…</div>
+          </div>
+        </div>
+        <div class="tm-form-card">
+          <div class="tm-form-label">Выбери теги</div>
+          <div class="tm-review-tags" id="tm-review-tags"></div>
+        </div>
+        <button id="tm-review-submit" class="tm-save-btn" onclick="tmSubmitReview()">Отправить отзыв</button>
+      </div>
+
+      <!-- Bottom sheet для выбора любимого героя в профиле тиммейтов -->
+      <div id="tm-hero-picker" class="tm-hero-picker" hidden aria-hidden="true">
+        <div class="tm-hero-picker-backdrop" onclick="tmCloseHeroPicker()"></div>
+        <div class="tm-hero-picker-panel" role="dialog" aria-modal="true">
+          <div class="tm-hero-picker-grip" aria-hidden="true"></div>
+          <div class="tm-hero-picker-header">
+            <div class="tm-hero-picker-title">Выбери героя</div>
+            <button type="button" class="tm-hero-picker-close" onclick="tmCloseHeroPicker()" aria-label="Закрыть">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="tm-hero-picker-search-wrap">
+            <input type="text" id="tm-hero-picker-search" class="tm-input tm-hero-picker-search" placeholder="Найти героя…" oninput="tmHeroPickerSearch(event)" autocomplete="off">
+          </div>
+          <div class="tm-hero-picker-grid" id="tm-hero-picker-grid"></div>
+        </div>
+      </div>
+
       <!-- Нижняя навигация -->
       <nav class="bottom-nav" aria-label="Основная навигация">
         <div class="nav-item active" onclick="switchPage('home', event)">
@@ -992,6 +1161,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=168"></script>
+    <script defer src="script.js?v=169"></script>
   </body>
 </html>
