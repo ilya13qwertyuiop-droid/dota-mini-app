@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=144" />
+    <link rel="stylesheet" href="styles.css?v=145" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1069,20 +1069,30 @@
             <button id="tm-save-btn" class="tm-primary-btn" onclick="tmSaveProfile()">Сохранить профиль</button>
           </div>
 
-          <!-- Входящие запросы — отдельная секция внизу профильной вкладки -->
-          <div class="tm-incoming-section">
+          <!-- Запросы: входящие / исходящие / история — три сегмента в одной секции -->
+          <section class="tm-requests-section">
             <div class="tm-section-title">
-              <span>Входящие запросы</span>
-              <span class="tm-section-count" id="tm-incoming-count"></span>
-              <button type="button" id="tm-incoming-refresh" class="tm-refresh-btn" onclick="tmRefreshIncoming()" aria-label="Обновить входящие">
+              <span>Запросы</span>
+              <button type="button" id="tm-requests-refresh" class="tm-refresh-btn" onclick="tmRefreshRequests()" aria-label="Обновить">
                 <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
                 <span>Обновить</span>
               </button>
             </div>
-            <div class="tm-incoming-list" id="tm-incoming-list">
+            <nav class="tm-requests-tabs" role="tablist" aria-label="Тип запросов">
+              <button type="button" class="tm-requests-tab tm-requests-tab--active" data-tm-rt="incoming" role="tab" aria-selected="true" onclick="tmSetRequestsTab('incoming')">
+                Входящие<span class="tm-requests-tab-count" id="tm-rt-count-incoming"></span>
+              </button>
+              <button type="button" class="tm-requests-tab" data-tm-rt="outgoing" role="tab" aria-selected="false" onclick="tmSetRequestsTab('outgoing')">
+                Исходящие<span class="tm-requests-tab-count" id="tm-rt-count-outgoing"></span>
+              </button>
+              <button type="button" class="tm-requests-tab" data-tm-rt="history" role="tab" aria-selected="false" onclick="tmSetRequestsTab('history')">
+                История
+              </button>
+            </nav>
+            <div class="tm-requests-list" id="tm-requests-list">
               <div class="tm-feed-empty">Загрузка…</div>
             </div>
-          </div>
+          </section>
         </div>
       </div>
 
@@ -1190,6 +1200,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=174"></script>
+    <script defer src="script.js?v=175"></script>
   </body>
 </html>

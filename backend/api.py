@@ -1983,6 +1983,11 @@ class TeammateReviewSubmit(BaseModel):
     tags: list[str]
 
 
+class TeammateRequestCancel(BaseModel):
+    token: str
+    request_id: int
+
+
 # ── 1. POST /api/teammates/profile — upsert ─────────────────────────────────
 
 @app.post("/api/teammates/profile")
@@ -2417,3 +2422,163 @@ async def api_teammates_profile_public(user_id: int, db: Session = Depends(get_d
     out = _tm_serialize_profile(profile, settings)
     out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
     return out
+
+
+# ── 11. GET /api/teammates/requests/outgoing ────────────────────────────────
+
+@app.get("/api/teammates/requests/outgoing")
+async def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
+    """Исходящие pending-запросы текущего пользователя с профилем получателя."""
+    user_id = _tm_require_user(token)
+
+    rows = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.from_user_id == user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .order_by(DBTeammateRequest.created_at.desc())
+        .all()
+    )
+
+    to_ids = [r.to_user_id for r in rows]
+    profiles_map = {
+        p.user_id: p
+        for p in db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id.in_(to_ids))
+        .all()
+    }
+    tags_by_user = _tm_load_tags_grouped(db, to_ids)
+    settings_by_user = _tm_load_user_settings(db, to_ids)
+
+    result: list[dict] = []
+    for r in rows:
+        profile = profiles_map.get(r.to_user_id)
+        profile_payload = None
+        if profile is not None:
+            profile_payload = _tm_serialize_profile(profile, settings_by_user.get(r.to_user_id))
+            profile_payload["tags"] = tags_by_user.get(r.to_user_id, [])
+        result.append({
+            "request_id": r.id,
+            "to_user_id": r.to_user_id,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "profile":    profile_payload,
+        })
+    return result
+
+
+# ── 12. GET /api/teammates/requests/history ─────────────────────────────────
+
+@app.get("/api/teammates/requests/history")
+async def api_teammates_requests_history(
+    token: str,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = None,   # ISO-строка accepted_at последней показанной строки
+    db: Session = Depends(get_db),
+):
+    """Принятые запросы, где пользователь — отправитель ИЛИ получатель.
+
+    Курсор — ISO-формат `accepted_at` последней отданной строки. Сортировка
+    accepted_at DESC; следующая страница — строки строго раньше курсора.
+    """
+    user_id = _tm_require_user(token)
+
+    q = (
+        db.query(DBTeammateRequest)
+        .filter(
+            (DBTeammateRequest.from_user_id == user_id) |
+            (DBTeammateRequest.to_user_id == user_id)
+        )
+        .filter(DBTeammateRequest.status == "accepted")
+        .filter(DBTeammateRequest.accepted_at.isnot(None))
+    )
+
+    if cursor:
+        try:
+            cursor_dt = datetime.fromisoformat(cursor)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid cursor")
+        # На PostgreSQL TIMESTAMP WITHOUT TIME ZONE для accepted_at хранится
+        # как naive Berlin/local (см. teammates_notifier). tz-aware курсор
+        # заставит PG implicit-cast к timestamptz через session TZ — корректно
+        # для любого сервер-таймзоны.
+        if cursor_dt.tzinfo is None:
+            cursor_dt = cursor_dt.replace(tzinfo=timezone.utc)
+        q = q.filter(DBTeammateRequest.accepted_at < cursor_dt)
+
+    rows = (
+        q.order_by(DBTeammateRequest.accepted_at.desc())
+         .limit(limit)
+         .all()
+    )
+
+    # Определяем "другого" участника для каждой строки.
+    other_ids = []
+    for r in rows:
+        other_ids.append(r.to_user_id if r.from_user_id == user_id else r.from_user_id)
+
+    profiles_map = {
+        p.user_id: p
+        for p in db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id.in_(other_ids))
+        .all()
+    }
+    tags_by_user = _tm_load_tags_grouped(db, other_ids)
+    settings_by_user = _tm_load_user_settings(db, other_ids)
+
+    # Проверяем, оставил ли текущий юзер отзыв по каждому request_id.
+    request_ids = [r.id for r in rows]
+    my_review_request_ids: set[int] = set()
+    if request_ids:
+        review_rows = (
+            db.query(DBTeammateReview.request_id)
+            .filter(DBTeammateReview.from_user_id == user_id)
+            .filter(DBTeammateReview.request_id.in_(request_ids))
+            .all()
+        )
+        my_review_request_ids = {row[0] for row in review_rows}
+
+    items: list[dict] = []
+    for r in rows:
+        other_id = r.to_user_id if r.from_user_id == user_id else r.from_user_id
+        profile = profiles_map.get(other_id)
+        profile_payload = None
+        if profile is not None:
+            profile_payload = _tm_serialize_profile(profile, settings_by_user.get(other_id))
+            profile_payload["tags"] = tags_by_user.get(other_id, [])
+        items.append({
+            "request_id":     r.id,
+            "other_user_id":  other_id,
+            "accepted_at":    r.accepted_at.isoformat() if r.accepted_at else None,
+            "profile":        profile_payload,
+            "my_review_left": r.id in my_review_request_ids,
+        })
+
+    next_cursor = items[-1]["accepted_at"] if len(items) == limit and items else None
+    return {"items": items, "next_cursor": next_cursor}
+
+
+# ── 13. POST /api/teammates/request/cancel ──────────────────────────────────
+
+@app.post("/api/teammates/request/cancel")
+async def api_teammates_request_cancel(
+    data: TeammateRequestCancel, db: Session = Depends(get_db),
+):
+    """Отмена исходящего pending-запроса автором. Переводит status в 'cancelled'.
+
+    Получатель не получает отдельного push'а: запрос просто исчезает у него
+    из входящих при следующем рефреше. Это интенциональный low-touch:
+    «передумал — убрал тихо». История запросов это значение не показывает
+    (history фильтрует по status='accepted').
+    """
+    user_id = _tm_require_user(data.token)
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.from_user_id != user_id:
+        raise HTTPException(status_code=403, detail="not the sender of this request")
+    if req.status != "pending":
+        raise HTTPException(status_code=409, detail="request already resolved")
+
+    req.status = "cancelled"
+    db.commit()
+    return {"ok": True}
