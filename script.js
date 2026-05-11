@@ -7530,14 +7530,29 @@ function _drafterCommentText(c) {
         }
     };
 
-    // ── Deep link: ?teammate_review=<request_id>&teammate_target=<user_id> ──
+    // ── Deep links ───────────────────────────────────────────────────
+    //   ?teammate_review=<request_id>&teammate_target=<user_id>
+    //     → открыть экран оценки игрока.
+    //   ?tm_incoming=1
+    //     → открыть страницу тиммейтов на вкладке "Мой профиль"
+    //       (там же показывается секция "Входящие запросы").
     function _tmCheckDeepLink() {
         try {
             var params = new URLSearchParams(window.location.search);
+
             var reviewId = params.get('teammate_review');
-            if (!reviewId) return;
-            var targetId = params.get('teammate_target');
-            tmOpenReview(parseInt(reviewId, 10), targetId ? parseInt(targetId, 10) : null);
+            if (reviewId) {
+                var targetId = params.get('teammate_target');
+                tmOpenReview(parseInt(reviewId, 10), targetId ? parseInt(targetId, 10) : null);
+                return;
+            }
+
+            if (params.get('tm_incoming') === '1') {
+                // setTeammatesTab после goToTeammates перебивает дефолт 'feed',
+                // выставленный внутри initTeammatesPage.
+                goToTeammates();
+                setTeammatesTab('profile');
+            }
         } catch (e) { /* no-op */ }
     }
 
