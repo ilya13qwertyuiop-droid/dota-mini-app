@@ -6754,6 +6754,7 @@ function _drafterCommentText(c) {
         filters: { rank: '', positions: [] },
         feedCursor: null,
         feedLoading: false,
+        incomingLoading: false,   // защита от гонки между авто-poll и manual refresh
         favoriteHeroes: [],   // array of hero_id
         currentTab: 'feed',
         reviewRequestId: null,
@@ -6761,7 +6762,10 @@ function _drafterCommentText(c) {
         reviewSelectedTags: [],
         feedItems: [],
         previewMode: false,   // показывать ли preview-пейн в Мой профиль
+        pollTimer: null,      // setInterval handle для авто-обновления
     };
+
+    var _TM_POLL_INTERVAL_MS = 30000;  // 30 секунд между авто-обновлениями
 
     // Tier 1-8: Рекрут=1 … Титан=8.
     function _tmRankTier(rank) {
@@ -6855,7 +6859,74 @@ function _drafterCommentText(c) {
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
         loadIncoming();
+        // Стартуем авто-обновление активной вкладки каждые 30 секунд.
+        _tmStartPolling();
     }
+
+    // ── Auto-poll lifecycle ────────────────────────────────────────────
+    // Останавливать polling при уходе со страницы тиммейтов мы НЕ через
+    // wrap switchPage (хрупко) — а через self-check в каждом tick'е:
+    // если page-teammates не active, тик сам себя глушит. Худший случай —
+    // один лишний холостой тик после навигации, дальше тишина.
+
+    function _tmIsPageActive() {
+        var p = document.getElementById('page-teammates');
+        return !!(p && p.classList.contains('active'));
+    }
+
+    function _tmPollTick() {
+        if (!_tmIsPageActive()) {
+            _tmStopPolling();
+            return;
+        }
+        if (_tm.currentTab === 'feed') {
+            _tmTriggerRefresh('feed');
+        } else if (_tm.currentTab === 'profile') {
+            _tmTriggerRefresh('incoming');
+        }
+    }
+
+    function _tmStartPolling() {
+        _tmStopPolling();
+        _tm.pollTimer = setInterval(_tmPollTick, _TM_POLL_INTERVAL_MS);
+    }
+
+    function _tmStopPolling() {
+        if (_tm.pollTimer != null) {
+            clearInterval(_tm.pollTimer);
+            _tm.pollTimer = null;
+        }
+    }
+
+    // Общий путь для авто-poll'а и manual-кнопок: крутим иконку, дёргаем
+    // соответствующий loader, останавливаем спиннер в finally.
+    async function _tmTriggerRefresh(kind) {
+        var btn = document.getElementById(
+            kind === 'feed' ? 'tm-feed-refresh' : 'tm-incoming-refresh'
+        );
+        if (btn) btn.classList.add('tm-refresh-btn--spinning');
+        try {
+            if (kind === 'feed') {
+                await loadFeed(true);
+            } else {
+                await loadIncoming();
+            }
+        } finally {
+            if (btn) btn.classList.remove('tm-refresh-btn--spinning');
+        }
+    }
+
+    // Глобальные хендлеры для onclick'ов в HTML. Перезапускаем poll-таймер,
+    // чтобы 30s отсчёт пошёл от момента ручного refresh'а — а не лупил
+    // auto-call сразу после ручного.
+    window.tmRefreshFeed = function () {
+        _tmTriggerRefresh('feed');
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
+    window.tmRefreshIncoming = function () {
+        _tmTriggerRefresh('incoming');
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
     window.initTeammatesPage = initTeammatesPage;
 
     window.setTeammatesTab = function (tab) {
@@ -7373,13 +7444,22 @@ function _drafterCommentText(c) {
 
     // ── Incoming requests ───────────────────────────────────────────────
     async function loadIncoming() {
-        var token = _tmGetToken();
-        if (!token) return;
-        var resp = await apiFetch(TM_API + '/teammates/requests/incoming?token=' + encodeURIComponent(token));
-        if (!resp.ok) return;
-        var data;
-        try { data = await resp.json(); } catch (e) { data = []; }
-        renderIncoming(data || []);
+        // Защита от гонки: авто-poll и manual refresh могут вызвать дважды
+        // подряд. Без флага получим два запроса и два render'а, второй
+        // перетрёт первый. С флагом — второй просто отвалится.
+        if (_tm.incomingLoading) return;
+        _tm.incomingLoading = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            var resp = await apiFetch(TM_API + '/teammates/requests/incoming?token=' + encodeURIComponent(token));
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = []; }
+            renderIncoming(data || []);
+        } finally {
+            _tm.incomingLoading = false;
+        }
     }
 
     function renderIncoming(items) {
