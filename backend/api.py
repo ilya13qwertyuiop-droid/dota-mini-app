@@ -1839,8 +1839,14 @@ def _tm_require_user(token: str) -> int:
     return uid
 
 
-def _tm_serialize_profile(p: DBTeammateProfile) -> dict:
-    """Base profile payload — fields shared between /me, /feed, /{user_id}."""
+def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) -> dict:
+    """Base profile payload — fields shared between /me, /feed, /{user_id}.
+
+    `settings` — содержимое user_profiles.settings для данного user_id (если есть).
+    Оттуда подтягиваются telegram-данные (имя/фото/username), чтобы карточка
+    игрока могла показать аватар и ник, а не голый user_id.
+    """
+    s = settings or {}
     return {
         "user_id":         p.user_id,
         "rank":            p.rank,
@@ -1852,7 +1858,24 @@ def _tm_serialize_profile(p: DBTeammateProfile) -> dict:
         "mood":            p.mood,
         "favorite_heroes": list(p.favorite_heroes or []),
         "about":           p.about or "",
+        # Telegram identity (из user_profiles.settings)
+        "first_name":      s.get("first_name"),
+        "last_name":       s.get("last_name"),
+        "username":        s.get("username"),
+        "photo_url":       s.get("photo_url"),
     }
+
+
+def _tm_load_user_settings(db: Session, user_ids: list[int]) -> dict[int, dict]:
+    """Returns {user_id: settings dict} for the given users; empty dict if no row."""
+    if not user_ids:
+        return {}
+    rows = (
+        db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id.in_(user_ids))
+        .all()
+    )
+    return {r.user_id: (r.settings or {}) for r in rows}
 
 
 def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[dict]]:
@@ -1985,7 +2008,9 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         return None
-    out = _tm_serialize_profile(profile)
+    user_row = db.get(DBUserProfile, user_id)
+    settings = (user_row.settings if user_row else None) or {}
+    out = _tm_serialize_profile(profile, settings)
     out["is_searching"]      = bool(profile.is_searching)
     out["search_expires_at"] = profile.search_expires_at.isoformat() if profile.search_expires_at else None
     return out
@@ -2094,10 +2119,12 @@ async def api_teammates_feed(
         if len(filtered) >= limit:
             break
 
-    tags_by_user = _tm_load_tags_grouped(db, [p.user_id for p in filtered])
+    feed_ids = [p.user_id for p in filtered]
+    tags_by_user = _tm_load_tags_grouped(db, feed_ids)
+    settings_by_user = _tm_load_user_settings(db, feed_ids)
     items: list[dict] = []
     for p in filtered:
-        item = _tm_serialize_profile(p)
+        item = _tm_serialize_profile(p, settings_by_user.get(p.user_id))
         item["tags"] = tags_by_user.get(p.user_id, [])
         items.append(item)
 
@@ -2190,13 +2217,14 @@ async def api_teammates_requests_incoming(token: str, db: Session = Depends(get_
         .all()
     }
     tags_by_user = _tm_load_tags_grouped(db, from_ids)
+    settings_by_user = _tm_load_user_settings(db, from_ids)
 
     result: list[dict] = []
     for r in rows:
         profile = profiles_map.get(r.from_user_id)
         profile_payload = None
         if profile is not None:
-            profile_payload = _tm_serialize_profile(profile)
+            profile_payload = _tm_serialize_profile(profile, settings_by_user.get(r.from_user_id))
             profile_payload["tags"] = tags_by_user.get(r.from_user_id, [])
         result.append({
             "request_id":   r.id,
@@ -2284,6 +2312,8 @@ async def api_teammates_profile_public(user_id: int, db: Session = Depends(get_d
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="profile not found")
-    out = _tm_serialize_profile(profile)
+    user_row = db.get(DBUserProfile, user_id)
+    settings = (user_row.settings if user_row else None) or {}
+    out = _tm_serialize_profile(profile, settings)
     out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
     return out
