@@ -6731,3 +6731,679 @@ function _drafterCommentText(c) {
     return '';
 }
 
+
+// ========== TEAMMATES ==========
+//
+// Логика страницы "Поиск тиммейтов": лента, профиль, заявки, отзывы.
+// Использует существующие apiFetch / USER_TOKEN / showToast / switchPage и
+// существующие хелперы window.dotaHeroIds, window.dotaHeroIdToName,
+// window.getHeroIconUrlByName. Ничего из существующего кода не модифицирует.
+
+(function () {
+    var TM_API = (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL) || '/api';
+
+    var TM_RANKS = ['Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
+    var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
+    var TM_MOOD_LABELS = { win: 'На победу', fun: 'Фанюсь', stomp: 'Бущу' };
+    var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
+    var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
+
+    var _tm = {
+        myProfile: null,
+        filters: { rank: '', positions: [] },
+        feedCursor: null,
+        feedLoading: false,
+        favoriteHeroes: [],   // array of hero_id
+        currentTab: 'feed',
+        reviewRequestId: null,
+        reviewTargetUserId: null,
+        reviewSelectedTags: [],
+        feedItems: [],
+    };
+
+    function _tmRankIcon(rank) {
+        var i = TM_RANKS.indexOf(rank);
+        if (i < 0) return '';
+        return 'https://www.dota2.com/apps/dota2/images/battlepass/rank_icons/rank_icon_' + (i + 1) + '.png';
+    }
+    function _tmPosIcon(p) { return '/images/positions/pos_' + p + '.png'; }
+    function _tmEsc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+            return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+        });
+    }
+    function _tmHeroIconById(id) {
+        var name = (window.dotaHeroIdToName || {})[id];
+        if (!name) return { name: '', url: '' };
+        var url = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+        return { name: name, url: url };
+    }
+    function _tmGetToken() { return (typeof USER_TOKEN === 'string' && USER_TOKEN) ? USER_TOKEN : ''; }
+
+    // ── Entry point from home widget ────────────────────────────────────
+    window.goToTeammates = function () {
+        switchPage('teammates');
+        initTeammatesPage();
+    };
+
+    function initTeammatesPage() {
+        setTeammatesTab(_tm.currentTab || 'feed');
+        renderFilters();
+        // Параллельно: профиль (для кнопки поиска и формы) + лента + входящие.
+        loadMyProfile().then(function (p) {
+            _tm.myProfile = p;
+            _tm.favoriteHeroes = (p && Array.isArray(p.favorite_heroes)) ? p.favorite_heroes.slice() : [];
+            renderSearchCta();
+            renderProfileForm();
+        }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
+        loadFeed(true);
+        loadIncoming();
+    }
+    window.initTeammatesPage = initTeammatesPage;
+
+    window.setTeammatesTab = function (tab) {
+        _tm.currentTab = tab;
+        var tabs = document.querySelectorAll('.tm-tab');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].classList.toggle('tm-tab--active', tabs[i].getAttribute('data-tm-tab') === tab);
+        }
+        var pf = document.getElementById('tm-pane-feed');
+        var pp = document.getElementById('tm-pane-profile');
+        if (pf) pf.hidden = (tab !== 'feed');
+        if (pp) pp.hidden = (tab !== 'profile');
+    };
+
+    // ── My profile ──────────────────────────────────────────────────────
+    async function loadMyProfile() {
+        var token = _tmGetToken();
+        if (!token) return null;
+        var resp = await apiFetch(TM_API + '/teammates/profile/me?token=' + encodeURIComponent(token));
+        if (!resp.ok) return null;
+        try { return await resp.json(); } catch (e) { return null; }
+    }
+
+    // ── Feed ────────────────────────────────────────────────────────────
+    async function loadFeed(reset) {
+        if (_tm.feedLoading) return;
+        _tm.feedLoading = true;
+        if (reset) {
+            _tm.feedCursor = null;
+            _tm.feedItems = [];
+        }
+        var listEl = document.getElementById('tm-feed-list');
+        if (reset && listEl) listEl.innerHTML = '<div class="tm-feed-empty">Загрузка…</div>';
+        try {
+            var params = new URLSearchParams();
+            params.set('token', _tmGetToken());
+            if (_tm.filters.rank) params.set('rank', _tm.filters.rank);
+            if (_tm.filters.positions.length) params.set('positions', _tm.filters.positions.join(','));
+            if (_tm.feedCursor) params.set('cursor', String(_tm.feedCursor));
+            var resp = await apiFetch(TM_API + '/teammates/feed?' + params.toString());
+            if (!resp.ok) {
+                if (listEl) listEl.innerHTML = '<div class="tm-feed-empty">Не удалось загрузить ленту</div>';
+                return;
+            }
+            var data = await resp.json();
+            var items = (data && data.items) || [];
+            _tm.feedItems = reset ? items.slice() : _tm.feedItems.concat(items);
+            _tm.feedCursor = data && data.next_cursor;
+            renderFeed();
+        } finally {
+            _tm.feedLoading = false;
+        }
+    }
+    window.tmLoadMore = function () { loadFeed(false); };
+
+    function renderFeed() {
+        var list = document.getElementById('tm-feed-list');
+        var loadMore = document.getElementById('tm-load-more');
+        if (!list) return;
+        if (!_tm.feedItems.length) {
+            list.innerHTML = '<div class="tm-feed-empty">Сейчас никто не ищет пати — попробуй сам включить поиск.</div>';
+            if (loadMore) loadMore.hidden = true;
+            return;
+        }
+        list.innerHTML = _tm.feedItems.map(_renderPlayerCard).join('');
+        if (loadMore) loadMore.hidden = !_tm.feedCursor;
+    }
+
+    function _renderPlayerCard(p) {
+        var rankIcon = _tmRankIcon(p.rank);
+        var posIcons = (p.positions || []).map(function (n) {
+            return '<img class="tm-player-pos-icon" src="' + _tmEsc(_tmPosIcon(n)) + '" alt="' + n + '">';
+        }).join('');
+        var modes = (p.game_modes || []).map(function (m) { return TM_MODE_LABELS[m] || m; }).join(' · ');
+        var commsParts = [];
+        if (p.microphone) commsParts.push('<span class="tm-comm-item"><i class="ph ph-microphone" aria-hidden="true"></i>Микро</span>');
+        if (p.discord) commsParts.push('<span class="tm-comm-item">Discord</span>');
+        var heroes = (p.favorite_heroes || []).map(function (id) {
+            var info = _tmHeroIconById(id);
+            return '<div class="tm-hero-tile" title="' + _tmEsc(info.name) + '"><img src="' + _tmEsc(info.url) + '" alt="" onerror="this.style.display=\'none\'"></div>';
+        }).join('');
+        var tags = (p.tags || []).map(function (t) {
+            var cls = t.is_positive ? 'tm-tag--positive' : 'tm-tag--negative';
+            return '<span class="tm-tag ' + cls + '">' + _tmEsc(t.tag) + '<span class="tm-tag-count">' + (t.count || 0) + '</span></span>';
+        }).join('');
+        var mood = TM_MOOD_LABELS[p.mood] || p.mood || '';
+        var subParts = [];
+        if (p.hours != null) subParts.push(p.hours + ' ч');
+        if (mood) subParts.push(_tmEsc(mood));
+
+        return [
+            '<article class="tm-player-card" data-user-id="' + p.user_id + '">',
+              '<header class="tm-player-card-head">',
+                '<img class="tm-player-rank-icon" src="' + _tmEsc(rankIcon) + '" alt="" onerror="this.style.display=\'none\'">',
+                '<div class="tm-player-rank-meta">',
+                  '<div class="tm-player-rank-label">' + _tmEsc(p.rank || '—') + '</div>',
+                  '<div class="tm-player-rank-sub">' + subParts.join(' · ') + '</div>',
+                '</div>',
+              '</header>',
+              '<div class="tm-player-row">',
+                (posIcons ? '<div class="tm-player-positions">' + posIcons + '</div>' : ''),
+                (modes ? '<div class="tm-player-modes">' + _tmEsc(modes) + '</div>' : ''),
+              '</div>',
+              (commsParts.length ? '<div class="tm-player-comms">' + commsParts.join(' · ') + '</div>' : ''),
+              (heroes ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
+              (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
+              (tags ? '<div class="tm-tags">' + tags + '</div>' : ''),
+              '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Хочу играть</button>',
+            '</article>'
+        ].join('');
+    }
+
+    window.tmSendRequest = async function (to_user_id, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, to_user_id: to_user_id })
+            });
+            if (resp.status === 409) { showToast('Запрос уже отправлен'); if (btn) btn.textContent = 'Уже отправлено'; return; }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            showToast('Запрос отправлен');
+            if (btn) btn.textContent = 'Запрос отправлен';
+        } catch (e) {
+            console.warn('[tm] sendRequest:', e);
+            showToast('Не удалось отправить запрос');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Filters ─────────────────────────────────────────────────────────
+    function renderFilters() {
+        var rankWrap = document.getElementById('tm-filter-rank');
+        if (rankWrap) {
+            var active = _tm.filters.rank;
+            rankWrap.innerHTML = TM_RANKS.map(function (r) {
+                var cls = (r === active) ? 'tm-filter-chip tm-filter-chip--active' : 'tm-filter-chip';
+                return '<button type="button" class="' + cls + '" onclick="tmToggleFilterRank(\'' + _tmEsc(r) + '\')">' + _tmEsc(r) + '</button>';
+            }).join('');
+        }
+        var posWrap = document.getElementById('tm-filter-pos');
+        if (posWrap) {
+            var activeSet = {};
+            for (var i = 0; i < _tm.filters.positions.length; i++) activeSet[_tm.filters.positions[i]] = true;
+            posWrap.innerHTML = [1,2,3,4,5].map(function (n) {
+                var cls = activeSet[n] ? 'tm-filter-pos-btn tm-filter-pos-btn--active' : 'tm-filter-pos-btn';
+                return '<button type="button" class="' + cls + '" onclick="tmToggleFilterPos(' + n + ')"><img src="' + _tmPosIcon(n) + '" alt="' + n + '"></button>';
+            }).join('');
+        }
+    }
+    window.tmToggleFilterRank = function (rank) {
+        _tm.filters.rank = (_tm.filters.rank === rank ? '' : rank);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterPos = function (p) {
+        var i = _tm.filters.positions.indexOf(p);
+        if (i >= 0) _tm.filters.positions.splice(i, 1);
+        else _tm.filters.positions.push(p);
+        renderFilters();
+        loadFeed(true);
+    };
+
+    // ── Search toggle ───────────────────────────────────────────────────
+    function renderSearchCta() {
+        var btn = document.getElementById('tm-search-cta');
+        if (!btn) return;
+        var active = !!(_tm.myProfile && _tm.myProfile.is_searching);
+        btn.textContent = active ? 'Остановить поиск' : 'Искать пати';
+        btn.classList.toggle('tm-search-cta--active', active);
+        var hint = document.getElementById('tm-search-hint');
+        if (hint) hint.textContent = active ? 'Поиск активен · видишь и видят тебя' : 'Поиск активен 3 часа';
+    }
+    window.tmToggleSearch = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (!_tm.myProfile) {
+            showToast('Сначала заполни профиль');
+            setTeammatesTab('profile');
+            return;
+        }
+        var isSearching = !!_tm.myProfile.is_searching;
+        var url = TM_API + '/teammates/' + (isSearching ? 'search/stop' : 'search/start');
+        var resp = await apiFetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+        });
+        if (resp.status === 400) {
+            showToast('Сначала заполни профиль');
+            setTeammatesTab('profile');
+            return;
+        }
+        if (!resp.ok) { showToast('Не удалось обновить статус'); return; }
+        _tm.myProfile.is_searching = !isSearching;
+        renderSearchCta();
+        loadFeed(true);
+    };
+
+    // ── Profile form ────────────────────────────────────────────────────
+    function renderProfileForm() {
+        var p = _tm.myProfile || {};
+
+        var rankWrap = document.getElementById('tm-rank-scroll');
+        if (rankWrap) {
+            rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
+                var cls = (r === p.rank) ? 'tm-rank-card tm-rank-card--active' : 'tm-rank-card';
+                return '<button type="button" class="' + cls + '" data-rank="' + _tmEsc(r) + '" onclick="tmSelectRank(\'' + _tmEsc(r) + '\')">' +
+                    '<img class="tm-rank-card-icon" src="https://www.dota2.com/apps/dota2/images/battlepass/rank_icons/rank_icon_' + (i + 1) + '.png" alt="" onerror="this.style.display=\'none\'">' +
+                    '<span class="tm-rank-card-label">' + _tmEsc(r) + '</span>' +
+                '</button>';
+            }).join('');
+        }
+
+        var hoursInput = document.getElementById('tm-hours-input');
+        if (hoursInput) hoursInput.value = (p.hours != null) ? p.hours : '';
+
+        var posBtns = document.querySelectorAll('.tm-position-btn');
+        var posSet = {};
+        (p.positions || []).forEach(function (n) { posSet[n] = true; });
+        for (var i = 0; i < posBtns.length; i++) {
+            var n = parseInt(posBtns[i].getAttribute('data-pos'), 10);
+            posBtns[i].classList.toggle('tm-position-btn--active', !!posSet[n]);
+        }
+
+        var modeBtns = document.querySelectorAll('.tm-mode-btn');
+        var modeSet = {};
+        (p.game_modes || []).forEach(function (m) { modeSet[m] = true; });
+        for (var j = 0; j < modeBtns.length; j++) {
+            var m = modeBtns[j].getAttribute('data-mode');
+            modeBtns[j].classList.toggle('tm-mode-btn--active', !!modeSet[m]);
+        }
+
+        var micT = document.getElementById('tm-mic-toggle');
+        var dcT = document.getElementById('tm-discord-toggle');
+        if (micT) { micT.classList.toggle('tm-toggle--on', !!p.microphone); micT.setAttribute('aria-pressed', String(!!p.microphone)); }
+        if (dcT)  { dcT.classList.toggle('tm-toggle--on', !!p.discord);     dcT.setAttribute('aria-pressed', String(!!p.discord)); }
+
+        var moodBtns = document.querySelectorAll('.tm-mood-btn');
+        for (var k = 0; k < moodBtns.length; k++) {
+            moodBtns[k].classList.toggle('tm-mood-btn--active', moodBtns[k].getAttribute('data-mood') === p.mood);
+        }
+
+        renderHeroSlots();
+
+        var ta = document.getElementById('tm-about-input');
+        if (ta) { ta.value = p.about || ''; tmUpdateAboutCounter(); }
+    }
+
+    window.tmSelectRank = function (r) {
+        if (!_tm.myProfile) _tm.myProfile = {};
+        _tm.myProfile.rank = r;
+        var cards = document.querySelectorAll('.tm-rank-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.toggle('tm-rank-card--active', cards[i].getAttribute('data-rank') === r);
+        }
+    };
+
+    window.tmTogglePos = function (_p, btn) { btn.classList.toggle('tm-position-btn--active'); };
+    window.tmToggleMode = function (_m, btn) { btn.classList.toggle('tm-mode-btn--active'); };
+    window.tmToggleMic = function () {
+        var t = document.getElementById('tm-mic-toggle'); if (!t) return;
+        t.classList.toggle('tm-toggle--on');
+        t.setAttribute('aria-pressed', String(t.classList.contains('tm-toggle--on')));
+    };
+    window.tmToggleDiscord = function () {
+        var t = document.getElementById('tm-discord-toggle'); if (!t) return;
+        t.classList.toggle('tm-toggle--on');
+        t.setAttribute('aria-pressed', String(t.classList.contains('tm-toggle--on')));
+    };
+    window.tmSetMood = function (m) {
+        var btns = document.querySelectorAll('.tm-mood-btn');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('tm-mood-btn--active', btns[i].getAttribute('data-mood') === m);
+        }
+    };
+
+    window.tmUpdateAboutCounter = function () {
+        var ta = document.getElementById('tm-about-input');
+        var counter = document.getElementById('tm-about-counter');
+        if (!ta || !counter) return;
+        var len = (ta.value || '').length;
+        counter.textContent = len + ' / 200';
+    };
+
+    function renderHeroSlots() {
+        var wrap = document.getElementById('tm-hero-slots');
+        if (!wrap) return;
+        var html = '';
+        for (var i = 0; i < 3; i++) {
+            var id = _tm.favoriteHeroes[i];
+            if (id) {
+                var info = _tmHeroIconById(id);
+                html += '<button type="button" class="tm-hero-slot tm-hero-slot--filled" onclick="tmRemoveHero(' + i + ')" title="' + _tmEsc(info.name) + '">' +
+                    '<img class="tm-hero-slot-img" src="' + _tmEsc(info.url) + '" alt="' + _tmEsc(info.name) + '" onerror="this.style.display=\'none\'">' +
+                    '<span class="tm-hero-slot-x">×</span>' +
+                '</button>';
+            } else {
+                html += '<button type="button" class="tm-hero-slot tm-hero-slot--empty" onclick="tmOpenHeroPicker()" aria-label="Добавить героя">' +
+                    '<i class="ph ph-plus" aria-hidden="true"></i>' +
+                '</button>';
+            }
+        }
+        wrap.innerHTML = html;
+    }
+    window.tmRemoveHero = function (idx) {
+        _tm.favoriteHeroes.splice(idx, 1);
+        renderHeroSlots();
+    };
+    window.tmOpenHeroPicker = function () {
+        if (_tm.favoriteHeroes.length >= 3) { showToast('Уже выбрано 3 героя'); return; }
+        var overlay = document.getElementById('tm-hero-picker');
+        if (!overlay) return;
+        _tmRenderHeroPicker('');
+        var s = document.getElementById('tm-hero-picker-search');
+        if (s) s.value = '';
+        overlay.hidden = false;
+        overlay.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    };
+    window.tmCloseHeroPicker = function () {
+        var overlay = document.getElementById('tm-hero-picker');
+        if (!overlay) return;
+        overlay.hidden = true;
+        overlay.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    };
+    window.tmHeroPickerSearch = function (e) {
+        var q = (e && e.target && e.target.value || '').toLowerCase();
+        _tmRenderHeroPicker(q);
+    };
+    function _tmRenderHeroPicker(query) {
+        var grid = document.getElementById('tm-hero-picker-grid');
+        if (!grid) return;
+        var ids = window.dotaHeroIds || {};
+        var names = [];
+        for (var n in ids) {
+            if (Object.prototype.hasOwnProperty.call(ids, n)) names.push(n);
+        }
+        if (query) names = names.filter(function (x) { return x.toLowerCase().indexOf(query) !== -1; });
+        names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
+        // Дедуп по hero_id (Outworld Destroyer / Devourer указывают на 76).
+        var seenId = {};
+        names = names.filter(function (x) {
+            var id = ids[x];
+            if (seenId[id]) return false;
+            seenId[id] = true;
+            return true;
+        });
+        grid.innerHTML = names.map(function (n) {
+            var id = ids[n];
+            var url = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(n) : '';
+            return '<button type="button" class="tm-hero-pick-tile" onclick="tmPickHero(' + id + ')">' +
+                '<img src="' + _tmEsc(url) + '" alt="" onerror="this.style.display=\'none\'">' +
+                '<span>' + _tmEsc(n) + '</span>' +
+            '</button>';
+        }).join('');
+    }
+    window.tmPickHero = function (id) {
+        if (_tm.favoriteHeroes.indexOf(id) !== -1) { tmCloseHeroPicker(); return; }
+        if (_tm.favoriteHeroes.length >= 3) { showToast('Уже выбрано 3 героя'); tmCloseHeroPicker(); return; }
+        _tm.favoriteHeroes.push(id);
+        renderHeroSlots();
+        tmCloseHeroPicker();
+    };
+
+    window.tmSaveProfile = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+
+        var rankActive = document.querySelector('.tm-rank-card--active');
+        var rank = rankActive ? rankActive.getAttribute('data-rank') : '';
+        if (!rank) { showToast('Выбери ранг'); return; }
+
+        var hoursInput = document.getElementById('tm-hours-input');
+        var hours = parseInt((hoursInput && hoursInput.value) || '0', 10);
+        if (!(hours >= 0)) { showToast('Укажи часы корректно'); return; }
+
+        var posBtns = document.querySelectorAll('.tm-position-btn--active');
+        var positions = [];
+        for (var i = 0; i < posBtns.length; i++) positions.push(parseInt(posBtns[i].getAttribute('data-pos'), 10));
+        if (!positions.length) { showToast('Выбери хотя бы одну позицию'); return; }
+
+        var modeBtns = document.querySelectorAll('.tm-mode-btn--active');
+        var game_modes = [];
+        for (var j = 0; j < modeBtns.length; j++) game_modes.push(modeBtns[j].getAttribute('data-mode'));
+        if (!game_modes.length) { showToast('Выбери хотя бы один режим'); return; }
+
+        var micT = document.getElementById('tm-mic-toggle');
+        var dcT = document.getElementById('tm-discord-toggle');
+        var microphone = !!(micT && micT.classList.contains('tm-toggle--on'));
+        var discord    = !!(dcT && dcT.classList.contains('tm-toggle--on'));
+
+        var moodActive = document.querySelector('.tm-mood-btn--active');
+        var mood = moodActive ? moodActive.getAttribute('data-mood') : '';
+        if (!mood) { showToast('Выбери настрой'); return; }
+
+        var ta = document.getElementById('tm-about-input');
+        var about = (ta && ta.value) || '';
+        var favorite_heroes = _tm.favoriteHeroes.slice(0, 3);
+
+        var btn = document.getElementById('tm-save-btn');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token,
+                    rank: rank,
+                    hours: hours,
+                    positions: positions,
+                    game_modes: game_modes,
+                    microphone: microphone,
+                    discord: discord,
+                    mood: mood,
+                    favorite_heroes: favorite_heroes,
+                    about: about
+                })
+            });
+            if (!resp.ok) { showToast('Не удалось сохранить'); return; }
+            showToast('Профиль сохранён');
+            // Сохраняем в локальное состояние, чтобы кнопка поиска корректно обновилась.
+            _tm.myProfile = Object.assign({}, _tm.myProfile || {}, {
+                rank: rank, hours: hours, positions: positions, game_modes: game_modes,
+                microphone: microphone, discord: discord, mood: mood,
+                favorite_heroes: favorite_heroes, about: about
+            });
+            renderSearchCta();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Incoming requests ───────────────────────────────────────────────
+    async function loadIncoming() {
+        var token = _tmGetToken();
+        if (!token) return;
+        var resp = await apiFetch(TM_API + '/teammates/requests/incoming?token=' + encodeURIComponent(token));
+        if (!resp.ok) return;
+        var data;
+        try { data = await resp.json(); } catch (e) { data = []; }
+        renderIncoming(data || []);
+    }
+
+    function renderIncoming(items) {
+        var wrap = document.getElementById('tm-incoming-list');
+        if (!wrap) return;
+        if (!items.length) {
+            wrap.innerHTML = '<div class="tm-feed-empty">Пока нет входящих запросов</div>';
+            return;
+        }
+        wrap.innerHTML = items.map(function (r) {
+            var p = r.profile || {};
+            var rankIcon = _tmRankIcon(p.rank);
+            var subParts = [];
+            if (p.hours != null) subParts.push(p.hours + ' ч');
+            if (p.mood) subParts.push(_tmEsc(TM_MOOD_LABELS[p.mood] || p.mood));
+            return [
+                '<div class="tm-incoming-item" data-request-id="' + r.request_id + '">',
+                  '<div class="tm-incoming-head">',
+                    '<img class="tm-player-rank-icon" src="' + _tmEsc(rankIcon) + '" alt="" onerror="this.style.display=\'none\'">',
+                    '<div class="tm-player-rank-meta">',
+                      '<div class="tm-player-rank-label">' + _tmEsc(p.rank || '—') + '</div>',
+                      '<div class="tm-player-rank-sub">' + subParts.join(' · ') + '</div>',
+                    '</div>',
+                  '</div>',
+                  (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
+                  '<div class="tm-incoming-actions">',
+                    '<button type="button" class="tm-incoming-accept" onclick="tmRespondRequest(' + r.request_id + ', true, this)">Принять</button>',
+                    '<button type="button" class="tm-incoming-decline" onclick="tmRespondRequest(' + r.request_id + ', false, this)">Отклонить</button>',
+                  '</div>',
+                '</div>'
+            ].join('');
+        }).join('');
+    }
+
+    window.tmRespondRequest = async function (requestId, accept, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/request/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, request_id: requestId, accept: !!accept })
+            });
+            if (!resp.ok) { showToast('Не удалось ответить'); return; }
+            showToast(accept ? 'Запрос принят' : 'Запрос отклонён');
+            await loadIncoming();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Review screen ───────────────────────────────────────────────────
+
+    window.tmOpenReview = async function (requestId, targetUserId) {
+        if (!requestId) return;
+        _tm.reviewRequestId = parseInt(requestId, 10);
+        _tm.reviewTargetUserId = targetUserId ? parseInt(targetUserId, 10) : null;
+        _tm.reviewSelectedTags = [];
+        switchPage('teammate-review');
+        _tmRenderReviewTags();
+        var head = document.getElementById('tm-review-target');
+        if (head) head.innerHTML = '<div class="tm-feed-empty">Загрузка…</div>';
+        if (_tm.reviewTargetUserId) {
+            try {
+                var resp = await apiFetch(TM_API + '/teammates/profile/' + _tm.reviewTargetUserId);
+                if (resp.ok) {
+                    var p = await resp.json();
+                    _tmRenderReviewTarget(p);
+                } else {
+                    if (head) head.innerHTML = '<div class="tm-feed-empty">Не удалось загрузить профиль игрока</div>';
+                }
+            } catch (e) {
+                console.warn('[tm] review target:', e);
+            }
+        } else if (head) {
+            head.innerHTML = '<div class="tm-feed-empty">Игрок</div>';
+        }
+    };
+
+    function _tmRenderReviewTarget(p) {
+        var head = document.getElementById('tm-review-target');
+        if (!head) return;
+        var rankIcon = _tmRankIcon(p.rank);
+        var subParts = [];
+        if (p.hours != null) subParts.push(p.hours + ' ч');
+        if (p.mood) subParts.push(_tmEsc(TM_MOOD_LABELS[p.mood] || p.mood));
+        head.innerHTML =
+            '<img class="tm-player-rank-icon" src="' + _tmEsc(rankIcon) + '" alt="" onerror="this.style.display=\'none\'">' +
+            '<div class="tm-player-rank-meta">' +
+              '<div class="tm-player-rank-label">' + _tmEsc(p.rank || '—') + '</div>' +
+              '<div class="tm-player-rank-sub">' + subParts.join(' · ') + '</div>' +
+            '</div>';
+    }
+
+    function _tmRenderReviewTags() {
+        var wrap = document.getElementById('tm-review-tags');
+        if (!wrap) return;
+        var pos = TM_POSITIVE_TAGS.map(function (t) {
+            return '<button type="button" class="tm-review-tag tm-review-tag--positive" data-tag="' + _tmEsc(t) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(t) + '\', this)">' + _tmEsc(t) + '</button>';
+        }).join('');
+        var neg = TM_NEGATIVE_TAGS.map(function (t) {
+            return '<button type="button" class="tm-review-tag tm-review-tag--negative" data-tag="' + _tmEsc(t) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(t) + '\', this)">' + _tmEsc(t) + '</button>';
+        }).join('');
+        wrap.innerHTML = pos + neg;
+    }
+
+    window.tmToggleReviewTag = function (tag, btn) {
+        var i = _tm.reviewSelectedTags.indexOf(tag);
+        if (i >= 0) _tm.reviewSelectedTags.splice(i, 1);
+        else _tm.reviewSelectedTags.push(tag);
+        btn.classList.toggle('tm-review-tag--selected');
+    };
+
+    window.tmSubmitReview = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (!_tm.reviewRequestId) { showToast('Нет запроса для оценки'); return; }
+        if (!_tm.reviewSelectedTags.length) { showToast('Выбери хотя бы один тег'); return; }
+
+        var btn = document.getElementById('tm-review-submit');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/review', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token,
+                    request_id: _tm.reviewRequestId,
+                    tags: _tm.reviewSelectedTags.slice()
+                })
+            });
+            if (resp.status === 409) { showToast('Отзыв уже отправлен'); return; }
+            if (!resp.ok) { showToast('Не удалось отправить отзыв'); return; }
+            showToast('Спасибо за отзыв');
+            _tm.reviewRequestId = null;
+            _tm.reviewTargetUserId = null;
+            _tm.reviewSelectedTags = [];
+            switchPage('home');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Deep link: ?teammate_review=<request_id>&teammate_target=<user_id> ──
+    function _tmCheckDeepLink() {
+        try {
+            var params = new URLSearchParams(window.location.search);
+            var reviewId = params.get('teammate_review');
+            if (!reviewId) return;
+            var targetId = params.get('teammate_target');
+            tmOpenReview(parseInt(reviewId, 10), targetId ? parseInt(targetId, 10) : null);
+        } catch (e) { /* no-op */ }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _tmCheckDeepLink);
+    } else {
+        _tmCheckDeepLink();
+    }
+})();
+
