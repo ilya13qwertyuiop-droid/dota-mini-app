@@ -1797,3 +1797,493 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
         }
         for r in rows
     ]
+
+
+# ========== Teammate finder ==========
+#
+# Профиль игрока для поиска тиммейтов + входящие/исходящие запросы + отзывы.
+# Авторизация — существующий get_user_id_by_token (401 при невалидном токене).
+# Логирование запросов — middleware log_requests выше; ничего дополнительно
+# делать не надо.
+
+from datetime import timedelta as _tm_timedelta  # noqa: E402  (локально, чтобы не трогать top-level imports)
+
+from backend.models import (  # noqa: E402
+    TeammateProfile as DBTeammateProfile,
+    TeammateRequest as DBTeammateRequest,
+    TeammateReview as DBTeammateReview,
+    TeammateTag as DBTeammateTag,
+)
+
+
+_TM_VALID_RANKS = frozenset({
+    "Рекрут", "Страж", "Рыцарь", "Герой", "Легенда", "Властелин", "Божество", "Титан",
+})
+_TM_VALID_MOODS = frozenset({"win", "fun", "stomp"})
+_TM_VALID_GAME_MODES = frozenset({"ranked", "normal", "turbo"})
+_TM_POSITIVE_TAGS = frozenset({"Бустер", "Душа компании", "Командный", "No tilted", "1x9"})
+_TM_NEGATIVE_TAGS = frozenset({"Токсик", "Фидер", "AFK", "Фотограф", "Агент Габена"})
+_TM_VALID_TAGS = _TM_POSITIVE_TAGS | _TM_NEGATIVE_TAGS
+
+_TM_SEARCH_TTL_HOURS = 3
+_TM_ABOUT_MAX_LEN = 200
+_TM_MAX_FAVORITE_HEROES = 3
+_TM_HOURS_MAX = 100000
+
+
+def _tm_require_user(token: str) -> int:
+    """Validates token and returns user_id, or raises 401."""
+    uid = get_user_id_by_token(token)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return uid
+
+
+def _tm_serialize_profile(p: DBTeammateProfile) -> dict:
+    """Base profile payload — fields shared between /me, /feed, /{user_id}."""
+    return {
+        "user_id":         p.user_id,
+        "rank":            p.rank,
+        "hours":           p.hours,
+        "positions":       list(p.positions or []),
+        "game_modes":      list(p.game_modes or []),
+        "microphone":      bool(p.microphone),
+        "discord":         bool(p.discord),
+        "mood":            p.mood,
+        "favorite_heroes": list(p.favorite_heroes or []),
+        "about":           p.about or "",
+    }
+
+
+def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[dict]]:
+    """Returns {user_id: [{tag, count, is_positive}, ...]} for the given ids."""
+    if not user_ids:
+        return {}
+    rows = (
+        db.query(DBTeammateTag)
+        .filter(DBTeammateTag.user_id.in_(user_ids))
+        .all()
+    )
+    out: dict[int, list[dict]] = {uid: [] for uid in user_ids}
+    for r in rows:
+        out.setdefault(r.user_id, []).append({
+            "tag":         r.tag,
+            "count":       r.count,
+            "is_positive": bool(r.is_positive),
+        })
+    return out
+
+
+# ── Pydantic models ─────────────────────────────────────────────────────────
+
+class TeammateProfileUpsert(BaseModel):
+    token: str
+    rank: str
+    hours: int
+    positions: list[int]
+    game_modes: list[str]
+    microphone: bool
+    discord: bool
+    mood: str
+    favorite_heroes: list[int] = []
+    about: str = ""
+
+
+class TeammateTokenOnly(BaseModel):
+    token: str
+
+
+class TeammateRequestCreate(BaseModel):
+    token: str
+    to_user_id: int
+
+
+class TeammateRequestRespond(BaseModel):
+    token: str
+    request_id: int
+    accept: bool
+
+
+class TeammateReviewSubmit(BaseModel):
+    token: str
+    request_id: int
+    tags: list[str]
+
+
+# ── 1. POST /api/teammates/profile — upsert ─────────────────────────────────
+
+@app.post("/api/teammates/profile")
+async def api_teammates_profile_upsert(
+    data: TeammateProfileUpsert, db: Session = Depends(get_db),
+):
+    """Создаёт или обновляет профиль текущего пользователя для поиска тиммейтов."""
+    user_id = _tm_require_user(data.token)
+
+    if data.rank not in _TM_VALID_RANKS:
+        raise HTTPException(status_code=422, detail="invalid rank")
+    if not isinstance(data.hours, int) or data.hours < 0 or data.hours > _TM_HOURS_MAX:
+        raise HTTPException(status_code=422, detail="hours out of range")
+    if data.mood not in _TM_VALID_MOODS:
+        raise HTTPException(status_code=422, detail="invalid mood")
+
+    positions = sorted({int(p) for p in data.positions if int(p) in (1, 2, 3, 4, 5)})
+    if not positions:
+        raise HTTPException(status_code=422, detail="positions must contain at least one of 1..5")
+
+    game_modes = sorted({m for m in data.game_modes if m in _TM_VALID_GAME_MODES})
+    if not game_modes:
+        raise HTTPException(status_code=422, detail="game_modes must contain at least one valid mode")
+
+    # Дедуп и обрезка до лимита, чтобы не доверять клиенту слепо.
+    favorite_heroes = list(dict.fromkeys(int(h) for h in (data.favorite_heroes or [])))[:_TM_MAX_FAVORITE_HEROES]
+    about = (data.about or "").strip()[:_TM_ABOUT_MAX_LEN]
+
+    now = datetime.now(timezone.utc)
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        profile = DBTeammateProfile(
+            user_id=user_id,
+            rank=data.rank,
+            hours=data.hours,
+            positions=positions,
+            game_modes=game_modes,
+            microphone=bool(data.microphone),
+            discord=bool(data.discord),
+            mood=data.mood,
+            favorite_heroes=favorite_heroes,
+            about=about,
+            is_searching=False,
+            search_expires_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(profile)
+    else:
+        profile.rank = data.rank
+        profile.hours = data.hours
+        profile.positions = positions
+        profile.game_modes = game_modes
+        profile.microphone = bool(data.microphone)
+        profile.discord = bool(data.discord)
+        profile.mood = data.mood
+        profile.favorite_heroes = favorite_heroes
+        profile.about = about
+        profile.updated_at = now
+
+    db.commit()
+    return {"ok": True}
+
+
+# ── 2. GET /api/teammates/profile/me ─────────────────────────────────────────
+# ВАЖНО: объявлен ДО /profile/{user_id}, иначе FastAPI попытается распарсить
+# "me" как int и вернёт 422.
+
+@app.get("/api/teammates/profile/me")
+async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
+    """Возвращает свой профиль (со статусом поиска) или null."""
+    user_id = _tm_require_user(token)
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        return None
+    out = _tm_serialize_profile(profile)
+    out["is_searching"]      = bool(profile.is_searching)
+    out["search_expires_at"] = profile.search_expires_at.isoformat() if profile.search_expires_at else None
+    return out
+
+
+# ── 3. POST /api/teammates/search/start ─────────────────────────────────────
+
+@app.post("/api/teammates/search/start")
+async def api_teammates_search_start(
+    data: TeammateTokenOnly, db: Session = Depends(get_db),
+):
+    """Включает поиск: is_searching=True, search_expires_at=now+3h."""
+    user_id = _tm_require_user(data.token)
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
+
+    profile.is_searching      = True
+    # Naive UTC для сравнений в /feed (см. datetime.utcnow ниже).
+    profile.search_expires_at = datetime.utcnow() + _tm_timedelta(hours=_TM_SEARCH_TTL_HOURS)
+    profile.updated_at        = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
+# ── 4. POST /api/teammates/search/stop ──────────────────────────────────────
+
+@app.post("/api/teammates/search/stop")
+async def api_teammates_search_stop(
+    data: TeammateTokenOnly, db: Session = Depends(get_db),
+):
+    """Выключает поиск. Идемпотентно — если профиля нет, всё равно 200."""
+    user_id = _tm_require_user(data.token)
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is not None:
+        profile.is_searching = False
+        profile.updated_at   = datetime.now(timezone.utc)
+        db.commit()
+    return {"ok": True}
+
+
+# ── 5. GET /api/teammates/feed ──────────────────────────────────────────────
+
+@app.get("/api/teammates/feed")
+async def api_teammates_feed(
+    token: str,
+    rank: str | None = None,
+    positions: str | None = None,
+    game_modes: str | None = None,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Лента активно ищущих тиммейтов.
+
+    Возвращает {items, next_cursor}. Сортировка — по user_id убывающе
+    (детерминированный курсор: клиент передаёт user_id последней записи).
+    Фильтры по позициям/режимам применяются в Python — JSON-операторы
+    отличаются в SQLite и PostgreSQL, проще пост-фильтровать; активных в
+    каждый момент <<50K, нагрузки это не создаёт.
+    """
+    user_id = _tm_require_user(token)
+    now = datetime.utcnow()
+
+    q = (
+        db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.is_searching.is_(True))
+        .filter(DBTeammateProfile.search_expires_at > now)
+        .filter(DBTeammateProfile.user_id != user_id)
+    )
+
+    if rank:
+        if rank not in _TM_VALID_RANKS:
+            raise HTTPException(status_code=422, detail="invalid rank")
+        q = q.filter(DBTeammateProfile.rank == rank)
+
+    if cursor is not None:
+        q = q.filter(DBTeammateProfile.user_id < cursor)
+
+    q = q.order_by(DBTeammateProfile.user_id.desc())
+
+    pos_filter: set[int] | None = None
+    if positions:
+        try:
+            pos_filter = {int(x) for x in positions.split(",") if x.strip()}
+        except ValueError:
+            raise HTTPException(status_code=422, detail="positions must be comma-separated integers")
+        pos_filter = {p for p in pos_filter if p in (1, 2, 3, 4, 5)} or None
+
+    mode_filter: set[str] | None = None
+    if game_modes:
+        mode_filter = {m.strip() for m in game_modes.split(",") if m.strip()}
+        mode_filter = (mode_filter & _TM_VALID_GAME_MODES) or None
+
+    # Если есть JSON-фильтры — переберём с запасом, чтобы добрать limit.
+    fetch_n = limit * 4 if (pos_filter or mode_filter) else limit
+    raw_rows = q.limit(fetch_n).all()
+
+    filtered: list[DBTeammateProfile] = []
+    for p in raw_rows:
+        if pos_filter and not (set(p.positions or []) & pos_filter):
+            continue
+        if mode_filter and not (set(p.game_modes or []) & mode_filter):
+            continue
+        filtered.append(p)
+        if len(filtered) >= limit:
+            break
+
+    tags_by_user = _tm_load_tags_grouped(db, [p.user_id for p in filtered])
+    items: list[dict] = []
+    for p in filtered:
+        item = _tm_serialize_profile(p)
+        item["tags"] = tags_by_user.get(p.user_id, [])
+        items.append(item)
+
+    next_cursor = filtered[-1].user_id if len(filtered) == limit else None
+    return {"items": items, "next_cursor": next_cursor}
+
+
+# ── 6. POST /api/teammates/request — отправить запрос ───────────────────────
+
+@app.post("/api/teammates/request")
+async def api_teammates_request_create(
+    data: TeammateRequestCreate, db: Session = Depends(get_db),
+):
+    """Создаёт pending-запрос от текущего пользователя к to_user_id."""
+    user_id = _tm_require_user(data.token)
+
+    if data.to_user_id == user_id:
+        raise HTTPException(status_code=422, detail="cannot request yourself")
+
+    existing = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.from_user_id == user_id)
+        .filter(DBTeammateRequest.to_user_id == data.to_user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="request already exists")
+
+    req = DBTeammateRequest(
+        from_user_id=user_id,
+        to_user_id=data.to_user_id,
+        status="pending",
+        review_sent=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return {"ok": True, "request_id": req.id}
+
+
+# ── 7. POST /api/teammates/request/respond — accept/decline ─────────────────
+
+@app.post("/api/teammates/request/respond")
+async def api_teammates_request_respond(
+    data: TeammateRequestRespond, db: Session = Depends(get_db),
+):
+    """Принять/отклонить входящий запрос."""
+    user_id = _tm_require_user(data.token)
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.to_user_id != user_id:
+        raise HTTPException(status_code=403, detail="not the recipient of this request")
+    if req.status != "pending":
+        raise HTTPException(status_code=409, detail="request already resolved")
+
+    if data.accept:
+        req.status = "accepted"
+        req.accepted_at = datetime.now(timezone.utc)
+    else:
+        req.status = "declined"
+
+    db.commit()
+    return {"ok": True}
+
+
+# ── 8. GET /api/teammates/requests/incoming ─────────────────────────────────
+
+@app.get("/api/teammates/requests/incoming")
+async def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
+    """Входящие pending-запросы с прикреплённым профилем отправителя."""
+    user_id = _tm_require_user(token)
+
+    rows = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.to_user_id == user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .order_by(DBTeammateRequest.created_at.desc())
+        .all()
+    )
+
+    from_ids = [r.from_user_id for r in rows]
+    profiles_map = {
+        p.user_id: p
+        for p in db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id.in_(from_ids))
+        .all()
+    }
+    tags_by_user = _tm_load_tags_grouped(db, from_ids)
+
+    result: list[dict] = []
+    for r in rows:
+        profile = profiles_map.get(r.from_user_id)
+        profile_payload = None
+        if profile is not None:
+            profile_payload = _tm_serialize_profile(profile)
+            profile_payload["tags"] = tags_by_user.get(r.from_user_id, [])
+        result.append({
+            "request_id":   r.id,
+            "from_user_id": r.from_user_id,
+            "created_at":   r.created_at.isoformat() if r.created_at else None,
+            "profile":      profile_payload,
+        })
+    return result
+
+
+# ── 9. POST /api/teammates/review — оставить отзыв ──────────────────────────
+
+@app.post("/api/teammates/review")
+async def api_teammates_review_submit(
+    data: TeammateReviewSubmit, db: Session = Depends(get_db),
+):
+    """Сохраняет отзыв (список тегов) и инкрементит счётчики в teammate_tags.
+
+    Оставить отзыв может любой из участников accepted-запроса. Цель отзыва —
+    другой участник. Повторный отзыв тем же пользователем по тому же
+    request_id — 409.
+    """
+    user_id = _tm_require_user(data.token)
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.status != "accepted":
+        raise HTTPException(status_code=409, detail="request is not in accepted status")
+    if user_id != req.from_user_id and user_id != req.to_user_id:
+        raise HTTPException(status_code=403, detail="not a participant of this request")
+
+    target_user_id = req.to_user_id if user_id == req.from_user_id else req.from_user_id
+
+    already = (
+        db.query(DBTeammateReview)
+        .filter(DBTeammateReview.request_id == data.request_id)
+        .filter(DBTeammateReview.from_user_id == user_id)
+        .first()
+    )
+    if already is not None:
+        raise HTTPException(status_code=409, detail="review already submitted")
+
+    # Дедуп + валидация против заранее заданного словаря тегов.
+    raw_tags = list(dict.fromkeys((t or "").strip() for t in (data.tags or [])))
+    valid_tags = [t for t in raw_tags if t in _TM_VALID_TAGS]
+    if not valid_tags:
+        raise HTTPException(status_code=422, detail="no valid tags provided")
+
+    now = datetime.now(timezone.utc)
+
+    db.add(DBTeammateReview(
+        from_user_id=user_id,
+        to_user_id=target_user_id,
+        request_id=data.request_id,
+        tags=valid_tags,
+        created_at=now,
+    ))
+
+    # Upsert teammate_tags (user_id, tag): создаём с count=1 или инкрементим.
+    for tag in valid_tags:
+        is_positive = tag in _TM_POSITIVE_TAGS
+        row = db.get(DBTeammateTag, (target_user_id, tag))
+        if row is None:
+            db.add(DBTeammateTag(
+                user_id=target_user_id,
+                tag=tag,
+                count=1,
+                is_positive=is_positive,
+            ))
+        else:
+            row.count = (row.count or 0) + 1
+
+    db.commit()
+    return {"ok": True}
+
+
+# ── 10. GET /api/teammates/profile/{user_id} — публичный профиль ────────────
+# Объявлен ПОСЛЕ /profile/me — иначе "me" попадёт в этот роут и упадёт на
+# приведении к int.
+
+@app.get("/api/teammates/profile/{user_id}")
+async def api_teammates_profile_public(user_id: int, db: Session = Depends(get_db)):
+    """Публичный профиль игрока + все накопленные теги."""
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+    out = _tm_serialize_profile(profile)
+    out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
+    return out
