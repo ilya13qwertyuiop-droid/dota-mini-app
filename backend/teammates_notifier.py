@@ -195,27 +195,40 @@ async def run_loop() -> None:
         logger.error("[tm_notifier] BOT_TOKEN missing; refusing to start")
         return
 
+    # Логируем DATABASE_URL — частая причина «молчания» — это запуск воркера
+    # из неверной рабочей директории, когда фоллбэк sqlite:///./backend/...
+    # резолвится в пустой файл, отличный от того, куда пишут api.py / bot.py.
+    # Видя URL в логе, проблему ловишь с первой же строки.
+    from backend.database import DATABASE_URL as _DB_URL
+
     logger.info(
-        "[tm_notifier] started: delay=%dmin poll=%ds batch=%d miniapp_url=%s",
+        "[tm_notifier] started: delay=%dmin poll=%ds batch=%d miniapp_url=%s db=%s",
         REVIEW_DELAY_MINUTES,
         POLL_INTERVAL_SECONDS,
         BATCH_SIZE,
         MINI_APP_URL or "(none — buttons will be skipped)",
+        _DB_URL,
     )
 
+    cycle = 0
     while True:
+        cycle += 1
         t0 = time.monotonic()
+        n = 0
         try:
             n = await process_pending_reviews()
-            if n:
-                logger.info(
-                    "[tm_notifier] sent %d reminder(s) in %.1fs",
-                    n, time.monotonic() - t0,
-                )
         except Exception:
             # Никогда не валим цикл из-за разовой ошибки в SELECT/UPDATE/HTTP —
             # просто логируем и идём в следующий sleep.
-            logger.exception("[tm_notifier] poll cycle failed")
+            logger.exception("[tm_notifier] cycle #%d failed", cycle)
+
+        elapsed = time.monotonic() - t0
+        # Heartbeat: лог КАЖДОГО цикла — иначе при пустой выборке (нормальный
+        # рабочий случай) воркер молчит часами и кажется зависшим.
+        logger.info(
+            "[tm_notifier] cycle #%d: %d sent (%.2fs); next poll in %ds",
+            cycle, n, elapsed, POLL_INTERVAL_SECONDS,
+        )
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
