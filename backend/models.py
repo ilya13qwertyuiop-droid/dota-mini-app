@@ -343,3 +343,133 @@ class AnalyticsEvent(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+# ---------------------------------------------------------------------------
+# Teammate finder
+# ---------------------------------------------------------------------------
+
+class TeammateProfile(Base):
+    """Per-user profile for the teammate-finder feature."""
+    __tablename__ = "teammate_profiles"
+
+    user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), primary_key=True
+    )
+    # Rank: Рекрут / Страж / Рыцарь / Герой / Легенда / Властелин / Божество / Титан
+    rank = Column(String(32), nullable=True, index=True)
+    hours = Column(Integer, nullable=True)
+    # Array of ints 1..5 (multi-select)
+    positions = Column(JSON, nullable=True)
+    # Array of strings: ranked / normal / turbo
+    game_modes = Column(JSON, nullable=True)
+    microphone = Column(Boolean, nullable=False, default=False, server_default="0")
+    discord = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Mood: win / fun / stomp
+    mood = Column(String(16), nullable=True)
+    # Array of hero_id (capped at 3 in the app layer)
+    favorite_heroes = Column(JSON, nullable=True)
+    about = Column(Text, nullable=True)
+    is_searching = Column(
+        Boolean, nullable=False, default=False, server_default="0", index=True
+    )
+    search_expires_at = Column(DateTime, nullable=True)
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class TeammateRequest(Base):
+    """A request from one user to play together with another user."""
+    __tablename__ = "teammate_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    from_user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    to_user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    # status: pending / accepted / declined
+    status = Column(
+        String(16),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
+    )
+    # Set to True after the 90-minute follow-up reminder has been delivered.
+    review_sent = Column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    accepted_at = Column(DateTime, nullable=True)
+
+
+class TeammateReview(Base):
+    """Post-game review left by one user about another."""
+    __tablename__ = "teammate_reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    from_user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False
+    )
+    to_user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    request_id = Column(
+        Integer, ForeignKey("teammate_requests.id"), nullable=False
+    )
+    # Array of tag strings selected by the reviewer.
+    tags = Column(JSON, nullable=False)
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class TeammateTag(Base):
+    """Per-user aggregate counter: how many times each tag has been applied.
+
+    Positive pool: Бустер, Душа компании, Командный, No tilted, 1x9.
+    Negative pool: Токсик, Фидер, AFK, Фотограф, Агент Габена.
+    is_positive is stored on every row so a single SELECT can split totals
+    into positive vs negative without an external lookup table.
+    """
+    __tablename__ = "teammate_tags"
+
+    user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), primary_key=True
+    )
+    tag = Column(String(64), primary_key=True)
+    count = Column(Integer, nullable=False, default=1, server_default="1")
+    is_positive = Column(Boolean, nullable=False)
+
+    __table_args__ = (
+        # user_id is the leftmost PK column and already gets a composite index,
+        # but we keep an explicit single-column index to mirror the migration
+        # and the convention used by hero_matchups.ix_hero_matchups_b.
+        Index("ix_teammate_tags_user_id", "user_id"),
+    )
