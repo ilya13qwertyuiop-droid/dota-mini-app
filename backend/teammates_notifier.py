@@ -39,9 +39,9 @@ import time
 from datetime import datetime, timedelta
 
 import httpx
+from sqlalchemy import text
 
 from backend.database import SessionLocal
-from backend.models import TeammateRequest
 
 logger = logging.getLogger(__name__)
 
@@ -119,57 +119,77 @@ async def process_pending_reviews() -> int:
 
     Возвращает число запросов, по которым ушло хотя бы одно сообщение из двух
     (то есть UI-видимое количество, не сумма сообщений).
+
+    Примечание про SQL: SELECT/UPDATE здесь — RAW text() намеренно. С ORM-фильтром
+    `TeammateRequest.review_sent.is_(False)` запрос на PostgreSQL приходил
+    пустым даже когда строки реально есть. Видимо, на конкретной комбинации
+    SQLAlchemy + psycopg2 .is_(False) для Boolean-колонки превращается во что-то,
+    что не матчит хранимое FALSE. Raw `review_sent = FALSE` ведёт себя
+    предсказуемо (и побайтово совпадает с тем, что находит psql).
     """
     cutoff = datetime.utcnow() - timedelta(minutes=REVIEW_DELAY_MINUTES)
 
-    # 1) Выбираем кандидатов одним запросом.
+    # 1) Выбираем кандидатов одним запросом. Поля выбираем явно — нам нужны
+    #    только id и два user_id для отправки.
     with SessionLocal() as session:
-        due: list[TeammateRequest] = (
-            session.query(TeammateRequest)
-            .filter(TeammateRequest.status == "accepted")
-            .filter(TeammateRequest.review_sent.is_(False))
-            .filter(TeammateRequest.accepted_at.isnot(None))
-            .filter(TeammateRequest.accepted_at <= cutoff)
-            .order_by(TeammateRequest.accepted_at.asc())
-            .limit(BATCH_SIZE)
-            .all()
-        )
+        rows = session.execute(
+            text(
+                """
+                SELECT id, from_user_id, to_user_id
+                FROM teammate_requests
+                WHERE status = 'accepted'
+                  AND review_sent = FALSE
+                  AND accepted_at IS NOT NULL
+                  AND accepted_at <= :cutoff
+                ORDER BY accepted_at ASC
+                LIMIT :batch_size
+                """
+            ),
+            {"cutoff": cutoff, "batch_size": BATCH_SIZE},
+        ).fetchall()
 
-    if not due:
+    if not rows:
         return 0
 
-    logger.info("[tm_notifier] %d request(s) due for reminder", len(due))
+    logger.info("[tm_notifier] %d request(s) due for reminder", len(rows))
 
     sent_count = 0
     async with httpx.AsyncClient() as client:
-        for req in due:
+        for row in rows:
+            req_id, from_user_id, to_user_id = row[0], row[1], row[2]
+
             # 2) Атомарный claim — UPDATE … WHERE review_sent=FALSE.
-            # ORM-update возвращает rowcount; rowcount=0 значит, что флаг
-            # уже выставил другой воркер (или ручная правка в БД).
+            #    rowcount=0 значит, что флаг уже выставлен (другой воркер,
+            #    ручная правка). Тогда мы НЕ пытаемся слать повторно.
             with SessionLocal() as session:
-                rowcount = (
-                    session.query(TeammateRequest)
-                    .filter(TeammateRequest.id == req.id)
-                    .filter(TeammateRequest.review_sent.is_(False))
-                    .update({"review_sent": True}, synchronize_session=False)
+                result = session.execute(
+                    text(
+                        """
+                        UPDATE teammate_requests
+                        SET review_sent = TRUE
+                        WHERE id = :id AND review_sent = FALSE
+                        """
+                    ),
+                    {"id": req_id},
                 )
+                rowcount = result.rowcount
                 session.commit()
 
             if not rowcount:
                 continue
 
             # 3) У каждого участника свой target — оцениваешь ДРУГОГО.
-            url_for_from = _review_url(req.id, req.to_user_id)
-            url_for_to   = _review_url(req.id, req.from_user_id)
+            url_for_from = _review_url(req_id, to_user_id)
+            url_for_to   = _review_url(req_id, from_user_id)
 
-            ok_from = await _send_review_reminder(client, req.from_user_id, url_for_from)
-            ok_to   = await _send_review_reminder(client, req.to_user_id,   url_for_to)
+            ok_from = await _send_review_reminder(client, from_user_id, url_for_from)
+            ok_to   = await _send_review_reminder(client, to_user_id,   url_for_to)
 
             if ok_from or ok_to:
                 sent_count += 1
                 logger.info(
                     "[tm_notifier] request=%d notified: from_user=%s to_user=%s",
-                    req.id, ok_from, ok_to,
+                    req_id, ok_from, ok_to,
                 )
             else:
                 # 4) Полный отказ обоих — откатываем флаг, попробуем ещё раз
@@ -177,13 +197,20 @@ async def process_pending_reviews() -> int:
                 # юзера заблокировали бота, или сетевая ошибка httpx.
                 # Частичный успех НЕ откатываем — иначе при ретрае спам успешному.
                 with SessionLocal() as session:
-                    session.query(TeammateRequest) \
-                        .filter(TeammateRequest.id == req.id) \
-                        .update({"review_sent": False}, synchronize_session=False)
+                    session.execute(
+                        text(
+                            """
+                            UPDATE teammate_requests
+                            SET review_sent = FALSE
+                            WHERE id = :id
+                            """
+                        ),
+                        {"id": req_id},
+                    )
                     session.commit()
                 logger.warning(
                     "[tm_notifier] both sends failed for request=%d, "
-                    "rolled back for retry next cycle", req.id,
+                    "rolled back for retry next cycle", req_id,
                 )
 
     return sent_count
