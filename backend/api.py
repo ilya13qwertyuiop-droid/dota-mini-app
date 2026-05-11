@@ -1886,6 +1886,7 @@ async def _tm_send_bot_message(
     chat_id: int,
     text: str,
     with_open_button: bool = False,
+    open_button_url: str | None = None,
 ) -> None:
     """Шлёт сообщение пользователю через Bot API. Fire-and-forget: любая ошибка
     логируется, исключения наружу не выбрасываются — отправка нотификации
@@ -1893,6 +1894,10 @@ async def _tm_send_bot_message(
 
     Использует тот же raw-httpx-подход, что и /check-subscription выше (минуя
     python-telegram-bot Application, который живёт в отдельном процессе bot.py).
+
+    `open_button_url` — кастомный URL для кнопки "Открыть" (например, с
+    query-параметром для deep-link'а внутри миниапа). Если не задан и
+    `with_open_button=True`, используется _TM_MINI_APP_URL как есть.
     """
     if not BOT_TOKEN:
         logger.warning("[tm_notify] BOT_TOKEN missing; skip chat_id=%s", chat_id)
@@ -1903,12 +1908,14 @@ async def _tm_send_bot_message(
         "text": text,
         "disable_web_page_preview": True,
     }
-    if with_open_button and _TM_MINI_APP_URL:
-        payload["reply_markup"] = {
-            "inline_keyboard": [[
-                {"text": "Открыть", "web_app": {"url": _TM_MINI_APP_URL}},
-            ]],
-        }
+    if with_open_button:
+        btn_url = open_button_url or _TM_MINI_APP_URL
+        if btn_url:
+            payload["reply_markup"] = {
+                "inline_keyboard": [[
+                    {"text": "Открыть", "web_app": {"url": btn_url}},
+                ]],
+            }
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.post(url, json=payload)
@@ -2210,10 +2217,16 @@ async def api_teammates_request_create(
 
     # Telegram-уведомление получателю. Fire-and-forget: если упадёт —
     # запрос всё равно создан, просто без push'а.
+    # ?tm_incoming=1 — deep-link, чтобы по тапу на кнопку фронт сразу
+    # переключился на вкладку "Мой профиль" со списком входящих.
+    incoming_url = (
+        f"{_TM_MINI_APP_URL}?tm_incoming=1" if _TM_MINI_APP_URL else None
+    )
     await _tm_send_bot_message(
         chat_id=data.to_user_id,
         text="👋 Кто-то хочет играть с тобой! Зайди и посмотри входящие запросы.",
         with_open_button=True,
+        open_button_url=incoming_url,
     )
 
     return {"ok": True, "request_id": req.id}
