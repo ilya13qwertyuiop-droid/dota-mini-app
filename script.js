@@ -6752,7 +6752,7 @@ function _drafterCommentText(c) {
     var _tm = {
         myProfile: null,
         filters: {
-            rank: '',
+            ranks: [],          // мультивыбор как positions
             positions: [],
             game_modes: [],
             microphone: false,
@@ -6980,7 +6980,7 @@ function _drafterCommentText(c) {
         try {
             var params = new URLSearchParams();
             params.set('token', _tmGetToken());
-            if (_tm.filters.rank) params.set('rank', _tm.filters.rank);
+            if (_tm.filters.ranks.length) params.set('ranks', _tm.filters.ranks.join(','));
             if (_tm.filters.positions.length) params.set('positions', _tm.filters.positions.join(','));
             if (_tm.filters.game_modes.length) params.set('game_modes', _tm.filters.game_modes.join(','));
             if (_tm.filters.microphone) params.set('microphone', '1');
@@ -7150,15 +7150,16 @@ function _drafterCommentText(c) {
     }
 
     function renderFilters() {
-        // Ранги: одна горизонтальная ряка из 8 медалек.
+        // Ранги: мультивыбор — каждый выбранный отмечен independently.
         var rankWrap = document.getElementById('tm-filter-rank');
         if (rankWrap) {
-            var rankActive = _tm.filters.rank;
+            var rankSet = {};
+            for (var rIdx = 0; rIdx < _tm.filters.ranks.length; rIdx++) rankSet[_tm.filters.ranks[rIdx]] = true;
             rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
                 var tier = i + 1;
                 return _tmFchip({
                     variant: 'icon',
-                    active: r === rankActive,
+                    active: !!rankSet[r],
                     onclick: 'tmToggleFilterRank(\'' + _tmEsc(r) + '\')',
                     title: r,
                     label: r,
@@ -7217,24 +7218,66 @@ function _drafterCommentText(c) {
         _tmRenderFilterChips();
     }
 
-    // Активные фильтры показываются в свёрнутом баре как чипы. Один чип на
-    // «категорию» фильтра (не на каждое значение), чтобы тап по × очищал
-    // ровно одну категорию без мелочной хирургии.
+    // Активные фильтры в свёрнутом баре. Две формы:
+    //   kind='icon' — квадратный 24×24 тайл (medal/pos image или phosphor icon).
+    //                 Один тайл на каждое выбранное значение (ranks/positions
+    //                 показываются по-одному; тап убирает конкретное значение).
+    //   kind='text' — длинный pill с текстом + ×. Используется для game_modes
+    //                 (одна категория с агрегированным списком).
     function _tmActiveFilterChips() {
         var chips = [];
-        if (_tm.filters.rank) {
-            chips.push({ type: 'rank', label: _tm.filters.rank });
-        }
-        if (_tm.filters.positions.length) {
-            var ps = _tm.filters.positions.slice().sort(function (a, b) { return a - b; }).join(', ');
-            chips.push({ type: 'positions', label: 'Поз ' + ps });
-        }
+
+        // Ranks: один icon-тайл на каждый выбранный ранг — medal_N.png.
+        _tm.filters.ranks.forEach(function (r) {
+            var tier = TM_RANKS.indexOf(r) + 1;
+            if (tier < 1) return;
+            chips.push({
+                kind: 'icon',
+                label: r,
+                content: '<img src="/rank_icons/medal_' + tier + '.png" alt="" onerror="this.style.display=\'none\'">',
+                onclick: 'tmRemoveFilterValue(event, \'ranks\', \'' + _tmEsc(r) + '\')',
+            });
+        });
+
+        // Positions: один icon-тайл на каждую выбранную позицию.
+        _tm.filters.positions.slice().sort(function (a, b) { return a - b; }).forEach(function (p) {
+            chips.push({
+                kind: 'icon',
+                label: 'Позиция ' + p,
+                content: '<img src="' + _tmPosIcon(p) + '" alt="">',
+                onclick: 'tmRemoveFilterValue(event, \'positions\', ' + p + ')',
+            });
+        });
+
+        // Modes: один text-pill на всю категорию (агрегированный список).
         if (_tm.filters.game_modes.length) {
             var modeNames = _tm.filters.game_modes.map(function (m) { return TM_MODE_LABELS[m] || m; }).join(', ');
-            chips.push({ type: 'game_modes', label: modeNames });
+            chips.push({
+                kind: 'text',
+                label: modeNames,
+                content: _tmEsc(modeNames),
+                onclick: 'tmClearFilter(event, \'game_modes\')',
+            });
         }
-        if (_tm.filters.microphone) chips.push({ type: 'microphone', label: 'Микрофон' });
-        if (_tm.filters.discord)    chips.push({ type: 'discord',    label: 'Discord' });
+
+        // Microphone / Discord: icon-only (phosphor 14px).
+        if (_tm.filters.microphone) {
+            chips.push({
+                kind: 'icon',
+                label: 'Микрофон',
+                content: '<i class="ph ph-microphone" aria-hidden="true"></i>',
+                onclick: 'tmClearFilter(event, \'microphone\')',
+            });
+        }
+        if (_tm.filters.discord) {
+            chips.push({
+                kind: 'icon',
+                label: 'Discord',
+                content: '<i class="ph ph-discord-logo" aria-hidden="true"></i>',
+                onclick: 'tmClearFilter(event, \'discord\')',
+            });
+        }
+
         return chips;
     }
 
@@ -7242,15 +7285,23 @@ function _drafterCommentText(c) {
         var chips = _tmActiveFilterChips();
         var hasActive = chips.length > 0;
 
-        // Read-only трейл в баре. CSS скрывает родителя через .tm-filters--open
-        // и через :empty — нам остаётся лишь поставить актуальный HTML.
         var wrap = document.getElementById('tm-filters-active-chips');
         if (wrap) {
             wrap.innerHTML = chips.map(function (c) {
-                return '<button type="button" class="tm-filter-chip-active" ' +
-                    'onclick="tmClearFilter(event, \'' + c.type + '\')" ' +
+                var cls = 'tm-filter-chip-active tm-filter-chip-active--' + c.kind;
+                if (c.kind === 'icon') {
+                    return '<button type="button" class="' + cls + '" ' +
+                        'onclick="' + c.onclick + '" ' +
+                        'title="' + _tmEsc(c.label) + '" ' +
+                        'aria-label="Убрать фильтр: ' + _tmEsc(c.label) + '">' +
+                        c.content +
+                    '</button>';
+                }
+                // text-вариант: pill с лейблом и × справа
+                return '<button type="button" class="' + cls + '" ' +
+                    'onclick="' + c.onclick + '" ' +
                     'aria-label="Убрать фильтр: ' + _tmEsc(c.label) + '">' +
-                    '<span class="tm-filter-chip-active-label">' + _tmEsc(c.label) + '</span>' +
+                    '<span class="tm-filter-chip-active-label">' + c.content + '</span>' +
                     '<span class="tm-filter-chip-active-x" aria-hidden="true">×</span>' +
                 '</button>';
             }).join('');
@@ -7266,11 +7317,9 @@ function _drafterCommentText(c) {
             }
         }
 
-        // Reset виден только когда панель открыта И есть активные фильтры.
         var resetEl = document.getElementById('tm-filters-reset');
         if (resetEl) resetEl.hidden = !(_tm.filtersOpen && hasActive);
 
-        // Tint caret/icon когда есть активные. Без funnel — это уже не нужно.
         var grp = document.getElementById('tm-filters-toggle-group');
         if (grp) grp.classList.toggle('tm-filters-toggle-group--active', hasActive);
     }
@@ -7302,8 +7351,8 @@ function _drafterCommentText(c) {
 
     window.tmClearFilter = function (ev, type) {
         if (ev && ev.stopPropagation) ev.stopPropagation();
-        if (type === 'rank')           _tm.filters.rank = '';
-        else if (type === 'positions') _tm.filters.positions = [];
+        if (type === 'ranks')           _tm.filters.ranks = [];
+        else if (type === 'positions')  _tm.filters.positions = [];
         else if (type === 'game_modes') _tm.filters.game_modes = [];
         else if (type === 'microphone') _tm.filters.microphone = false;
         else if (type === 'discord')    _tm.filters.discord = false;
@@ -7311,9 +7360,22 @@ function _drafterCommentText(c) {
         loadFeed(true);
     };
 
+    // Точечное удаление ОДНОГО значения из мульти-фильтра (rank или position):
+    // тап по конкретному chip-тайлу убирает именно его, остальные остаются.
+    window.tmRemoveFilterValue = function (ev, type, value) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        var arr = _tm.filters[type];
+        if (Array.isArray(arr)) {
+            var i = arr.indexOf(value);
+            if (i >= 0) arr.splice(i, 1);
+        }
+        renderFilters();
+        loadFeed(true);
+    };
+
     window.tmResetFilters = function (ev) {
         if (ev && ev.stopPropagation) ev.stopPropagation();
-        _tm.filters.rank = '';
+        _tm.filters.ranks = [];
         _tm.filters.positions = [];
         _tm.filters.game_modes = [];
         _tm.filters.microphone = false;
@@ -7323,7 +7385,9 @@ function _drafterCommentText(c) {
     };
 
     window.tmToggleFilterRank = function (rank) {
-        _tm.filters.rank = (_tm.filters.rank === rank ? '' : rank);
+        var i = _tm.filters.ranks.indexOf(rank);
+        if (i >= 0) _tm.filters.ranks.splice(i, 1);
+        else _tm.filters.ranks.push(rank);
         renderFilters();
         loadFeed(true);
     };

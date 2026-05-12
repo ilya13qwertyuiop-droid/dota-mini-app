@@ -2115,7 +2115,7 @@ async def api_teammates_search_stop(
 @app.get("/api/teammates/feed")
 async def api_teammates_feed(
     token: str,
-    rank: str | None = None,
+    ranks: str | None = None,
     positions: str | None = None,
     game_modes: str | None = None,
     microphone: bool | None = None,
@@ -2147,10 +2147,14 @@ async def api_teammates_feed(
         .filter(DBTeammateProfile.user_id != user_id)
     )
 
-    if rank:
-        if rank not in _TM_VALID_RANKS:
-            raise HTTPException(status_code=422, detail="invalid rank")
-        q = q.filter(DBTeammateProfile.rank == rank)
+    # Ranks — мультивыбор, comma-separated (как и positions / game_modes).
+    if ranks:
+        rank_set = {r.strip() for r in ranks.split(",") if r.strip()}
+        invalid = rank_set - _TM_VALID_RANKS
+        if invalid:
+            raise HTTPException(status_code=422, detail="invalid rank value(s)")
+        if rank_set:
+            q = q.filter(DBTeammateProfile.rank.in_(rank_set))
 
     # Boolean column filters — SQL-side, чтобы не тащить лишние строки в Python.
     if microphone:
