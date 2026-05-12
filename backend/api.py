@@ -2118,6 +2118,8 @@ async def api_teammates_feed(
     rank: str | None = None,
     positions: str | None = None,
     game_modes: str | None = None,
+    microphone: bool | None = None,
+    discord: bool | None = None,
     limit: int = Query(default=20, ge=1, le=50),
     cursor: int | None = None,
     db: Session = Depends(get_db),
@@ -2129,6 +2131,11 @@ async def api_teammates_feed(
     Фильтры по позициям/режимам применяются в Python — JSON-операторы
     отличаются в SQLite и PostgreSQL, проще пост-фильтровать; активных в
     каждый момент <<50K, нагрузки это не создаёт.
+
+    Boolean-фильтры microphone/discord — если True, оставляем только тех,
+    у кого соответствующий флаг тоже True. False интерпретируется как
+    "нет фильтра" (мы не хотим активно исключать пользователей без микро,
+    они просто не приоритетны).
     """
     user_id = _tm_require_user(token)
     now = datetime.utcnow()
@@ -2144,6 +2151,12 @@ async def api_teammates_feed(
         if rank not in _TM_VALID_RANKS:
             raise HTTPException(status_code=422, detail="invalid rank")
         q = q.filter(DBTeammateProfile.rank == rank)
+
+    # Boolean column filters — SQL-side, чтобы не тащить лишние строки в Python.
+    if microphone:
+        q = q.filter(DBTeammateProfile.microphone == True)  # noqa: E712
+    if discord:
+        q = q.filter(DBTeammateProfile.discord == True)     # noqa: E712
 
     if cursor is not None:
         q = q.filter(DBTeammateProfile.user_id < cursor)

@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=145" />
+    <link rel="stylesheet" href="styles.css?v=146" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -951,14 +951,34 @@
           </button>
           <div class="tm-search-hint" id="tm-search-hint">Поиск длится 3 часа</div>
 
-          <div class="tm-filters">
-            <div class="tm-filter-row">
-              <span class="tm-filter-label">Ранг</span>
-              <div class="tm-filter-rank-wrap" id="tm-filter-rank"></div>
+          <div class="tm-filters" id="tm-filters">
+            <div class="tm-filters-bar">
+              <button type="button" id="tm-filters-toggle" class="tm-filters-toggle" onclick="tmToggleFilters()" aria-expanded="false" aria-controls="tm-filters-panel">
+                <i class="ph ph-funnel" aria-hidden="true"></i>
+                <span>Фильтры</span>
+                <span class="tm-filters-toggle-count" id="tm-filters-toggle-count" hidden></span>
+              </button>
+              <div class="tm-filters-active-chips" id="tm-filters-active-chips"></div>
             </div>
-            <div class="tm-filter-row">
-              <span class="tm-filter-label">Позиции</span>
-              <div class="tm-filter-pos-wrap" id="tm-filter-pos"></div>
+            <div class="tm-filters-panel" id="tm-filters-panel" role="region" aria-label="Фильтры">
+              <div class="tm-filters-panel-inner">
+                <div class="tm-filter-row">
+                  <span class="tm-filter-label">Ранг</span>
+                  <div class="tm-filter-rank-wrap" id="tm-filter-rank"></div>
+                </div>
+                <div class="tm-filter-row">
+                  <span class="tm-filter-label">Позиции</span>
+                  <div class="tm-filter-pos-wrap" id="tm-filter-pos"></div>
+                </div>
+                <div class="tm-filter-row">
+                  <span class="tm-filter-label">Режим</span>
+                  <div class="tm-filter-modes-wrap" id="tm-filter-modes"></div>
+                </div>
+                <div class="tm-filter-row">
+                  <span class="tm-filter-label">Связь</span>
+                  <div class="tm-filter-comms-wrap" id="tm-filter-comms"></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1200,6 +1220,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=175"></script>
+    <script defer src="script.js?v=176"></script>
   </body>
 </html>
