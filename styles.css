@@ -3954,6 +3954,14 @@ margin-top: var(--space-4);
   transform: translateY(0);
 }
 
+/* Положительный вариант — зелёный. Перекрывает дефолтные красные border/color.
+   Дизайн-токены проекта уже определяют --positive (#3db87a); если воркер
+   тест-енв окажется без них, fallback на #4CAF50 удержит контракт. */
+.app-toast.app-toast--ok {
+  border-color: var(--positive, #4CAF50);
+  color: var(--positive, #4CAF50);
+}
+
 /* ========== ДРАФТЕР ========== */
 
 .drafter-top-bar {
@@ -7065,6 +7073,7 @@ margin-top: var(--space-4);
   font-weight: var(--font-regular);
 }
 
+
 /* Inputs */
 .tm-input {
   appearance: none;
@@ -7645,3 +7654,142 @@ margin-top: var(--space-4);
   from { transform: rotate(0deg);   }
   to   { transform: rotate(360deg); }
 }
+
+/* ── Help-кнопка «?» в шапке и pulse-индикация для новичков ───────── */
+.tm-help-btn {
+  appearance: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-help-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.tm-help-btn i { font-size: 16px; line-height: 1; }
+
+/* Расширяющееся accent-кольцо. Анимация играет ровно 3 раза, потом
+   ::before остаётся в conclusive-стадии (opacity:0) — кнопка тихая.
+   Класс снимается JS-ом после animationend ИЛИ при первом тапе. */
+.tm-help-btn--pulse::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  animation: tmHelpPulse 1.8s ease-out 3;
+}
+@keyframes tmHelpPulse {
+  0%   { opacity: 0.55; transform: scale(1);    }
+  100% { opacity: 0;    transform: scale(1.35); }
+}
+
+/* ── Help bottom-sheet ────────────────────────────────────────────── */
+.tm-help-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.tm-help-sheet[hidden] { display: none; }
+.tm-help-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 10, 0.6);
+}
+.tm-help-panel {
+  position: relative;
+  width: 100%;
+  max-height: calc(var(--tg-viewport-height, 90vh) - 32px);
+  background: var(--bg-surface);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  padding: 10px var(--space-4) var(--space-5);
+  overflow: hidden;
+}
+.tm-help-grip {
+  width: 36px;
+  height: 4px;
+  background: var(--border-strong);
+  border-radius: 2px;
+  margin: 0 auto var(--space-3);
+  flex-shrink: 0;
+}
+.tm-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+}
+.tm-help-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.2;
+  margin: 0;
+}
+.tm-help-close {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.tm-help-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+.tm-help-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;          /* воздух под scrollbar */
+}
+.tm-help-section {
+  margin-bottom: var(--space-5);
+}
+.tm-help-section:last-child {
+  margin-bottom: var(--space-2);
+}
+.tm-help-section-title {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: var(--font-medium);
+  margin: 0 0 var(--space-2);
+}
+.tm-help-text {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: var(--leading-relaxed);
+  margin: 0 0 var(--space-2);
+}
+.tm-help-text:last-child { margin-bottom: 0; }

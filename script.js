@@ -5590,7 +5590,10 @@ function selectDrafterHero(heroId) {
 }
 
 var _toastTimer = null;
-function showToast(msg) {
+// kind: 'ok' — зелёный (положительные подтверждения); по умолчанию красный
+// (ошибки и состояния-блокировки). Существующие call sites без второго
+// аргумента остаются красными — это полностью backward-compatible.
+function showToast(msg, kind) {
     var el = document.getElementById('app-toast');
     if (!el) {
         el = document.createElement('div');
@@ -5599,6 +5602,10 @@ function showToast(msg) {
         document.body.appendChild(el);
     }
     el.textContent = msg;
+    // Чистим прошлый модификатор перед применением нового — иначе зелёный
+    // toast после красного «прилипает» к зелёной палитре до перерендера.
+    el.classList.remove('app-toast--ok');
+    if (kind === 'ok') el.classList.add('app-toast--ok');
     el.classList.add('app-toast--visible');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(function() {
@@ -6745,7 +6752,10 @@ function _drafterCommentText(c) {
 
     var TM_RANKS = ['Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
     var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
-    var TM_MOOD_LABELS = { win: 'На победу', fun: 'Фанюсь', stomp: 'Бущу' };
+    // Ключ `stomp` остался от прошлой версии («Бущу»). Семантика изменилась
+    // на «Под пивом» (chill) — данные старых юзеров не теряем, мигрировать
+    // ключ не нужно, меняем только display-label.
+    var TM_MOOD_LABELS = { win: 'На победу', fun: 'Фанюсь', stomp: 'Под пивом' };
     var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
     var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
 
@@ -6873,7 +6883,54 @@ function _drafterCommentText(c) {
         loadRequestsForTab(_tm.requestsTab);
         // Стартуем авто-обновление активной вкладки каждые 30 секунд.
         _tmStartPolling();
+        // Включаем pulse на «?» если юзер первый раз в разделе.
+        _tmInitHelpPulse();
     }
+
+    // ── Help-sheet «Как это работает» ─────────────────────────────────
+    // localStorage-флаг ставится либо при первом тапе (юзер сам нашёл),
+    // либо после полного цикла pulse-анимации (увидел и пропустил —
+    // повторно не дёргаем).
+
+    function _tmInitHelpPulse() {
+        var btn = document.getElementById('tm-help-btn');
+        if (!btn) return;
+        var seen = false;
+        try { seen = localStorage.getItem('tm_help_seen') === '1'; } catch (e) {}
+        if (seen) return;
+        btn.classList.add('tm-help-btn--pulse');
+        // После 3-х циклов animation (CSS: animation: ... 3) последняя
+        // итерация генерирует animationend. Тогда фиксируем «показано».
+        var onEnd = function (ev) {
+            // CSS на ::before-псевдо — animationend всплывёт от элемента
+            // владельца псевдо (button). Игнорируем чужие анимации.
+            if (ev && ev.animationName !== 'tmHelpPulse') return;
+            btn.removeEventListener('animationend', onEnd);
+            btn.classList.remove('tm-help-btn--pulse');
+            try { localStorage.setItem('tm_help_seen', '1'); } catch (e) {}
+        };
+        btn.addEventListener('animationend', onEnd);
+    }
+
+    window.tmOpenHelp = function () {
+        var sheet = document.getElementById('tm-help-sheet');
+        if (!sheet) return;
+        sheet.hidden = false;
+        sheet.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+        // Юзер сам нашёл и тапнул → pulse больше не нужен никогда.
+        var btn = document.getElementById('tm-help-btn');
+        if (btn) btn.classList.remove('tm-help-btn--pulse');
+        try { localStorage.setItem('tm_help_seen', '1'); } catch (e) {}
+    };
+
+    window.tmCloseHelp = function () {
+        var sheet = document.getElementById('tm-help-sheet');
+        if (!sheet) return;
+        sheet.hidden = true;
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    };
 
     // ── Auto-poll lifecycle ────────────────────────────────────────────
     // Останавливать polling при уходе со страницы тиммейтов мы НЕ через
@@ -7007,12 +7064,42 @@ function _drafterCommentText(c) {
         var loadMore = document.getElementById('tm-load-more');
         if (!list) return;
         if (!_tm.feedItems.length) {
-            list.innerHTML = '<div class="tm-feed-empty">Сейчас никто не ищет пати — попробуй сам включить поиск.</div>';
+            list.innerHTML = _tmFeedEmptyState();
             if (loadMore) loadMore.hidden = true;
             return;
         }
         list.innerHTML = _tm.feedItems.map(_renderPlayerCard).join('');
         if (loadMore) loadMore.hidden = !_tm.feedCursor;
+    }
+
+    // Состояние пустой ленты — зависит от профиля и статуса поиска.
+    // Один универсальный текст «попробуй сам включить поиск» был ложным
+    // в двух из трёх ситуаций: для юзера БЕЗ профиля «включи поиск» бессмыслен,
+    // а для юзера С активным поиском это вообще не релевантно.
+    function _tmFeedEmptyState() {
+        var profile = _tm.myProfile;
+        var hasProfile  = !!(profile && profile.rank);
+        var isSearching = _tmIsSearchingActive();
+
+        var msg;
+        if (!hasProfile) {
+            msg = 'Заполни профиль, чтобы видеть других игроков.';
+        } else if (!isSearching) {
+            msg = 'Сейчас никого нет. Включи поиск — твоя карточка появится в чужих лентах, и ты увидишь, кто ещё ищет тиммейтов.';
+        } else {
+            msg = 'Никто не подходит под фильтры. Попробуй убрать ограничения — лента сама обновляется каждые 30 секунд.';
+        }
+        return '<div class="tm-feed-empty">' + _tmEsc(msg) + '</div>';
+    }
+
+    // Single source of truth для «активен ли поиск прямо сейчас». Не доверяем
+    // только профильному флагу — бэк может его не успеть погасить, или мы
+    // открыли страницу с уже устаревшими данными в кэше.
+    function _tmIsSearchingActive() {
+        var p = _tm.myProfile;
+        if (!p || !p.is_searching || !p.search_expires_at) return false;
+        var exp = new Date(p.search_expires_at).getTime();
+        return isFinite(exp) && exp > Date.now();
     }
 
     function _renderPlayerCard(p, opts) {
@@ -7120,8 +7207,15 @@ function _drafterCommentText(c) {
                 body: JSON.stringify({ token: token, to_user_id: to_user_id })
             });
             if (resp.status === 409) { showToast('Запрос уже отправлен'); if (btn) btn.textContent = 'Уже отправлено'; return; }
+            if (resp.status === 429) {
+                var errData;
+                try { errData = await resp.json(); } catch (e) { errData = null; }
+                showToast((errData && errData.detail) || 'Слишком много запросов в ожидании');
+                if (btn) btn.disabled = false;
+                return;
+            }
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            showToast('Запрос отправлен');
+            showToast('Запрос отправлен', 'ok');
             if (btn) btn.textContent = 'Запрос отправлен';
         } catch (e) {
             console.warn('[tm] sendRequest:', e);
@@ -7417,15 +7511,56 @@ function _drafterCommentText(c) {
     };
 
     // ── Search toggle ───────────────────────────────────────────────────
+    var _tmSearchCountdownTimer = null;
+
     function renderSearchCta() {
         var btn = document.getElementById('tm-search-cta');
         var label = document.getElementById('tm-search-cta-label');
         if (!btn || !label) return;
-        var active = !!(_tm.myProfile && _tm.myProfile.is_searching);
+
+        // Stale-фильтр: если bool=true, но expiry прошёл — синхронизируемся
+        // на фронте сразу (не ждём следующего fetch профиля).
+        if (_tm.myProfile && _tm.myProfile.is_searching && !_tmIsSearchingActive()) {
+            _tm.myProfile.is_searching = false;
+        }
+        var active = _tmIsSearchingActive();
+
         label.textContent = active ? 'Поиск активен — остановить' : 'Искать пати';
         btn.classList.toggle('tm-search-cta--active', active);
+
         var hint = document.getElementById('tm-search-hint');
-        if (hint) hint.textContent = active ? 'Тебя видят другие игроки' : 'Поиск длится 3 часа';
+        if (hint) {
+            if (active) {
+                var minLeft = Math.max(0, Math.ceil(
+                    (new Date(_tm.myProfile.search_expires_at).getTime() - Date.now()) / 60000
+                ));
+                hint.textContent = 'Тебя видят другие · ещё ' + _tmFormatRemaining(minLeft);
+            } else {
+                hint.textContent = 'Поиск длится 3 часа';
+            }
+        }
+
+        // Тикер раз в минуту обновляет hint с убывающим временем. Когда
+        // поиск выключен (или истёк) — таймер останавливается.
+        _tmStopSearchCountdown();
+        if (active) {
+            _tmSearchCountdownTimer = setInterval(renderSearchCta, 60000);
+        }
+    }
+
+    function _tmStopSearchCountdown() {
+        if (_tmSearchCountdownTimer) {
+            clearInterval(_tmSearchCountdownTimer);
+            _tmSearchCountdownTimer = null;
+        }
+    }
+
+    function _tmFormatRemaining(minutes) {
+        if (minutes < 1)  return 'меньше минуты';
+        if (minutes < 60) return minutes + ' мин';
+        var h = Math.floor(minutes / 60);
+        var m = minutes % 60;
+        return m === 0 ? (h + ' ч') : (h + ' ч ' + m + ' мин');
     }
     window.tmToggleSearch = async function () {
         var token = _tmGetToken();
@@ -7698,7 +7833,7 @@ function _drafterCommentText(c) {
                 })
             });
             if (!resp.ok) { showToast('Не удалось сохранить'); return; }
-            showToast('Профиль сохранён');
+            showToast('Профиль сохранён', 'ok');
             // Сохраняем в локальное состояние, чтобы кнопка поиска корректно обновилась.
             _tm.myProfile = Object.assign({}, _tm.myProfile || {}, {
                 rank: rank, hours: hours, positions: positions, game_modes: game_modes,
@@ -7949,7 +8084,9 @@ function _drafterCommentText(c) {
                 body: JSON.stringify({ token: token, request_id: requestId, accept: !!accept })
             });
             if (!resp.ok) { showToast('Не удалось ответить'); return; }
-            showToast(accept ? 'Запрос принят' : 'Запрос отклонён');
+            // Accept — положительное действие (зелёный); decline — отрицательное (красный).
+            if (accept) showToast('Запрос принят', 'ok');
+            else        showToast('Запрос отклонён');
             // Optimistic: убираем из incoming сразу. Сервер-truth подтянем рефрешем.
             _tm.requestsData.incoming = _tm.requestsData.incoming.filter(function (x) {
                 return x.request_id !== requestId;
@@ -7978,7 +8115,7 @@ function _drafterCommentText(c) {
                 else showToast('Не удалось отменить');
                 return;
             }
-            showToast('Запрос отменён');
+            showToast('Запрос отменён', 'ok');
             _tm.requestsData.outgoing = _tm.requestsData.outgoing.filter(function (x) {
                 return x.request_id !== requestId;
             });
@@ -8072,7 +8209,7 @@ function _drafterCommentText(c) {
             });
             if (resp.status === 409) { showToast('Отзыв уже отправлен'); return; }
             if (!resp.ok) { showToast('Не удалось отправить отзыв'); return; }
-            showToast('Спасибо за отзыв');
+            showToast('Спасибо за отзыв', 'ok');
             _tm.reviewRequestId = null;
             _tm.reviewTargetUserId = null;
             _tm.reviewSelectedTags = [];

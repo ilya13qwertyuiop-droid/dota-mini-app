@@ -1829,6 +1829,9 @@ _TM_SEARCH_TTL_HOURS = 3
 _TM_ABOUT_MAX_LEN = 200
 _TM_MAX_FAVORITE_HEROES = 3
 _TM_HOURS_MAX = 100000
+# Soft-лимит на параллельные исходящие запросы. Защита от шотгана:
+# новичок не должен иметь возможность тапнуть «Позвать» на 50 карточках подряд.
+_TM_MAX_OUTGOING_PENDING = 10
 
 # Используется в inline-кнопке "Открыть" под уведомлением о новом запросе.
 # Если переменная не задана — уведомление всё равно уйдёт, но без кнопки.
@@ -1882,11 +1885,23 @@ def _tm_load_user_settings(db: Session, user_ids: list[int]) -> dict[int, dict]:
     return {r.user_id: (r.settings or {}) for r in rows}
 
 
+def _tm_html_safe(value: str | None) -> str:
+    """HTML-escape для безопасной интерполяции в parse_mode=HTML тексты.
+
+    First_name / username приходят из Telegram (валидируется на стороне TG),
+    но всё равно могут содержать `<`, `&`, `"` — без escape'а сообщение
+    отлетит с 400 от Bot API.
+    """
+    import html as _html
+    return _html.escape(value or "", quote=False)
+
+
 async def _tm_send_bot_message(
     chat_id: int,
     text: str,
     with_open_button: bool = False,
     open_button_url: str | None = None,
+    parse_mode: str | None = None,
 ) -> None:
     """Шлёт сообщение пользователю через Bot API. Fire-and-forget: любая ошибка
     логируется, исключения наружу не выбрасываются — отправка нотификации
@@ -1908,6 +1923,8 @@ async def _tm_send_bot_message(
         "text": text,
         "disable_web_page_preview": True,
     }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     if with_open_button:
         btn_url = open_button_url or _TM_MINI_APP_URL
         if btn_url:
@@ -2063,13 +2080,21 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         return None
+
+    # Stale-state нормализация: если is_searching=True но search_expires_at
+    # уже прошёл — лениво гасим флаг. Иначе UI показывает «поиск активен»,
+    # хотя бэк уже срезал объявление в /feed (lying UI).
+    if (profile.is_searching
+            and profile.search_expires_at
+            and profile.search_expires_at <= datetime.utcnow()):
+        profile.is_searching = False
+        db.commit()
+
     user_row = db.get(DBUserProfile, user_id)
     settings = (user_row.settings if user_row else None) or {}
     out = _tm_serialize_profile(profile, settings)
     out["is_searching"]      = bool(profile.is_searching)
     out["search_expires_at"] = profile.search_expires_at.isoformat() if profile.search_expires_at else None
-    # Теги — те же, что отдаёт публичный /profile/{user_id}, чтобы preview
-    # формы и карточка в ленте показывали одинаковый набор бейджей.
     out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
     return out
 
@@ -2229,6 +2254,21 @@ async def api_teammates_request_create(
     if existing is not None:
         raise HTTPException(status_code=409, detail="request already exists")
 
+    # Soft rate-limit на одновременные pending'и. Защита от ситуации, когда
+    # юзер тапает «Позвать» на 30 карточках подряд из любопытства — каждая
+    # генерит push, получатели не понимают что происходит.
+    pending_count = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.from_user_id == user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .count()
+    )
+    if pending_count >= _TM_MAX_OUTGOING_PENDING:
+        raise HTTPException(
+            status_code=429,
+            detail=f"У тебя уже {pending_count} запросов в ожидании. Дождись ответа или отмени старые.",
+        )
+
     req = DBTeammateRequest(
         from_user_id=user_id,
         to_user_id=data.to_user_id,
@@ -2240,18 +2280,28 @@ async def api_teammates_request_create(
     db.commit()
     db.refresh(req)
 
-    # Telegram-уведомление получателю. Fire-and-forget: если упадёт —
-    # запрос всё равно создан, просто без push'а.
-    # ?tm_incoming=1 — deep-link, чтобы по тапу на кнопку фронт сразу
-    # переключился на вкладку "Мой профиль" со списком входящих.
+    # Достаём имя отправителя для персонализации push'а. «Иван хочет играть»
+    # читается ощутимо лучше, чем «Кто-то хочет играть» — у получателя сразу
+    # есть контекст «о, это конкретный человек, открою посмотрю».
+    sender_row = db.get(DBUserProfile, user_id)
+    sender_settings = (sender_row.settings if sender_row else None) or {}
+    sender_name = (sender_settings.get("first_name") or "").strip() or "Игрок"
+
     incoming_url = (
         f"{_TM_MINI_APP_URL}?tm_incoming=1" if _TM_MINI_APP_URL else None
     )
+    # Шаблон оставлен максимально простым и легко-редактируемым — место для
+    # того, чтобы потом обогатить кастомными эмодзи / форматированием.
+    push_text = (
+        f"👋 <b>{_tm_html_safe(sender_name)}</b> хочет играть с тобой.\n\n"
+        f"Открой раздел тиммейтов, чтобы посмотреть запрос."
+    )
     await _tm_send_bot_message(
         chat_id=data.to_user_id,
-        text="👋 Кто-то хочет играть с тобой! Зайди и посмотри входящие запросы.",
+        text=push_text,
         with_open_button=True,
         open_button_url=incoming_url,
+        parse_mode="HTML",
     )
 
     return {"ok": True, "request_id": req.id}
@@ -2288,8 +2338,7 @@ async def api_teammates_request_respond(
     db.commit()
 
     if accepted:
-        # Подтягиваем имена/usernames обоих участников из user_profiles.settings
-        # и шлём каждому контакт другого. Если username нет — хвост опускаем.
+        # Подтягиваем имена / usernames обоих участников.
         settings_map = _tm_load_user_settings(db, [from_id, to_id])
         from_s = settings_map.get(from_id) or {}
         to_s   = settings_map.get(to_id)   or {}
@@ -2299,18 +2348,32 @@ async def api_teammates_request_respond(
         from_uname = (from_s.get("username") or "").lstrip("@").strip()
         to_uname   = (to_s.get("username")   or "").lstrip("@").strip()
 
-        from_uname_tail = f" @{from_uname}" if from_uname else ""
-        to_uname_tail   = f" @{to_uname}"   if to_uname   else ""
+        # Ключевое: tg://user?id=N открывает чат с пользователем НЕЗАВИСИМО
+        # от наличия у него username. Раньше при отсутствии @ хвост вообще
+        # пропадал — получатель видел «Напиши Иван — он ждёт» и не понимал
+        # куда писать. Теперь имя — это clickable-ссылка в любом случае.
+        from_link = f'<a href="tg://user?id={from_id}">{_tm_html_safe(from_name)}</a>'
+        to_link   = f'<a href="tg://user?id={to_id}">{_tm_html_safe(to_name)}</a>'
+        from_handle = f" (@{_tm_html_safe(from_uname)})" if from_uname else ""
+        to_handle   = f" (@{_tm_html_safe(to_uname)})"   if to_uname   else ""
 
-        # Отправителю — контакт принявшего.
+        # Шаблоны намеренно простые — место для будущей замены на
+        # custom-emoji / расширенное форматирование.
         await _tm_send_bot_message(
             chat_id=from_id,
-            text=f"✅ Твой запрос принят! Напиши {to_name} — он ждёт.{to_uname_tail}",
+            text=(
+                f"✅ <b>{_tm_html_safe(to_name)}</b> принял твой запрос.\n\n"
+                f"Напиши: {to_link}{to_handle}"
+            ),
+            parse_mode="HTML",
         )
-        # Принявшему — контакт отправителя.
         await _tm_send_bot_message(
             chat_id=to_id,
-            text=f"✅ Ты принял запрос! Напиши {from_name} — он ждёт.{from_uname_tail}",
+            text=(
+                f"✅ Ты принял запрос от <b>{_tm_html_safe(from_name)}</b>.\n\n"
+                f"Напиши: {from_link}{from_handle}"
+            ),
+            parse_mode="HTML",
         )
 
     return {"ok": True}
