@@ -6751,10 +6751,17 @@ function _drafterCommentText(c) {
 
     var _tm = {
         myProfile: null,
-        filters: { rank: '', positions: [] },
+        filters: {
+            rank: '',
+            positions: [],
+            game_modes: [],
+            microphone: false,
+            discord: false,
+        },
+        filtersOpen: false,                   // collapsed by default
         feedCursor: null,
         feedLoading: false,
-        favoriteHeroes: [],   // array of hero_id
+        favoriteHeroes: [],
         currentTab: 'feed',
         reviewRequestId: null,
         reviewTargetUserId: null,
@@ -6764,7 +6771,7 @@ function _drafterCommentText(c) {
         pollTimer: null,
 
         // ── Requests sub-tab state (внутри "Мой профиль") ────────────
-        requestsTab: 'incoming',              // 'incoming' | 'outgoing' | 'history'
+        requestsTab: 'incoming',
         requestsData:    { incoming: [], outgoing: [], history: [] },
         requestsLoading: { incoming: false, outgoing: false, history: false },
         historyCursor: null,
@@ -6975,6 +6982,9 @@ function _drafterCommentText(c) {
             params.set('token', _tmGetToken());
             if (_tm.filters.rank) params.set('rank', _tm.filters.rank);
             if (_tm.filters.positions.length) params.set('positions', _tm.filters.positions.join(','));
+            if (_tm.filters.game_modes.length) params.set('game_modes', _tm.filters.game_modes.join(','));
+            if (_tm.filters.microphone) params.set('microphone', '1');
+            if (_tm.filters.discord)    params.set('discord', '1');
             if (_tm.feedCursor) params.set('cursor', String(_tm.feedCursor));
             var resp = await apiFetch(TM_API + '/teammates/feed?' + params.toString());
             if (!resp.ok) {
@@ -7067,10 +7077,11 @@ function _drafterCommentText(c) {
             '</div>';
         }
 
-        // CTA: «Позвать» без arrow-icon. В preview — нейтральная подпись.
+        // CTA: «Позвать» в ленте. В preview — пусто: банер сверху уже
+        // объясняет «это превью», подпись внизу карточки была дублирующей.
         var ctaHtml;
         if (opts.self) {
-            ctaHtml = '<div class="tm-preview-self-label">Это твоя карточка в ленте</div>';
+            ctaHtml = '';
         } else {
             ctaHtml = '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Позвать</button>';
         }
@@ -7120,9 +7131,11 @@ function _drafterCommentText(c) {
     };
 
     // ── Filters ─────────────────────────────────────────────────────────
+
+    var TM_GAME_MODES_ORDER = ['ranked', 'normal', 'turbo'];
+
     function renderFilters() {
-        // Ранги: 8 кнопок-медалек 4×2 grid, только иконка + title (нативный
-        // tooltip), без текстовых лейблов — компактно и сканируется визуально.
+        // Ранги: 4×2 grid медалек.
         var rankWrap = document.getElementById('tm-filter-rank');
         if (rankWrap) {
             var active = _tm.filters.rank;
@@ -7137,19 +7150,121 @@ function _drafterCommentText(c) {
                 '</button>';
             }).join('');
         }
+        // Позиции: 5 кнопок.
         var posWrap = document.getElementById('tm-filter-pos');
         if (posWrap) {
-            var activeSet = {};
-            for (var i = 0; i < _tm.filters.positions.length; i++) activeSet[_tm.filters.positions[i]] = true;
+            var posSet = {};
+            for (var i = 0; i < _tm.filters.positions.length; i++) posSet[_tm.filters.positions[i]] = true;
             posWrap.innerHTML = [1,2,3,4,5].map(function (n) {
-                var cls = activeSet[n] ? 'tm-filter-pos-btn tm-filter-pos-btn--active' : 'tm-filter-pos-btn';
+                var cls = posSet[n] ? 'tm-filter-pos-btn tm-filter-pos-btn--active' : 'tm-filter-pos-btn';
                 return '<button type="button" class="' + cls + '" ' +
                     'title="Позиция ' + n + '" aria-label="Позиция ' + n + '" ' +
                     'onclick="tmToggleFilterPos(' + n + ')">' +
                     '<img src="' + _tmPosIcon(n) + '" alt=""></button>';
             }).join('');
         }
+        // Режимы: те же ключи, что в форме профиля.
+        var modesWrap = document.getElementById('tm-filter-modes');
+        if (modesWrap) {
+            var modeSet = {};
+            for (var j = 0; j < _tm.filters.game_modes.length; j++) modeSet[_tm.filters.game_modes[j]] = true;
+            modesWrap.innerHTML = TM_GAME_MODES_ORDER.map(function (m) {
+                var cls = modeSet[m] ? 'tm-filter-mode-btn tm-filter-mode-btn--active' : 'tm-filter-mode-btn';
+                return '<button type="button" class="' + cls + '" ' +
+                    'onclick="tmToggleFilterMode(\'' + _tmEsc(m) + '\')">' +
+                    _tmEsc(TM_MODE_LABELS[m] || m) +
+                '</button>';
+            }).join('');
+        }
+        // Связь: микро/дискорд (boolean toggles).
+        var commsWrap = document.getElementById('tm-filter-comms');
+        if (commsWrap) {
+            var micCls = _tm.filters.microphone ? 'tm-filter-comm-btn tm-filter-comm-btn--active' : 'tm-filter-comm-btn';
+            var dcCls  = _tm.filters.discord    ? 'tm-filter-comm-btn tm-filter-comm-btn--active' : 'tm-filter-comm-btn';
+            commsWrap.innerHTML =
+                '<button type="button" class="' + micCls + '" onclick="tmToggleFilterMic()">' +
+                    '<i class="ph ph-microphone-stage" aria-hidden="true"></i>Микрофон' +
+                '</button>' +
+                '<button type="button" class="' + dcCls + '" onclick="tmToggleFilterDiscord()">' +
+                    '<i class="ph ph-chats-circle" aria-hidden="true"></i>Discord' +
+                '</button>';
+        }
+
+        _tmRenderFilterChips();
     }
+
+    // Активные фильтры показываются в свёрнутом баре как чипы. Один чип на
+    // «категорию» фильтра (не на каждое значение), чтобы тап по × очищал
+    // ровно одну категорию без мелочной хирургии.
+    function _tmActiveFilterChips() {
+        var chips = [];
+        if (_tm.filters.rank) {
+            chips.push({ type: 'rank', label: _tm.filters.rank });
+        }
+        if (_tm.filters.positions.length) {
+            var ps = _tm.filters.positions.slice().sort(function (a, b) { return a - b; }).join(', ');
+            chips.push({ type: 'positions', label: 'Поз ' + ps });
+        }
+        if (_tm.filters.game_modes.length) {
+            var modeNames = _tm.filters.game_modes.map(function (m) { return TM_MODE_LABELS[m] || m; }).join(', ');
+            chips.push({ type: 'game_modes', label: modeNames });
+        }
+        if (_tm.filters.microphone) chips.push({ type: 'microphone', label: 'Микрофон' });
+        if (_tm.filters.discord)    chips.push({ type: 'discord',    label: 'Discord' });
+        return chips;
+    }
+
+    function _tmRenderFilterChips() {
+        var chips = _tmActiveFilterChips();
+        var wrap = document.getElementById('tm-filters-active-chips');
+        if (wrap) {
+            // Скрываем чипы когда панель открыта — там и так видно активное
+            // состояние на самих кнопках фильтров, дублирование не нужно.
+            wrap.hidden = _tm.filtersOpen || chips.length === 0;
+            wrap.innerHTML = chips.map(function (c) {
+                return '<button type="button" class="tm-filter-chip-active" ' +
+                    'onclick="tmClearFilter(\'' + c.type + '\')" ' +
+                    'aria-label="Убрать фильтр: ' + _tmEsc(c.label) + '">' +
+                    _tmEsc(c.label) +
+                    '<span class="tm-filter-chip-active-x" aria-hidden="true">×</span>' +
+                '</button>';
+            }).join('');
+        }
+        // Счётчик и подсветка toggle-кнопки.
+        var countEl = document.getElementById('tm-filters-toggle-count');
+        var toggleEl = document.getElementById('tm-filters-toggle');
+        if (countEl) {
+            if (chips.length > 0) {
+                countEl.textContent = chips.length;
+                countEl.hidden = false;
+            } else {
+                countEl.hidden = true;
+            }
+        }
+        if (toggleEl) {
+            toggleEl.classList.toggle('tm-filters-toggle--has-active', chips.length > 0);
+        }
+    }
+
+    window.tmToggleFilters = function () {
+        _tm.filtersOpen = !_tm.filtersOpen;
+        var panel = document.getElementById('tm-filters-panel');
+        var toggle = document.getElementById('tm-filters-toggle');
+        if (panel)  panel.classList.toggle('tm-filters-panel--open', _tm.filtersOpen);
+        if (toggle) toggle.setAttribute('aria-expanded', String(_tm.filtersOpen));
+        _tmRenderFilterChips();   // обновить видимость chip-строки
+    };
+
+    window.tmClearFilter = function (type) {
+        if (type === 'rank')         _tm.filters.rank = '';
+        else if (type === 'positions') _tm.filters.positions = [];
+        else if (type === 'game_modes') _tm.filters.game_modes = [];
+        else if (type === 'microphone') _tm.filters.microphone = false;
+        else if (type === 'discord')   _tm.filters.discord = false;
+        renderFilters();
+        loadFeed(true);
+    };
+
     window.tmToggleFilterRank = function (rank) {
         _tm.filters.rank = (_tm.filters.rank === rank ? '' : rank);
         renderFilters();
@@ -7159,6 +7274,23 @@ function _drafterCommentText(c) {
         var i = _tm.filters.positions.indexOf(p);
         if (i >= 0) _tm.filters.positions.splice(i, 1);
         else _tm.filters.positions.push(p);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterMode = function (m) {
+        var i = _tm.filters.game_modes.indexOf(m);
+        if (i >= 0) _tm.filters.game_modes.splice(i, 1);
+        else _tm.filters.game_modes.push(m);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterMic = function () {
+        _tm.filters.microphone = !_tm.filters.microphone;
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterDiscord = function () {
+        _tm.filters.discord = !_tm.filters.discord;
         renderFilters();
         loadFeed(true);
     };
