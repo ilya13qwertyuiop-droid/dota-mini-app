@@ -6583,14 +6583,11 @@ margin-top: var(--space-4);
 .tm-filters--open .tm-filters-active-chips { display: none; }
 .tm-filters-active-chips:empty { display: none; }
 
+/* База: формула цветов/рамки/состояний — общая для обоих вариантов. */
 .tm-filter-chip-active {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 4px 0 8px;
-  border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
   border: 1px solid var(--accent-border);
@@ -6602,10 +6599,40 @@ margin-top: var(--space-4);
   line-height: 1;
   white-space: nowrap;
   transition: background 0.15s;
-  max-width: 140px;
-  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 .tm-filter-chip-active:hover { background: rgba(107, 125, 179, 0.16); }
+
+/* Icon-variant: квадратный 24×24 тайл, тап = удалить. Без × — само
+   действие "тап по значку" очевидно. Иконка центрирована. */
+.tm-filter-chip-active--icon {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tm-filter-chip-active--icon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+}
+.tm-filter-chip-active--icon i {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Text-variant: длинный pill с лейблом и × (для game_modes). */
+.tm-filter-chip-active--text {
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: 999px;
+  gap: 4px;
+  max-width: 160px;
+  overflow: hidden;
+}
 .tm-filter-chip-active-label {
   overflow: hidden;
   text-overflow: ellipsis;
