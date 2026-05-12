@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=146" />
+    <link rel="stylesheet" href="styles.css?v=147" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -952,31 +952,34 @@
           <div class="tm-search-hint" id="tm-search-hint">Поиск длится 3 часа</div>
 
           <div class="tm-filters" id="tm-filters">
-            <div class="tm-filters-bar">
-              <button type="button" id="tm-filters-toggle" class="tm-filters-toggle" onclick="tmToggleFilters()" aria-expanded="false" aria-controls="tm-filters-panel">
-                <i class="ph ph-funnel" aria-hidden="true"></i>
+            <div class="tm-filters-bar" id="tm-filters-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="tm-filters-panel" onclick="tmToggleFilters(event)" onkeydown="tmFiltersBarKeydown(event)">
+              <span id="tm-filters-toggle-group" class="tm-filters-toggle-group">
+                <i class="ph ph-caret-down" aria-hidden="true"></i>
                 <span>Фильтры</span>
                 <span class="tm-filters-toggle-count" id="tm-filters-toggle-count" hidden></span>
-              </button>
+              </span>
               <div class="tm-filters-active-chips" id="tm-filters-active-chips"></div>
+              <button type="button" id="tm-filters-reset" class="tm-filters-reset" onclick="tmResetFilters(event)" hidden>Сбросить</button>
             </div>
             <div class="tm-filters-panel" id="tm-filters-panel" role="region" aria-label="Фильтры">
               <div class="tm-filters-panel-inner">
-                <div class="tm-filter-row">
-                  <span class="tm-filter-label">Ранг</span>
-                  <div class="tm-filter-rank-wrap" id="tm-filter-rank"></div>
-                </div>
-                <div class="tm-filter-row">
-                  <span class="tm-filter-label">Позиции</span>
-                  <div class="tm-filter-pos-wrap" id="tm-filter-pos"></div>
-                </div>
-                <div class="tm-filter-row">
-                  <span class="tm-filter-label">Режим</span>
-                  <div class="tm-filter-modes-wrap" id="tm-filter-modes"></div>
-                </div>
-                <div class="tm-filter-row">
-                  <span class="tm-filter-label">Связь</span>
-                  <div class="tm-filter-comms-wrap" id="tm-filter-comms"></div>
+                <div class="tm-filters-panel-content">
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Ранг</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-rank"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Позиция</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-pos"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Режим</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-modes"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Связь</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-comms"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1220,6 +1223,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=176"></script>
+    <script defer src="script.js?v=177"></script>
   </body>
 </html>
