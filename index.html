@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=148" />
+    <link rel="stylesheet" href="styles.css?v=151" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -936,6 +936,9 @@
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
           </button>
           <div class="tm-page-title">Поиск тиммейтов</div>
+          <button type="button" id="tm-help-btn" class="tm-help-btn" onclick="tmOpenHelp()" aria-label="Как это работает">
+            <i class="ph ph-question" aria-hidden="true"></i>
+          </button>
         </div>
 
         <div class="tm-tabs" role="tablist" aria-label="Разделы поиска тиммейтов">
@@ -1069,9 +1072,9 @@
             <div class="tm-form-row">
               <div class="tm-form-label">Настрой</div>
               <div class="tm-mood">
-                <button type="button" class="tm-mood-btn" data-mood="win" onclick="tmSetMood('win')">На победу</button>
-                <button type="button" class="tm-mood-btn" data-mood="fun" onclick="tmSetMood('fun')">Фанюсь</button>
-                <button type="button" class="tm-mood-btn" data-mood="stomp" onclick="tmSetMood('stomp')">Бущу</button>
+                <button type="button" class="tm-mood-btn" data-mood="win"   onclick="tmSetMood('win')">На победу</button>
+                <button type="button" class="tm-mood-btn" data-mood="fun"   onclick="tmSetMood('fun')">Фанюсь</button>
+                <button type="button" class="tm-mood-btn" data-mood="stomp" onclick="tmSetMood('stomp')">Под пивом</button>
               </div>
             </div>
 
@@ -1149,6 +1152,53 @@
         <button id="tm-review-submit" class="tm-primary-btn" onclick="tmSubmitReview()">Отправить отзыв</button>
       </div>
 
+      <!-- Help-sheet раздела тиммейтов: единственное место для feature-level
+           объяснений. Открывается тапом по «?» в шапке. -->
+      <div id="tm-help-sheet" class="tm-help-sheet" hidden aria-hidden="true">
+        <div class="tm-help-backdrop" onclick="tmCloseHelp()"></div>
+        <div class="tm-help-panel" role="dialog" aria-modal="true" aria-labelledby="tm-help-title">
+          <div class="tm-help-grip" aria-hidden="true"></div>
+          <div class="tm-help-header">
+            <h2 class="tm-help-title" id="tm-help-title">Как это работает</h2>
+            <button type="button" class="tm-help-close" onclick="tmCloseHelp()" aria-label="Закрыть">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="tm-help-content">
+            <section class="tm-help-section">
+              <h3 class="tm-help-section-title">Что это</h3>
+              <p class="tm-help-text">Раздел, чтобы найти с кем поиграть в Dota 2. Заполняешь профиль, включаешь поиск — другие игроки видят тебя в ленте, ты их. Понравился кто-то — нажимаешь «Позвать». Если он согласится, оба получите ссылку друг на друга в этом боте.</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h3 class="tm-help-section-title">Профиль</h3>
+              <p class="tm-help-text">Профиль виден другим игрокам только когда ты включил поиск. Без поиска он виден только тебе.</p>
+              <p class="tm-help-text">Ранг и позиции помогают понять, подходишь ли по уровню. Настрой — про твой стиль на эту сессию: на победу, пофаниться или под пивко. Часы, герои и текст о себе — необязательны, но дают людям больше контекста.</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h3 class="tm-help-section-title">Поиск</h3>
+              <p class="tm-help-text">Включаешь — следующие 3 часа твоя карточка появляется в чужих лентах. Можешь выключить раньше или подождать до конца.</p>
+              <p class="tm-help-text">Ограничение в 3 часа нужно чтобы в лентах не висели те, кто давно отошёл от компа. Если хочешь искать дальше — просто нажми снова. Поиск остаётся активным даже если ты вышел из мини-аппа.</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h3 class="tm-help-section-title">Запросы</h3>
+              <p class="tm-help-text">Нажал «Позвать» — игрок получит уведомление от бота. Дальше он либо принимает, либо отклоняет. Если принял — вы оба получаете ссылку друг на друга, можно списываться.</p>
+              <p class="tm-help-text">Свои отправленные запросы видишь во вкладке «Мой профиль» → «Исходящие». Там же можно отменить тот, на который передумал ждать ответ.</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h3 class="tm-help-section-title">Отзывы</h3>
+              <p class="tm-help-text">Через 90 минут после того как ты принял запрос (или твой запрос приняли), бот предложит оценить тиммейта.</p>
+              <p class="tm-help-text">Отзывы анонимные — получатель видит только сумму голосов, не кто их поставил. Это помогает другим игрокам понимать, с кем стоит играть, а с кем нет.</p>
+            </section>
+          </div>
+        </div>
+      </div>
+
       <!-- Нижняя навигация -->
       <nav class="bottom-nav" aria-label="Основная навигация">
         <div class="nav-item active" onclick="switchPage('home', event)">
@@ -1223,6 +1273,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=178"></script>
+    <script defer src="script.js?v=181"></script>
   </body>
 </html>
