@@ -6507,57 +6507,60 @@ margin-top: var(--space-4);
   font-weight: var(--font-medium);
 }
 
-/* ── Filters: collapsed bar + expandable panel ─────────────────────
-   Свёрнутое (default): только bar — toggle "Фильтры" + активные чипы.
-   Развёрнутое: добавляется panel с полным набором кнопок.
-   Анимация — grid-template-rows 0fr ↔ 1fr (не height) — animation
-   transform-уровня, без layout-trash. */
-.tm-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-bottom: var(--space-4);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-}
+/* ── Filters: единая «карточка-контрол» с двумя состояниями ─────────
+   collapsed: bar с chevron + «Фильтры» + count + read-only трейл активных чипов
+   expanded:  тот же bar + hairline-разделитель + 4 ряка чипов
+   Все 4 категории фильтров используют ОДИН класс .tm-fchip с тремя
+   content-модификаторами (--icon / --text / --mixed). Высота 32px одна,
+   формула рамки/фона/active одна, только контент разный. */
 
+.tm-filters {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.tm-filters--open { border-color: var(--border-strong); }
+
+/* Bar — всегда видимая верхняя строка. Кликабельна целиком (toggle),
+   кроме внутренних × у активных чипов (stopPropagation на JS-стороне). */
 .tm-filters-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-height: 32px;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 40px;
+  transition: background 0.15s;
 }
+.tm-filters-bar:hover { background: rgba(255, 255, 255, 0.025); }
 
-/* Toggle-кнопка «Фильтры». Ghost-стиль, в стиле tm-refresh-btn. */
-.tm-filters-toggle {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
+.tm-filters-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: var(--text-xs);
   font-weight: var(--font-medium);
   letter-spacing: var(--tracking-tight);
-  padding: 5px 10px 5px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-  -webkit-tap-highlight-color: transparent;
-  white-space: nowrap;
   flex-shrink: 0;
+  user-select: none;
 }
-.tm-filters-toggle:hover { color: var(--text-primary); border-color: var(--border-strong); }
-.tm-filters-toggle--has-active {
-  color: var(--text-primary);
-  border-color: var(--accent-border);
+.tm-filters-toggle-group i {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  transition: transform 0.25s cubic-bezier(0.165, 0.84, 0.44, 1), color 0.15s;
 }
-.tm-filters-toggle--has-active i { color: var(--accent); }
-.tm-filters-toggle i { font-size: 13px; line-height: 1; }
+.tm-filters--open .tm-filters-toggle-group i {
+  transform: rotate(180deg);
+  color: var(--text-secondary);
+}
+.tm-filters-toggle-group--active i { color: var(--accent); }
 .tm-filters-toggle-count {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -6566,8 +6569,9 @@ margin-top: var(--space-4);
   font-weight: var(--font-semibold);
   margin-left: 1px;
 }
+.tm-filters-toggle-count[hidden] { display: none; }
 
-/* Активные фильтры — компактные accent-чипы со встроенной кнопкой ×. */
+/* Read-only трейл активных фильтров — компактные accent-чипы 22px. */
 .tm-filters-active-chips {
   display: flex;
   flex-wrap: wrap;
@@ -6576,13 +6580,16 @@ margin-top: var(--space-4);
   flex: 1;
   min-width: 0;
 }
-.tm-filters-active-chips[hidden] { display: none; }
+.tm-filters--open .tm-filters-active-chips { display: none; }
+.tm-filters-active-chips:empty { display: none; }
+
 .tm-filter-chip-active {
   appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 4px 3px 10px;
+  height: 22px;
+  padding: 0 4px 0 8px;
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
@@ -6592,14 +6599,18 @@ margin-top: var(--space-4);
   font-weight: var(--font-medium);
   letter-spacing: var(--tracking-tight);
   cursor: pointer;
-  line-height: 1.3;
+  line-height: 1;
   white-space: nowrap;
   transition: background 0.15s;
-  max-width: 160px;
+  max-width: 140px;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tm-filter-chip-active:hover { background: rgba(107, 125, 179, 0.16); }
+.tm-filter-chip-active-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tm-filter-chip-active-x {
   display: inline-flex;
   align-items: center;
@@ -6608,59 +6619,79 @@ margin-top: var(--space-4);
   height: 14px;
   border-radius: 50%;
   background: rgba(107, 125, 179, 0.20);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
   flex-shrink: 0;
 }
 
-/* Сама раскладывающаяся панель — grid с переключением template-rows. */
+/* Кнопка "Сбросить" — видна только когда панель открыта И что-то выбрано. */
+.tm-filters-reset {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-tight);
+  padding: 4px 8px;
+  margin-left: auto;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.tm-filters-reset:hover { color: var(--negative); background: var(--negative-soft); }
+.tm-filters-reset[hidden] { display: none; }
+
+/* Раскрывающаяся панель — grid-template-rows animation. */
 .tm-filters-panel {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.25s cubic-bezier(0.165, 0.84, 0.44, 1);
 }
-.tm-filters-panel--open { grid-template-rows: 1fr; }
+.tm-filters--open .tm-filters-panel { grid-template-rows: 1fr; }
 .tm-filters-panel-inner {
   overflow: hidden;
   min-height: 0;
+}
+.tm-filters-panel-content {
+  padding: var(--space-3) 12px 12px;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding-top: var(--space-3);
 }
 
-.tm-filter-row {
-  display: grid;
-  grid-template-columns: 52px 1fr;
-  align-items: center;
-  gap: var(--space-3);
+/* Один ряд: eyebrow-label СВЕРХУ + ряка чипов снизу. */
+.tm-filter-rack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.tm-filter-label {
+.tm-filter-rack-label {
   font-size: 10px;
   letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
   color: var(--text-tertiary);
   font-weight: var(--font-medium);
 }
-
-/* Mode-кнопки и Comm-кнопки используют ту же формулу-тайл, что
-   rank/pos-фильтры: --bg-elevated, прозрачный бордер, accent в active. */
-.tm-filter-modes-wrap,
-.tm-filter-comms-wrap {
+.tm-filter-rack-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
+  flex-wrap: wrap;
 }
-.tm-filter-mode-btn,
-.tm-filter-comm-btn {
+
+/* ── Унифицированный chip-контрол для всех 4 категорий ───────────── */
+.tm-fchip {
   appearance: none;
-  background: var(--bg-elevated);
+  background: var(--bg-base);             /* чуть темнее окружающего --bg-elevated bar'а — даёт «вгравированность» */
   border: 1px solid transparent;
-  height: 36px;
+  height: 32px;
   border-radius: var(--radius-sm);
-  padding: 0 12px;
+  padding: 0;
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0.65;
   color: var(--text-secondary);
   font-family: inherit;
   font-size: var(--text-xs);
@@ -6668,67 +6699,37 @@ margin-top: var(--space-4);
   letter-spacing: var(--tracking-tight);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.tm-filter-mode-btn:hover,
-.tm-filter-comm-btn:hover { opacity: 0.95; }
-.tm-filter-mode-btn--active,
-.tm-filter-comm-btn--active {
+.tm-fchip:hover { opacity: 0.95; }
+.tm-fchip--active {
   opacity: 1;
   background: var(--accent-soft);
   border-color: var(--accent-border);
   color: var(--accent);
 }
-.tm-filter-comm-btn i { font-size: 14px; line-height: 1; }
 
-/* Сетки рангов и позиций — у каждой свой кол-во колонок, но одинаковый ритм */
-.tm-filter-rank-wrap {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);   /* 4×2 */
-  gap: 4px;
+/* Content variants — отличаются ТОЛЬКО внутренним layout/padding. */
+.tm-fchip--icon {
+  width: 32px;                            /* square — для иконок медалей/позиций */
 }
-.tm-filter-pos-wrap {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);   /* 5×1 */
-  gap: 4px;
-}
-
-/* Сами тайлы — ЕДИНАЯ формула для рангов и позиций. Без разных opacity,
-   одна высота 36px, одинаковая «подложка» --bg-elevated, прозрачный бордер
-   в покое, accent-рамка только в active. */
-.tm-filter-rank-btn,
-.tm-filter-pos-btn {
-  appearance: none;
-  background: var(--bg-elevated);
-  border: 1px solid transparent;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  padding: 0;
-  cursor: pointer;
-  opacity: 0.6;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-.tm-filter-rank-btn img,
-.tm-filter-pos-btn img {
+.tm-fchip--icon img {
   width: 22px;
   height: 22px;
   object-fit: contain;
   display: block;
 }
-.tm-filter-rank-btn:hover,
-.tm-filter-pos-btn:hover { opacity: 0.9; }
-.tm-filter-rank-btn--active,
-.tm-filter-pos-btn--active {
-  opacity: 1;
-  background: var(--accent-soft);
-  border-color: var(--accent-border);
+.tm-fchip--text {
+  padding: 0 12px;
 }
+.tm-fchip--mixed {
+  padding: 0 12px;
+  gap: 6px;
+}
+.tm-fchip--mixed i { font-size: 14px; line-height: 1; }
 
 /* ── Feed list ─────────────────────────────────────────────────────── */
 .tm-feed-list {
