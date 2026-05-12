@@ -6915,8 +6915,15 @@ function _drafterCommentText(c) {
     window.tmOpenHelp = function () {
         var sheet = document.getElementById('tm-help-sheet');
         if (!sheet) return;
+        // Сначала снимаем hidden (display:none блокирует transition), затем
+        // следующим кадром добавляем --open чтобы slide-in реально проиграл.
         sheet.hidden = false;
         sheet.setAttribute('aria-hidden', 'false');
+        // Force reflow перед добавлением класса — иначе браузер
+        // схлопнет «display:none → translateX(0)» в одно состояние.
+        // eslint-disable-next-line no-unused-expressions
+        sheet.offsetHeight;
+        sheet.classList.add('tm-help-sheet--open');
         document.body.style.overflow = 'hidden';
         // Юзер сам нашёл и тапнул → pulse больше не нужен никогда.
         var btn = document.getElementById('tm-help-btn');
@@ -6927,9 +6934,18 @@ function _drafterCommentText(c) {
     window.tmCloseHelp = function () {
         var sheet = document.getElementById('tm-help-sheet');
         if (!sheet) return;
-        sheet.hidden = true;
+        sheet.classList.remove('tm-help-sheet--open');
         sheet.setAttribute('aria-hidden', 'true');
         document.body.style.overflow = '';
+        // После окончания slide-out — display:none, чтобы overlay не съедал
+        // тапы за пределами видимой области.
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
     };
 
     // ── Auto-poll lifecycle ────────────────────────────────────────────
@@ -7570,7 +7586,10 @@ function _drafterCommentText(c) {
             setTeammatesTab('profile');
             return;
         }
-        var isSearching = !!_tm.myProfile.is_searching;
+        // Используем normalized state (тот же, что и UI показывает) — иначе
+        // при stale `is_searching=true` + истёкшем expires_at кликаем
+        // search/stop вместо search/start и юзер видит «ничего не произошло».
+        var isSearching = _tmIsSearchingActive();
         var url = TM_API + '/teammates/' + (isSearching ? 'search/stop' : 'search/start');
         var resp = await apiFetch(url, {
             method: 'POST',
@@ -7583,7 +7602,19 @@ function _drafterCommentText(c) {
             return;
         }
         if (!resp.ok) { showToast('Не удалось обновить статус'); return; }
-        _tm.myProfile.is_searching = !isSearching;
+
+        if (isSearching) {
+            // Выключаем — гасим оба поля локально.
+            _tm.myProfile.is_searching = false;
+        } else {
+            // Включаем — НУЖНО локально проставить и expires_at, иначе
+            // renderSearchCta увидит is_searching=true + expiry=null и опять
+            // сбросит флаг через нормализацию. Зеркалим backend-логику now+3h.
+            _tm.myProfile.is_searching = true;
+            _tm.myProfile.search_expires_at = new Date(
+                Date.now() + 3 * 60 * 60 * 1000
+            ).toISOString();
+        }
         renderSearchCta();
         loadFeed(true);
     };

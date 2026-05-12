@@ -7695,100 +7695,62 @@ margin-top: var(--space-4);
   100% { opacity: 0;    transform: scale(1.35); }
 }
 
-/* ── Help bottom-sheet ────────────────────────────────────────────── */
+/* ── Help — full-screen overlay-страница ──────────────────────────────
+   Не bottom-sheet: должен ощущаться как открытие новой страницы внутри
+   миниапа. Поэтому fixed inset:0, opaque --bg-base, slide-in справа. */
 .tm-help-sheet {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  background: var(--bg-base);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transform: translateX(100%);
+  transition: transform 0.22s ease-out;
+  will-change: transform;
 }
 .tm-help-sheet[hidden] { display: none; }
-.tm-help-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(5, 5, 10, 0.6);
-}
-.tm-help-panel {
-  position: relative;
-  width: 100%;
-  max-height: calc(var(--tg-viewport-height, 90vh) - 32px);
-  background: var(--bg-surface);
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
-  border-top: 1px solid var(--border-default);
+.tm-help-sheet--open { transform: translateX(0); }
+
+.tm-help-page {
+  min-height: 100%;
+  padding: var(--space-3) var(--space-3) var(--space-12);
   display: flex;
   flex-direction: column;
-  padding: 10px var(--space-4) var(--space-5);
-  overflow: hidden;
 }
-.tm-help-grip {
-  width: 36px;
-  height: 4px;
-  background: var(--border-strong);
-  border-radius: 2px;
-  margin: 0 auto var(--space-3);
-  flex-shrink: 0;
-}
-.tm-help-header {
+.tm-help-page-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  flex-shrink: 0;
+  margin-bottom: var(--space-5);
 }
-.tm-help-title {
-  font-size: var(--text-lg);
+.tm-help-page-title {
+  font-size: var(--text-xl);
   font-weight: var(--font-bold);
   color: var(--text-primary);
   letter-spacing: var(--tracking-tight);
-  line-height: 1.2;
   margin: 0;
-}
-.tm-help-close {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--text-secondary);
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
-}
-.tm-help-close:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
 }
 .tm-help-content {
   flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-right: 4px;          /* воздух под scrollbar */
 }
 .tm-help-section {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
 }
 .tm-help-section:last-child {
-  margin-bottom: var(--space-2);
+  margin-bottom: 0;
 }
 .tm-help-section-title {
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  font-weight: var(--font-medium);
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.3;
   margin: 0 0 var(--space-2);
 }
 .tm-help-text {
   font-size: var(--text-sm);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   line-height: var(--leading-relaxed);
   margin: 0 0 var(--space-2);
 }
