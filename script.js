@@ -479,6 +479,12 @@
             if (pageName === 'profile') {
                 initProfile();
             }
+            if (pageName === 'teammates') {
+                // initTeammatesPage определён в отдельном IIFE и экспортирован
+                // как window._tmInitPage. Без этого вызова заход через
+                // bottom-nav оставлял страницу без подгруженного профиля.
+                if (typeof window._tmInitPage === 'function') window._tmInitPage();
+            }
         }
 
         function startPositionQuiz() {
@@ -6856,14 +6862,14 @@ function _drafterCommentText(c) {
     }
 
     // ── Entry point from home widget ────────────────────────────────────
+    // Используется deep-link обработчиком (?tm_incoming=1 из push'а бота)
+    // и потенциально другими внешними entry-point'ами. Сам init теперь
+    // вызывается из switchPage('teammates') — здесь только подсвечиваем
+    // nav-item, потому что event у нас нет.
     window.goToTeammates = function () {
         switchPage('teammates');
-        // Подсветка nav-item: switchPage снимает active со всех, а event у нас
-        // нет (заходим с виджета главной, не из bottom-nav). Хардкод [1] совпадает
-        // с положением «Тиммейты» в bottom-nav (см. index.html).
         var navItems = document.querySelectorAll('.nav-item');
         if (navItems[1]) navItems[1].classList.add('active');
-        initTeammatesPage();
     };
 
     function initTeammatesPage() {
@@ -6889,6 +6895,13 @@ function _drafterCommentText(c) {
         // Включаем pulse на «?» если юзер первый раз в разделе.
         _tmInitHelpPulse();
     }
+
+    // Экспортим init на window — switchPage снаружи IIFE вызывает его при
+    // заходе на страницу через bottom-nav (см. switchPage case 'teammates').
+    // Раньше init работал ТОЛЬКО при заходе через goToTeammates с виджета
+    // главной, а tab-bar просто менял .active без подгрузки данных →
+    // профиль/фильтры/CTA «Искать пати» оставались в пустом стейте.
+    window._tmInitPage = initTeammatesPage;
 
     // ── Help-sheet «Как это работает» ─────────────────────────────────
     // localStorage-флаг ставится либо при первом тапе (юзер сам нашёл),
