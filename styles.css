@@ -6305,7 +6305,11 @@ margin-top: var(--space-4);
    раскладываем содержимое в один компактный ряд: eyebrow сверху, текст слева,
    CTA справа на той же оси. */
 .home-widget--wide { grid-column: 1 / -1; }
-.home-widget--teammates {
+/* Горизонтальный layout для широких feature-карточек на главной:
+   [eyebrow head] [body] [cta справа]. Используется для «Тиммейтов» и
+   «Квизов». При добавлении новой такой карточки — просто навешивай класс. */
+.home-widget--teammates,
+.home-widget--quiz {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas:
@@ -6315,30 +6319,36 @@ margin-top: var(--space-4);
   gap: 4px var(--space-3);
   padding: var(--space-3) var(--space-4);
 }
-.home-widget--teammates .home-widget-head { grid-area: head; }
-.home-widget--teammates .home-widget-body {
+.home-widget--teammates .home-widget-head,
+.home-widget--quiz .home-widget-head { grid-area: head; }
+.home-widget--teammates .home-widget-body,
+.home-widget--quiz .home-widget-body {
   grid-area: body;
   min-height: 0;
 }
-.home-widget--teammates .home-widget-cta {
+.home-widget--teammates .home-widget-cta,
+.home-widget--quiz .home-widget-cta {
   grid-area: cta;
   margin-top: 0;
   align-self: center;
   white-space: nowrap;
 }
-.home-tm-body {
+.home-tm-body,
+.home-quiz-body {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 0;
 }
-.home-tm-title {
+.home-tm-title,
+.home-quiz-title {
   font-size: var(--text-md);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   letter-spacing: var(--tracking-tight);
 }
-.home-tm-subtitle {
+.home-tm-subtitle,
+.home-quiz-subtitle {
   font-size: var(--text-xs);
   color: var(--text-secondary);
   line-height: var(--leading-snug);
@@ -6871,12 +6881,15 @@ margin-top: var(--space-4);
   font-size: var(--text-xs);
   color: var(--text-secondary);
 }
+/* Hierarchy в meta-row намеренно плоская: всё inherits text-secondary
+   из родителя. Рассинхрон «8000 ярко, ч серенько, иконки совсем призраки»
+   читался как сломанный ритм. Теперь визуальный якорь один — rank-иконка
+   слева. Числа сохраняют мono-шрифт для tabular-nums (полезно при сравнении
+   карточек глазом), но НЕ выкручиваются по цвету. */
 .tm-player-rank {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-primary);
-  font-weight: var(--font-medium);
 }
 .tm-player-rank-text {
   letter-spacing: var(--tracking-tight);
@@ -6889,24 +6902,24 @@ margin-top: var(--space-4);
 .tm-player-meta-num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-  font-weight: var(--font-medium);
+  /* Цвет и вес НЕ переопределяем — наследуем от .tm-player-meta-row. */
 }
 .tm-player-meta-dot {
   color: var(--text-tertiary);
-  opacity: 0.6;
+  opacity: 0.55;
 }
 .tm-player-meta-mood {
   letter-spacing: var(--tracking-tight);
 }
 
-/* Comms — inline иконки в той же мета-строке, после mood-а. Не отдельная
-   uppercase-секция: лишний акцент в карточке. Иконки имеют title для a11y. */
+/* Comms — inline иконки в мета-строке. Цвет ровно как у row-default
+   (secondary), а не tertiary: иначе они читаются как «призраки» рядом
+   с яркими числами и нарушают ритм. Единственный темнее-всего элемент —
+   joiner-dot, и это правильно (он визуальный разделитель, не контент). */
 .tm-player-comms-inline {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-tertiary);
   margin-left: 2px;
 }
 .tm-player-comms-inline i { font-size: 13px; line-height: 1; }
