@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=155" />
+    <link rel="stylesheet" href="styles.css?v=156" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -948,17 +948,18 @@
 
         <!-- Вкладка "Лента" -->
         <div id="tm-pane-feed" class="tm-pane">
-          <div class="tm-search-row">
-            <button id="tm-search-cta" class="tm-search-cta" onclick="tmToggleSearch()">
-              <span class="tm-search-pulse" aria-hidden="true"></span>
-              <span id="tm-search-cta-label">Искать пати</span>
-            </button>
-            <button id="tm-lobby-cta" class="tm-lobby-cta" onclick="tmOpenLobbyForm()">
-              <i class="ph ph-users-three" aria-hidden="true"></i>
-              <span>Создать лобби</span>
-            </button>
-          </div>
-          <div class="tm-search-hint" id="tm-search-hint">Поиск длится 3 часа</div>
+          <!-- Primary CTA: 1-на-1 поиск. Full-width, dominant. -->
+          <button id="tm-search-cta" class="tm-search-cta" onclick="tmToggleSearch()">
+            <span class="tm-search-pulse" aria-hidden="true"></span>
+            <span id="tm-search-cta-label">Искать пати</span>
+          </button>
+          <div class="tm-search-hint" id="tm-search-hint">1-на-1 · поиск длится 3 часа</div>
+          <!-- Subordinate text-link: лобби как «power-user» опция, не competing. -->
+          <button type="button" class="tm-lobby-link" onclick="tmOpenLobbyForm()">
+            <i class="ph ph-users-three" aria-hidden="true"></i>
+            <span>Создать лобби на 3–5</span>
+            <i class="ph ph-arrow-right tm-lobby-link-arrow" aria-hidden="true"></i>
+          </button>
 
           <div class="tm-filters" id="tm-filters">
             <div class="tm-filters-bar" id="tm-filters-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="tm-filters-panel" onclick="tmToggleFilters(event)" onkeydown="tmFiltersBarKeydown(event)">
@@ -1212,50 +1213,73 @@
             <button type="button" class="tm-back-btn" onclick="tmCloseLobbyForm()" aria-label="Назад">
               <i class="ph ph-arrow-left" aria-hidden="true"></i>
             </button>
-            <h1 class="tm-help-page-title" id="tm-lobby-form-title">Новое лобби</h1>
+            <div class="tm-help-page-title-stack">
+              <h1 class="tm-help-page-title" id="tm-lobby-form-title">Новое лобби</h1>
+              <p class="tm-help-page-subtitle">Опиши пати — игроки увидят и подключатся.</p>
+            </div>
           </div>
           <div class="tm-help-content">
-            <div class="tm-form-row">
-              <div class="tm-form-label">Размер пати</div>
-              <div class="tm-mode" id="tm-lobby-size">
-                <button type="button" class="tm-mode-btn" data-size="3" onclick="tmLobbySetSize(3)">3</button>
-                <button type="button" class="tm-mode-btn" data-size="4" onclick="tmLobbySetSize(4)">4</button>
-                <button type="button" class="tm-mode-btn" data-size="5" onclick="tmLobbySetSize(5)">5</button>
+
+            <!-- Section 1: lobby type (size + mode) — это «basic shape» лобби. -->
+            <section class="tm-lobby-form-section">
+              <span class="section-eyebrow">Лобби</span>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Сколько вас будет</div>
+                <div class="tm-modes" id="tm-lobby-size">
+                  <button type="button" class="tm-mode-btn" data-size="3" onclick="tmLobbySetSize(3)">3</button>
+                  <button type="button" class="tm-mode-btn" data-size="4" onclick="tmLobbySetSize(4)">4</button>
+                  <button type="button" class="tm-mode-btn" data-size="5" onclick="tmLobbySetSize(5)">5</button>
+                </div>
+                <div class="tm-form-sub" id="tm-lobby-size-hint">Включая тебя.</div>
               </div>
-              <div class="tm-form-sub" id="tm-lobby-size-hint">В рейтинге доступны 3 и 5 — правила Доты.</div>
-            </div>
-
-            <div class="tm-form-row">
-              <div class="tm-form-label">Режим</div>
-              <div class="tm-modes" id="tm-lobby-mode">
-                <button type="button" class="tm-mode-btn" data-mode="ranked" onclick="tmLobbySetMode('ranked')">Рейтинговый</button>
-                <button type="button" class="tm-mode-btn" data-mode="normal" onclick="tmLobbySetMode('normal')">Обычный</button>
-                <button type="button" class="tm-mode-btn" data-mode="turbo" onclick="tmLobbySetMode('turbo')">Турбо</button>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Режим</div>
+                <div class="tm-modes" id="tm-lobby-mode">
+                  <button type="button" class="tm-mode-btn" data-mode="ranked" onclick="tmLobbySetMode('ranked')">Рейтинговый</button>
+                  <button type="button" class="tm-mode-btn" data-mode="normal" onclick="tmLobbySetMode('normal')">Обычный</button>
+                  <button type="button" class="tm-mode-btn" data-mode="turbo" onclick="tmLobbySetMode('turbo')">Турбо</button>
+                </div>
               </div>
-            </div>
+            </section>
 
-            <div class="tm-form-row">
-              <div class="tm-form-label">Твоя позиция</div>
-              <div class="tm-positions" id="tm-lobby-host-pos"></div>
-              <div class="tm-form-sub">На этой позиции пойдёшь ты — слот сразу занят.</div>
-            </div>
-
-            <div class="tm-form-row">
-              <div class="tm-form-label">Какие позиции нужны</div>
-              <div class="tm-positions" id="tm-lobby-needed-pos"></div>
-              <div class="tm-form-sub" id="tm-lobby-needed-hint">Отметь позиции, которые ищешь.</div>
-            </div>
-
-            <div class="tm-form-row" id="tm-lobby-rank-row">
-              <div class="tm-form-label">
-                <span>Допустимые ранги</span>
-                <button type="button" class="tm-rank-toggle" id="tm-lobby-rank-toggle" onclick="tmLobbyToggleRankFilter()">Любой ранг</button>
+            <!-- Section 2: состав — кто ты + какие слоты открыты. Визуально
+                 две разные операции: pill-выбор моей роли + slot-tile'ы как
+                 в реальной лобби-карточке (preview + tappable). -->
+            <section class="tm-lobby-form-section">
+              <span class="section-eyebrow">Состав</span>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Ты играешь на</div>
+                <div class="tm-positions tm-positions--host" id="tm-lobby-host-pos"></div>
+                <div class="tm-form-sub">Слот сразу занят тобой. Доступны позиции из твоего профиля.</div>
               </div>
-              <div class="tm-rank-chips" id="tm-lobby-rank-chips" hidden></div>
-              <div class="tm-form-sub" id="tm-lobby-rank-hint" hidden>В рейтинге выбор обязателен — Dota не запустит matchmake с большим разбросом рангов.</div>
-            </div>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Открытые слоты</div>
+                <div class="tm-lobby-form-slots" id="tm-lobby-needed-pos"></div>
+                <div class="tm-form-sub" id="tm-lobby-needed-hint"></div>
+              </div>
+            </section>
 
-            <button type="button" id="tm-lobby-submit" class="tm-primary-btn" onclick="tmSubmitLobby()">Создать лобби</button>
+            <!-- Section 3: кто может вступить (ранги). Segmented control
+                 вместо чужеродного toggle-pill — visually weight-matched
+                 с size/mode выше. -->
+            <section class="tm-lobby-form-section" id="tm-lobby-rank-section">
+              <span class="section-eyebrow">Кого пускать</span>
+              <div class="tm-lobby-form-row">
+                <div class="tm-segmented" id="tm-lobby-rank-segments" role="tablist" aria-label="Фильтр рангов">
+                  <button type="button" class="tm-segment" data-rank-mode="any" onclick="tmLobbySetRankMode('any')" role="tab">Любой ранг</button>
+                  <button type="button" class="tm-segment" data-rank-mode="filter" onclick="tmLobbySetRankMode('filter')" role="tab">Только эти</button>
+                </div>
+                <div class="tm-rank-chips" id="tm-lobby-rank-chips" hidden></div>
+                <div class="tm-form-sub" id="tm-lobby-rank-hint"></div>
+              </div>
+            </section>
+
+            <!-- Footer: live summary + submit + inline validation error. -->
+            <div class="tm-lobby-form-footer">
+              <div class="tm-lobby-form-summary" id="tm-lobby-form-summary" aria-live="polite"></div>
+              <button type="button" id="tm-lobby-submit" class="tm-primary-btn" onclick="tmSubmitLobby()">Создать лобби</button>
+              <div class="tm-lobby-form-error" id="tm-lobby-form-error" hidden></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1337,6 +1361,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=187"></script>
+    <script defer src="script.js?v=188"></script>
   </body>
 </html>
