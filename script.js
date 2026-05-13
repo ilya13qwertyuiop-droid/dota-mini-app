@@ -9008,28 +9008,31 @@ function _drafterCommentText(c) {
         var f = _tm.lobbyForm;
         if (!f) return;
 
-        // Size buttons — disable 4 при ranked.
+        var rankedLocked = (f.mode === 'ranked');
+
+        // ── Section 1: Лобби ────────────────────────────────────────
+        // Size — disable 4 при ranked.
         var sizeBtns = document.querySelectorAll('#tm-lobby-size .tm-mode-btn');
         sizeBtns.forEach(function (b) {
             var size = parseInt(b.getAttribute('data-size'), 10);
-            var disabled = (f.mode === 'ranked' && size === 4);
+            var disabled = (rankedLocked && size === 4);
             b.disabled = disabled;
             b.classList.toggle('tm-mode-btn--active', size === f.party_size && !disabled);
         });
         var sizeHint = document.getElementById('tm-lobby-size-hint');
         if (sizeHint) {
-            sizeHint.textContent = (f.mode === 'ranked')
-                ? 'В рейтинге 4-стэк запрещён правилами Доты.'
-                : 'Выбери, сколько вас будет в пати.';
+            sizeHint.textContent = rankedLocked
+                ? 'В рейтинге 4-стэк запрещён правилами Доты — только 3 или 5.'
+                : 'Включая тебя.';
         }
 
-        // Mode buttons
         var modeBtns = document.querySelectorAll('#tm-lobby-mode .tm-mode-btn');
         modeBtns.forEach(function (b) {
             b.classList.toggle('tm-mode-btn--active', b.getAttribute('data-mode') === f.mode);
         });
 
-        // Host position — рендерим только позиции из профиля как доступные.
+        // ── Section 2: Состав ───────────────────────────────────────
+        // Host position — pill-buttons, single-select из профильных позиций.
         var hostPosWrap = document.getElementById('tm-lobby-host-pos');
         if (hostPosWrap) {
             var profilePositions = (_tm.myProfile && _tm.myProfile.positions) || [];
@@ -9046,41 +9049,54 @@ function _drafterCommentText(c) {
             }).join('');
         }
 
-        // Needed positions — все 5, но host_position blocked. Активны только
-        // выбранные. Лимит = party_size - 1.
+        // Needed positions — slot-tiles (48×48 dashed circles), echo'ят реальные
+        // лобби-слоты в ленте. Visually distinct от host-pill'ов выше.
         var neededWrap = document.getElementById('tm-lobby-needed-pos');
         if (neededWrap) {
             var needSet = {};
             for (var i = 0; i < f.needed_positions.length; i++) needSet[f.needed_positions[i]] = true;
-            var needLimit = f.party_size - 1;
             neededWrap.innerHTML = [1, 2, 3, 4, 5].map(function (p) {
                 var isHostSlot = (p === f.host_position);
                 var active = !!needSet[p];
-                var cls = 'tm-position-btn'
-                    + (active ? ' tm-position-btn--active' : '')
-                    + (isHostSlot ? ' tm-position-btn--disabled' : '');
+                var cls = 'tm-lobby-form-slot'
+                    + (active ? ' tm-lobby-form-slot--active' : '')
+                    + (isHostSlot ? ' tm-lobby-form-slot--disabled' : '');
                 var onclick = isHostSlot ? '' : ' onclick="tmLobbyToggleNeededPos(' + p + ')"';
-                return '<button type="button" class="' + cls + '"' + onclick + ' data-pos="' + p + '">' +
-                    '<img src="' + _tmEsc(_tmPosIcon(p)) + '" alt="' + p + '">' +
+                var title = isHostSlot ? 'Это твой слот' : 'Pos ' + p;
+                return '<button type="button" class="' + cls + '"' + onclick +
+                    ' data-pos="' + p + '" title="' + title + '" aria-label="' + title + '">' +
+                    '<img src="' + _tmEsc(_tmPosIcon(p)) + '" alt="">' +
                 '</button>';
             }).join('');
         }
         var neededHint = document.getElementById('tm-lobby-needed-hint');
         if (neededHint) {
-            neededHint.textContent = 'Отметь ' + (f.party_size - 1) +
-                ' позици' + (f.party_size - 1 === 1 ? 'ю' : 'и') +
-                ' (выбрано: ' + f.needed_positions.length + ').';
+            var needLimit = f.party_size - 1;
+            var picked = f.needed_positions.length;
+            var hintText;
+            if (picked === 0) {
+                hintText = 'Тап чтобы открыть слот · нужно ' + needLimit + '.';
+            } else if (picked < needLimit) {
+                hintText = 'Открыто ' + picked + ' из ' + needLimit + ' · ещё ' + (needLimit - picked) + '.';
+            } else {
+                hintText = 'Все ' + needLimit + ' слотов открыты.';
+            }
+            neededHint.textContent = hintText;
         }
 
-        // Rank filter section
-        var rankToggle = document.getElementById('tm-lobby-rank-toggle');
-        var rankChips  = document.getElementById('tm-lobby-rank-chips');
-        var rankHint   = document.getElementById('tm-lobby-rank-hint');
-        var rankedLocked = (f.mode === 'ranked');
-        if (rankToggle) {
-            rankToggle.textContent = f.rank_filter_enabled ? 'Ограничить рангом' : 'Любой ранг';
-            rankToggle.classList.toggle('tm-rank-toggle--locked', rankedLocked);
-        }
+        // ── Section 3: Кого пускать (rank segments) ────────────────
+        var rankSegBtns = document.querySelectorAll('#tm-lobby-rank-segments .tm-segment');
+        rankSegBtns.forEach(function (b) {
+            var mode = b.getAttribute('data-rank-mode');
+            var active = (mode === 'filter') === !!f.rank_filter_enabled;
+            b.classList.toggle('tm-segment--active', active);
+            // В ranked сегмент «Любой ранг» заблочен — нельзя выключить.
+            var locked = (rankedLocked && mode === 'any');
+            b.disabled = locked;
+            b.classList.toggle('tm-segment--locked', locked);
+        });
+        var rankChips = document.getElementById('tm-lobby-rank-chips');
+        var rankHint  = document.getElementById('tm-lobby-rank-hint');
         if (rankChips) {
             rankChips.hidden = !f.rank_filter_enabled;
             if (f.rank_filter_enabled) {
@@ -9099,14 +9115,65 @@ function _drafterCommentText(c) {
                 }).join('');
             }
         }
-        if (rankHint) rankHint.hidden = !rankedLocked;
+        if (rankHint) {
+            if (rankedLocked) {
+                rankHint.textContent = 'В рейтинге выбор обязателен — Dota не запустит matchmake с большим разбросом.';
+            } else if (f.rank_filter_enabled) {
+                rankHint.textContent = 'Тап на ранг — добавить/убрать.';
+            } else {
+                rankHint.textContent = 'Лобби увидят игроки любого ранга.';
+            }
+        }
 
-        // Submit-button: enabled только если форма валидна.
+        // ── Footer: summary + validation ────────────────────────────
+        // Live-update summary даёт юзеру preview того что он создаёт ПЕРЕД
+        // тапом submit. Validation error (если есть) — explicit reason почему
+        // submit disabled, вместо «кнопка серая, почему?».
+        var summaryEl = document.getElementById('tm-lobby-form-summary');
+        var errorEl   = document.getElementById('tm-lobby-form-error');
+        var submitBtn = document.getElementById('tm-lobby-submit');
+
         var canSubmit =
             f.host_position != null &&
-            f.needed_positions.length === f.party_size - 1 &&
+            f.needed_positions.length === (f.party_size - 1) &&
             (!rankedLocked || f.rank_filter.length > 0);
-        var submitBtn = document.getElementById('tm-lobby-submit');
+
+        // Reason для validation hint.
+        var errorText = '';
+        if (!canSubmit) {
+            if (f.host_position == null)                                 errorText = 'Выбери свою позицию.';
+            else if (f.needed_positions.length < (f.party_size - 1))     errorText = 'Открой все ' + (f.party_size - 1) + ' слот' + ((f.party_size - 1) === 1 ? '' : 'а');
+            else if (rankedLocked && f.rank_filter.length === 0)         errorText = 'Выбери допустимые ранги.';
+        }
+
+        if (summaryEl) {
+            var modeLabel = TM_LOBBY_MODE_LABELS[f.mode] || f.mode;
+            var parts = [
+                '<strong>' + f.party_size + '-стэк</strong>',
+                _tmEsc(modeLabel),
+            ];
+            if (f.host_position != null) {
+                parts.push('ты <strong>Pos ' + f.host_position + '</strong>');
+            }
+            if (f.needed_positions.length) {
+                var sorted = f.needed_positions.slice().sort(function (a, b) { return a - b; });
+                parts.push('нужны <strong>Pos ' + sorted.join(', ') + '</strong>');
+            }
+            if (f.rank_filter_enabled && f.rank_filter.length) {
+                var sortedRanks = f.rank_filter.slice().sort(function (a, b) {
+                    return TM_RANKS.indexOf(a) - TM_RANKS.indexOf(b);
+                });
+                var rangeText = sortedRanks.length === 1
+                    ? sortedRanks[0]
+                    : sortedRanks[0] + '–' + sortedRanks[sortedRanks.length - 1];
+                parts.push(_tmEsc(rangeText));
+            }
+            summaryEl.innerHTML = parts.join(' · ');
+        }
+        if (errorEl) {
+            errorEl.textContent = errorText;
+            errorEl.hidden = !errorText;
+        }
         if (submitBtn) submitBtn.disabled = !canSubmit;
     }
 
@@ -9158,16 +9225,24 @@ function _drafterCommentText(c) {
         _tmRenderLobbyForm();
     };
 
-    window.tmLobbyToggleRankFilter = function () {
+    // Segmented control: 'any' (любой ранг) ⇆ 'filter' (только эти).
+    // В ranked-режиме 'any' заблокирован (UI-уровень + повторная защита тут).
+    window.tmLobbySetRankMode = function (mode) {
         var f = _tm.lobbyForm; if (!f) return;
-        // В ranked-режиме нельзя выключить.
-        if (f.mode === 'ranked') {
+        if (f.mode === 'ranked' && mode === 'any') {
             showToast('В рейтинге выбор рангов обязателен');
             return;
         }
-        f.rank_filter_enabled = !f.rank_filter_enabled;
-        if (!f.rank_filter_enabled) f.rank_filter = [];
+        var wantEnabled = (mode === 'filter');
+        if (wantEnabled === !!f.rank_filter_enabled) return;
+        f.rank_filter_enabled = wantEnabled;
+        if (!wantEnabled) f.rank_filter = [];
         _tmRenderLobbyForm();
+    };
+    // Backward-compat alias на случай если где-то в коде остался старый вызов.
+    window.tmLobbyToggleRankFilter = function () {
+        var f = _tm.lobbyForm; if (!f) return;
+        window.tmLobbySetRankMode(f.rank_filter_enabled ? 'any' : 'filter');
     };
 
     window.tmLobbyToggleRankChip = function (r) {
