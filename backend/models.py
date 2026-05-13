@@ -373,14 +373,17 @@ class TeammateProfile(Base):
     is_searching = Column(
         Boolean, nullable=False, default=False, server_default="0", index=True
     )
-    search_expires_at = Column(DateTime, nullable=True)
+    # Все 3 datetime'а — TIMESTAMPTZ (см. миграцию 0008). До неё были naive
+    # DateTime → silent corruption на PG с session_tz ≠ UTC. Сейчас pscyopg2
+    # хранит реальный UTC-момент, .isoformat() автоматически даёт «+00:00».
+    search_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
@@ -416,12 +419,13 @@ class TeammateRequest(Base):
     review_sent = Column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    # TIMESTAMPTZ — см. миграцию 0008 и комментарий в TeammateProfile выше.
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    accepted_at = Column(DateTime, nullable=True)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class TeammateReview(Base):
@@ -443,8 +447,9 @@ class TeammateReview(Base):
     )
     # Array of tag strings selected by the reviewer.
     tags = Column(JSON, nullable=False)
+    # TIMESTAMPTZ — см. миграцию 0008.
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
