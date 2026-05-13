@@ -1813,6 +1813,8 @@ from backend.models import (  # noqa: E402
     TeammateRequest as DBTeammateRequest,
     TeammateReview as DBTeammateReview,
     TeammateTag as DBTeammateTag,
+    TeammateLobby as DBTeammateLobby,
+    TeammateLobbySlot as DBTeammateLobbySlot,
 )
 
 
@@ -1832,6 +1834,13 @@ _TM_HOURS_MAX = 100000
 # Soft-лимит на параллельные исходящие запросы. Защита от шотгана:
 # новичок не должен иметь возможность тапнуть «Позвать» на 50 карточках подряд.
 _TM_MAX_OUTGOING_PENDING = 10
+
+# Party-finder («Лобби»)
+_TM_LOBBY_TTL_MINUTES = 30
+_TM_VALID_PARTY_SIZES = frozenset({3, 4, 5})
+# Ранкед-валв-правила: разрешены party 1/2/3/5 (4-стэк запрещён). У нас 1-2
+# покрывает обычный 1-на-1 search, поэтому лобби для ranked = 3 или 5.
+_TM_VALID_PARTY_SIZES_RANKED = frozenset({3, 5})
 
 # Используется в inline-кнопке "Открыть" под уведомлением о новом запросе.
 # Если переменная не задана — уведомление всё равно уйдёт, но без кнопки.
@@ -2003,6 +2012,27 @@ class TeammateReviewSubmit(BaseModel):
 class TeammateRequestCancel(BaseModel):
     token: str
     request_id: int
+
+
+# ── Party-finder («Лобби») Pydantic models ──────────────────────────────────
+
+class TeammateLobbyCreate(BaseModel):
+    token: str
+    party_size: int                       # 3 / 4 / 5 (4 запрещён при mode='ranked')
+    mode: str                             # ranked / normal / turbo
+    host_position: int                    # 1..5 — позиция host'а
+    needed_positions: list[int]           # позиции, которые ищем (без host'а)
+    rank_filter: list[str] | None = None  # обязателен для ranked
+
+
+class TeammateLobbyJoin(BaseModel):
+    token: str
+    position: int
+
+
+class TeammateLobbyAction(BaseModel):
+    """Используется для leave / disband — body всех action-endpoint'ов одинаков."""
+    token: str
 
 
 # ── 1. POST /api/teammates/profile — upsert ─────────────────────────────────
@@ -2671,3 +2701,576 @@ async def api_teammates_request_cancel(
     req.status = "cancelled"
     db.commit()
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Party-finder («Лобби»)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _tm_user_active_lobby_id(db: Session, user_id: int) -> int | None:
+    """Возвращает id активного лобби, в котором участвует user (host или slot),
+    либо None. Активное = status='open' AND expires_at > now."""
+    now = datetime.now(timezone.utc)
+    # Host-membership: лобби со status='open' и я хост.
+    host_lobby = (
+        db.query(DBTeammateLobby.id)
+        .filter(DBTeammateLobby.host_id == user_id)
+        .filter(DBTeammateLobby.status == "open")
+        .filter(DBTeammateLobby.expires_at > now)
+        .first()
+    )
+    if host_lobby:
+        return host_lobby[0]
+    # Slot-membership: ищу слот с этим user_id в активном лобби.
+    slot = (
+        db.query(DBTeammateLobbySlot.lobby_id)
+        .join(DBTeammateLobby, DBTeammateLobby.id == DBTeammateLobbySlot.lobby_id)
+        .filter(DBTeammateLobbySlot.user_id == user_id)
+        .filter(DBTeammateLobby.status == "open")
+        .filter(DBTeammateLobby.expires_at > now)
+        .first()
+    )
+    return slot[0] if slot else None
+
+
+def _tm_serialize_lobby(
+    db: Session,
+    lobby: DBTeammateLobby,
+    slots: list[DBTeammateLobbySlot] | None = None,
+) -> dict:
+    """Сериализует лобби с полным списком слотов (host'а + всех остальных).
+
+    Каждый слот включает мини-профиль user'а (имя/аватар/ранг), если занят.
+    slots — опциональная предзагрузка; если None, грузим внутри (для batch'а
+    list-endpoint'а лучше предзагружать снаружи и передавать сюда).
+    """
+    if slots is None:
+        slots = (
+            db.query(DBTeammateLobbySlot)
+            .filter(DBTeammateLobbySlot.lobby_id == lobby.id)
+            .all()
+        )
+
+    # Загружаем профили + settings'ы участников одним batch'ем.
+    user_ids = [s.user_id for s in slots if s.user_id is not None]
+    if user_ids:
+        profiles_map = {
+            p.user_id: p
+            for p in db.query(DBTeammateProfile)
+            .filter(DBTeammateProfile.user_id.in_(user_ids))
+            .all()
+        }
+        settings_by_user = _tm_load_user_settings(db, user_ids)
+    else:
+        profiles_map, settings_by_user = {}, {}
+
+    def slot_payload(s: DBTeammateLobbySlot) -> dict:
+        if s.user_id is None:
+            return {"position": s.position, "user": None}
+        prof = profiles_map.get(s.user_id)
+        if prof is None:
+            # Юзер существует в TG, но без teammate-профиля — редкий edge
+            # (заполнил профиль host'а до миграции?). Возвращаем минимум.
+            user_data = {
+                "user_id": s.user_id,
+                **(settings_by_user.get(s.user_id) or {}),
+                "rank": None,
+            }
+        else:
+            user_data = _tm_serialize_profile(prof, settings_by_user.get(s.user_id))
+        return {
+            "position": s.position,
+            "user": user_data,
+            "joined_at": s.joined_at.isoformat() if s.joined_at else None,
+        }
+
+    return {
+        "lobby_id":          lobby.id,
+        "host_id":           lobby.host_id,
+        "host_position":     lobby.host_position,
+        "party_size":        lobby.party_size,
+        "mode":              lobby.mode,
+        "rank_filter":       list(lobby.rank_filter or []) or None,
+        "needed_positions":  list(lobby.needed_positions or []),
+        "status":            lobby.status,
+        "created_at":        lobby.created_at.isoformat() if lobby.created_at else None,
+        "expires_at":        lobby.expires_at.isoformat() if lobby.expires_at else None,
+        "filled_at":         lobby.filled_at.isoformat() if lobby.filled_at else None,
+        "slots": sorted(
+            [slot_payload(s) for s in slots],
+            key=lambda x: x["position"],
+        ),
+    }
+
+
+async def _tm_send_lobby_join_push(
+    db: Session, lobby: DBTeammateLobby, joiner_id: int, position: int,
+) -> None:
+    """Host получает пуш «X присоединился на Pos N»."""
+    settings_map = _tm_load_user_settings(db, [joiner_id])
+    joiner_s = settings_map.get(joiner_id) or {}
+    joiner_name = (joiner_s.get("first_name") or "").strip() or "Игрок"
+    open_url = f"{_TM_MINI_APP_URL}?tm_lobby={lobby.id}" if _TM_MINI_APP_URL else None
+    text = (
+        f"➕ <b>{_tm_html_safe(joiner_name)}</b> присоединился на Pos {position}"
+    )
+    await _tm_send_bot_message(
+        chat_id=lobby.host_id,
+        text=text,
+        with_open_button=True,
+        open_button_url=open_url,
+        parse_mode="HTML",
+    )
+
+
+async def _tm_send_lobby_filled_pushes(db: Session, lobby: DBTeammateLobby) -> None:
+    """Когда последний слот занят: рассылаем ВСЕМ участникам список @ников
+    с tg://-ссылками, чтобы каждый мог тапнуть и начать чат / собрать группу."""
+    slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id == lobby.id)
+        .all()
+    )
+    user_ids = [s.user_id for s in slots if s.user_id is not None]
+    if not user_ids:
+        return
+    settings_map = _tm_load_user_settings(db, user_ids)
+
+    # Строим список @юзернеймов с tg://-ссылками. Если у юзера нет username,
+    # подставляем first_name (clickable через tg://user?id=).
+    members_html_parts: list[str] = []
+    for uid in user_ids:
+        s = settings_map.get(uid) or {}
+        name = (s.get("first_name") or "").strip() or "тиммейт"
+        uname = (s.get("username") or "").lstrip("@").strip()
+        if uname:
+            members_html_parts.append(
+                f'<a href="tg://user?id={uid}">{_tm_html_safe(name)}</a> '
+                f'(@{_tm_html_safe(uname)})'
+            )
+        else:
+            members_html_parts.append(
+                f'<a href="tg://user?id={uid}">{_tm_html_safe(name)}</a>'
+            )
+    members_block = "\n".join(f"• {p}" for p in members_html_parts)
+
+    text = (
+        f"🎮 <b>Пати собрана!</b>\n\n"
+        f"{members_block}\n\n"
+        f"Создайте групповой чат и стартуйте."
+    )
+
+    # Шлём каждому участнику. Параллельная рассылка через httpx-клиент
+    # внутри _tm_send_bot_message — приемлемо.
+    for uid in user_ids:
+        await _tm_send_bot_message(
+            chat_id=uid,
+            text=text,
+            parse_mode="HTML",
+        )
+
+
+async def _tm_send_lobby_disband_pushes(
+    db: Session, lobby: DBTeammateLobby, by_host: bool,
+) -> None:
+    """Host распустил → шлём всем members. by_host для текстовки."""
+    slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id == lobby.id)
+        .filter(DBTeammateLobbySlot.user_id.isnot(None))
+        .filter(DBTeammateLobbySlot.user_id != lobby.host_id)
+        .all()
+    )
+    if not slots:
+        return
+    text = "❌ Хост распустил лобби." if by_host else "❌ Лобби распущено."
+    for s in slots:
+        await _tm_send_bot_message(chat_id=s.user_id, text=text)
+
+
+def _tm_clear_user_search(db: Session, user_id: int) -> None:
+    """Снимает is_searching у юзера. Используется при join/create лобби —
+    юзер committed в лобби, не должен параллельно показываться в чужих лентах
+    как ищущий 1-на-1 (это бы создавало конфликт намерений)."""
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is not None and profile.is_searching:
+        profile.is_searching = False
+        profile.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+
+# ── L1. POST /api/teammates/lobby — create ──────────────────────────────────
+
+@app.post("/api/teammates/lobby")
+async def api_teammates_lobby_create(
+    data: TeammateLobbyCreate, db: Session = Depends(get_db),
+):
+    """Создаёт лобби. Host автоматически занимает свой слот."""
+    user_id = _tm_require_user(data.token)
+
+    # Профиль обязателен — без него host не сможет показать ранг/позицию.
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
+
+    # Не даём создать лобби, если юзер уже в активном лобби.
+    if _tm_user_active_lobby_id(db, user_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ты уже в активном лобби. Выйди из него, чтобы создать новое.",
+        )
+
+    # Валидация полей.
+    if data.mode not in _TM_VALID_GAME_MODES:
+        raise HTTPException(status_code=422, detail="invalid mode")
+    if data.party_size not in _TM_VALID_PARTY_SIZES:
+        raise HTTPException(status_code=422, detail="invalid party_size")
+    if data.mode == "ranked" and data.party_size not in _TM_VALID_PARTY_SIZES_RANKED:
+        raise HTTPException(
+            status_code=422,
+            detail="В рейтинге 4-стэк запрещён правилами Доты",
+        )
+
+    if data.host_position not in (1, 2, 3, 4, 5):
+        raise HTTPException(status_code=422, detail="invalid host_position")
+
+    needed = list(data.needed_positions or [])
+    if len(needed) != data.party_size - 1:
+        raise HTTPException(
+            status_code=422,
+            detail="needed_positions должен содержать party_size - 1 значений",
+        )
+    if len(set(needed)) != len(needed):
+        raise HTTPException(status_code=422, detail="duplicate needed_positions")
+    for p in needed:
+        if p not in (1, 2, 3, 4, 5):
+            raise HTTPException(status_code=422, detail="invalid position in needed_positions")
+    if data.host_position in needed:
+        raise HTTPException(
+            status_code=422,
+            detail="host_position не должна быть в needed_positions",
+        )
+
+    # rank_filter обязателен для ranked.
+    rank_filter: list[str] | None = None
+    if data.rank_filter:
+        invalid_ranks = [r for r in data.rank_filter if r not in _TM_VALID_RANKS]
+        if invalid_ranks:
+            raise HTTPException(status_code=422, detail="invalid rank_filter values")
+        # Сохраняем как уникальный sorted список.
+        rank_filter = sorted(set(data.rank_filter))
+    if data.mode == "ranked" and not rank_filter:
+        raise HTTPException(
+            status_code=422,
+            detail="Для ranked-режима укажи допустимые ранги",
+        )
+
+    now = datetime.now(timezone.utc)
+    lobby = DBTeammateLobby(
+        host_id=user_id,
+        party_size=data.party_size,
+        mode=data.mode,
+        rank_filter=rank_filter,
+        needed_positions=needed,
+        host_position=data.host_position,
+        status="open",
+        created_at=now,
+        expires_at=now + _tm_timedelta(minutes=_TM_LOBBY_TTL_MINUTES),
+        filled_at=None,
+    )
+    db.add(lobby)
+    db.flush()  # получить lobby.id до создания слотов
+
+    # Создаём слоты. Host's слот сразу filled, остальные NULL.
+    slots: list[DBTeammateLobbySlot] = []
+    for pos in [data.host_position] + needed:
+        slot = DBTeammateLobbySlot(
+            lobby_id=lobby.id,
+            position=pos,
+            user_id=user_id if pos == data.host_position else None,
+            joined_at=now if pos == data.host_position else None,
+        )
+        slots.append(slot)
+        db.add(slot)
+    db.commit()
+    db.refresh(lobby)
+
+    # Снимаем is_searching у host'а — он committed в лобби.
+    _tm_clear_user_search(db, user_id)
+
+    return _tm_serialize_lobby(db, lobby, slots)
+
+
+# ── L2. GET /api/teammates/lobbies — list active ────────────────────────────
+
+@app.get("/api/teammates/lobbies")
+async def api_teammates_lobbies_list(token: str, db: Session = Depends(get_db)):
+    """Возвращает список активных лобби (status='open', expires_at > now).
+
+    Сортировка: created_at DESC (новые сверху). UI рендерит их над одиночными
+    игроками в ленте. Фронту передаём ВСЕ — фильтрацию по rank_filter тоже,
+    клиент сам решит как подсветить «доступно мне / нет».
+    """
+    _tm_require_user(token)
+    now = datetime.now(timezone.utc)
+
+    lobbies = (
+        db.query(DBTeammateLobby)
+        .filter(DBTeammateLobby.status == "open")
+        .filter(DBTeammateLobby.expires_at > now)
+        .order_by(DBTeammateLobby.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    if not lobbies:
+        return {"items": []}
+
+    lobby_ids = [l.id for l in lobbies]
+    all_slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id.in_(lobby_ids))
+        .all()
+    )
+    slots_by_lobby: dict[int, list[DBTeammateLobbySlot]] = {}
+    for s in all_slots:
+        slots_by_lobby.setdefault(s.lobby_id, []).append(s)
+
+    items = [
+        _tm_serialize_lobby(db, l, slots_by_lobby.get(l.id, []))
+        for l in lobbies
+    ]
+    return {"items": items}
+
+
+# ── L3. POST /api/teammates/lobby/{id}/join ─────────────────────────────────
+
+@app.post("/api/teammates/lobby/{lobby_id}/join")
+async def api_teammates_lobby_join(
+    lobby_id: int, data: TeammateLobbyJoin, db: Session = Depends(get_db),
+):
+    """Open-join: атомарно занимаем пустой слот в указанной position.
+
+    Race-protection: UPDATE … SET user_id=:uid WHERE … AND user_id IS NULL —
+    rowcount=0 значит «слот уже занят кем-то параллельно». Тогда возвращаем 409.
+    """
+    user_id = _tm_require_user(data.token)
+
+    lobby = db.get(DBTeammateLobby, lobby_id)
+    if lobby is None:
+        raise HTTPException(status_code=404, detail="lobby not found")
+    if lobby.status != "open":
+        raise HTTPException(status_code=409, detail="lobby is no longer open")
+
+    now = datetime.now(timezone.utc)
+    if lobby.expires_at <= now:
+        raise HTTPException(status_code=409, detail="lobby has expired")
+
+    # Не даём join'нуть если уже в каком-то активном лобби.
+    existing = _tm_user_active_lobby_id(db, user_id)
+    if existing is not None:
+        if existing == lobby_id:
+            raise HTTPException(status_code=409, detail="ты уже в этом лобби")
+        raise HTTPException(
+            status_code=409,
+            detail="Ты уже в активном лобби. Выйди из него, чтобы вступить в другое.",
+        )
+
+    # Rank-filter: если есть — юзер должен быть в нём.
+    if lobby.rank_filter:
+        profile = db.get(DBTeammateProfile, user_id)
+        if profile is None or profile.rank not in set(lobby.rank_filter):
+            raise HTTPException(
+                status_code=403,
+                detail="Твой ранг не подходит под фильтр лобби",
+            )
+
+    # Атомарный claim слота.
+    result = db.execute(
+        text(
+            """
+            UPDATE teammate_lobby_slots
+            SET user_id = :uid, joined_at = :now
+            WHERE lobby_id = :lid AND position = :pos AND user_id IS NULL
+            """
+        ),
+        {"uid": user_id, "now": now, "lid": lobby_id, "pos": data.position},
+    )
+    if not result.rowcount:
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail="Этот слот только что заняли. Попробуй другую позицию.",
+        )
+
+    # Проверяем — последний ли это слот? Все остальные слоты лобби заняты?
+    remaining_empty = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id == lobby_id)
+        .filter(DBTeammateLobbySlot.user_id.is_(None))
+        .count()
+    )
+
+    just_filled = False
+    if remaining_empty == 0:
+        # Лобби собрано — переводим в filled, фиксируем filled_at.
+        lobby.status = "filled"
+        lobby.filled_at = now
+        just_filled = True
+
+    db.commit()
+    db.refresh(lobby)
+
+    # is_searching у нового member'а — снимаем (committed в лобби).
+    _tm_clear_user_search(db, user_id)
+
+    # Push'и:
+    #   - если лобби только что заполнилось → рассылаем «пати собрана» ВСЕМ
+    #     участникам (включая host'а).
+    #   - иначе → host получает «X присоединился».
+    if just_filled:
+        await _tm_send_lobby_filled_pushes(db, lobby)
+    else:
+        await _tm_send_lobby_join_push(db, lobby, user_id, data.position)
+
+    return _tm_serialize_lobby(db, lobby)
+
+
+# ── L4. POST /api/teammates/lobby/{id}/leave ────────────────────────────────
+
+@app.post("/api/teammates/lobby/{lobby_id}/leave")
+async def api_teammates_lobby_leave(
+    lobby_id: int, data: TeammateLobbyAction, db: Session = Depends(get_db),
+):
+    """Member выходит из своего слота. Если выходит host — это disband
+    (но мы возвращаем 409 чтобы фронт явно вызвал /disband — UI там другой)."""
+    user_id = _tm_require_user(data.token)
+
+    lobby = db.get(DBTeammateLobby, lobby_id)
+    if lobby is None:
+        raise HTTPException(status_code=404, detail="lobby not found")
+    if lobby.status != "open":
+        raise HTTPException(status_code=409, detail="lobby is no longer open")
+    if lobby.host_id == user_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Host не может «выйти» — используй роспуск лобби.",
+        )
+
+    result = db.execute(
+        text(
+            """
+            UPDATE teammate_lobby_slots
+            SET user_id = NULL, joined_at = NULL
+            WHERE lobby_id = :lid AND user_id = :uid
+            """
+        ),
+        {"lid": lobby_id, "uid": user_id},
+    )
+    if not result.rowcount:
+        db.commit()
+        raise HTTPException(status_code=404, detail="ты не в этом лобби")
+
+    db.commit()
+
+    # Push'им host'у — «X вышел». Имя берём из user_profiles.settings.
+    settings_map = _tm_load_user_settings(db, [user_id])
+    leaver_s = settings_map.get(user_id) or {}
+    leaver_name = (leaver_s.get("first_name") or "").strip() or "Игрок"
+    open_url = f"{_TM_MINI_APP_URL}?tm_lobby={lobby.id}" if _TM_MINI_APP_URL else None
+    await _tm_send_bot_message(
+        chat_id=lobby.host_id,
+        text=f"➖ <b>{_tm_html_safe(leaver_name)}</b> вышел из лобби",
+        with_open_button=True,
+        open_button_url=open_url,
+        parse_mode="HTML",
+    )
+
+    return {"ok": True}
+
+
+# ── L5. POST /api/teammates/lobby/{id}/disband ──────────────────────────────
+
+@app.post("/api/teammates/lobby/{lobby_id}/disband")
+async def api_teammates_lobby_disband(
+    lobby_id: int, data: TeammateLobbyAction, db: Session = Depends(get_db),
+):
+    """Host распускает лобби. Members получают пуш."""
+    user_id = _tm_require_user(data.token)
+
+    lobby = db.get(DBTeammateLobby, lobby_id)
+    if lobby is None:
+        raise HTTPException(status_code=404, detail="lobby not found")
+    if lobby.host_id != user_id:
+        raise HTTPException(status_code=403, detail="only host can disband")
+    if lobby.status != "open":
+        raise HTTPException(status_code=409, detail="lobby is no longer open")
+
+    # Сначала push'им members (пока ещё видим состав), потом меняем status.
+    await _tm_send_lobby_disband_pushes(db, lobby, by_host=True)
+
+    lobby.status = "disbanded"
+    db.commit()
+
+    return {"ok": True}
+
+
+# ── L6. GET /api/teammates/lobbies/history ──────────────────────────────────
+
+@app.get("/api/teammates/lobbies/history")
+async def api_teammates_lobbies_history(
+    token: str, db: Session = Depends(get_db),
+):
+    """История лобби, в которых юзер участвовал и которые ЗАПОЛНИЛИСЬ.
+
+    Disbanded / expired не показываем — это «лобби не состоялось», а юзер
+    хочет видеть «с кем играл». Без пагинации: hard cap 50 (на v1 этого
+    хватит, плюс легко merge'ить с requests/history на фронте).
+    """
+    user_id = _tm_require_user(token)
+
+    # Берём id лобби в которых я участвовал (host ИЛИ занимал слот).
+    my_lobby_ids_rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT l.id, l.filled_at
+            FROM teammate_lobbies l
+            LEFT JOIN teammate_lobby_slots s ON s.lobby_id = l.id
+            WHERE l.status = 'filled'
+              AND (l.host_id = :uid OR s.user_id = :uid)
+            ORDER BY l.filled_at DESC
+            LIMIT 50
+            """
+        ),
+        {"uid": user_id},
+    ).fetchall()
+
+    lobby_ids = [r[0] for r in my_lobby_ids_rows]
+    if not lobby_ids:
+        return {"items": []}
+
+    lobbies = (
+        db.query(DBTeammateLobby)
+        .filter(DBTeammateLobby.id.in_(lobby_ids))
+        .all()
+    )
+    # Order according to my_lobby_ids_rows.
+    lobby_by_id = {l.id: l for l in lobbies}
+
+    # Batch slots.
+    all_slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id.in_(lobby_ids))
+        .all()
+    )
+    slots_by_lobby: dict[int, list[DBTeammateLobbySlot]] = {}
+    for s in all_slots:
+        slots_by_lobby.setdefault(s.lobby_id, []).append(s)
+
+    items: list[dict] = []
+    for lid, _filled_at in my_lobby_ids_rows:
+        lobby = lobby_by_id.get(lid)
+        if lobby is None:
+            continue
+        items.append(_tm_serialize_lobby(db, lobby, slots_by_lobby.get(lid, [])))
+    return {"items": items}
