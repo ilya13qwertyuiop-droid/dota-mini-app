@@ -6890,6 +6890,11 @@ function _drafterCommentText(c) {
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
         loadRequestsForTab(_tm.requestsTab);
+        // Outgoing-список нужен ленте для cross-check «уже отправил ли я этому?».
+        // Без этого после reload кнопка «Позвать» показывалась снова, юзер
+        // тапал → 409 → toast «Запрос уже отправлен» → confusing UX. Грузим
+        // в фоне даже если активная вкладка не outgoing — payload маленький.
+        if (_tm.requestsTab !== 'outgoing') loadOutgoing();
         // Стартуем авто-обновление активной вкладки каждые 30 секунд.
         _tmStartPolling();
         // Включаем pulse на «?» если юзер первый раз в разделе.
@@ -6928,6 +6933,35 @@ function _drafterCommentText(c) {
         btn.addEventListener('animationend', onEnd);
     }
 
+    // System back-button handling: при открытии help-sheet делаем pushState,
+    // на popstate (Android-system-back, iOS swipe-back, Telegram BackButton)
+    // закрываем шторку, не выкидывая юзера из мини-аппа целиком. Флаг и
+    // listener отдельные, чтобы избежать рекурсии: tmCloseHelp снимает
+    // listener ПЕРЕД history.back(), на popstate listener тоже снимается
+    // первым делом.
+    var _tmHelpHistoryActive = false;
+
+    function _tmDoCloseHelpVisual() {
+        var sheet = document.getElementById('tm-help-sheet');
+        if (!sheet) return;
+        sheet.classList.remove('tm-help-sheet--open');
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
+    }
+
+    function _tmHandleHelpPopstate() {
+        window.removeEventListener('popstate', _tmHandleHelpPopstate);
+        _tmHelpHistoryActive = false;
+        _tmDoCloseHelpVisual();
+    }
+
     window.tmOpenHelp = function () {
         var sheet = document.getElementById('tm-help-sheet');
         if (!sheet) return;
@@ -6941,6 +6975,18 @@ function _drafterCommentText(c) {
         sheet.offsetHeight;
         sheet.classList.add('tm-help-sheet--open');
         document.body.style.overflow = 'hidden';
+        // Регистрируем «фейковую» history-точку для перехвата system-back.
+        // Без неё system-back на Android закрывает весь мини-апп.
+        if (!_tmHelpHistoryActive) {
+            try {
+                history.pushState({ tmHelp: true }, '');
+                _tmHelpHistoryActive = true;
+                window.addEventListener('popstate', _tmHandleHelpPopstate);
+            } catch (e) {
+                // history API может быть запрещён в некоторых embedded-кейсах —
+                // просто игнорим, fallback на header back-button останется.
+            }
+        }
         // Юзер сам нашёл и тапнул → pulse больше не нужен никогда.
         var btn = document.getElementById('tm-help-btn');
         if (btn) btn.classList.remove('tm-help-btn--pulse');
@@ -6948,20 +6994,15 @@ function _drafterCommentText(c) {
     };
 
     window.tmCloseHelp = function () {
-        var sheet = document.getElementById('tm-help-sheet');
-        if (!sheet) return;
-        sheet.classList.remove('tm-help-sheet--open');
-        sheet.setAttribute('aria-hidden', 'true');
-        document.body.style.overflow = '';
-        // После окончания slide-out — display:none, чтобы overlay не съедал
-        // тапы за пределами видимой области.
-        var onEnd = function () {
-            sheet.removeEventListener('transitionend', onEnd);
-            if (!sheet.classList.contains('tm-help-sheet--open')) {
-                sheet.hidden = true;
-            }
-        };
-        sheet.addEventListener('transitionend', onEnd);
+        // Если зашли через pushState — корректно откатываем history-точку,
+        // ИНАЧЕ при следующем system-back юзер увидит «пустой» popstate
+        // и улетит из мини-аппа.
+        if (_tmHelpHistoryActive) {
+            window.removeEventListener('popstate', _tmHandleHelpPopstate);
+            _tmHelpHistoryActive = false;
+            try { history.back(); } catch (e) {}
+        }
+        _tmDoCloseHelpVisual();
     };
 
     // ── Auto-poll lifecycle ────────────────────────────────────────────
@@ -7003,6 +7044,23 @@ function _drafterCommentText(c) {
             _tm.pollTimer = null;
         }
     }
+
+    // При возврате приложения в foreground (юзер ушёл в Telegram-чат, увидел
+    // push «X принял твой запрос», вернулся в миниап) — мгновенный refresh
+    // не дожидаясь следующего 30s-полл-тика. Это закрывает лаг «accepted
+    // запрос ещё висит как pending в исходящих». Также обновляем badge на
+    // bottom-nav (входящие могли поменяться).
+    function _tmHandleVisibilityChange() {
+        if (document.visibilityState !== 'visible') return;
+        _tmRefreshBadge();
+        if (!_tmIsPageActive()) return;
+        if (_tm.currentTab === 'feed') {
+            _tmTriggerRefresh('feed');
+        } else if (_tm.currentTab === 'profile') {
+            _tmTriggerRefresh('requests');
+        }
+    }
+    document.addEventListener('visibilitychange', _tmHandleVisibilityChange);
 
     // Общий путь для авто-poll'а и manual-кнопок: крутим иконку, дёргаем
     // соответствующий loader, останавливаем спиннер в finally.
@@ -7124,14 +7182,37 @@ function _drafterCommentText(c) {
         return '<div class="tm-feed-empty">' + _tmEsc(msg) + '</div>';
     }
 
+    // Парсит ISO-строку безопасно: если в строке нет TZ-маркера (нет 'Z',
+    // нет '+HH:MM' / '-HH:MM' хвоста), трактуем как UTC. Без этого браузер
+    // парсит naive date-time как ЛОКАЛЬНОЕ время — для юзера в МСК сдвиг
+    // на -3ч, и search_expires_at кажется уже истёкшим (см. /profile/me на
+    // бэке — теперь оно отдаёт «+00:00», но defense-in-depth не повредит,
+    // если кто-то добавит другую naive-сериализацию).
+    function _tmParseUtcLike(s) {
+        if (!s) return NaN;
+        if (/Z$|[+\-]\d\d:?\d\d$/.test(s)) return new Date(s).getTime();
+        return new Date(s + 'Z').getTime();
+    }
+
     // Single source of truth для «активен ли поиск прямо сейчас». Не доверяем
     // только профильному флагу — бэк может его не успеть погасить, или мы
     // открыли страницу с уже устаревшими данными в кэше.
     function _tmIsSearchingActive() {
         var p = _tm.myProfile;
         if (!p || !p.is_searching || !p.search_expires_at) return false;
-        var exp = new Date(p.search_expires_at).getTime();
+        var exp = _tmParseUtcLike(p.search_expires_at);
         return isFinite(exp) && exp > Date.now();
+    }
+
+    // Проверка: есть ли у меня pending-запрос к этому user_id?
+    // Используется в _renderPlayerCard для cross-check'а после reload.
+    function _tmHasOutgoingPending(to_user_id) {
+        var list = _tm.requestsData && _tm.requestsData.outgoing;
+        if (!Array.isArray(list)) return false;
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].to_user_id === to_user_id) return true;
+        }
+        return false;
     }
 
     // Set of user_id'ов, чьи карточки уже были отрисованы в текущей сессии.
@@ -7221,9 +7302,16 @@ function _drafterCommentText(c) {
         // CTA «Позвать» — теперь В identity-row рядом с именем (action proximate
         // to identity), а не в подвале после 5 строк инфо. В preview-режиме —
         // пусто (банер сверху уже объясняет «это превью»).
+        //
+        // Cross-check с outgoing-pending: если я этому юзеру уже отправил
+        // запрос, рендерим кнопку в --sent-стейте сразу. Без этого после
+        // reload приложения кнопка показывала «Позвать», тап → 409 → юзер
+        // в замешательстве. _tm.requestsData.outgoing грузится в init.
         var ctaHtml;
         if (opts.self) {
             ctaHtml = '<span></span>';   // grid-slot заглушка, чтобы layout не схлопнулся
+        } else if (p.user_id && _tmHasOutgoingPending(p.user_id)) {
+            ctaHtml = '<button class="tm-player-cta tm-player-cta--sent" disabled>Уже отправлено</button>';
         } else {
             ctaHtml = '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Позвать</button>';
         }
@@ -7279,6 +7367,13 @@ function _drafterCommentText(c) {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             showToast('Запрос отправлен', 'ok');
             if (btn) _tmMarkCtaSent(btn, 'Запрос отправлен');
+            // Локально мирорим состояние: чтобы при re-render'е ленты (poll-tick
+            // или refresh) кнопка осталась в --sent-state, а не вернулась к
+            // «Позвать». Реальный outgoing-список подтянется фоном.
+            if (!_tm.requestsData) _tm.requestsData = { incoming: [], outgoing: [], history: [] };
+            if (!Array.isArray(_tm.requestsData.outgoing)) _tm.requestsData.outgoing = [];
+            _tm.requestsData.outgoing.push({ to_user_id: to_user_id });
+            loadOutgoing();
         } catch (e) {
             console.warn('[tm] sendRequest:', e);
             showToast('Не удалось отправить запрос');
@@ -7700,7 +7795,7 @@ function _drafterCommentText(c) {
         if (hint) {
             if (active) {
                 var minLeft = Math.max(0, Math.ceil(
-                    (new Date(_tm.myProfile.search_expires_at).getTime() - Date.now()) / 60000
+                    (_tmParseUtcLike(_tm.myProfile.search_expires_at) - Date.now()) / 60000
                 ));
                 hint.textContent = 'Тебя видят другие · ещё ' + _tmFormatRemaining(minLeft);
             } else {

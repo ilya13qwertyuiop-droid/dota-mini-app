@@ -2086,7 +2086,7 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     # хотя бэк уже срезал объявление в /feed (lying UI).
     if (profile.is_searching
             and profile.search_expires_at
-            and profile.search_expires_at <= datetime.utcnow()):
+            and profile.search_expires_at <= datetime.now(timezone.utc)):
         profile.is_searching = False
         db.commit()
 
@@ -2094,7 +2094,13 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     settings = (user_row.settings if user_row else None) or {}
     out = _tm_serialize_profile(profile, settings)
     out["is_searching"]      = bool(profile.is_searching)
-    out["search_expires_at"] = profile.search_expires_at.isoformat() if profile.search_expires_at else None
+    # search_expires_at — TIMESTAMPTZ (миграция 0008), .isoformat() даёт
+    # строку с «+00:00» автоматически. JS парсит как UTC. До миграции
+    # это место имело костыль .replace(tzinfo=timezone.utc) — больше не нужен.
+    out["search_expires_at"] = (
+        profile.search_expires_at.isoformat()
+        if profile.search_expires_at else None
+    )
     out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
     return out
 
@@ -2112,8 +2118,9 @@ async def api_teammates_search_start(
         raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
 
     profile.is_searching      = True
-    # Naive UTC для сравнений в /feed (см. datetime.utcnow ниже).
-    profile.search_expires_at = datetime.utcnow() + _tm_timedelta(hours=_TM_SEARCH_TTL_HOURS)
+    # tz-aware UTC. Колонка TIMESTAMPTZ (миграция 0008) — psycopg2 не делает
+    # session_tz-конвертации, в БД лежит абсолютный UTC-момент.
+    profile.search_expires_at = datetime.now(timezone.utc) + _tm_timedelta(hours=_TM_SEARCH_TTL_HOURS)
     profile.updated_at        = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
@@ -2163,7 +2170,9 @@ async def api_teammates_feed(
     они просто не приоритетны).
     """
     user_id = _tm_require_user(token)
-    now = datetime.utcnow()
+    # tz-aware: колонка search_expires_at теперь TIMESTAMPTZ (миграция 0008).
+    # Сравнение PG: timestamptz vs timestamptz — без TZ-конверсий.
+    now = datetime.now(timezone.utc)
 
     q = (
         db.query(DBTeammateProfile)
@@ -2576,10 +2585,10 @@ async def api_teammates_requests_history(
             cursor_dt = datetime.fromisoformat(cursor)
         except ValueError:
             raise HTTPException(status_code=422, detail="invalid cursor")
-        # На PostgreSQL TIMESTAMP WITHOUT TIME ZONE для accepted_at хранится
-        # как naive Berlin/local (см. teammates_notifier). tz-aware курсор
-        # заставит PG implicit-cast к timestamptz через session TZ — корректно
-        # для любого сервер-таймзоны.
+        # accepted_at теперь TIMESTAMPTZ (миграция 0008). Сравнение работает
+        # с любым tz-aware значением напрямую. Naive-cursor подгоняем к UTC
+        # для обратной совместимости с фронтом, который мог отдать строку
+        # без TZ-маркера до прохождения миграции.
         if cursor_dt.tzinfo is None:
             cursor_dt = cursor_dt.replace(tzinfo=timezone.utc)
         q = q.filter(DBTeammateRequest.accepted_at < cursor_dt)
