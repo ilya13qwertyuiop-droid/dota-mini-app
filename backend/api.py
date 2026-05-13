@@ -1838,7 +1838,7 @@ _TM_MAX_OUTGOING_PENDING = 10
 # Party-finder («Лобби»)
 _TM_LOBBY_TTL_MINUTES = 30
 _TM_VALID_PARTY_SIZES = frozenset({3, 4, 5})
-# Ранкед-валв-правила: разрешены party 1/2/3/5 (4-стэк запрещён). У нас 1-2
+# Ранкед-валв-правила: разрешены party 1/2/3/5 (4-стак запрещён). У нас 1-2
 # покрывает обычный 1-на-1 search, поэтому лобби для ranked = 3 или 5.
 _TM_VALID_PARTY_SIZES_RANKED = frozenset({3, 5})
 
@@ -2929,7 +2929,7 @@ async def api_teammates_lobby_create(
     if data.mode == "ranked" and data.party_size not in _TM_VALID_PARTY_SIZES_RANKED:
         raise HTTPException(
             status_code=422,
-            detail="В рейтинге 4-стэк запрещён правилами Доты",
+            detail="В рейтинге 4-стак запрещён правилами Доты",
         )
 
     if data.host_position not in (1, 2, 3, 4, 5):

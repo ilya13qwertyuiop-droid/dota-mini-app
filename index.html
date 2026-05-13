@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=156" />
+    <link rel="stylesheet" href="styles.css?v=157" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -936,17 +936,22 @@
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
           </button>
           <div class="tm-page-title">Поиск тиммейтов</div>
-          <button type="button" id="tm-help-btn" class="tm-help-btn" onclick="tmOpenHelp()" aria-label="Как это работает">
-            <i class="ph ph-question" aria-hidden="true"></i>
-          </button>
+          <div class="tm-page-head-actions">
+            <button type="button" id="tm-help-btn" class="tm-help-btn" onclick="tmOpenHelp()" aria-label="Как это работает">
+              <i class="ph ph-question" aria-hidden="true"></i>
+            </button>
+            <button type="button" id="tm-profile-btn" class="tm-profile-btn" onclick="tmOpenProfileSheet()" aria-label="Мой профиль">
+              <i class="ph ph-user" aria-hidden="true"></i>
+            </button>
+          </div>
         </div>
 
         <div class="tm-tabs" role="tablist" aria-label="Разделы поиска тиммейтов">
-          <button class="tm-tab tm-tab--active" role="tab" data-tm-tab="feed" onclick="setTeammatesTab('feed')">Лента</button>
-          <button class="tm-tab" role="tab" data-tm-tab="profile" onclick="setTeammatesTab('profile')">Мой профиль</button>
+          <button class="tm-tab tm-tab--active" role="tab" data-tm-tab="feed" onclick="setTeammatesTab('feed')">Дуо</button>
+          <button class="tm-tab" role="tab" data-tm-tab="lobby" onclick="setTeammatesTab('lobby')">Лобби</button>
         </div>
 
-        <!-- Вкладка "Лента" -->
+        <!-- Вкладка "Дуо" — поиск партнёра 1-на-1 -->
         <div id="tm-pane-feed" class="tm-pane">
           <!-- Primary CTA: 1-на-1 поиск. Full-width, dominant. -->
           <button id="tm-search-cta" class="tm-search-cta" onclick="tmToggleSearch()">
@@ -954,12 +959,6 @@
             <span id="tm-search-cta-label">Искать пати</span>
           </button>
           <div class="tm-search-hint" id="tm-search-hint">1-на-1 · поиск длится 3 часа</div>
-          <!-- Subordinate text-link: лобби как «power-user» опция, не competing. -->
-          <button type="button" class="tm-lobby-link" onclick="tmOpenLobbyForm()">
-            <i class="ph ph-users-three" aria-hidden="true"></i>
-            <span>Создать лобби на 3–5</span>
-            <i class="ph ph-arrow-right tm-lobby-link-arrow" aria-hidden="true"></i>
-          </button>
 
           <div class="tm-filters" id="tm-filters">
             <div class="tm-filters-bar" id="tm-filters-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="tm-filters-panel" onclick="tmToggleFilters(event)" onkeydown="tmFiltersBarKeydown(event)">
@@ -995,10 +994,6 @@
             </div>
           </div>
 
-          <!-- Активные лобби — sticky-top перед списком одиночек.
-               Заполняется через tmRenderLobbies(). Если 0 лобби — пусто. -->
-          <div class="tm-lobbies-list" id="tm-lobbies-list"></div>
-
           <div class="tm-pane-head">
             <span class="tm-pane-head-title">Игроки в поиске</span>
             <button type="button" id="tm-feed-refresh" class="tm-refresh-btn" onclick="tmRefreshFeed()" aria-label="Обновить ленту">
@@ -1013,8 +1008,40 @@
           <button type="button" class="tm-load-more" id="tm-load-more" onclick="tmLoadMore()" hidden>Показать ещё</button>
         </div>
 
-        <!-- Вкладка "Мой профиль" -->
-        <div id="tm-pane-profile" class="tm-pane" hidden>
+        <!-- Вкладка "Лобби" — сбор стака 3-5 -->
+        <div id="tm-pane-lobby" class="tm-pane" hidden>
+          <!-- Primary CTA: создать своё лобби. -->
+          <button id="tm-lobby-create-cta" class="tm-search-cta tm-search-cta--lobby" onclick="tmOpenLobbyForm()">
+            <i class="ph ph-plus" aria-hidden="true"></i>
+            <span>Создать лобби</span>
+          </button>
+          <div class="tm-search-hint">Стак на 3–5 человек, длится до 30 минут</div>
+
+          <div class="tm-pane-head">
+            <span class="tm-pane-head-title">Активные лобби</span>
+            <button type="button" id="tm-lobby-refresh" class="tm-refresh-btn" onclick="tmRefreshLobbies()" aria-label="Обновить лобби">
+              <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
+              <span>Обновить</span>
+            </button>
+          </div>
+
+          <!-- Список лобби или empty-state с активным CTA. -->
+          <div class="tm-lobbies-list" id="tm-lobbies-list"></div>
+        </div>
+      </div>
+
+      <!-- Профиль — overlay-sheet (как help-sheet), доступен по avatar-кнопке
+           справа в header'е. Живёт outside page-teammates: position:fixed,
+           inset:0 — рендерится поверх любой page. -->
+      <div id="tm-profile-sheet" class="tm-help-sheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tm-profile-sheet-title">
+        <div class="tm-help-page">
+          <div class="tm-help-page-head">
+            <button type="button" class="tm-back-btn" onclick="tmCloseProfileSheet()" aria-label="Назад">
+              <i class="ph ph-arrow-left" aria-hidden="true"></i>
+            </button>
+            <h1 class="tm-help-page-title" id="tm-profile-sheet-title">Мой профиль</h1>
+          </div>
+          <div class="tm-help-content" id="tm-pane-profile">
 
           <!-- Preview-режим: как тебя видят в ленте -->
           <div id="tm-profile-preview" hidden>
@@ -1130,8 +1157,9 @@
               <div class="tm-feed-empty">Загрузка…</div>
             </div>
           </section>
-        </div>
-      </div>
+          </div><!-- /tm-help-content #tm-pane-profile -->
+        </div><!-- /tm-help-page -->
+      </div><!-- /tm-profile-sheet -->
 
       <!-- Страница оценки игрока (открывается по deep link из бота) -->
       <div id="page-teammate-review" class="page">
@@ -1361,6 +1389,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=188"></script>
+    <script defer src="script.js?v=189"></script>
   </body>
 </html>
