@@ -512,19 +512,15 @@
         }
 
         function goToPositionQuiz() {
-            // переключаемся на вкладку "Квизы"
+            // переключаемся на вкладку «Квизы». Квизы больше не в bottom-nav
+            // (слот заняли «Тиммейты»), поэтому никакой nav-item не подсвечиваем —
+            // switchPage уже снял active со всех элементов.
             switchPage('quiz');
-            document.querySelectorAll('.nav-item')[1].classList.add('active');
-            document.querySelectorAll('.nav-item')[0].classList.remove('active');
-
-            // сразу открываем сам квиз по позициям
             startPositionQuiz();
         }
 
         function goToHeroQuiz() {
             switchPage('quiz');
-            document.querySelectorAll('.nav-item')[1].classList.add('active');
-            document.querySelectorAll('.nav-item')[0].classList.remove('active');
             startHeroQuiz();
         }
 
@@ -2879,8 +2875,10 @@ function goBackFromFeedback() {
                  document.getElementById('page-home');
     target.classList.add('active');
 
-    // Восстанавливаем нав-элемент
-    var navMap = { home: 0, quiz: 1, drafter: 2, database: 3, profile: 4 };
+    // Восстанавливаем нав-элемент. Квизы больше не в bottom-nav — после
+    // возврата с feedback с quiz-страницы ни один nav-item не подсвечивается
+    // (страница доступна через виджет главной).
+    var navMap = { home: 0, teammates: 1, drafter: 2, database: 3, profile: 4 };
     var navIdx = navMap[_prevPageBeforeFeedback];
     if (navIdx !== undefined) {
         var navItems = document.querySelectorAll('.nav-item');
@@ -6860,6 +6858,11 @@ function _drafterCommentText(c) {
     // ── Entry point from home widget ────────────────────────────────────
     window.goToTeammates = function () {
         switchPage('teammates');
+        // Подсветка nav-item: switchPage снимает active со всех, а event у нас
+        // нет (заходим с виджета главной, не из bottom-nav). Хардкод [1] совпадает
+        // с положением «Тиммейты» в bottom-nav (см. index.html).
+        var navItems = document.querySelectorAll('.nav-item');
+        if (navItems[1]) navItems[1].classList.add('active');
         initTeammatesPage();
     };
 
@@ -7049,7 +7052,7 @@ function _drafterCommentText(c) {
             _tm.feedItems = [];
         }
         var listEl = document.getElementById('tm-feed-list');
-        if (reset && listEl) listEl.innerHTML = '<div class="tm-feed-empty">Загрузка…</div>';
+        if (reset && listEl) listEl.innerHTML = _tmSkeletonList(3);
         try {
             var params = new URLSearchParams();
             params.set('token', _tmGetToken());
@@ -7118,20 +7121,32 @@ function _drafterCommentText(c) {
         return isFinite(exp) && exp > Date.now();
     }
 
+    // Set of user_id'ов, чьи карточки уже были отрисованы в текущей сессии.
+    // Нужен чтобы reveal-анимация (.tm-player-card--enter) играла ТОЛЬКО при
+    // первом появлении карточки в ленте — иначе каждый poll-тик (30s) будет
+    // re-играть animation на всех видимых карточках. Set живёт в _tm, чтобы
+    // переживал re-render'ы; чистится при leave-from-page если нужно.
+    if (!_tm._seenCardIds) _tm._seenCardIds = Object.create(null);
+
     function _renderPlayerCard(p, opts) {
         opts = opts || {};
 
-        var avatarHtml = _tmAvatarHtml(p);
+        var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--lg');
         var displayName = _tmDisplayName(p);
         var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
 
+        // Pos icons как inline-spans внутри spec-row (не отдельный блок).
         var posIcons = (p.positions || []).map(function (n) {
             return '<img class="tm-player-pos-icon" src="' + _tmEsc(_tmPosIcon(n)) + '" alt="Поз ' + n + '">';
         }).join('');
 
-        var modes = (p.game_modes || []).map(function (m) { return TM_MODE_LABELS[m] || m; }).join(' · ');
+        var modesText = (p.game_modes || []).map(function (m) {
+            return TM_MODE_LABELS[m] || m;
+        }).join(', ');
 
-        // Comms — иконки inline в мета-строке, не отдельная uppercase-секция.
+        // Comms — inline иконки в мета-строке. Mood ОСОЗНАННО исключён:
+        // в ленте все ищут «как-то играть», моуд не помогает выбору, а текстуру
+        // мета-строки удлиняет. Mood будет на /profile/{id}-deep-link'е.
         var commsBits = [];
         if (p.microphone) commsBits.push('<i class="ph ph-microphone-stage" title="Микрофон" aria-hidden="true"></i>');
         if (p.discord)    commsBits.push('<i class="ph ph-chats-circle" title="Discord" aria-hidden="true"></i>');
@@ -7139,7 +7154,8 @@ function _drafterCommentText(c) {
             ? '<span class="tm-player-comms-inline">' + commsBits.join('') + '</span>'
             : '';
 
-        // Hero-тайлы 32×32 (CSS-стороне).
+        // Hero-тайлы 32×32. Если избранных героев нет — НЕ показываем
+        // пустой ряд (раньше код вставлял пустой div со срывом ритма).
         var heroes = (p.favorite_heroes || []).map(function (id) {
             var info = _tmHeroIconById(id);
             return '<div class="tm-hero-tile" title="' + _tmEsc(info.name) + '">' +
@@ -7156,8 +7172,7 @@ function _drafterCommentText(c) {
             return '<span class="tm-tag ' + cls + '">' + _tmEsc(t.tag) + countHtml + '</span>';
         }).join('');
 
-        // Мета-строка: [medal]Легенда · 3 500 ч · На победу [🎤 💬]
-        // Mood без uppercase — обычный текст. Comms прижимаются к концу.
+        // Identity-meta строка: [medal]Divine · 3 500 ч [🎤 💬]
         var metaParts = [];
         if (p.rank) {
             metaParts.push(
@@ -7168,8 +7183,6 @@ function _drafterCommentText(c) {
         if (p.hours != null) {
             metaParts.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
         }
-        var mood = TM_MOOD_LABELS[p.mood] || p.mood || '';
-        if (mood) metaParts.push('<span class="tm-player-meta-mood">' + _tmEsc(mood) + '</span>');
         var metaJoiner = ' <span class="tm-player-meta-dot">·</span> ';
 
         var metaRow = '';
@@ -7180,34 +7193,50 @@ function _drafterCommentText(c) {
             '</div>';
         }
 
-        // CTA: «Позвать» в ленте. В preview — пусто: банер сверху уже
-        // объясняет «это превью», подпись внизу карточки была дублирующей.
+        // Spec-row: позиции + режимы слитно (одна группа «как играю»),
+        // не split-attention left/right. Если оба пусты — секцию не рендерим.
+        var specRow = '';
+        if (posIcons || modesText) {
+            var specParts = [];
+            if (posIcons)   specParts.push('<span class="tm-player-positions">' + posIcons + '</span>');
+            if (modesText)  specParts.push('<span class="tm-player-modes">' + _tmEsc(modesText) + '</span>');
+            specRow = '<div class="tm-player-spec">' +
+                specParts.join('<span class="tm-player-spec-sep">·</span>') +
+            '</div>';
+        }
+
+        // CTA «Позвать» — теперь В identity-row рядом с именем (action proximate
+        // to identity), а не в подвале после 5 строк инфо. В preview-режиме —
+        // пусто (банер сверху уже объясняет «это превью»).
         var ctaHtml;
         if (opts.self) {
-            ctaHtml = '';
+            ctaHtml = '<span></span>';   // grid-slot заглушка, чтобы layout не схлопнулся
         } else {
             ctaHtml = '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Позвать</button>';
         }
 
+        // Reveal-анимация только для НОВЫХ карточек (первое появление в этой
+        // сессии). Иначе на каждом poll-тике лента бы дёргалась.
+        var enterCls = '';
+        if (p.user_id && !_tm._seenCardIds[p.user_id]) {
+            enterCls = ' tm-player-card--enter';
+            _tm._seenCardIds[p.user_id] = true;
+        }
+
         return [
-            '<article class="tm-player-card" data-user-id="' + (p.user_id || '') + '">',
+            '<article class="tm-player-card' + enterCls + '" data-user-id="' + (p.user_id || '') + '">',
               '<header class="tm-player-head">',
                 avatarHtml,
                 '<div class="tm-player-id">',
                   '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
                   metaRow,
                 '</div>',
+                ctaHtml,
               '</header>',
-              (posIcons || modes
-                ? '<div class="tm-player-spec">' +
-                    (posIcons ? '<div class="tm-player-positions">' + posIcons + '</div>' : '<div></div>') +
-                    (modes ? '<div class="tm-player-modes">' + _tmEsc(modes) + '</div>' : '<div></div>') +
-                  '</div>'
-                : ''),
-              (heroes ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
-              (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
-              (tags ? '<div class="tm-tags">' + tags + '</div>' : ''),
-              ctaHtml,
+              specRow,
+              (heroes  ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
+              (p.about ? '<blockquote class="tm-player-about">' + _tmEsc(p.about) + '</blockquote>' : ''),
+              (tags    ? '<div class="tm-tags">' + tags + '</div>' : ''),
             '</article>'
         ].join('');
     }
@@ -7222,7 +7251,11 @@ function _drafterCommentText(c) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: token, to_user_id: to_user_id })
             });
-            if (resp.status === 409) { showToast('Запрос уже отправлен'); if (btn) btn.textContent = 'Уже отправлено'; return; }
+            if (resp.status === 409) {
+                showToast('Запрос уже отправлен');
+                if (btn) _tmMarkCtaSent(btn, 'Уже отправлено');
+                return;
+            }
             if (resp.status === 429) {
                 var errData;
                 try { errData = await resp.json(); } catch (e) { errData = null; }
@@ -7232,13 +7265,119 @@ function _drafterCommentText(c) {
             }
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             showToast('Запрос отправлен', 'ok');
-            if (btn) btn.textContent = 'Запрос отправлен';
+            if (btn) _tmMarkCtaSent(btn, 'Запрос отправлен');
         } catch (e) {
             console.warn('[tm] sendRequest:', e);
             showToast('Не удалось отправить запрос');
             if (btn) btn.disabled = false;
         }
     };
+
+    // Анимированный переход CTA «Позвать» → «Запрос отправлен». Раньше был
+    // мгновенный textContent-swap — резкий jump. Теперь короткий fade+scale
+    // через CSS-класс .tm-player-cta--just-sent (0.34s), параллельно ставим
+    // постоянный --sent для серого цвета. Класс --just-sent снимаем по
+    // animationend, чтобы не висел.
+    function _tmMarkCtaSent(btn, text) {
+        if (!btn) return;
+        btn.textContent = text;
+        btn.disabled = true;
+        btn.classList.add('tm-player-cta--sent', 'tm-player-cta--just-sent');
+        var onEnd = function () {
+            btn.removeEventListener('animationend', onEnd);
+            btn.classList.remove('tm-player-cta--just-sent');
+        };
+        btn.addEventListener('animationend', onEnd);
+    }
+
+    // ── Skeleton-карточка для первого монтирования ленты ──────────────
+    // Заменяет «Загрузка…»-текст. Структура зеркалит реальную карточку
+    // (avatar | name+meta | CTA сверху, spec ниже), чтобы при появлении
+    // данных не было layout-shift'а.
+    function _tmSkeletonCard() {
+        return [
+            '<div class="tm-skeleton-card">',
+              '<div class="tm-skeleton-card-head">',
+                '<div class="tm-skeleton-avatar"></div>',
+                '<div>',
+                  '<div class="tm-skeleton-line tm-skeleton-line--name"></div>',
+                  '<div class="tm-skeleton-line tm-skeleton-line--meta"></div>',
+                '</div>',
+                '<div class="tm-skeleton-line tm-skeleton-line--cta"></div>',
+              '</div>',
+              '<div class="tm-skeleton-line tm-skeleton-line--spec"></div>',
+            '</div>',
+        ].join('');
+    }
+    function _tmSkeletonList(count) {
+        var n = count || 3;
+        var items = [];
+        for (var i = 0; i < n; i++) items.push(_tmSkeletonCard());
+        return '<div class="tm-skeleton-list">' + items.join('') + '</div>';
+    }
+
+    // ── Badge для bottom-nav «Тиммейты» + динамический сабтайтл главной ──
+    // Лёгкий global-polling: входящие pending каждые 90s, плюс one-shot на
+    // App-load. Юзер видит «есть N запросов» даже если он сейчас на странице
+    // Героев / Главной / Драфтере. Реюзит /requests/incoming (нет отдельного
+    // count-endpoint'а; пэйлоад мал — payload-overhead приемлем).
+    var _TM_BADGE_POLL_MS = 90000;
+    async function _tmRefreshBadge() {
+        var token = _tmGetToken();
+        if (!token) return;
+        try {
+            var resp = await apiFetch(
+                TM_API + '/teammates/requests/incoming?token=' + encodeURIComponent(token)
+            );
+            if (!resp.ok) return;
+            var data = await resp.json();
+            var count = Array.isArray(data) ? data.length : 0;
+            _tmApplyBadge(count);
+            _tmApplyHomeSubtitle(count);
+        } catch (e) {
+            // Тихо: badge — second-class сигнал, не валим ради него UX.
+        }
+    }
+    function _tmApplyBadge(count) {
+        var badge = document.getElementById('nav-tm-badge');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count > 9 ? '9+' : String(count);
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+    function _tmApplyHomeSubtitle(count) {
+        var sub = document.querySelector('#home-teammates-widget .home-tm-subtitle');
+        if (!sub) return;
+        if (count > 0) {
+            // Простая склонение-логика: 1 запрос / 2-4 запроса / 5+ запросов.
+            // Узкий русско-специфичный кейс, не тянем целую i18n-либу.
+            var label;
+            var mod10  = count % 10;
+            var mod100 = count % 100;
+            if (mod100 >= 11 && mod100 <= 14)      label = 'запросов';
+            else if (mod10 === 1)                  label = 'запрос';
+            else if (mod10 >= 2 && mod10 <= 4)     label = 'запроса';
+            else                                   label = 'запросов';
+            sub.textContent = 'У тебя ' + count + ' входящих ' + label;
+        } else {
+            sub.textContent = 'Подбери напарника по рангу, позиции и настрою';
+        }
+    }
+    // Глобальный polling. Запускаем один раз при загрузке DOM (с задержкой
+    // ~1.5s — даём токену успеть подсосаться) и потом каждые 90s.
+    function _tmStartBadgePolling() {
+        if (window._tmBadgeTimer) return;
+        setTimeout(_tmRefreshBadge, 1500);
+        window._tmBadgeTimer = setInterval(_tmRefreshBadge, _TM_BADGE_POLL_MS);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _tmStartBadgePolling);
+    } else {
+        _tmStartBadgePolling();
+    }
 
     // ── Filters ─────────────────────────────────────────────────────────
     // Все 4 категории используют ОДИН класс .tm-fchip с тремя content-

@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=152" />
+    <link rel="stylesheet" href="styles.css?v=153" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1201,9 +1201,12 @@
           <i class="nav-icon ph ph-house" aria-hidden="true"></i>
           <div class="nav-label">Главная</div>
         </div>
-        <div class="nav-item" onclick="switchPage('quiz', event)">
-          <i class="nav-icon ph ph-target" aria-hidden="true"></i>
-          <div class="nav-label">Квизы</div>
+        <div class="nav-item nav-item--tm" onclick="switchPage('teammates', event)">
+          <span class="nav-icon-wrap">
+            <i class="nav-icon ph ph-users-three" aria-hidden="true"></i>
+            <span class="nav-badge" id="nav-tm-badge" hidden></span>
+          </span>
+          <div class="nav-label">Тиммейты</div>
         </div>
         <div class="nav-item" onclick="switchPage('drafter', event)">
           <i class="nav-icon ph ph-strategy" aria-hidden="true"></i>
@@ -1269,6 +1272,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=182"></script>
+    <script defer src="script.js?v=183"></script>
   </body>
 </html>

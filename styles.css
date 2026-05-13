@@ -6807,22 +6807,42 @@ margin-top: var(--space-4);
    - about → tags   →  8px (тесно — оба про игрока)
    - tags → CTA     → 16px (переход «инфо → действие»)
    Последний ребёнок (CTA или preview-label) получает margin-bottom: 0. */
+/* Карточка игрока в ленте — editorial-dark адаптация minimalist-ui.
+   Композиция: identity-row (avatar 56 + имя + meta + CTA) → spec-row
+   (positions + modes) → optional heroes → optional about-quote → optional tags.
+   Hover слегка светит границу: на тёмной палитре lift-shadow не читается,
+   а сдвиг border-color даёт ощутимый response без шума. */
 .tm-player-card {
   background: var(--bg-surface);
-  border: 0.5px solid var(--border-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
+  transition: border-color 0.18s ease-out;
+  /* Reveal-анимация на первом монтировании (см. _renderPlayerCard,
+     стартовое состояние выставляется .tm-player-card--enter). */
 }
-.tm-player-card > * { margin-bottom: var(--space-3); }
-.tm-player-head    { margin-bottom: var(--space-4); }
-.tm-player-about   { margin-bottom: var(--space-2); }
-.tm-tags           { margin-bottom: var(--space-4); }
-.tm-player-card > *:last-child { margin-bottom: 0; }
+.tm-player-card:hover,
+.tm-player-card:focus-within {
+  border-color: var(--border-default);
+}
+.tm-player-card--enter {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: tmCardEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes tmCardEnter {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Head = grid [avatar | id | cta]. CTA живёт В identity-row, не внизу
+   карточки — чтобы action был proximate to identity, а не в подвале
+   после 5 строк инфо. */
 .tm-player-head {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: center;
 }
@@ -6833,8 +6853,8 @@ margin-top: var(--space-4);
   min-width: 0;
 }
 .tm-player-name {
-  font-size: var(--text-md);
-  font-weight: var(--font-semibold);
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
   color: var(--text-primary);
   letter-spacing: var(--tracking-tight);
   line-height: 1.15;
@@ -6891,25 +6911,30 @@ margin-top: var(--space-4);
 }
 .tm-player-comms-inline i { font-size: 13px; line-height: 1; }
 
-/* Specs row: positions on left, modes on right. Hairlines удалены —
-   они в изоляции выглядели как случайный обрыв, без системы. */
+/* Specs row: positions + modes слитно в одну левую группу.
+   Раньше modes уезжали в правый край split-attention-style — глаз метался
+   между полами строки на каждой карточке. Теперь оба элемента читаются
+   слева направо как единая «специализация». */
 .tm-player-spec {
-  display: grid;
-  grid-template-columns: auto 1fr;
+  display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
 }
 .tm-player-positions { display: flex; gap: 4px; }
 .tm-player-pos-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   opacity: 0.92;
 }
+.tm-player-spec-sep {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
 .tm-player-modes {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
   letter-spacing: var(--tracking-tight);
-  text-align: right;
 }
 
 /* Hero tiles 32×32 — раньше 44 перевешивали identity. Теперь это
@@ -6931,12 +6956,23 @@ margin-top: var(--space-4);
   display: block;
 }
 
+/* About — editorial-quote-стиль. Italic serif + левый border-accent
+   отрывают «голос человека» от data-полей выше. Это сразу читается как
+   «то, что игрок сам написал», а не как ещё одно поле справочника.
+   Шрифт — системный serif (Georgia / New York / Noto Serif), без отдельного
+   font-request: в Telegram-WebView лишний @font-face = лишняя задержка
+   первого рендера. */
 .tm-player-about {
+  font-family: Georgia, "Iowan Old Style", "Noto Serif", "Times New Roman", serif;
+  font-style: italic;
   font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: var(--leading-snug);
   white-space: pre-wrap;
   word-wrap: break-word;
+  border-left: 2px solid var(--accent-border);
+  padding-left: 10px;
+  margin: 0;
 }
 
 /* ── Tags: семантический цвет, моно-счётчик ───────────────────────── */
@@ -6976,13 +7012,16 @@ margin-top: var(--space-4);
 }
 
 /* Card action — ghost button. Без arrow-icon (текст «Позвать» сам по себе
-   достаточно глагольный). Spacing идёт через margin-pattern .tm-player-card. */
+   достаточно глагольный). Компактные padding'и — кнопка живёт в identity-row
+   рядом с именем, не в подвале карточки, поэтому она должна выглядеть как
+   action-affordance, а не как hero-button. tap:active даёт лёгкий scale-
+   feedback, без сдвига layout. */
 .tm-player-cta {
   appearance: none;
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--accent-border);
-  padding: 10px 14px;
+  padding: 7px 14px;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
@@ -6992,16 +7031,29 @@ margin-top: var(--space-4);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  align-self: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s;
 }
 .tm-player-cta:hover { background: var(--accent-soft); }
+.tm-player-cta:active { transform: scale(0.97); }
 .tm-player-cta:disabled { opacity: 0.55; cursor: default; }
 .tm-player-cta--sent {
   background: var(--bg-elevated);
   color: var(--text-secondary);
   border-color: var(--border-default);
+  /* Fade-in анимация на смену состояния — fade убирает резкий jump
+     текста «Позвать → Запрос отправлен». Применяется через .--just-sent
+     класс в JS, который снимается через 350ms. */
 }
 .tm-player-cta--sent:hover { background: var(--bg-elevated); }
+.tm-player-cta--just-sent {
+  animation: tmCtaSent 0.34s ease-out;
+}
+@keyframes tmCtaSent {
+  0%   { opacity: 0.4; transform: scale(0.97); }
+  100% { opacity: 1;   transform: scale(1);    }
+}
 
 /* ── Profile preview banner (после save) ──────────────────────────── */
 .tm-preview-banner {
@@ -7755,3 +7807,88 @@ margin-top: var(--space-4);
   margin: 0 0 var(--space-2);
 }
 .tm-help-text:last-child { margin-bottom: 0; }
+
+/* ── Nav-badge на вкладке «Тиммейты» в bottom-nav ───────────────────
+   Маленький круг с числом входящих pending-запросов. Накладывается на
+   правый-верхний угол иконки через .nav-icon-wrap (position: relative
+   wrapper, чтобы badge мог быть absolute без сдвига layout).
+   Семантика — accent, не negative: входящий запрос это позитивное
+   событие («тебя хотят»), а не warning. */
+.nav-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  line-height: 1;
+}
+.nav-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+  border: 2px solid var(--bg-base);   /* «отрезает» badge от иконки */
+  box-sizing: content-box;
+  pointer-events: none;
+  letter-spacing: 0;
+}
+.nav-badge[hidden] { display: none; }
+
+/* ── Skeleton-карточка для пустой ленты ───────────────────────────────
+   Заменяет «Загрузка…»-плейсхолдер. Сохраняет вертикальный ритм ленты
+   и снижает воспринимаемую задержку (eye-tracking research: skeleton
+   ощущается ~20% быстрее чем spinner при той же реальной задержке). */
+.tm-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.tm-skeleton-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.tm-skeleton-card-head {
+  display: grid;
+  grid-template-columns: 56px 1fr 70px;
+  gap: var(--space-3);
+  align-items: center;
+}
+.tm-skeleton-avatar {
+  width: 56px; height: 56px; border-radius: 50%;
+}
+.tm-skeleton-line {
+  height: 12px;
+  border-radius: 4px;
+}
+.tm-skeleton-line--name { width: 60%; height: 16px; margin-bottom: 6px; }
+.tm-skeleton-line--meta { width: 80%; }
+.tm-skeleton-line--cta  { height: 30px; border-radius: var(--radius-md); }
+.tm-skeleton-line--spec { width: 70%; height: 22px; }
+.tm-skeleton-avatar,
+.tm-skeleton-line {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 0%,
+    rgba(255,255,255,0.04) 50%,
+    var(--bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: tmSkeletonShimmer 1.4s ease-in-out infinite;
+}
+@keyframes tmSkeletonShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
