@@ -7917,19 +7917,26 @@ function _drafterCommentText(c) {
             _tm.myProfile.is_searching = false;
         }
         var active = _tmIsSearchingActive();
+        // Mutually exclusive с лобби: если юзер в активном лобби — поиск
+        // дуо запрещён (бэк тоже это enforce'ит). UI делает кнопку disabled
+        // и подсказывает почему.
+        var inLobby = _tmGetMyLobbyId() != null;
 
         label.textContent = active ? 'Поиск активен — остановить' : 'Искать пати';
         btn.classList.toggle('tm-search-cta--active', active);
+        btn.disabled = inLobby && !active;
 
         var hint = document.getElementById('tm-search-hint');
         if (hint) {
-            if (active) {
+            if (inLobby && !active) {
+                hint.textContent = 'Ты в лобби — выйди, чтобы искать дуо';
+            } else if (active) {
                 var minLeft = Math.max(0, Math.ceil(
                     (_tmParseUtcLike(_tm.myProfile.search_expires_at) - Date.now()) / 60000
                 ));
                 hint.textContent = 'Тебя видят другие · ещё ' + _tmFormatRemaining(minLeft);
             } else {
-                hint.textContent = 'Поиск длится 3 часа';
+                hint.textContent = '1-на-1 · поиск длится 3 часа';
             }
         }
 
@@ -8969,7 +8976,7 @@ function _drafterCommentText(c) {
               '<header class="tm-lobby-head">',
                 hostAvatar,
                 '<div class="tm-lobby-host-info">',
-                  '<div class="tm-lobby-host-name">' + _tmEsc(hostName) + ' собирает лобби на ' + lobby.party_size + '</div>',
+                  '<div class="tm-lobby-host-name">Лобби ' + _tmEsc(hostName) + '</div>',
                   metaRow,
                 '</div>',
                 actionBtn,
@@ -9005,9 +9012,17 @@ function _drafterCommentText(c) {
                 body: JSON.stringify({ token: token, position: position }),
             });
             if (!resp.ok) {
+                // Подробный лог для диагностики (status + body) — без этого
+                // юзер видит только generic «Не удалось», диагностировать
+                // удалённо невозможно.
+                var rawBody = '';
                 var err;
-                try { err = await resp.json(); } catch (e) { err = null; }
-                showToast((err && err.detail) || 'Не удалось присоединиться');
+                try { rawBody = await resp.text(); } catch (e) { /* пусто */ }
+                try { err = rawBody ? JSON.parse(rawBody) : null; } catch (e) { err = null; }
+                console.warn('[tm] joinLobby failed:', resp.status, rawBody);
+                var detail = (err && (err.detail || err.message)) ||
+                             ('Ошибка ' + resp.status);
+                showToast(detail);
                 if (slotEl) slotEl.classList.remove('tm-lobby-slot--disabled');
                 return;
             }
@@ -9018,8 +9033,8 @@ function _drafterCommentText(c) {
             if (_tm.myProfile) _tm.myProfile.is_searching = false;
             renderSearchCta();
         } catch (e) {
-            console.warn('[tm] joinLobby:', e);
-            showToast('Не удалось присоединиться');
+            console.warn('[tm] joinLobby exception:', e);
+            showToast('Сетевая ошибка — попробуй ещё раз');
             if (slotEl) slotEl.classList.remove('tm-lobby-slot--disabled');
         }
     };

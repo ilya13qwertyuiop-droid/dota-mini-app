@@ -2141,11 +2141,23 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
 async def api_teammates_search_start(
     data: TeammateTokenOnly, db: Session = Depends(get_db),
 ):
-    """Включает поиск: is_searching=True, search_expires_at=now+3h."""
+    """Включает поиск: is_searching=True, search_expires_at=now+3h.
+
+    Mutually exclusive с лобби-membership'ом: если юзер уже host/member
+    активного лобби — отказ. Иначе он одновременно «ищу дуо» В чужих
+    лентах и «committed в стак» — конфликт намерений для других игроков.
+    """
     user_id = _tm_require_user(data.token)
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
+
+    # Запрет: ты в лобби, нельзя одновременно ходить «доступен для 1-на-1».
+    if _tm_user_active_lobby_id(db, user_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ты в лобби. Выйди из него, чтобы искать дуо.",
+        )
 
     profile.is_searching      = True
     # tz-aware UTC. Колонка TIMESTAMPTZ (миграция 0008) — psycopg2 не делает
