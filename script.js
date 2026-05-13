@@ -6882,6 +6882,10 @@ function _drafterCommentText(c) {
     };
 
     function initTeammatesPage() {
+        // Очистка устаревшего currentTab='profile' из старых сессий (профиль
+        // теперь sheet, не tab) — иначе setTeammatesTab сразу его перехватит
+        // и откроет sheet при каждом заходе.
+        if (_tm.currentTab === 'profile') _tm.currentTab = 'feed';
         setTeammatesTab(_tm.currentTab || 'feed');
         renderFilters();
         // Параллельно: профиль (для кнопки поиска и формы) + лента + входящие.
@@ -6890,6 +6894,9 @@ function _drafterCommentText(c) {
             _tm.favoriteHeroes = (p && Array.isArray(p.favorite_heroes)) ? p.favorite_heroes.slice() : [];
             renderSearchCta();
             renderProfileForm();
+            // Avatar-btn в header'е: photo_url появляется только после
+            // loadMyProfile, поэтому update делаем именно здесь.
+            _tmUpdateProfileBtnAvatar();
             // Если профиль уже есть — показываем preview, иначе остаёмся на форме.
             if (p && p.rank) {
                 tmShowProfilePreview();
@@ -7015,6 +7022,89 @@ function _drafterCommentText(c) {
         _tmDoCloseHelpVisual();
     };
 
+    // ── Profile-sheet ───────────────────────────────────────────────
+    // Профиль (форма + запросы + история) переехал из tab'а в overlay-sheet.
+    // Открывается по avatar-btn в header'е. Та же history-механика что
+    // help-sheet — system-back закрывает шторку, не выкидывает из миниапа.
+    var _tmProfileHistoryActive = false;
+
+    function _tmDoCloseProfileSheetVisual() {
+        var sheet = document.getElementById('tm-profile-sheet');
+        if (!sheet) return;
+        sheet.classList.remove('tm-help-sheet--open');
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
+    }
+
+    function _tmHandleProfilePopstate() {
+        window.removeEventListener('popstate', _tmHandleProfilePopstate);
+        _tmProfileHistoryActive = false;
+        _tmDoCloseProfileSheetVisual();
+    }
+
+    window.tmOpenProfileSheet = function () {
+        var sheet = document.getElementById('tm-profile-sheet');
+        if (!sheet) return;
+        sheet.hidden = false;
+        sheet.setAttribute('aria-hidden', 'false');
+        // eslint-disable-next-line no-unused-expressions
+        sheet.offsetHeight;
+        sheet.classList.add('tm-help-sheet--open');
+        document.body.style.overflow = 'hidden';
+        if (!_tmProfileHistoryActive) {
+            try {
+                history.pushState({ tmProfile: true }, '');
+                _tmProfileHistoryActive = true;
+                window.addEventListener('popstate', _tmHandleProfilePopstate);
+            } catch (e) { /* history blocked in some embeds */ }
+        }
+    };
+
+    window.tmCloseProfileSheet = function () {
+        if (_tmProfileHistoryActive) {
+            window.removeEventListener('popstate', _tmHandleProfilePopstate);
+            _tmProfileHistoryActive = false;
+            try { history.back(); } catch (e) {}
+        }
+        _tmDoCloseProfileSheetVisual();
+    };
+
+    // Avatar-кнопка в header'е: после loadMyProfile подставляем photo_url
+    // если есть. Иначе остаётся ph-user fallback из HTML. Вызывается из
+    // initTeammatesPage после loadMyProfile (см. ниже).
+    function _tmUpdateProfileBtnAvatar() {
+        var btn = document.getElementById('tm-profile-btn');
+        if (!btn) return;
+        var p = _tm.myProfile;
+        var url = p && p.photo_url;
+        if (!url) {
+            btn.classList.remove('tm-profile-btn--has-photo');
+            return;
+        }
+        // Если <img> уже стоит — обновим src. Иначе вставим.
+        var img = btn.querySelector('img');
+        if (img) {
+            if (img.src !== url) img.src = url;
+        } else {
+            img = document.createElement('img');
+            img.src = url;
+            img.alt = '';
+            img.onerror = function () {
+                btn.classList.remove('tm-profile-btn--has-photo');
+                if (img.parentNode) img.parentNode.removeChild(img);
+            };
+            btn.appendChild(img);
+        }
+        btn.classList.add('tm-profile-btn--has-photo');
+    }
+
     // ── Auto-poll lifecycle ────────────────────────────────────────────
     // Останавливать polling при уходе со страницы тиммейтов мы НЕ через
     // wrap switchPage (хрупко) — а через self-check в каждом tick'е:
@@ -7031,16 +7121,26 @@ function _drafterCommentText(c) {
             _tmStopPolling();
             return;
         }
+        // Дуо: обновляем ленту игроков (без лобби — те живут на своей вкладке).
         if (_tm.currentTab === 'feed') {
             _tmTriggerRefresh('feed');
-        } else if (_tm.currentTab === 'profile') {
-            // Авто-poll'им только incoming/outgoing (быстро меняются).
-            // History — только по manual refresh / переключению на вкладку:
-            // иначе ломалась бы пагинация прямо во время просмотра.
-            if (_tm.requestsTab === 'incoming' || _tm.requestsTab === 'outgoing') {
-                _tmTriggerRefresh('requests');
-            }
         }
+        // Лобби: обновляем список лобби (без player-cards).
+        else if (_tm.currentTab === 'lobby') {
+            _tmTriggerRefresh('lobby');
+        }
+        // Профиль-sheet открыт: обновляем requests (если на incoming/outgoing —
+        // history сама-обновляется только на manual refresh, иначе ломалась
+        // бы пагинация прямо во время просмотра).
+        if (_tmIsProfileSheetOpen() &&
+            (_tm.requestsTab === 'incoming' || _tm.requestsTab === 'outgoing')) {
+            _tmTriggerRefresh('requests');
+        }
+    }
+
+    function _tmIsProfileSheetOpen() {
+        var sheet = document.getElementById('tm-profile-sheet');
+        return !!(sheet && sheet.classList.contains('tm-help-sheet--open'));
     }
 
     function _tmStartPolling() {
@@ -7064,26 +7164,30 @@ function _drafterCommentText(c) {
         if (document.visibilityState !== 'visible') return;
         _tmRefreshBadge();
         if (!_tmIsPageActive()) return;
-        if (_tm.currentTab === 'feed') {
-            _tmTriggerRefresh('feed');
-        } else if (_tm.currentTab === 'profile') {
-            _tmTriggerRefresh('requests');
-        }
+        // Активная вкладка → refresh её основной поток.
+        if (_tm.currentTab === 'feed')  _tmTriggerRefresh('feed');
+        if (_tm.currentTab === 'lobby') _tmTriggerRefresh('lobby');
+        // Если открыт sheet профиля — заодно обновим requests.
+        if (_tmIsProfileSheetOpen())    _tmTriggerRefresh('requests');
     }
     document.addEventListener('visibilitychange', _tmHandleVisibilityChange);
 
     // Общий путь для авто-poll'а и manual-кнопок: крутим иконку, дёргаем
     // соответствующий loader, останавливаем спиннер в finally.
     async function _tmTriggerRefresh(kind) {
-        var btn = document.getElementById(
-            kind === 'feed' ? 'tm-feed-refresh' : 'tm-requests-refresh'
+        // Сопоставление kind → spinner-button id (для feedback при рефреше).
+        var btnId = (
+            kind === 'feed'     ? 'tm-feed-refresh'     :
+            kind === 'lobby'    ? 'tm-lobby-refresh'    :
+            kind === 'requests' ? 'tm-requests-refresh' : null
         );
+        var btn = btnId ? document.getElementById(btnId) : null;
         if (btn) btn.classList.add('tm-refresh-btn--spinning');
         try {
             if (kind === 'feed') {
-                // Лобби и одиночные карточки обновляем параллельно — оба видны
-                // на вкладке Лента и оба меняются полл-циклом.
-                await Promise.all([loadFeed(true), loadLobbies()]);
+                await loadFeed(true);
+            } else if (kind === 'lobby') {
+                await loadLobbies();
             } else if (kind === 'requests') {
                 await loadRequestsForTab(_tm.requestsTab);
             }
@@ -7106,15 +7210,29 @@ function _drafterCommentText(c) {
     window.initTeammatesPage = initTeammatesPage;
 
     window.setTeammatesTab = function (tab) {
+        // Old 'profile' tab → теперь профиль в overlay-sheet (avatar-btn в
+        // header). Если что-то вызывает setTeammatesTab('profile') (deep-link
+        // handler, persisted _tm.currentTab от старой сессии) — открываем
+        // sheet и остаёмся на 'feed' для tab-bar UI.
+        if (tab === 'profile') {
+            if (typeof window.tmOpenProfileSheet === 'function') tmOpenProfileSheet();
+            tab = 'feed';
+        }
+        if (tab !== 'feed' && tab !== 'lobby') tab = 'feed';
         _tm.currentTab = tab;
+
         var tabs = document.querySelectorAll('.tm-tab');
         for (var i = 0; i < tabs.length; i++) {
             tabs[i].classList.toggle('tm-tab--active', tabs[i].getAttribute('data-tm-tab') === tab);
         }
         var pf = document.getElementById('tm-pane-feed');
-        var pp = document.getElementById('tm-pane-profile');
+        var pl = document.getElementById('tm-pane-lobby');
         if (pf) pf.hidden = (tab !== 'feed');
-        if (pp) pp.hidden = (tab !== 'profile');
+        if (pl) pl.hidden = (tab !== 'lobby');
+
+        // На вкладке Лобби сразу запрашиваем свежий список — юзер пришёл
+        // целенаправленно посмотреть/создать лобби.
+        if (tab === 'lobby') loadLobbies();
     };
 
     // ── My profile ──────────────────────────────────────────────────────
@@ -8659,10 +8777,13 @@ function _drafterCommentText(c) {
                 return;
             }
             if (tmIncoming) {
-                // setTeammatesTab после goToTeammates перебивает дефолт 'feed',
-                // выставленный внутри initTeammatesPage.
+                // Профиль теперь в overlay-sheet, не tab. Открываем страницу
+                // тиммейтов, потом sheet поверх с requests-tab='incoming'.
                 goToTeammates();
-                setTeammatesTab('profile');
+                if (typeof window.tmOpenProfileSheet === 'function') {
+                    tmOpenProfileSheet();
+                }
+                tmSetRequestsTab('incoming');
             }
         } catch (e) {
             console.warn('[tm] deep-link handler error:', e);
@@ -8698,7 +8819,10 @@ function _drafterCommentText(c) {
             _tm.lobbiesLoading = false;
         }
     }
-    window.tmRefreshLobbies = loadLobbies;
+    window.tmRefreshLobbies = function () {
+        _tmTriggerRefresh('lobby');
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
 
     // Вычисляет lobby_id, в котором участвует текущий юзер (host или member).
     // null если ни в каком. Источник истины — клиентский кэш _tm.lobbies.
@@ -8720,7 +8844,16 @@ function _drafterCommentText(c) {
         var listEl = document.getElementById('tm-lobbies-list');
         if (!listEl) return;
         if (!_tm.lobbies.length) {
-            listEl.innerHTML = '';
+            // Empty-state с активным CTA — «be the first», не «no data».
+            // CTA-кнопка дублирует primary вверху панели для удобства тапа
+            // прямо из пустого экрана, без подъёма наверх.
+            listEl.innerHTML = [
+                '<div class="tm-lobby-empty">',
+                  '<div class="tm-lobby-empty-icon"><i class="ph ph-users-three" aria-hidden="true"></i></div>',
+                  '<div class="tm-lobby-empty-title">Никто не собирает стак</div>',
+                  '<div class="tm-lobby-empty-body">Создай первое лобби — оно появится в ленте, и другие игроки смогут к тебе подключиться.</div>',
+                '</div>',
+            ].join('');
             return;
         }
         var myLobbyId = _tmGetMyLobbyId();
@@ -9022,7 +9155,7 @@ function _drafterCommentText(c) {
         var sizeHint = document.getElementById('tm-lobby-size-hint');
         if (sizeHint) {
             sizeHint.textContent = rankedLocked
-                ? 'В рейтинге 4-стэк запрещён правилами Доты — только 3 или 5.'
+                ? 'В рейтинге 4-стак запрещён правилами Доты — только 3 или 5.'
                 : 'Включая тебя.';
         }
 
@@ -9149,7 +9282,7 @@ function _drafterCommentText(c) {
         if (summaryEl) {
             var modeLabel = TM_LOBBY_MODE_LABELS[f.mode] || f.mode;
             var parts = [
-                '<strong>' + f.party_size + '-стэк</strong>',
+                '<strong>' + f.party_size + '-стак</strong>',
                 _tmEsc(modeLabel),
             ];
             if (f.host_position != null) {

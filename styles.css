@@ -7916,42 +7916,107 @@ margin-top: var(--space-4);
 
 /* ── Party-finder («Лобби») ─────────────────────────────────────────── */
 
-/* Лобби-вход — subordinate text-link под основной CTA «Искать пати».
-   Сознательно НЕ кнопка-карточка: визуальный вес ниже primary, читается
-   как «дополнительная опция», не competing-equal. Centered alignment +
-   ghost-окраска + arrow signal navigation. */
-.tm-lobby-link {
+/* Page-head actions: правая группа из help-btn + avatar-btn.
+   Раньше help-btn имел margin-left:auto — теперь это делает wrapper. */
+.tm-page-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+/* Когда .tm-help-btn внутри wrapper'а — auto-margin сбрасывается, wrapper
+   сам тянется вправо. Сохраняем явно для backward-compat если где-то
+   help-btn вне actions-обёртки. */
+.tm-page-head-actions .tm-help-btn { margin-left: 0; }
+
+/* Avatar-кнопка (мой профиль) — circular, парная по размеру с help-btn.
+   Внутри либо <img> с photo_url, либо ph-user fallback. */
+.tm-profile-btn {
   appearance: none;
-  background: transparent;
-  border: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
   color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-xs);
-  font-weight: var(--font-medium);
-  letter-spacing: var(--tracking-tight);
-  padding: 8px 12px;
-  margin: 4px auto 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 100%;
-  border-radius: var(--radius-md);
-  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  transition: border-color 0.15s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.tm-lobby-link:hover {
-  color: var(--accent);
+.tm-profile-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.tm-profile-btn i { font-size: 16px; line-height: 1; }
+.tm-profile-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.tm-profile-btn--has-photo i { display: none; }
+
+/* Lobby-вариант основного CTA: используется на вкладке Лобби как primary
+   action (создать своё лобби). Тот же ghost-style что и .tm-search-cta, но
+   неактивная-стейт-палитра (accent-soft → ghost-elevated) — потому что
+   создание лобби это конкретное действие, не on/off-toggle. */
+.tm-search-cta--lobby {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+.tm-search-cta--lobby:hover {
   background: var(--bg-elevated);
+  border-color: var(--border-strong);
 }
-.tm-lobby-link i { font-size: 14px; line-height: 1; opacity: 0.75; }
-.tm-lobby-link:hover i { opacity: 1; }
-.tm-lobby-link-arrow {
-  transition: transform 0.15s;
+.tm-search-cta--lobby i {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.85;
 }
-.tm-lobby-link:hover .tm-lobby-link-arrow { transform: translateX(2px); }
-.tm-lobby-link:disabled { opacity: 0.4; cursor: default; }
+
+/* Empty-state для вкладки Лобби: активное «be the first» приглашение,
+   а не «no data» blank. CTA дублируется внутри empty-state — юзер
+   действует прямо отсюда, не лезет наверх к header-CTA. */
+.tm-lobby-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-4) var(--space-6);
+  gap: var(--space-3);
+  color: var(--text-secondary);
+}
+.tm-lobby-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+.tm-lobby-empty-icon i { font-size: 22px; line-height: 1; }
+.tm-lobby-empty-title {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+.tm-lobby-empty-body {
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  max-width: 280px;
+}
 
 /* Lobby-list container. Только spacing между лобби-карточками. */
 .tm-lobbies-list {
