@@ -6789,6 +6789,15 @@ function _drafterCommentText(c) {
         requestsData:    { incoming: [], outgoing: [], history: [] },
         requestsLoading: { incoming: false, outgoing: false, history: false },
         historyCursor: null,
+
+        // ── Party-finder («Лобби») ───────────────────────────────────
+        // lobbies — массив {lobby_id, host_id, party_size, mode, status,
+        //                   rank_filter, needed_positions, host_position,
+        //                   expires_at, slots: [{position, user, joined_at}]}
+        lobbies: [],
+        lobbiesLoading: false,
+        // Состояние формы создания. Обнуляется при tmOpenLobbyForm.
+        lobbyForm: null,
     };
 
     var _TM_POLL_INTERVAL_MS = 30000;  // 30 секунд между авто-обновлениями
@@ -6889,6 +6898,7 @@ function _drafterCommentText(c) {
             }
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
+        loadLobbies();
         loadRequestsForTab(_tm.requestsTab);
         // Outgoing-список нужен ленте для cross-check «уже отправил ли я этому?».
         // Без этого после reload кнопка «Позвать» показывалась снова, юзер
@@ -7071,7 +7081,9 @@ function _drafterCommentText(c) {
         if (btn) btn.classList.add('tm-refresh-btn--spinning');
         try {
             if (kind === 'feed') {
-                await loadFeed(true);
+                // Лобби и одиночные карточки обновляем параллельно — оба видны
+                // на вкладке Лента и оба меняются полл-циклом.
+                await Promise.all([loadFeed(true), loadLobbies()]);
             } else if (kind === 'requests') {
                 await loadRequestsForTab(_tm.requestsTab);
             }
@@ -8183,13 +8195,60 @@ function _drafterCommentText(c) {
             params.set('token', token);
             params.set('limit', '20');
             if (_tm.historyCursor) params.set('cursor', _tm.historyCursor);
-            var resp = await apiFetch(TM_API + '/teammates/requests/history?' + params.toString());
-            if (!resp.ok) return;
-            var data;
-            try { data = await resp.json(); } catch (e) { data = null; }
-            var items = (data && data.items) || [];
-            _tm.requestsData.history = reset ? items : _tm.requestsData.history.concat(items);
-            _tm.historyCursor = data && data.next_cursor;
+
+            // Load 1-на-1 history (paginated) + лобби history (no pagination,
+            // только при reset) параллельно. Сортируем по timestamp DESC.
+            var reqPromise = apiFetch(TM_API + '/teammates/requests/history?' + params.toString());
+            var lobPromise = reset
+                ? apiFetch(TM_API + '/teammates/lobbies/history?token=' + encodeURIComponent(token))
+                : Promise.resolve(null);
+
+            var responses = await Promise.all([reqPromise, lobPromise]);
+            var reqResp = responses[0];
+            var lobResp = responses[1];
+
+            var reqItems = [];
+            if (reqResp && reqResp.ok) {
+                try {
+                    var reqData = await reqResp.json();
+                    reqItems = ((reqData && reqData.items) || []).map(function (r) {
+                        r._type = 'request';
+                        r._sortAt = r.accepted_at;
+                        return r;
+                    });
+                    _tm.historyCursor = reqData && reqData.next_cursor;
+                } catch (e) { /* tolerate parse */ }
+            }
+
+            var lobItems = [];
+            if (lobResp && lobResp.ok) {
+                try {
+                    var lobData = await lobResp.json();
+                    lobItems = ((lobData && lobData.items) || []).map(function (l) {
+                        l._type = 'lobby';
+                        l._sortAt = l.filled_at;
+                        return l;
+                    });
+                } catch (e) { /* tolerate parse */ }
+            }
+
+            var combined;
+            if (reset) {
+                // Свежая загрузка: оба источника, merge + sort.
+                combined = reqItems.concat(lobItems);
+            } else {
+                // Load-more: лобби-история уже загружена на первой странице,
+                // догружаем только requests (с пагинацией). Сохраняем уже
+                // показанные элементы.
+                combined = _tm.requestsData.history.concat(reqItems);
+            }
+            // Сортируем по timestamp DESC (последние сверху).
+            combined.sort(function (a, b) {
+                var aT = a._sortAt ? new Date(a._sortAt).getTime() : 0;
+                var bT = b._sortAt ? new Date(b._sortAt).getTime() : 0;
+                return bT - aT;
+            });
+            _tm.requestsData.history = combined;
             if (_tm.requestsTab === 'history') _tmRenderRequests();
         } finally {
             _tm.requestsLoading.history = false;
@@ -8289,7 +8348,13 @@ function _drafterCommentText(c) {
         ].join('');
     }
 
-    function _renderHistoryItem(r) {
+    function _renderHistoryItem(item) {
+        // Dispatcher: 1-на-1 request vs filled лобби. Тип проставляет loadHistory.
+        if (item && item._type === 'lobby') return _renderHistoryLobbyItem(item);
+        return _renderHistoryRequestItem(item);
+    }
+
+    function _renderHistoryRequestItem(r) {
         var p = r.profile || {};
         var when = _tmRelativeDate(r.accepted_at);
         var otherId = r.other_user_id != null ? r.other_user_id : 'null';
@@ -8305,6 +8370,47 @@ function _drafterCommentText(c) {
               '<div class="tm-request-status-row">',
                 (when ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>' : '<span></span>'),
                 actionHtml,
+              '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    // Лобби-запись в истории — список @ников как tg://-ссылки. Никаких action-
+    // кнопок: бот уже отправил юзеру эти @ники в момент заполнения, юзер может
+    // написать в личку напрямую без посредников (см. design brief).
+    function _renderHistoryLobbyItem(lobby) {
+        var myId = _tm.myProfile && _tm.myProfile.user_id;
+        var slots = (lobby.slots || []).slice().sort(function (a, b) {
+            return a.position - b.position;
+        });
+        // Members = все участники КРОМЕ меня (мне зачем мой собственный @ник).
+        var otherMembersHtml = slots
+            .filter(function (s) { return s.user && s.user.user_id !== myId; })
+            .map(function (s) {
+                var u = s.user;
+                var name = _tmDisplayName(u);
+                var uname = (u.username || '').toString().replace(/^@/, '');
+                var label = uname ? ('@' + uname) : name;
+                return '<a class="tm-history-lobby-member" href="tg://user?id=' + u.user_id + '">' +
+                    _tmEsc(label) +
+                '</a>';
+            }).join(', ');
+
+        var when = _tmRelativeDate(lobby.filled_at);
+        var modeLabel = TM_LOBBY_MODE_LABELS[lobby.mode] || lobby.mode;
+
+        return [
+            '<div class="tm-request-item tm-request-item--lobby" data-lobby-id="' + lobby.lobby_id + '">',
+              '<div class="tm-history-lobby-head">',
+                '<i class="ph ph-users-three" aria-hidden="true"></i>',
+                '<span class="tm-history-lobby-title">Лобби на ' + lobby.party_size + ' · ' + _tmEsc(modeLabel) + '</span>',
+              '</div>',
+              (otherMembersHtml
+                ? '<div class="tm-history-lobby-members">' + otherMembersHtml + '</div>'
+                : ''),
+              '<div class="tm-request-status-row">',
+                (when ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>' : '<span></span>'),
+                '<span></span>',
               '</div>',
             '</div>'
         ].join('');
@@ -8562,6 +8668,562 @@ function _drafterCommentText(c) {
             console.warn('[tm] deep-link handler error:', e);
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Party-finder («Лобби»)
+    // ─────────────────────────────────────────────────────────────────
+
+    var _TM_LOBBY_TTL_MIN = 30;
+    var _TM_LOBBY_VALID_SIZES = [3, 4, 5];
+    var _TM_LOBBY_VALID_SIZES_RANKED = [3, 5];
+
+    // Загрузка активных лобби. Кладём в _tm.lobbies, ререндерим.
+    async function loadLobbies() {
+        if (_tm.lobbiesLoading) return;
+        _tm.lobbiesLoading = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            var resp = await apiFetch(
+                TM_API + '/teammates/lobbies?token=' + encodeURIComponent(token)
+            );
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = { items: [] }; }
+            _tm.lobbies = Array.isArray(data && data.items) ? data.items : [];
+            renderLobbies();
+        } catch (e) {
+            console.warn('[tm] loadLobbies:', e);
+        } finally {
+            _tm.lobbiesLoading = false;
+        }
+    }
+    window.tmRefreshLobbies = loadLobbies;
+
+    // Вычисляет lobby_id, в котором участвует текущий юзер (host или member).
+    // null если ни в каком. Источник истины — клиентский кэш _tm.lobbies.
+    function _tmGetMyLobbyId() {
+        var myId = _tm.myProfile && _tm.myProfile.user_id;
+        if (!myId) return null;
+        for (var i = 0; i < _tm.lobbies.length; i++) {
+            var l = _tm.lobbies[i];
+            if (l.host_id === myId) return l.lobby_id;
+            for (var j = 0; j < (l.slots || []).length; j++) {
+                var s = l.slots[j];
+                if (s.user && s.user.user_id === myId) return l.lobby_id;
+            }
+        }
+        return null;
+    }
+
+    function renderLobbies() {
+        var listEl = document.getElementById('tm-lobbies-list');
+        if (!listEl) return;
+        if (!_tm.lobbies.length) {
+            listEl.innerHTML = '';
+            return;
+        }
+        var myLobbyId = _tmGetMyLobbyId();
+        listEl.innerHTML = _tm.lobbies.map(function (l) {
+            return _renderLobbyCard(l, { myLobbyId: myLobbyId });
+        }).join('');
+    }
+
+    var TM_LOBBY_MODE_LABELS = { ranked: 'Рейтинговый', normal: 'Обычный', turbo: 'Турбо' };
+
+    function _renderLobbyCard(lobby, opts) {
+        opts = opts || {};
+        var slots = (lobby.slots || []).slice().sort(function (a, b) {
+            return a.position - b.position;
+        });
+
+        // Host data — берём из его слота.
+        var hostSlot = null;
+        for (var i = 0; i < slots.length; i++) {
+            if (slots[i].position === lobby.host_position) hostSlot = slots[i];
+        }
+        var hostUser = hostSlot && hostSlot.user;
+        var hostName = hostUser ? _tmDisplayName(hostUser) : 'Хост';
+        var hostAvatar = hostUser
+            ? _tmAvatarHtml(hostUser, 'tm-player-avatar--lg')
+            : '<div class="tm-player-avatar tm-player-avatar--lg tm-player-avatar--fallback">·</div>';
+
+        // Filled count для footer'а.
+        var filledCount = 0;
+        for (var k = 0; k < slots.length; k++) if (slots[k].user) filledCount++;
+
+        // Сколько минут осталось — простая локальная разница.
+        var expMs = _tmParseUtcLike(lobby.expires_at);
+        var minLeft = Math.max(0, Math.ceil((expMs - Date.now()) / 60000));
+        var expiresLabel = (minLeft > 0 && isFinite(minLeft))
+            ? ('истекает через ' + _tmFormatRemaining(minLeft))
+            : 'истекает';
+
+        // Member-state: я в этом лобби?
+        var amInThisLobby = opts.myLobbyId === lobby.lobby_id;
+        var amInOtherLobby = !amInThisLobby && opts.myLobbyId != null;
+        var amHost = amInThisLobby && _tm.myProfile && _tm.myProfile.user_id === lobby.host_id;
+
+        // Action-кнопка справа в head'е (показываем только если я участник).
+        var actionBtn = '';
+        if (amHost) {
+            actionBtn = '<button class="tm-lobby-action" onclick="tmDisbandLobby(' + lobby.lobby_id + ', this)">Распустить</button>';
+        } else if (amInThisLobby) {
+            actionBtn = '<button class="tm-lobby-action" onclick="tmLeaveLobby(' + lobby.lobby_id + ', this)">Выйти</button>';
+        }
+
+        // Rank-filter защита: если у лобби rank_filter и мой ранг не в нём → join disabled.
+        var myRank = _tm.myProfile && _tm.myProfile.rank;
+        var rankBlocked = false;
+        if (lobby.rank_filter && lobby.rank_filter.length) {
+            if (!myRank || lobby.rank_filter.indexOf(myRank) === -1) rankBlocked = true;
+        }
+        var joinDisabled = amInOtherLobby || rankBlocked;
+
+        // Slot-grid: для каждого slot — либо avatar (если занят), либо tappable
+        // empty-circle с position-иконкой.
+        var slotsHtml = slots.map(function (s) {
+            if (s.user) {
+                // Filled. Host slot — accent border.
+                var isHost = (s.user.user_id === lobby.host_id);
+                var cls = 'tm-lobby-slot tm-lobby-slot--filled' + (isHost ? ' tm-lobby-slot--host' : '');
+                var ava = _tmAvatarHtmlInner(s.user);
+                return '<div class="' + cls + '" title="Pos ' + s.position + '">' + ava + '</div>';
+            }
+            // Empty. Tap → join (если не disabled).
+            var cls2 = 'tm-lobby-slot tm-lobby-slot--empty' + (joinDisabled ? ' tm-lobby-slot--disabled' : '');
+            var onclick = joinDisabled
+                ? ''
+                : ' onclick="tmJoinLobbySlot(' + lobby.lobby_id + ', ' + s.position + ', this)"';
+            return '<div class="' + cls2 + '"' + onclick + ' title="Pos ' + s.position + '">' +
+                '<img src="' + _tmEsc(_tmPosIcon(s.position)) + '" alt="Pos ' + s.position + '">' +
+            '</div>';
+        }).join('');
+
+        // Meta-line под именем: ранг хоста · режим · (если rank_filter — диапазон рангов).
+        var metaParts = [];
+        if (hostUser && hostUser.rank) {
+            metaParts.push(
+                '<span class="tm-player-rank">' + _tmRankIconImg(hostUser.rank, 'tm-rank-icon--xs') +
+                '<span class="tm-player-rank-text">' + _tmEsc(hostUser.rank) + '</span></span>'
+            );
+        }
+        metaParts.push(
+            '<span class="tm-lobby-meta-mode">' + _tmEsc(TM_LOBBY_MODE_LABELS[lobby.mode] || lobby.mode) + '</span>'
+        );
+        if (lobby.rank_filter && lobby.rank_filter.length) {
+            // Сжимаем 8 рангов в диапазон first–last.
+            metaParts.push(
+                '<span>' + _tmEsc(lobby.rank_filter[0]) +
+                (lobby.rank_filter.length > 1 ? '–' + _tmEsc(lobby.rank_filter[lobby.rank_filter.length - 1]) : '') +
+                '</span>'
+            );
+        }
+        var metaJoiner = ' <span class="tm-lobby-meta-dot">·</span> ';
+        var metaRow = '<div class="tm-lobby-meta">' + metaParts.join(metaJoiner) + '</div>';
+
+        // Footer: «3 из 5 · истекает через 24 мин» + если rankBlocked, прибавляем reason
+        var footerText = filledCount + ' из ' + lobby.party_size +
+            ' <span class="tm-lobby-footer-dot">·</span> ' + expiresLabel;
+        if (rankBlocked) {
+            footerText += ' <span class="tm-lobby-footer-dot">·</span> твой ранг не подходит';
+        } else if (amInOtherLobby) {
+            footerText += ' <span class="tm-lobby-footer-dot">·</span> ты в другом лобби';
+        }
+
+        return [
+            '<article class="tm-lobby-card" data-lobby-id="' + lobby.lobby_id + '">',
+              '<header class="tm-lobby-head">',
+                hostAvatar,
+                '<div class="tm-lobby-host-info">',
+                  '<div class="tm-lobby-host-name">' + _tmEsc(hostName) + ' собирает лобби на ' + lobby.party_size + '</div>',
+                  metaRow,
+                '</div>',
+                actionBtn,
+              '</header>',
+              '<div class="tm-lobby-slots">' + slotsHtml + '</div>',
+              '<div class="tm-lobby-footer">' + footerText + '</div>',
+            '</article>'
+        ].join('');
+    }
+
+    // Хелпер: avatar — внутренности (без обёртки .tm-player-avatar div'а),
+    // используется внутри slot-circle где обёртка уже есть.
+    function _tmAvatarHtmlInner(user) {
+        if (user && user.photo_url) {
+            return '<img src="' + _tmEsc(user.photo_url) + '" alt="">';
+        }
+        var src = (user && (user.first_name || user.username || '')).trim();
+        var ch = src ? src.charAt(0).toUpperCase() : '·';
+        return '<span class="tm-lobby-slot-initial">' + _tmEsc(ch) + '</span>';
+    }
+
+    // ── Lobby actions ────────────────────────────────────────────────
+
+    window.tmJoinLobbySlot = async function (lobbyId, position, slotEl) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        // Optimistic UI: затемняем slot пока ждём ответ. Если 4xx — откатываем.
+        if (slotEl) slotEl.classList.add('tm-lobby-slot--disabled');
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby/' + lobbyId + '/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, position: position }),
+            });
+            if (!resp.ok) {
+                var err;
+                try { err = await resp.json(); } catch (e) { err = null; }
+                showToast((err && err.detail) || 'Не удалось присоединиться');
+                if (slotEl) slotEl.classList.remove('tm-lobby-slot--disabled');
+                return;
+            }
+            showToast('Ты в лобби', 'ok');
+            // Refresh: лобби-карточка обновится со мной в слоте.
+            await loadLobbies();
+            // is_searching на бэке снимается; reflect locally.
+            if (_tm.myProfile) _tm.myProfile.is_searching = false;
+            renderSearchCta();
+        } catch (e) {
+            console.warn('[tm] joinLobby:', e);
+            showToast('Не удалось присоединиться');
+            if (slotEl) slotEl.classList.remove('tm-lobby-slot--disabled');
+        }
+    };
+
+    window.tmLeaveLobby = async function (lobbyId, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby/' + lobbyId + '/leave', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token }),
+            });
+            if (!resp.ok) {
+                var err;
+                try { err = await resp.json(); } catch (e) { err = null; }
+                showToast((err && err.detail) || 'Не удалось выйти');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showToast('Ты вышел из лобби', 'ok');
+            await loadLobbies();
+        } catch (e) {
+            console.warn('[tm] leaveLobby:', e);
+            showToast('Не удалось выйти');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    window.tmDisbandLobby = async function (lobbyId, btn) {
+        if (!window.confirm('Распустить лобби? Все участники получат уведомление.')) return;
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby/' + lobbyId + '/disband', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token }),
+            });
+            if (!resp.ok) {
+                showToast('Не удалось распустить');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showToast('Лобби распущено', 'ok');
+            await loadLobbies();
+        } catch (e) {
+            console.warn('[tm] disbandLobby:', e);
+            showToast('Не удалось распустить');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Create-lobby form ────────────────────────────────────────────
+
+    function _tmInitLobbyForm() {
+        // Defaults: ranked, 5, host_position = первая позиция из профиля.
+        var profile = _tm.myProfile;
+        var positions = (profile && Array.isArray(profile.positions)) ? profile.positions : [];
+        _tm.lobbyForm = {
+            party_size: 5,
+            mode: 'ranked',
+            host_position: positions[0] || null,
+            needed_positions: [],
+            rank_filter: [],
+            rank_filter_enabled: true,  // в ranked всегда включён
+        };
+        // Если в профиле есть ранг — заполняем default rank_filter (host'а ранг ±2).
+        if (profile && profile.rank) {
+            var idx = TM_RANKS.indexOf(profile.rank);
+            if (idx >= 0) {
+                var lo = Math.max(0, idx - 2);
+                var hi = Math.min(TM_RANKS.length - 1, idx + 2);
+                _tm.lobbyForm.rank_filter = TM_RANKS.slice(lo, hi + 1);
+            }
+        }
+    }
+
+    window.tmOpenLobbyForm = function () {
+        if (!_tm.myProfile || !_tm.myProfile.rank) {
+            showToast('Сначала заполни профиль');
+            setTeammatesTab('profile');
+            return;
+        }
+        if (_tmGetMyLobbyId() != null) {
+            showToast('Ты уже в активном лобби');
+            return;
+        }
+        _tmInitLobbyForm();
+        _tmRenderLobbyForm();
+        var sheet = document.getElementById('tm-lobby-form-sheet');
+        if (!sheet) return;
+        sheet.hidden = false;
+        sheet.setAttribute('aria-hidden', 'false');
+        // eslint-disable-next-line no-unused-expressions
+        sheet.offsetHeight;
+        sheet.classList.add('tm-help-sheet--open');
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.tmCloseLobbyForm = function () {
+        var sheet = document.getElementById('tm-lobby-form-sheet');
+        if (!sheet) return;
+        sheet.classList.remove('tm-help-sheet--open');
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
+    };
+
+    function _tmRenderLobbyForm() {
+        var f = _tm.lobbyForm;
+        if (!f) return;
+
+        // Size buttons — disable 4 при ranked.
+        var sizeBtns = document.querySelectorAll('#tm-lobby-size .tm-mode-btn');
+        sizeBtns.forEach(function (b) {
+            var size = parseInt(b.getAttribute('data-size'), 10);
+            var disabled = (f.mode === 'ranked' && size === 4);
+            b.disabled = disabled;
+            b.classList.toggle('tm-mode-btn--active', size === f.party_size && !disabled);
+        });
+        var sizeHint = document.getElementById('tm-lobby-size-hint');
+        if (sizeHint) {
+            sizeHint.textContent = (f.mode === 'ranked')
+                ? 'В рейтинге 4-стэк запрещён правилами Доты.'
+                : 'Выбери, сколько вас будет в пати.';
+        }
+
+        // Mode buttons
+        var modeBtns = document.querySelectorAll('#tm-lobby-mode .tm-mode-btn');
+        modeBtns.forEach(function (b) {
+            b.classList.toggle('tm-mode-btn--active', b.getAttribute('data-mode') === f.mode);
+        });
+
+        // Host position — рендерим только позиции из профиля как доступные.
+        var hostPosWrap = document.getElementById('tm-lobby-host-pos');
+        if (hostPosWrap) {
+            var profilePositions = (_tm.myProfile && _tm.myProfile.positions) || [];
+            hostPosWrap.innerHTML = [1, 2, 3, 4, 5].map(function (p) {
+                var inProfile = profilePositions.indexOf(p) !== -1;
+                var active = (p === f.host_position);
+                var cls = 'tm-position-btn'
+                    + (active ? ' tm-position-btn--active' : '')
+                    + (inProfile ? '' : ' tm-position-btn--disabled');
+                var onclick = inProfile ? ' onclick="tmLobbySetHostPos(' + p + ')"' : '';
+                return '<button type="button" class="' + cls + '"' + onclick + ' data-pos="' + p + '">' +
+                    '<img src="' + _tmEsc(_tmPosIcon(p)) + '" alt="' + p + '">' +
+                '</button>';
+            }).join('');
+        }
+
+        // Needed positions — все 5, но host_position blocked. Активны только
+        // выбранные. Лимит = party_size - 1.
+        var neededWrap = document.getElementById('tm-lobby-needed-pos');
+        if (neededWrap) {
+            var needSet = {};
+            for (var i = 0; i < f.needed_positions.length; i++) needSet[f.needed_positions[i]] = true;
+            var needLimit = f.party_size - 1;
+            neededWrap.innerHTML = [1, 2, 3, 4, 5].map(function (p) {
+                var isHostSlot = (p === f.host_position);
+                var active = !!needSet[p];
+                var cls = 'tm-position-btn'
+                    + (active ? ' tm-position-btn--active' : '')
+                    + (isHostSlot ? ' tm-position-btn--disabled' : '');
+                var onclick = isHostSlot ? '' : ' onclick="tmLobbyToggleNeededPos(' + p + ')"';
+                return '<button type="button" class="' + cls + '"' + onclick + ' data-pos="' + p + '">' +
+                    '<img src="' + _tmEsc(_tmPosIcon(p)) + '" alt="' + p + '">' +
+                '</button>';
+            }).join('');
+        }
+        var neededHint = document.getElementById('tm-lobby-needed-hint');
+        if (neededHint) {
+            neededHint.textContent = 'Отметь ' + (f.party_size - 1) +
+                ' позици' + (f.party_size - 1 === 1 ? 'ю' : 'и') +
+                ' (выбрано: ' + f.needed_positions.length + ').';
+        }
+
+        // Rank filter section
+        var rankToggle = document.getElementById('tm-lobby-rank-toggle');
+        var rankChips  = document.getElementById('tm-lobby-rank-chips');
+        var rankHint   = document.getElementById('tm-lobby-rank-hint');
+        var rankedLocked = (f.mode === 'ranked');
+        if (rankToggle) {
+            rankToggle.textContent = f.rank_filter_enabled ? 'Ограничить рангом' : 'Любой ранг';
+            rankToggle.classList.toggle('tm-rank-toggle--locked', rankedLocked);
+        }
+        if (rankChips) {
+            rankChips.hidden = !f.rank_filter_enabled;
+            if (f.rank_filter_enabled) {
+                var rfSet = {};
+                for (var ri = 0; ri < f.rank_filter.length; ri++) rfSet[f.rank_filter[ri]] = true;
+                rankChips.innerHTML = TM_RANKS.map(function (r, idx) {
+                    var tier = idx + 1;
+                    return _tmFchip({
+                        variant: 'icon',
+                        active: !!rfSet[r],
+                        onclick: 'tmLobbyToggleRankChip(\'' + _tmEsc(r) + '\')',
+                        title: r,
+                        label: r,
+                        content: '<img src="/rank_icons/medal_' + tier + '.png" alt="" onerror="this.style.display=\'none\'">',
+                    });
+                }).join('');
+            }
+        }
+        if (rankHint) rankHint.hidden = !rankedLocked;
+
+        // Submit-button: enabled только если форма валидна.
+        var canSubmit =
+            f.host_position != null &&
+            f.needed_positions.length === f.party_size - 1 &&
+            (!rankedLocked || f.rank_filter.length > 0);
+        var submitBtn = document.getElementById('tm-lobby-submit');
+        if (submitBtn) submitBtn.disabled = !canSubmit;
+    }
+
+    window.tmLobbySetSize = function (size) {
+        var f = _tm.lobbyForm; if (!f) return;
+        // 4 запрещён при ranked.
+        if (f.mode === 'ranked' && size === 4) return;
+        if (_TM_LOBBY_VALID_SIZES.indexOf(size) === -1) return;
+        f.party_size = size;
+        // Если выбранных needed > нового лимита — обрезаем.
+        if (f.needed_positions.length > size - 1) {
+            f.needed_positions = f.needed_positions.slice(0, size - 1);
+        }
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbySetMode = function (mode) {
+        var f = _tm.lobbyForm; if (!f) return;
+        f.mode = mode;
+        // Переключение на ranked: если был size=4 — гоним в 5.
+        if (mode === 'ranked' && f.party_size === 4) f.party_size = 5;
+        // rank-filter включается принудительно для ranked.
+        if (mode === 'ranked') f.rank_filter_enabled = true;
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbySetHostPos = function (p) {
+        var f = _tm.lobbyForm; if (!f) return;
+        f.host_position = p;
+        // Если host_position попал в needed — убираем.
+        var idx = f.needed_positions.indexOf(p);
+        if (idx !== -1) f.needed_positions.splice(idx, 1);
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbyToggleNeededPos = function (p) {
+        var f = _tm.lobbyForm; if (!f) return;
+        if (p === f.host_position) return;
+        var idx = f.needed_positions.indexOf(p);
+        if (idx !== -1) {
+            f.needed_positions.splice(idx, 1);
+        } else {
+            if (f.needed_positions.length >= f.party_size - 1) {
+                showToast('Уже выбрано ' + (f.party_size - 1));
+                return;
+            }
+            f.needed_positions.push(p);
+        }
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbyToggleRankFilter = function () {
+        var f = _tm.lobbyForm; if (!f) return;
+        // В ranked-режиме нельзя выключить.
+        if (f.mode === 'ranked') {
+            showToast('В рейтинге выбор рангов обязателен');
+            return;
+        }
+        f.rank_filter_enabled = !f.rank_filter_enabled;
+        if (!f.rank_filter_enabled) f.rank_filter = [];
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbyToggleRankChip = function (r) {
+        var f = _tm.lobbyForm; if (!f) return;
+        var idx = f.rank_filter.indexOf(r);
+        if (idx !== -1) f.rank_filter.splice(idx, 1);
+        else f.rank_filter.push(r);
+        // Сохраняем sorted-by-tier для красивого отображения «Legend–Divine».
+        f.rank_filter.sort(function (a, b) { return TM_RANKS.indexOf(a) - TM_RANKS.indexOf(b); });
+        _tmRenderLobbyForm();
+    };
+
+    window.tmSubmitLobby = async function () {
+        var f = _tm.lobbyForm; if (!f) return;
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+
+        var payload = {
+            token: token,
+            party_size: f.party_size,
+            mode: f.mode,
+            host_position: f.host_position,
+            needed_positions: f.needed_positions.slice(),
+        };
+        // rank_filter включаем в payload только если active.
+        if (f.rank_filter_enabled && f.rank_filter.length) {
+            payload.rank_filter = f.rank_filter.slice();
+        }
+
+        var btn = document.getElementById('tm-lobby-submit');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                var err;
+                try { err = await resp.json(); } catch (e) { err = null; }
+                showToast((err && err.detail) || 'Не удалось создать лобби');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showToast('Лобби создано', 'ok');
+            tmCloseLobbyForm();
+            await loadLobbies();
+            // is_searching на бэке снимается — reflect locally.
+            if (_tm.myProfile) _tm.myProfile.is_searching = false;
+            renderSearchCta();
+        } catch (e) {
+            console.warn('[tm] submitLobby:', e);
+            showToast('Не удалось создать лобби');
+            if (btn) btn.disabled = false;
+        }
+    };
 
     // (1) Откладываем запуск ВСЕГДА до DOMContentLoaded.
     //     Defer-скрипт выполняется при readyState='interactive' — раньше, чем

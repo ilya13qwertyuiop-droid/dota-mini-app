@@ -478,3 +478,81 @@ class TeammateTag(Base):
         # and the convention used by hero_matchups.ix_hero_matchups_b.
         Index("ix_teammate_tags_user_id", "user_id"),
     )
+
+
+# ─── Party-finder («Лобби») ───────────────────────────────────────────────
+
+
+class TeammateLobby(Base):
+    """Instant host-led party-finder лобби (3-5 человек).
+
+    Status lifecycle:
+      open      — собирается, принимает join'ы
+      filled    — все слоты заняты, push разослан, лобби «отплыло»
+      disbanded — host явно распустил
+      expired   — TTL прошёл (см. teammates_notifier worker)
+
+    needed_positions — позиции, которые host ищет (БЕЗ его собственной).
+    Инвариант: party_size == len(needed_positions) + 1, host_position
+    не входит в needed_positions.
+    """
+    __tablename__ = "teammate_lobbies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    host_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    party_size = Column(Integer, nullable=False)
+    # ranked / normal / turbo — те же значения что и в TeammateProfile.game_modes.
+    mode = Column(String(16), nullable=False)
+    # JSON array of rank strings. NULL = открыто для всех. Обязательно если mode='ranked'.
+    rank_filter = Column(JSON, nullable=True)
+    needed_positions = Column(JSON, nullable=False)
+    host_position = Column(Integer, nullable=False)
+    status = Column(
+        String(16),
+        nullable=False,
+        default="open",
+        server_default="open",
+        index=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    filled_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TeammateLobbySlot(Base):
+    """Один слот лобби. user_id NULL = свободный.
+
+    PK (lobby_id, position): ровно один слот на каждую позицию в лобби.
+    При создании лобби создаётся party_size слотов: host's-position
+    с user_id=host_id, остальные (из needed_positions) с user_id=NULL.
+
+    join: UPDATE … SET user_id=$joiner WHERE lobby_id=$id AND position=$p
+                                          AND user_id IS NULL
+    leave: UPDATE … SET user_id=NULL WHERE lobby_id=$id AND user_id=$leaver
+    """
+    __tablename__ = "teammate_lobby_slots"
+
+    lobby_id = Column(
+        Integer, ForeignKey("teammate_lobbies.id"), primary_key=True
+    )
+    position = Column(Integer, primary_key=True)
+    user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=True,
+        index=True,
+    )
+    joined_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_teammate_lobby_slots_user_id", "user_id"),
+    )

@@ -231,6 +231,110 @@ async def process_pending_reviews() -> int:
     return sent_count
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Lobby expiry: party-finder лобби со status='open' и истёкшим expires_at
+#  переводятся в 'expired', участникам отправляется уведомление.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def process_expired_lobbies() -> int:
+    """Один проход воркера для лобби. Возвращает число expired лобби."""
+    now = datetime.now(timezone.utc)
+
+    with SessionLocal() as session:
+        rows = session.execute(
+            text(
+                """
+                SELECT id, host_id
+                FROM teammate_lobbies
+                WHERE status = 'open'
+                  AND expires_at <= :now
+                ORDER BY expires_at ASC
+                LIMIT :batch
+                """
+            ),
+            {"now": now, "batch": BATCH_SIZE},
+        ).fetchall()
+
+    if not rows:
+        return 0
+
+    logger.info("[tm_notifier] %d lobby/lobbies expired", len(rows))
+
+    expired_count = 0
+    async with httpx.AsyncClient() as client:
+        for row in rows:
+            lobby_id, host_id = row[0], row[1]
+
+            # Атомарно меняем status. rowcount=0 значит «уже не open» —
+            # параллельный воркер / disband / fill. Тогда пропускаем.
+            with SessionLocal() as session:
+                result = session.execute(
+                    text(
+                        """
+                        UPDATE teammate_lobbies
+                        SET status = 'expired'
+                        WHERE id = :id AND status = 'open'
+                        """
+                    ),
+                    {"id": lobby_id},
+                )
+                rowcount = result.rowcount
+                session.commit()
+
+            if not rowcount:
+                continue
+            expired_count += 1
+
+            # Собираем members лобби (без host'а — ему отдельный текст).
+            with SessionLocal() as session:
+                member_rows = session.execute(
+                    text(
+                        """
+                        SELECT user_id
+                        FROM teammate_lobby_slots
+                        WHERE lobby_id = :id
+                          AND user_id IS NOT NULL
+                          AND user_id <> :host
+                        """
+                    ),
+                    {"id": lobby_id, "host": host_id},
+                ).fetchall()
+                member_ids = [r[0] for r in member_rows]
+
+            # Host: «не собралось». Members: «лобби распущено по таймеру».
+            await _send_simple_message(
+                client,
+                host_id,
+                "⏱️ Лобби не собралось за 30 минут. Попробуй позже.",
+            )
+            for mid in member_ids:
+                await _send_simple_message(
+                    client, mid, "⏱️ Лобби распущено по таймеру.",
+                )
+
+    return expired_count
+
+
+async def _send_simple_message(
+    client: httpx.AsyncClient, chat_id: int, text_str: str,
+) -> bool:
+    """Минимальный sendMessage без кнопок и parse_mode. Для системных
+    уведомлений где Markdown/HTML не нужен. Errors silenced."""
+    if not BOT_TOKEN:
+        return False
+    try:
+        r = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": text_str, "disable_web_page_preview": True},
+            timeout=5.0,
+        )
+        return r.status_code == 200
+    except Exception as e:
+        logger.warning("[tm_notifier] sendMessage chat_id=%s error: %s", chat_id, e)
+        return False
+
+
 async def run_loop() -> None:
     """Бесконечный цикл поллинга. Прерывается KeyboardInterrupt."""
     if not BOT_TOKEN:
@@ -256,20 +360,26 @@ async def run_loop() -> None:
     while True:
         cycle += 1
         t0 = time.monotonic()
-        n = 0
+        n_reviews = 0
+        n_lobbies = 0
         try:
-            n = await process_pending_reviews()
+            n_reviews = await process_pending_reviews()
         except Exception:
             # Никогда не валим цикл из-за разовой ошибки в SELECT/UPDATE/HTTP —
             # просто логируем и идём в следующий sleep.
-            logger.exception("[tm_notifier] cycle #%d failed", cycle)
+            logger.exception("[tm_notifier] reviews cycle #%d failed", cycle)
+        try:
+            n_lobbies = await process_expired_lobbies()
+        except Exception:
+            logger.exception("[tm_notifier] lobbies cycle #%d failed", cycle)
 
         elapsed = time.monotonic() - t0
         # Heartbeat: лог КАЖДОГО цикла — иначе при пустой выборке (нормальный
         # рабочий случай) воркер молчит часами и кажется зависшим.
         logger.info(
-            "[tm_notifier] cycle #%d: %d sent (%.2fs); next poll in %ds",
-            cycle, n, elapsed, POLL_INTERVAL_SECONDS,
+            "[tm_notifier] cycle #%d: reviews=%d lobbies_expired=%d (%.2fs); "
+            "next poll in %ds",
+            cycle, n_reviews, n_lobbies, elapsed, POLL_INTERVAL_SECONDS,
         )
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 

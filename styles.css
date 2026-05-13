@@ -7254,6 +7254,13 @@ margin-top: var(--space-4);
   background: var(--accent-soft);
   opacity: 1;
 }
+/* Disabled — для слотов в lobby-form, которых юзер не может выбрать
+   (не его профильная позиция / уже host_position среди needed). */
+.tm-position-btn--disabled {
+  cursor: not-allowed;
+  opacity: 0.25;
+  pointer-events: none;
+}
 
 .tm-modes, .tm-mood { display: flex; gap: 6px; flex-wrap: wrap; }
 .tm-mode-btn, .tm-mood-btn {
@@ -7904,4 +7911,282 @@ margin-top: var(--space-4);
 @keyframes tmSkeletonShimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ── Party-finder («Лобби») ─────────────────────────────────────────── */
+
+/* Search/lobby двойная CTA-строка. Раньше «Искать пати» был full-width;
+   теперь делим пополам с «Создать лобби». Сжимаем padding кнопок — две
+   рядом и так заполняют horizontal-space. */
+.tm-search-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-bottom: 8px;
+}
+.tm-search-row .tm-search-cta {
+  margin-bottom: 0;
+  padding: 11px 12px;
+  font-size: var(--text-sm);
+}
+.tm-lobby-cta {
+  appearance: none;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  padding: 11px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  letter-spacing: var(--tracking-tight);
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-lobby-cta:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+.tm-lobby-cta:active { transform: scale(0.98); }
+.tm-lobby-cta i { font-size: 15px; line-height: 1; }
+.tm-lobby-cta:disabled { opacity: 0.55; cursor: default; }
+
+/* Lobby-list container. Только spacing между лобби-карточками. */
+.tm-lobbies-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.tm-lobbies-list:empty { margin: 0; }
+
+/* Lobby-карточка. Визуально родственна tm-player-card, но с accent-tinted
+   верхней границей — единственная цветовая метка, говорящая «это группа,
+   не одиночка». Никаких gradient'ов, никаких glow'ов. */
+.tm-lobby-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-top: 2px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  transition: border-color 0.18s ease-out;
+}
+.tm-lobby-card:hover {
+  border-color: var(--border-default);
+  border-top-color: var(--accent-border);
+}
+
+.tm-lobby-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+.tm-lobby-host-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.tm-lobby-host-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tm-lobby-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.tm-lobby-meta-mode {
+  letter-spacing: var(--tracking-tight);
+}
+.tm-lobby-meta-dot {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+
+/* Slot-grid: 3-5 ячеек в ряд, каждая 44×44. Filled = avatar circle,
+   empty = position-icon с tap-affordance. */
+.tm-lobby-slots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tm-lobby-slot {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+.tm-lobby-slot--filled {
+  /* Avatar внутри — overflow:hidden уже у parent'а. */
+}
+.tm-lobby-slot--filled img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.tm-lobby-slot--filled .tm-lobby-slot-initial {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.tm-lobby-slot--host {
+  border-color: var(--accent-border);
+}
+/* Empty слот: показывает иконку позиции + лёгкий "+", показывая что можно тапнуть. */
+.tm-lobby-slot--empty {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: var(--border-default);
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+}
+.tm-lobby-slot--empty:hover {
+  border-color: var(--accent-border);
+  background: rgba(123, 139, 184, 0.06);
+}
+.tm-lobby-slot--empty:active { transform: scale(0.95); }
+.tm-lobby-slot--empty img {
+  width: 28px;
+  height: 28px;
+  opacity: 0.45;
+}
+.tm-lobby-slot--empty.tm-lobby-slot--disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.tm-lobby-slot--empty.tm-lobby-slot--disabled:hover {
+  border-color: var(--border-default);
+  background: transparent;
+}
+
+/* Подпись «3 из 5 · истекает через 24 мин» — небольшая, без выделения. */
+.tm-lobby-footer {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-tight);
+}
+.tm-lobby-footer-dot {
+  margin: 0 6px;
+  opacity: 0.55;
+}
+
+/* Кнопка «Распустить» / «Выйти» в правом углу head — компактный ghost. */
+.tm-lobby-action {
+  appearance: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  letter-spacing: var(--tracking-tight);
+  font-family: inherit;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.tm-lobby-action:hover {
+  color: var(--negative);
+  border-color: rgba(229, 83, 75, 0.30);
+  background: var(--negative-soft);
+}
+
+/* ── Lobby create-form (reuses tm-help-sheet layout) ─────────────────
+   Форма создания лобби живёт в overlay-странице (tm-help-sheet
+   контейнер). Дополнительные стили только для специфичных control'ов:
+   rank-toggle, rank-chips. */
+.tm-rank-toggle {
+  appearance: none;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  font-family: inherit;
+  letter-spacing: var(--tracking-tight);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tm-rank-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.tm-rank-toggle--locked {
+  cursor: default;
+  opacity: 0.7;
+}
+.tm-rank-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ── History entries: лобби-вариант ─────────────────────────────────── */
+.tm-request-item--lobby {
+  /* Тот же contour что у обычной request-history записи, но с лёгкой
+     accent-меткой слева — чтобы лобби читалось как другой class объекта. */
+  border-left: 2px solid var(--accent-border);
+  padding-left: calc(var(--space-3) - 2px);
+}
+.tm-history-lobby-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+.tm-history-lobby-head i { font-size: 16px; line-height: 1; }
+.tm-history-lobby-title { line-height: 1.2; }
+.tm-history-lobby-members {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.tm-history-lobby-member {
+  color: var(--accent);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s;
+}
+.tm-history-lobby-member:hover {
+  border-bottom-color: var(--accent-border);
 }
