@@ -4332,27 +4332,72 @@ function setDrafterMode(mode) {
     }
 }
 
+// Показывает баннер с ошибкой загрузки matchups_all прямо в панели анализа.
+// Кнопка «Попробовать снова» сбрасывает баннер и заново дергает _ensureAnalysisData.
+function _showAnalysisLoadError() {
+    var panel = document.getElementById('drafter-mode-analysis');
+    if (!panel) return;
+    if (document.getElementById('analysis-load-error')) return;
+    var box = document.createElement('div');
+    box.id = 'analysis-load-error';
+    box.className = 'analysis-load-error';
+    var text = document.createElement('div');
+    text.className = 'analysis-load-error-text';
+    text.textContent = 'Не удалось загрузить данные для анализа. Проверьте соединение.';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'analysis-load-error-retry';
+    btn.textContent = 'Попробовать снова';
+    btn.addEventListener('click', function() {
+        _hideAnalysisLoadError();
+        _ensureAnalysisData();
+    });
+    box.appendChild(text);
+    box.appendChild(btn);
+    panel.insertBefore(box, panel.firstChild);
+}
+
+function _hideAnalysisLoadError() {
+    var box = document.getElementById('analysis-load-error');
+    if (box && box.parentNode) box.parentNode.removeChild(box);
+}
+
 function _ensureAnalysisData() {
     if (_analysisMatchups && _analysisPopularity) return;
     if (_analysisDataLoading) return;
     _analysisDataLoading = true;
+    _hideAnalysisLoadError();
 
     var base = window.API_BASE_URL;
+    // Cache-Control: no-store — VPN-прокси и браузеры иначе могут отдать
+    // устаревший снапшот матчапов и сломать драфтер между релизами.
+    var noStore = { headers: { 'Cache-Control': 'no-store' } };
+    var matchupsFailed = false;
     var p1 = _analysisMatchups
         ? Promise.resolve(null)
-        : apiFetch(base + '/draft/matchups_all')
-            .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(d) { if (d) _analysisMatchups = d; });
+        : apiFetch(base + '/draft/matchups_all', noStore)
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function(d) { _analysisMatchups = d; })
+            .catch(function(e) {
+                matchupsFailed = true;
+                console.warn('[analysis] matchups_all failed:', e);
+            });
     var p2 = _analysisPopularity
         ? Promise.resolve(null)
-        : apiFetch(base + '/draft/popularity')
+        : apiFetch(base + '/draft/popularity', noStore)
             .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(d) { if (d) _analysisPopularity = d; });
+            .then(function(d) { if (d) _analysisPopularity = d; })
+            .catch(function(e) { console.warn('[analysis] popularity failed:', e); });
 
-    Promise.all([p1, p2]).catch(function(e) {
-        console.warn('[analysis] data load failed:', e);
-    }).then(function() {
+    Promise.all([p1, p2]).then(function() {
         _analysisDataLoading = false;
+        if (matchupsFailed && !_analysisMatchups) {
+            _showAnalysisLoadError();
+            return;
+        }
         // Если открыт sheet — обновляем его содержимое с реальными данными
         if (_analysisSheetMode === 'picker') {
             renderAnalysisSheetGrid();
