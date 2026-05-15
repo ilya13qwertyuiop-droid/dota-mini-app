@@ -172,6 +172,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -2824,12 +2825,15 @@ async def _tm_send_lobby_join_push(
     joiner_s = settings_map.get(joiner_id) or {}
     joiner_name = (joiner_s.get("first_name") or "").strip() or "Игрок"
     open_url = f"{_TM_MINI_APP_URL}?tm_lobby={lobby.id}" if _TM_MINI_APP_URL else None
-    text = (
+    # NB: переменная называется message_text, не text — чтобы не shadow'ить
+    # модульный `from sqlalchemy import text`. Если когда-нибудь добавишь
+    # в эту функцию raw SQL — будет работать без сюрпризов.
+    message_text = (
         f"➕ <b>{_tm_html_safe(joiner_name)}</b> присоединился на Pos {position}"
     )
     await _tm_send_bot_message(
         chat_id=lobby.host_id,
-        text=text,
+        text=message_text,
         with_open_button=True,
         open_button_url=open_url,
         parse_mode="HTML",
@@ -2867,7 +2871,8 @@ async def _tm_send_lobby_filled_pushes(db: Session, lobby: DBTeammateLobby) -> N
             )
     members_block = "\n".join(f"• {p}" for p in members_html_parts)
 
-    text = (
+    # message_text вместо text — см. комментарий в _tm_send_lobby_join_push.
+    message_text = (
         f"🎮 <b>Пати собрана!</b>\n\n"
         f"{members_block}\n\n"
         f"Создайте групповой чат и стартуйте."
@@ -2878,7 +2883,7 @@ async def _tm_send_lobby_filled_pushes(db: Session, lobby: DBTeammateLobby) -> N
     for uid in user_ids:
         await _tm_send_bot_message(
             chat_id=uid,
-            text=text,
+            text=message_text,
             parse_mode="HTML",
         )
 
