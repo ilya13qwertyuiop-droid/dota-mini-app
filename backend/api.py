@@ -3065,87 +3065,113 @@ async def api_teammates_lobby_join(
 
     Race-protection: UPDATE … SET user_id=:uid WHERE … AND user_id IS NULL —
     rowcount=0 значит «слот уже занят кем-то параллельно». Тогда возвращаем 409.
+
+    Все uncaught-исключения логируются с traceback'ом — на staging юзер видит
+    точную точку падения по `[tm/lobby/join]` в логах backend'а.
     """
     user_id = _tm_require_user(data.token)
+    logger.info(
+        "[tm/lobby/join] user_id=%s lobby_id=%s position=%s",
+        user_id, lobby_id, data.position,
+    )
+    try:
+        lobby = db.get(DBTeammateLobby, lobby_id)
+        if lobby is None:
+            raise HTTPException(status_code=404, detail="lobby not found")
+        if lobby.status != "open":
+            raise HTTPException(status_code=409, detail="lobby is no longer open")
 
-    lobby = db.get(DBTeammateLobby, lobby_id)
-    if lobby is None:
-        raise HTTPException(status_code=404, detail="lobby not found")
-    if lobby.status != "open":
-        raise HTTPException(status_code=409, detail="lobby is no longer open")
+        now = datetime.now(timezone.utc)
+        if lobby.expires_at <= now:
+            raise HTTPException(status_code=409, detail="lobby has expired")
 
-    now = datetime.now(timezone.utc)
-    if lobby.expires_at <= now:
-        raise HTTPException(status_code=409, detail="lobby has expired")
-
-    # Не даём join'нуть если уже в каком-то активном лобби.
-    existing = _tm_user_active_lobby_id(db, user_id)
-    if existing is not None:
-        if existing == lobby_id:
-            raise HTTPException(status_code=409, detail="ты уже в этом лобби")
-        raise HTTPException(
-            status_code=409,
-            detail="Ты уже в активном лобби. Выйди из него, чтобы вступить в другое.",
-        )
-
-    # Rank-filter: если есть — юзер должен быть в нём.
-    if lobby.rank_filter:
-        profile = db.get(DBTeammateProfile, user_id)
-        if profile is None or profile.rank not in set(lobby.rank_filter):
+        # Не даём join'нуть если уже в каком-то активном лобби.
+        existing = _tm_user_active_lobby_id(db, user_id)
+        if existing is not None:
+            if existing == lobby_id:
+                raise HTTPException(status_code=409, detail="ты уже в этом лобби")
             raise HTTPException(
-                status_code=403,
-                detail="Твой ранг не подходит под фильтр лобби",
+                status_code=409,
+                detail="Ты уже в активном лобби. Выйди из него, чтобы вступить в другое.",
             )
 
-    # Атомарный claim слота.
-    result = db.execute(
-        text(
-            """
-            UPDATE teammate_lobby_slots
-            SET user_id = :uid, joined_at = :now
-            WHERE lobby_id = :lid AND position = :pos AND user_id IS NULL
-            """
-        ),
-        {"uid": user_id, "now": now, "lid": lobby_id, "pos": data.position},
-    )
-    if not result.rowcount:
-        db.commit()
-        raise HTTPException(
-            status_code=409,
-            detail="Этот слот только что заняли. Попробуй другую позицию.",
+        # Rank-filter: если есть — юзер должен быть в нём.
+        if lobby.rank_filter:
+            profile = db.get(DBTeammateProfile, user_id)
+            if profile is None or profile.rank not in set(lobby.rank_filter):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Твой ранг не подходит под фильтр лобби",
+                )
+
+        # Атомарный claim слота. Возможные failure-modes:
+        # 1) FK violation на user_id → user не зарегистрирован в user_profiles.
+        # 2) Тип :now не совпадает с column-type — для timestamptz передаём
+        #    tz-aware, что мы и делаем (datetime.now(timezone.utc)).
+        result = db.execute(
+            text(
+                """
+                UPDATE teammate_lobby_slots
+                SET user_id = :uid, joined_at = :now
+                WHERE lobby_id = :lid AND position = :pos AND user_id IS NULL
+                """
+            ),
+            {"uid": user_id, "now": now, "lid": lobby_id, "pos": data.position},
+        )
+        if not result.rowcount:
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Этот слот только что заняли. Попробуй другую позицию.",
+            )
+
+        # Проверяем — последний ли это слот? Все остальные слоты лобби заняты?
+        remaining_empty = (
+            db.query(DBTeammateLobbySlot)
+            .filter(DBTeammateLobbySlot.lobby_id == lobby_id)
+            .filter(DBTeammateLobbySlot.user_id.is_(None))
+            .count()
         )
 
-    # Проверяем — последний ли это слот? Все остальные слоты лобби заняты?
-    remaining_empty = (
-        db.query(DBTeammateLobbySlot)
-        .filter(DBTeammateLobbySlot.lobby_id == lobby_id)
-        .filter(DBTeammateLobbySlot.user_id.is_(None))
-        .count()
-    )
+        just_filled = False
+        if remaining_empty == 0:
+            # Лобби собрано — переводим в filled, фиксируем filled_at.
+            lobby.status = "filled"
+            lobby.filled_at = now
+            just_filled = True
 
-    just_filled = False
-    if remaining_empty == 0:
-        # Лобби собрано — переводим в filled, фиксируем filled_at.
-        lobby.status = "filled"
-        lobby.filled_at = now
-        just_filled = True
+        db.commit()
+        db.refresh(lobby)
 
-    db.commit()
-    db.refresh(lobby)
+        # is_searching у нового member'а — снимаем (committed в лобби).
+        _tm_clear_user_search(db, user_id)
 
-    # is_searching у нового member'а — снимаем (committed в лобби).
-    _tm_clear_user_search(db, user_id)
+        # Push'и:
+        #   - если лобби только что заполнилось → рассылаем «пати собрана» ВСЕМ
+        #     участникам (включая host'а).
+        #   - иначе → host получает «X присоединился».
+        if just_filled:
+            await _tm_send_lobby_filled_pushes(db, lobby)
+        else:
+            await _tm_send_lobby_join_push(db, lobby, user_id, data.position)
 
-    # Push'и:
-    #   - если лобби только что заполнилось → рассылаем «пати собрана» ВСЕМ
-    #     участникам (включая host'а).
-    #   - иначе → host получает «X присоединился».
-    if just_filled:
-        await _tm_send_lobby_filled_pushes(db, lobby)
-    else:
-        await _tm_send_lobby_join_push(db, lobby, user_id, data.position)
+        return _tm_serialize_lobby(db, lobby)
 
-    return _tm_serialize_lobby(db, lobby)
+    except HTTPException:
+        # Не логируем 4xx — это нормальные business-кейсы (заняли слот /
+        # ранг не подходит / уже в лобби). 5xx внизу.
+        raise
+    except Exception as exc:
+        logger.exception(
+            "[tm/lobby/join] UNCAUGHT user_id=%s lobby_id=%s position=%s",
+            user_id, lobby_id, data.position,
+        )
+        try: db.rollback()
+        except Exception: pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
+        )
 
 
 # ── L4. POST /api/teammates/lobby/{id}/leave ────────────────────────────────

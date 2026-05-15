@@ -3541,7 +3541,7 @@ var _metaDragActive = false;
 var _metaDragDX = 0;
 
 // PATCH VERSION — обновлять вручную при выходе нового патча
-const CURRENT_PATCH = '7.41b';
+const CURRENT_PATCH = '7.41c';
 
 function _resolveMetaPatch(data) {
     return CURRENT_PATCH;
