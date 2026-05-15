@@ -44,6 +44,22 @@ logger = logging.getLogger(__name__)
 # Schema init (idempotent; kept for backward compat with stats_updater.py)
 # ---------------------------------------------------------------------------
 
+def _column_exists(conn, table_name: str, column_name: str) -> bool:
+    """Returns True if column exists in table. Uses information_schema on
+    PostgreSQL (no locks taken) and PRAGMA table_info on SQLite (dev)."""
+    if conn.dialect.name == "sqlite":
+        rows = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+        return any(r[1] == column_name for r in rows)
+    row = conn.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = :t AND column_name = :c"
+        ),
+        {"t": table_name, "c": column_name},
+    ).fetchone()
+    return row is not None
+
+
 def init_stats_tables() -> None:
     """Creates all stats tables if they don't exist yet.
 
@@ -55,18 +71,21 @@ def init_stats_tables() -> None:
 
     # ------------------------------------------------------------------ #
     # Idempotent column migrations (ALTER TABLE … ADD COLUMN …).          #
-    # Each ALTER is attempted inside its own transaction; the except block #
-    # silently ignores "column already exists" / "duplicate column" errors #
-    # so the function is safe to call multiple times.                      #
+    # Each ADD COLUMN is guarded by an information_schema (or PRAGMA on   #
+    # SQLite) existence check so that on already-migrated databases NO    #
+    # ALTER TABLE is issued at all — avoiding the ACCESS EXCLUSIVE lock   #
+    # that would otherwise contend with live user queries when multiple   #
+    # workers boot simultaneously.                                        #
+    # Why: previously these were try/except blocks; the failed ALTER      #
+    # still acquired a brief table-level lock, producing deadlocks on PG  #
+    # during rolling restarts.                                            #
     # ------------------------------------------------------------------ #
 
     # Migration 1: add rank_bucket to matches (pre-dates 0001 migration)
-    try:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        if not _column_exists(conn, "matches", "rank_bucket"):
             conn.execute(text("ALTER TABLE matches ADD COLUMN rank_bucket VARCHAR(16)"))
-        logger.info("[stats_db] Migration applied: added rank_bucket to matches")
-    except Exception:
-        pass  # column already exists
+            logger.info("[stats_db] Migration applied: added rank_bucket to matches")
 
     # Migration 2: add extended per-player columns to match_players.
     # Needed when the table was created before this migration (e.g. from an
@@ -89,12 +108,11 @@ def init_stats_tables() -> None:
     ]
     applied: list[str] = []
     for col_name, ddl in _mp_new_columns:
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(ddl))
+        with engine.begin() as conn:
+            if _column_exists(conn, "match_players", col_name):
+                continue
+            conn.execute(text(ddl))
             applied.append(col_name)
-        except Exception:
-            pass  # column already exists
     if applied:
         logger.info(
             "[stats_db] Migration applied: added to match_players: %s",
@@ -113,12 +131,11 @@ def init_stats_tables() -> None:
     ]
     applied_v2: list[str] = []
     for col_name, ddl in _mp_new_columns_v2:
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(ddl))
+        with engine.begin() as conn:
+            if _column_exists(conn, "match_players", col_name):
+                continue
+            conn.execute(text(ddl))
             applied_v2.append(col_name)
-        except Exception:
-            pass  # column already exists
     if applied_v2:
         logger.info(
             "[stats_db] Migration applied: added to match_players: %s",
@@ -126,20 +143,16 @@ def init_stats_tables() -> None:
         )
 
     # Migration 4: add game_mode to matches.
-    try:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        if not _column_exists(conn, "matches", "game_mode"):
             conn.execute(text("ALTER TABLE matches ADD COLUMN game_mode SMALLINT"))
-        logger.info("[stats_db] Migration applied: added game_mode to matches")
-    except Exception:
-        pass  # column already exists
+            logger.info("[stats_db] Migration applied: added game_mode to matches")
 
     # Migration 5: add lobby_type to matches.
-    try:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        if not _column_exists(conn, "matches", "lobby_type"):
             conn.execute(text("ALTER TABLE matches ADD COLUMN lobby_type SMALLINT"))
-        logger.info("[stats_db] Migration applied: added lobby_type to matches")
-    except Exception:
-        pass  # column already exists
+            logger.info("[stats_db] Migration applied: added lobby_type to matches")
 
     # Migration 6: create match_player_timeline (10-minute snapshots per player).
     # Uses CREATE TABLE IF NOT EXISTS so it is fully idempotent — no try/except needed.
@@ -172,12 +185,11 @@ def init_stats_tables() -> None:
         ("ally_heroes",  "ALTER TABLE draft_results ADD COLUMN ally_heroes JSON"),
         ("enemy_heroes", "ALTER TABLE draft_results ADD COLUMN enemy_heroes JSON"),
     ]:
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(ddl))
+        with engine.begin() as conn:
+            if _column_exists(conn, "draft_results", col_name):
+                continue
+            conn.execute(text(ddl))
             logger.info("[stats_db] Migration applied: added %s to draft_results", col_name)
-        except Exception:
-            pass  # column already exists
 
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
