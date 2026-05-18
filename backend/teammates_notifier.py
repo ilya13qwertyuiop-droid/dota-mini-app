@@ -52,12 +52,23 @@ REVIEW_DELAY_MINUTES   = int(os.environ.get("TM_REVIEW_DELAY_MINUTES", "90"))
 POLL_INTERVAL_SECONDS  = int(os.environ.get("TM_NOTIFIER_INTERVAL_SEC", "60"))
 BATCH_SIZE             = int(os.environ.get("TM_NOTIFIER_BATCH_SIZE", "100"))
 
-# Текст напоминания. Краткий, без эмодзи-перебора (Linear-style), с прозрачной
-# мотивацией: «зачем тебе тратить 10 секунд на отзыв».
-REMINDER_TEXT = (
+# Текст напоминания теперь admin-редактируется через /admin_text
+# tm_push_review_reminder. См. backend/bot_texts.py для дефолта.
+# Здесь оставлен только legacy-fallback на крайний случай отказа БД.
+_REMINDER_FALLBACK = (
     "⏱️ Прошло полтора часа после игры. Оцени тиммейта — "
     "это поможет другим игрокам выбирать лучших напарников."
 )
+
+
+def _reminder_text() -> str:
+    """Достаёт текст напоминания через bot_texts.get_text. Lazy-import чтобы
+    не делать models/database side-effect-ы на module-import notifier'а."""
+    try:
+        from backend.bot_texts import get_text as _get
+        return _get("tm_push_review_reminder")
+    except Exception:
+        return _REMINDER_FALLBACK
 
 
 def _review_url(request_id: int, target_user_id: int) -> str | None:
@@ -86,7 +97,11 @@ async def _send_review_reminder(
         return False
     payload: dict = {
         "chat_id": chat_id,
-        "text": REMINDER_TEXT,
+        "text": _reminder_text(),
+        # HTML — потому что admin может добавить <b>/<tg-emoji> в шаблон.
+        # Default-fallback это plain text, parse_mode='HTML' для него тоже
+        # безопасен (там нет '<' '>' '&'-символов).
+        "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
     if button_url:

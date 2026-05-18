@@ -2386,11 +2386,14 @@ async def api_teammates_request_create(
     incoming_url = (
         f"{_TM_MINI_APP_URL}?tm_incoming=1" if _TM_MINI_APP_URL else None
     )
-    # Шаблон оставлен максимально простым и легко-редактируемым — место для
-    # того, чтобы потом обогатить кастомными эмодзи / форматированием.
-    push_text = (
-        f"👋 <b>{_tm_html_safe(sender_name)}</b> хочет играть с тобой.\n\n"
-        f"Открой раздел тиммейтов, чтобы посмотреть запрос."
+    # Шаблон — admin-редактируемый через /admin_text tm_push_new_request.
+    # Дефолт см. backend/bot_texts.py:DEFAULT_BOT_TEXTS. {sender_name}
+    # экранируется через _tm_html_safe ДО форматирования — попадает в шаблон
+    # как уже-HTML-safe значение.
+    from backend.bot_texts import get_text as _get_bot_text
+    push_text = _get_bot_text(
+        "tm_push_new_request",
+        sender_name=_tm_html_safe(sender_name),
     )
     await _tm_send_bot_message(
         chat_id=data.to_user_id,
@@ -2461,21 +2464,27 @@ async def api_teammates_request_respond(
         from_handle = f" (@{_tm_html_safe(from_uname)})" if from_uname else ""
         to_handle   = f" (@{_tm_html_safe(to_uname)})"   if to_uname   else ""
 
-        # Шаблоны намеренно простые — место для будущей замены на
-        # custom-emoji / расширенное форматирование.
+        # Шаблоны admin-редактируются через /admin_text tm_push_accepted_*.
+        # Плейсхолдеры подставляются здесь — _tm_html_safe + готовые <a>-теги
+        # уже HTML-safe и попадают в шаблон as-is.
+        from backend.bot_texts import get_text as _get_bot_text
         await _tm_send_bot_message(
             chat_id=from_id,
-            text=(
-                f"✅ <b>{_tm_html_safe(to_name)}</b> принял твой запрос.\n\n"
-                f"Напиши: {to_link}{to_handle}"
+            text=_get_bot_text(
+                "tm_push_accepted_to_sender",
+                receiver_name=_tm_html_safe(to_name),
+                receiver_link=to_link,
+                receiver_handle=to_handle,
             ),
             parse_mode="HTML",
         )
         await _tm_send_bot_message(
             chat_id=to_id,
-            text=(
-                f"✅ Ты принял запрос от <b>{_tm_html_safe(from_name)}</b>.\n\n"
-                f"Напиши: {from_link}{from_handle}"
+            text=_get_bot_text(
+                "tm_push_accepted_to_receiver",
+                sender_name=_tm_html_safe(from_name),
+                sender_link=from_link,
+                sender_handle=from_handle,
             ),
             parse_mode="HTML",
         )

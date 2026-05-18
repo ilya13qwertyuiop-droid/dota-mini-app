@@ -560,3 +560,30 @@ class TeammateLobbySlot(Base):
     __table_args__ = (
         Index("ix_teammate_lobby_slots_user_id", "user_id"),
     )
+
+
+# ─── Bot-editable text templates ──────────────────────────────────────────
+
+
+class BotText(Base):
+    """Override-таблица для текстов, которые шлёт бот.
+
+    Двухуровневая модель: если запись с этим key есть — берётся value;
+    если нет — fallback на DEFAULT_BOT_TEXTS из backend/bot_texts.py.
+    Сброс к дефолту = DELETE row by key.
+
+    Используется через get_text(key, **kwargs) который формирует финальный
+    текст подставляя плейсхолдеры {name}, {user_link}, etc.
+    """
+    __tablename__ = "bot_texts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(64), nullable=False, unique=True, index=True)
+    value = Column(Text, nullable=False)
+    description = Column(String(256), nullable=False, default="", server_default="")
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

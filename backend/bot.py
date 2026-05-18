@@ -255,11 +255,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+    # Welcome admin-редактируется через /admin_text welcome.
+    # Дефолт см. backend/bot_texts.py:DEFAULT_BOT_TEXTS["welcome"].
+    from backend.bot_texts import get_text as _get_bot_text
     await update.message.reply_text(
-        "👋 Привет! Я бот-помощник по Dota 2!\n\n"
-        "Я помогу тебе найти идеального героя для твоего стиля игры.\n\n"
-        "Нажми на кнопку ниже, чтобы начать опрос 👇",
+        _get_bot_text("welcome"),
         reply_markup=reply_markup,
+        parse_mode="HTML",
     )
     await update.message.reply_text("⚠️ Mini App не грузится? Попробуй зайти с VPN!")
 
@@ -1778,6 +1780,12 @@ def main():
     application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))
     application.add_handler(CommandHandler("ban",                 timed_handler("/ban")(ban_command)))
     application.add_handler(CommandHandler("unban",               timed_handler("/unban")(unban_command)))
+
+    # Admin-команды редактирования текстов бота — ConversationHandler +
+    # side-команды. Регистрируется ПЕРЕД общим MessageHandler ниже, чтобы
+    # ответы в conversation-state ловились раньше catch-all'а.
+    from backend.bot_admin_texts import register_admin_text_handlers
+    register_admin_text_handlers(application, ADMIN_IDS)
 
     # Текстовые сообщения — должны идти ПОСЛЕ команд (меньший приоритет)
     application.add_handler(
