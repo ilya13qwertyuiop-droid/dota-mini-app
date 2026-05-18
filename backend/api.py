@@ -1848,6 +1848,47 @@ _TM_VALID_PARTY_SIZES_RANKED = frozenset({3, 5})
 _TM_MINI_APP_URL = os.environ.get("MINI_APP_URL")
 
 
+def _tm_bump_last_active(db: Session, user_id: int) -> None:
+    """Обновляет teammate_profiles.last_active_at = now для данного юзера.
+
+    Best-effort: если у юзера нет teammate_profile (новый юзер, не заполнил
+    форму) — UPDATE с WHERE просто no-op'ит, rowcount=0. Не валим вызов.
+
+    Семантика «last_active»: значение обновляется на КАЖДОМ authenticated
+    teammate-endpoint'е. Auto-polling из миниаппа (30s feed / 90s badge)
+    тоже считается активностью — но это «честно» потому что таймеры paused
+    via Page Visibility API когда вкладка скрыта / телефон заблокирован.
+    Значение реально отражает «миниап открыт перед лицом», а не «процесс
+    тикает в памяти».
+    """
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE teammate_profiles
+                SET last_active_at = :now
+                WHERE user_id = :uid
+                """
+            ),
+            {"now": datetime.now(timezone.utc), "uid": user_id},
+        )
+        db.commit()
+    except Exception:
+        # last_active не критичен — если UPDATE упал (deadlock / лок etc),
+        # просто пропускаем, чтобы не валить основной endpoint.
+        try: db.rollback()
+        except Exception: pass
+
+
+def _tm_authenticate(token: str, db: Session) -> int:
+    """Validate token + bump last_active_at. Use в качестве auth-точки во
+    ВСЕХ teammate-endpoint'ах вместо голого _tm_require_user — это даёт
+    автоматический трекинг активности юзера (см. _tm_bump_last_active)."""
+    uid = _tm_require_user(token=token)
+    _tm_bump_last_active(db, uid)
+    return uid
+
+
 def _tm_require_user(token: str) -> int:
     """Validates token and returns user_id, or raises 401."""
     uid = get_user_id_by_token(token)
@@ -1875,6 +1916,9 @@ def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) ->
         "mood":            p.mood,
         "favorite_heroes": list(p.favorite_heroes or []),
         "about":           p.about or "",
+        # Когда юзер последний раз делал что-то в miniapp (см. _tm_bump_last_active).
+        # Фронт рендерит «🟢 в сети» / «был N мин назад» в meta-row карточки.
+        "last_active_at":  p.last_active_at.isoformat() if p.last_active_at else None,
         # Telegram identity (из user_profiles.settings)
         "first_name":      s.get("first_name"),
         "last_name":       s.get("last_name"),
@@ -2043,7 +2087,7 @@ async def api_teammates_profile_upsert(
     data: TeammateProfileUpsert, db: Session = Depends(get_db),
 ):
     """Создаёт или обновляет профиль текущего пользователя для поиска тиммейтов."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     if data.rank not in _TM_VALID_RANKS:
         raise HTTPException(status_code=422, detail="invalid rank")
@@ -2107,7 +2151,7 @@ async def api_teammates_profile_upsert(
 @app.get("/api/teammates/profile/me")
 async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     """Возвращает свой профиль (со статусом поиска и тегами) или null."""
-    user_id = _tm_require_user(token)
+    user_id = _tm_authenticate(token, db)
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         return None
@@ -2148,7 +2192,7 @@ async def api_teammates_search_start(
     активного лобби — отказ. Иначе он одновременно «ищу дуо» В чужих
     лентах и «committed в стак» — конфликт намерений для других игроков.
     """
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
@@ -2176,7 +2220,7 @@ async def api_teammates_search_stop(
     data: TeammateTokenOnly, db: Session = Depends(get_db),
 ):
     """Выключает поиск. Идемпотентно — если профиля нет, всё равно 200."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
     profile = db.get(DBTeammateProfile, user_id)
     if profile is not None:
         profile.is_searching = False
@@ -2212,7 +2256,7 @@ async def api_teammates_feed(
     "нет фильтра" (мы не хотим активно исключать пользователей без микро,
     они просто не приоритетны).
     """
-    user_id = _tm_require_user(token)
+    user_id = _tm_authenticate(token, db)
     # tz-aware: колонка search_expires_at теперь TIMESTAMPTZ (миграция 0008).
     # Сравнение PG: timestamptz vs timestamptz — без TZ-конверсий.
     now = datetime.now(timezone.utc)
@@ -2291,7 +2335,7 @@ async def api_teammates_request_create(
     data: TeammateRequestCreate, db: Session = Depends(get_db),
 ):
     """Создаёт pending-запрос от текущего пользователя к to_user_id."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     if data.to_user_id == user_id:
         raise HTTPException(status_code=422, detail="cannot request yourself")
@@ -2366,7 +2410,7 @@ async def api_teammates_request_respond(
     data: TeammateRequestRespond, db: Session = Depends(get_db),
 ):
     """Принять/отклонить входящий запрос."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     req = db.get(DBTeammateRequest, data.request_id)
     if req is None:
@@ -2436,7 +2480,7 @@ async def api_teammates_request_respond(
 @app.get("/api/teammates/requests/incoming")
 async def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
     """Входящие pending-запросы с прикреплённым профилем отправителя."""
-    user_id = _tm_require_user(token)
+    user_id = _tm_authenticate(token, db)
 
     rows = (
         db.query(DBTeammateRequest)
@@ -2484,7 +2528,7 @@ async def api_teammates_review_submit(
     другой участник. Повторный отзыв тем же пользователем по тому же
     request_id — 409.
     """
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     req = db.get(DBTeammateRequest, data.request_id)
     if req is None:
@@ -2561,7 +2605,7 @@ async def api_teammates_profile_public(user_id: int, db: Session = Depends(get_d
 @app.get("/api/teammates/requests/outgoing")
 async def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
     """Исходящие pending-запросы текущего пользователя с профилем получателя."""
-    user_id = _tm_require_user(token)
+    user_id = _tm_authenticate(token, db)
 
     rows = (
         db.query(DBTeammateRequest)
@@ -2611,7 +2655,7 @@ async def api_teammates_requests_history(
     Курсор — ISO-формат `accepted_at` последней отданной строки. Сортировка
     accepted_at DESC; следующая страница — строки строго раньше курсора.
     """
-    user_id = _tm_require_user(token)
+    user_id = _tm_authenticate(token, db)
 
     q = (
         db.query(DBTeammateRequest)
@@ -2701,7 +2745,7 @@ async def api_teammates_request_cancel(
     «передумал — убрал тихо». История запросов это значение не показывает
     (history фильтрует по status='accepted').
     """
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     req = db.get(DBTeammateRequest, data.request_id)
     if req is None:
@@ -2924,7 +2968,7 @@ async def api_teammates_lobby_create(
     data: TeammateLobbyCreate, db: Session = Depends(get_db),
 ):
     """Создаёт лобби. Host автоматически занимает свой слот."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     # Профиль обязателен — без него host не сможет показать ранг/позицию.
     profile = db.get(DBTeammateProfile, user_id)
@@ -3029,7 +3073,7 @@ async def api_teammates_lobbies_list(token: str, db: Session = Depends(get_db)):
     игроками в ленте. Фронту передаём ВСЕ — фильтрацию по rank_filter тоже,
     клиент сам решит как подсветить «доступно мне / нет».
     """
-    _tm_require_user(token)
+    _tm_authenticate(token, db)
     now = datetime.now(timezone.utc)
 
     lobbies = (
@@ -3074,7 +3118,7 @@ async def api_teammates_lobby_join(
     Все uncaught-исключения логируются с traceback'ом — на staging юзер видит
     точную точку падения по `[tm/lobby/join]` в логах backend'а.
     """
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
     logger.info(
         "[tm/lobby/join] user_id=%s lobby_id=%s position=%s",
         user_id, lobby_id, data.position,
@@ -3187,7 +3231,7 @@ async def api_teammates_lobby_leave(
 ):
     """Member выходит из своего слота. Если выходит host — это disband
     (но мы возвращаем 409 чтобы фронт явно вызвал /disband — UI там другой)."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     lobby = db.get(DBTeammateLobby, lobby_id)
     if lobby is None:
@@ -3239,7 +3283,7 @@ async def api_teammates_lobby_disband(
     lobby_id: int, data: TeammateLobbyAction, db: Session = Depends(get_db),
 ):
     """Host распускает лобби. Members получают пуш."""
-    user_id = _tm_require_user(data.token)
+    user_id = _tm_authenticate(data.token, db)
 
     lobby = db.get(DBTeammateLobby, lobby_id)
     if lobby is None:
@@ -3270,7 +3314,7 @@ async def api_teammates_lobbies_history(
     хочет видеть «с кем играл». Без пагинации: hard cap 50 (на v1 этого
     хватит, плюс легко merge'ить с requests/history на фронте).
     """
-    user_id = _tm_require_user(token)
+    user_id = _tm_authenticate(token, db)
 
     # Берём id лобби в которых я участвовал (host ИЛИ занимал слот).
     my_lobby_ids_rows = db.execute(

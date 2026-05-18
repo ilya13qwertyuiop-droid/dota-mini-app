@@ -388,6 +388,10 @@ class TeammateProfile(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    # Когда юзер последний раз делал что-то в miniapp (миграция 0010).
+    # Bump'ится в _tm_bump_last_active на каждом authenticated endpoint'е.
+    # Используется фронтом для отображения «🟢 в сети» / «был N мин назад».
+    last_active_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class TeammateRequest(Base):

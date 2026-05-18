@@ -7454,6 +7454,21 @@ function _drafterCommentText(c) {
         }
         var metaJoiner = ' <span class="tm-player-meta-dot">·</span> ';
 
+        // «Активность» — отдельный sub-row под meta. Не в meta-row потому что
+        // визуально это другой axis (behavior, не gameplay-stats). «🟢 в сети»
+        // или «был N мин назад». stale (>7д) и self — не показываем.
+        var activityRow = '';
+        if (!opts.self) {
+            var act = _tmFormatLastActive(p.last_active_at);
+            if (act) {
+                var dot = act.kind === 'online'
+                    ? '<span class="tm-active-dot" aria-hidden="true"></span>'
+                    : '';
+                activityRow = '<div class="tm-player-activity tm-player-activity--' +
+                    act.kind + '">' + dot + _tmEsc(act.text) + '</div>';
+            }
+        }
+
         var metaRow = '';
         if (metaParts.length || commsInline) {
             metaRow = '<div class="tm-player-meta-row">' +
@@ -7506,6 +7521,7 @@ function _drafterCommentText(c) {
                 '<div class="tm-player-id">',
                   '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
                   metaRow,
+                  activityRow,
                 '</div>',
                 ctaHtml,
               '</header>',
@@ -8006,6 +8022,26 @@ function _drafterCommentText(c) {
         var h = Math.floor(minutes / 60);
         var m = minutes % 60;
         return m === 0 ? (h + ' ч') : (h + ' ч ' + m + ' мин');
+    }
+
+    // «Был активен N назад» / «в сети». Источник — поле last_active_at в
+    // _tm_serialize_profile. Возвращает объект { kind, text } где kind ∈
+    // {'online', 'recent', null}: 'online' включает dot-индикатор, 'recent'
+    // только текст, null = ничего не показывать (stale или нет данных).
+    function _tmFormatLastActive(iso) {
+        if (!iso) return null;
+        var lastMs = _tmParseUtcLike(iso);
+        if (!isFinite(lastMs)) return null;
+        var diffMin = Math.floor((Date.now() - lastMs) / 60000);
+        if (diffMin < 0)    return null;                       // часы фронта впереди — игнор
+        if (diffMin < 2)    return { kind: 'online', text: 'в сети' };
+        if (diffMin < 60)   return { kind: 'recent', text: 'был ' + diffMin + ' мин назад' };
+        var hrs = Math.floor(diffMin / 60);
+        if (hrs < 24)       return { kind: 'recent', text: 'был ' + hrs + ' ч назад' };
+        var days = Math.floor(hrs / 24);
+        if (days === 1)     return { kind: 'recent', text: 'вчера' };
+        if (days < 7)       return { kind: 'recent', text: 'был ' + days + ' дн. назад' };
+        return null;                                            // stale → скрываем
     }
     window.tmToggleSearch = async function () {
         var token = _tmGetToken();

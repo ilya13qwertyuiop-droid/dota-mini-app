@@ -6914,6 +6914,34 @@ margin-top: var(--space-4);
   font-size: var(--text-xs);
   color: var(--text-secondary);
 }
+
+/* «Активность» — отдельный sub-row под meta. Visually quieter — другой axis
+   (behavior, не gameplay-stats). Online-кейс — зелёный dot + текст «в сети»,
+   recent — серый текст без dot. */
+.tm-player-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1;
+}
+.tm-player-activity--online {
+  color: var(--positive);
+  font-weight: var(--font-medium);
+}
+.tm-active-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--positive);
+  flex-shrink: 0;
+  /* Лёгкое свечение для контраста на тёмной surface — без glow-bloom */
+  box-shadow: 0 0 0 2px rgba(61, 184, 122, 0.18);
+}
 /* Hierarchy в meta-row намеренно плоская: всё inherits text-secondary
    из родителя. Рассинхрон «8000 ярко, ч серенько, иконки совсем призраки»
    читался как сломанный ритм. Теперь визуальный якорь один — rank-иконка
