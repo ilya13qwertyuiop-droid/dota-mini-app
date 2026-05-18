@@ -2433,6 +2433,14 @@ async def api_teammates_request_respond(
     accepted = (req.status == "accepted")
     db.commit()
 
+    # Auto-stop search для ОБОИХ участников: матч состоялся, контакты обменяны,
+    # дальше им незачем висеть в чужих лентах как «доступен для 1-на-1». Иначе
+    # выглядит как lying-state перед другими игроками («ищет», но на самом
+    # деле уже договорился играть с кем-то).
+    if accepted:
+        _tm_clear_user_search(db, from_id)
+        _tm_clear_user_search(db, to_id)
+
     if accepted:
         # Подтягиваем имена / usernames обоих участников.
         settings_map = _tm_load_user_settings(db, [from_id, to_id])

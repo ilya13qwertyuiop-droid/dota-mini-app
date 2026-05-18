@@ -8474,7 +8474,47 @@ function _drafterCommentText(c) {
         var out = _tm.requestsData.outgoing.length;
         if (incEl) incEl.textContent = inc ? String(inc) : '';
         if (outEl) outEl.textContent = out ? String(out) : '';
+        // Sync два дополнительных incoming-индикатора:
+        //   1) Banner сверху Дуо-пейна — счётчик с правильным склонением
+        //   2) Точка на avatar-btn в header'е — secondary visual cue
+        _tmRenderIncomingBanner(inc);
+        _tmUpdateProfileBtnIncomingDot(inc);
     }
+
+    // Banner: «N новых запрос(а/ов)» с действие-стрелкой. Скрыт когда count=0.
+    function _tmRenderIncomingBanner(count) {
+        var banner = document.getElementById('tm-incoming-banner');
+        if (!banner) return;
+        if (!count || count <= 0) {
+            banner.hidden = true;
+            return;
+        }
+        var textEl = document.getElementById('tm-incoming-banner-text');
+        if (textEl) {
+            // Русское склонение: 1 запрос / 2-4 запроса / 5+ запросов.
+            var mod10  = count % 10;
+            var mod100 = count % 100;
+            var label;
+            if (mod100 >= 11 && mod100 <= 14)  label = 'новых запросов';
+            else if (mod10 === 1)              label = 'новый запрос';
+            else if (mod10 >= 2 && mod10 <= 4) label = 'новых запроса';
+            else                               label = 'новых запросов';
+            textEl.textContent = count + ' ' + label;
+        }
+        banner.hidden = false;
+    }
+
+    function _tmUpdateProfileBtnIncomingDot(count) {
+        var btn = document.getElementById('tm-profile-btn');
+        if (!btn) return;
+        btn.classList.toggle('tm-profile-btn--has-incoming', !!(count && count > 0));
+    }
+
+    // Тап на banner → открыть профиль-sheet, переключить sub-tab на 'incoming'.
+    window.tmOpenIncomingFromBanner = function () {
+        if (typeof window.tmOpenProfileSheet === 'function') tmOpenProfileSheet();
+        if (typeof window.tmSetRequestsTab === 'function') tmSetRequestsTab('incoming');
+    };
 
     function _tmRequestsEmptyState(tab) {
         var msg;

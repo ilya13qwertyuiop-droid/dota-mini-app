@@ -7993,6 +7993,60 @@ margin-top: var(--space-4);
    help-btn вне actions-обёртки. */
 .tm-page-head-actions .tm-help-btn { margin-left: 0; }
 
+/* Incoming-banner — сверху Дуо-пейна, виден только при pending-входящих.
+   Solid accent-tinted strip с count + arrow. Visual weight выше hint-текста,
+   но ниже primary CTA — это priority-уведомление, не главный action. */
+.tm-incoming-banner {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-tight);
+  cursor: pointer;
+  margin-bottom: 10px;
+  text-align: left;
+  transition: background 0.15s, transform 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-incoming-banner:hover { background: rgba(107, 125, 179, 0.16); }
+.tm-incoming-banner:active { transform: scale(0.99); }
+.tm-incoming-banner[hidden] { display: none; }
+.tm-incoming-banner-icon { font-size: 16px; line-height: 1; flex-shrink: 0; }
+.tm-incoming-banner-text { flex: 1 1 auto; min-width: 0; }
+.tm-incoming-banner-arrow {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.7;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.tm-incoming-banner:hover .tm-incoming-banner-arrow { transform: translateX(2px); opacity: 1; }
+
+/* Маленькая accent-точка на avatar-btn — secondary visual cue «в профиле
+   есть pending запросы». Дублирует banner в feed'е, но visible когда юзер
+   на другой вкладке или sheet не открывал. */
+.tm-profile-btn--has-incoming::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-base);
+  pointer-events: none;
+}
+
 /* Avatar-кнопка (мой профиль) — circular, парная по размеру с help-btn.
    Внутри либо <img> с photo_url, либо ph-user fallback. */
 .tm-profile-btn {
