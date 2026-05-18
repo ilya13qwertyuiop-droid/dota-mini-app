@@ -6476,6 +6476,10 @@ margin-top: var(--space-4);
   background: rgba(255, 255, 255, 0.04);
   border-radius: 8px;
 }
+/* `display: grid` выше overrides user-agent `[hidden] { display: none }`,
+   из-за чего HTML-атрибут `hidden` на .tm-tabs не работал — таб-бар оставался
+   видимым в Duo-only v1. Явно возвращаем правильное поведение. */
+.tm-tabs[hidden] { display: none; }
 .tm-tab {
   appearance: none;
   background: transparent;
