@@ -6948,6 +6948,10 @@ function _drafterCommentText(c) {
             } else {
                 tmShowProfileForm();
             }
+            // Блокирующее окно «Заполни профиль»: показываем для юзеров без
+            // профиля. Скрывается автоматически как только профиль появится
+            // (после save).
+            _tmUpdateNoProfileGate();
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
         loadLobbies();
@@ -8089,18 +8093,36 @@ function _drafterCommentText(c) {
         _tm.previewMode = true;
         var preview = document.getElementById('tm-profile-preview');
         var form = document.getElementById('tm-profile-form');
+        // Раздел «Запросы» виден только когда профиль готов (preview-режим).
+        // При редактировании юзер ещё не закончил основную задачу — запросы
+        // ему пока не нужны, лишний шум.
+        var reqSection = document.getElementById('tm-requests-section');
         if (preview) preview.hidden = false;
         if (form) form.hidden = true;
+        if (reqSection) reqSection.hidden = false;
         _tmRenderProfilePreview(_tm.myProfile);
     };
     window.tmShowProfileForm = function () {
         _tm.previewMode = false;
         var preview = document.getElementById('tm-profile-preview');
         var form = document.getElementById('tm-profile-form');
+        var reqSection = document.getElementById('tm-requests-section');
         if (preview) preview.hidden = true;
         if (form) form.hidden = false;
+        if (reqSection) reqSection.hidden = true;
     };
     window.tmEditProfile = function () { tmShowProfileForm(); };
+
+    // Показать/спрятать блокирующее окно «Заполни профиль». Вызывается:
+    //   • при initTeammatesPage после loadMyProfile (первый показ)
+    //   • после успешного save профиля (юзер заполнил — скрываем)
+    function _tmUpdateNoProfileGate() {
+        var gate = document.getElementById('tm-no-profile-gate');
+        if (!gate) return;
+        var hasProfile = !!(_tm.myProfile && _tm.myProfile.rank);
+        gate.hidden = hasProfile;
+    }
+    window._tmUpdateNoProfileGate = _tmUpdateNoProfileGate;
 
     function _tmRenderProfilePreview(profile) {
         var holder = document.getElementById('tm-preview-card');
@@ -8340,6 +8362,8 @@ function _drafterCommentText(c) {
             // После сохранения сразу показываем preview — это и фидбек об успехе,
             // и моментальное превью карточки в ленте.
             tmShowProfilePreview();
+            // Скрываем блокирующее окно «Заполни профиль» — оно больше не нужно.
+            _tmUpdateNoProfileGate();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } finally {
             if (btn) btn.disabled = false;

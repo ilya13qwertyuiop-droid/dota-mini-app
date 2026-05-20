@@ -7993,6 +7993,66 @@ margin-top: var(--space-4);
    help-btn вне actions-обёртки. */
 .tm-page-head-actions .tm-help-btn { margin-left: 0; }
 
+/* Блокирующее окно для юзеров без профиля. Перекрывает вкладку Дуо
+   полупрозрачным фоном + центральная карточка. Юзер видит ОДНО действие
+   («Заполнить профиль») и ничего другого — нельзя случайно затыкаться в
+   фид или фильтры до того как профиль готов. */
+.tm-no-profile-gate {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(9, 9, 11, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+.tm-no-profile-gate[hidden] { display: none; }
+.tm-no-profile-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  max-width: 320px;
+  width: 100%;
+}
+.tm-no-profile-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  margin-bottom: var(--space-1);
+}
+.tm-no-profile-icon i { font-size: 28px; line-height: 1; }
+.tm-no-profile-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+.tm-no-profile-body {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+  margin-bottom: var(--space-2);
+}
+.tm-no-profile-card .tm-primary-btn {
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
 /* Incoming-banner — сверху Дуо-пейна, виден только при pending-входящих.
    Solid accent-tinted strip с count + arrow. Visual weight выше hint-текста,
    но ниже primary CTA — это priority-уведомление, не главный action. */
