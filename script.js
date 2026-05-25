@@ -8621,7 +8621,7 @@ function _drafterCommentText(c) {
     function _tmRequestsEmptyState(tab) {
         var msg;
         if (tab === 'incoming') {
-            msg = 'Никто пока не звал тебя играть. Включи поиск в Ленте, чтобы быть видимым.';
+            msg = 'Никто пока не звал тебя играть. Выставь статус в Ленте, чтобы тебя видели другие.';
         } else if (tab === 'outgoing') {
             msg = 'Ты пока никому не написал. Найди тиммейта в Ленте.';
         } else {

@@ -7048,10 +7048,13 @@ margin-top: var(--space-4);
   line-height: var(--leading-snug);
   white-space: pre-wrap;
   word-wrap: break-word;
-  border-left: 2px solid var(--accent-border);
-  padding-left: 10px;
   margin: 0;
+  /* «Голос игрока» отделяется ШРИФТОМ (italic serif на фоне sans-данных) +
+     кавычками-ёлочками, а не accent-полоской слева (AI-tell). Чистая
+     типографика, ноль декора — по бренду «минимум украшательства». */
 }
+.tm-player-about::before { content: "\00AB"; color: var(--text-tertiary); margin-right: 1px; }
+.tm-player-about::after  { content: "\00BB"; color: var(--text-tertiary); margin-left: 1px; }
 
 /* ── Tags: семантический цвет, моно-счётчик ───────────────────────── */
 .tm-tags {
@@ -8181,12 +8184,8 @@ margin-top: var(--space-4);
   color: var(--text-tertiary);
   flex-shrink: 0;
 }
-/* Лёгкая цветная подсветка левого края опции по статусу — связывает
-   опцию с её цветом, помогает ассоциации до выбора. */
-.tm-status-option--ready   { border-left: 3px solid var(--positive); }
-.tm-status-option--regular { border-left: 3px solid var(--accent); }
-.tm-status-option--casual  { border-left: 3px solid var(--text-tertiary); }
-.tm-status-option--hidden  { border-left: 3px solid var(--border-strong); }
+/* Цвет статуса несёт точка (.tm-status-dot--*) слева в опции — этого
+   достаточно для ассоциации. Accent-полоску border-left убрали (AI-tell). */
 
 /* Карточка обязательного выбора статуса чуть шире — в неё влезают 4 опции. */
 .tm-status-gate-card { max-width: 360px; }
@@ -8678,12 +8677,9 @@ margin-top: var(--space-4);
 }
 
 /* ── History entries: лобби-вариант ─────────────────────────────────── */
-.tm-request-item--lobby {
-  /* Тот же contour что у обычной request-history записи, но с лёгкой
-     accent-меткой слева — чтобы лобби читалось как другой class объекта. */
-  border-left: 2px solid var(--accent-border);
-  padding-left: calc(var(--space-3) - 2px);
-}
+/* Лобби-запись отличается от 1-на-1 не полоской слева (AI-tell), а своим
+   заголовком с иконкой ph-users-three и списком @ников. Доп. метка не нужна —
+   тип записи читается из содержимого. */
 .tm-history-lobby-head {
   display: flex;
   align-items: center;
