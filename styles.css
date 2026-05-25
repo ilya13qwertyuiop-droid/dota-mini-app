@@ -8053,6 +8053,149 @@ margin-top: var(--space-4);
   margin-top: var(--space-1);
 }
 
+/* ── Статус видимости: точки, бейджи, переключатель, меню, gate ─────── */
+
+/* Цветные точки статуса. Один класс на 4 цвета — semantic-only:
+   ready=зелёный (горячий), regular=accent, casual/hidden=приглушённый. */
+.tm-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-tertiary);
+}
+.tm-status-dot--ready   { background: var(--positive); box-shadow: 0 0 0 2px rgba(61, 184, 122, 0.18); }
+.tm-status-dot--regular { background: var(--accent); }
+.tm-status-dot--casual  { background: var(--text-tertiary); }
+.tm-status-dot--hidden  { background: var(--border-strong); }
+
+/* Статус-бейдж на карточке игрока (в presence-row). */
+.tm-player-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-tight);
+}
+.tm-player-status--ready   { color: var(--positive); }
+.tm-player-status--regular { color: var(--accent); }
+.tm-player-status--casual  { color: var(--text-tertiary); }
+
+/* Presence-row (статус + активность) — приглушённый sub-row под meta. */
+.tm-player-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.3;
+}
+.tm-player-activity-text {}
+.tm-player-activity--online { color: var(--positive); font-weight: var(--font-medium); }
+
+/* Переключатель статуса сверху ленты (заменил кнопку «Искать пати»). */
+.tm-status-switcher {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-status-switcher[hidden] { display: none; }
+.tm-status-switcher:hover { border-color: var(--border-strong); }
+.tm-status-switcher .tm-status-dot { width: 9px; height: 9px; }
+.tm-status-switcher-label { flex: 1 1 auto; text-align: left; }
+.tm-status-switcher-caret { font-size: 14px; color: var(--text-tertiary); }
+
+/* Выпадающее меню статусов (под переключателем). */
+.tm-status-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  margin: -4px 0 10px;
+}
+.tm-status-menu[hidden] { display: none; }
+
+/* Опция статуса (используется и в меню, и в обязательном gate). */
+.tm-status-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: var(--space-2);
+}
+.tm-status-option {
+  appearance: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-status-option:hover { border-color: var(--border-strong); }
+.tm-status-option--active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.tm-status-option .tm-status-dot { margin-top: 4px; }
+.tm-status-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tm-status-option-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+.tm-status-option-desc {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  line-height: var(--leading-snug);
+}
+.tm-status-option-check {
+  font-size: 16px;
+  color: var(--accent);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* Карточка обязательного выбора статуса чуть шире — в неё влезают 4 опции. */
+.tm-status-gate-card { max-width: 360px; }
+
 /* Incoming-banner — сверху Дуо-пейна, виден только при pending-входящих.
    Solid accent-tinted strip с count + arrow. Visual weight выше hint-текста,
    но ниже primary CTA — это priority-уведомление, не главный action. */

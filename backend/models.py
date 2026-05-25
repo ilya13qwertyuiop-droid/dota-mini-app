@@ -370,13 +370,12 @@ class TeammateProfile(Base):
     # Array of hero_id (capped at 3 in the app layer)
     favorite_heroes = Column(JSON, nullable=True)
     about = Column(Text, nullable=True)
-    is_searching = Column(
-        Boolean, nullable=False, default=False, server_default="0", index=True
-    )
-    # Все 3 datetime'а — TIMESTAMPTZ (см. миграцию 0008). До неё были naive
-    # DateTime → silent corruption на PG с session_tz ≠ UTC. Сейчас pscyopg2
-    # хранит реальный UTC-момент, .isoformat() автоматически даёт «+00:00».
-    search_expires_at = Column(DateTime(timezone=True), nullable=True)
+    # Статус видимости в ленте (миграция 0012, заменил is_searching+TTL):
+    #   ready_now / looking_regular / looking_casual — в ленте (по приоритету)
+    #   hidden — не в ленте (явно скрыл себя)
+    #   NULL   — статус ещё не выбран → юзер увидит обязательный экран выбора
+    # Постоянный (не истекает). Присутствие «в сети» показывает last_active_at.
+    status = Column(String(20), nullable=True, index=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

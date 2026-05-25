@@ -6937,7 +6937,6 @@ function _drafterCommentText(c) {
         loadMyProfile().then(function (p) {
             _tm.myProfile = p;
             _tm.favoriteHeroes = (p && Array.isArray(p.favorite_heroes)) ? p.favorite_heroes.slice() : [];
-            renderSearchCta();
             renderProfileForm();
             // Avatar-btn в header'е: photo_url появляется только после
             // loadMyProfile, поэтому update делаем именно здесь.
@@ -6948,10 +6947,9 @@ function _drafterCommentText(c) {
             } else {
                 tmShowProfileForm();
             }
-            // Блокирующее окно «Заполни профиль»: показываем для юзеров без
-            // профиля. Скрывается автоматически как только профиль появится
-            // (после save).
-            _tmUpdateNoProfileGate();
+            // Единый оркестратор UI сверху ленты: окно «заполни профиль» /
+            // обязательный выбор статуса / переключатель статуса.
+            _tmUpdateStatusUI();
         }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
         loadFeed(true);
         loadLobbies();
@@ -7347,16 +7345,12 @@ function _drafterCommentText(c) {
     // а для юзера С активным поиском это вообще не релевантно.
     function _tmFeedEmptyState() {
         var profile = _tm.myProfile;
-        var hasProfile  = !!(profile && profile.rank);
-        var isSearching = _tmIsSearchingActive();
-
+        var hasProfile = !!(profile && profile.rank);
         var msg;
         if (!hasProfile) {
             msg = 'Заполни профиль, чтобы видеть других игроков.';
-        } else if (!isSearching) {
-            msg = 'Сейчас никого нет. Включи поиск — твоя карточка появится в чужих лентах, и ты увидишь, кто ещё ищет тиммейтов.';
         } else {
-            msg = 'Никто не подходит под фильтры. Попробуй убрать ограничения — лента сама обновляется каждые 30 секунд.';
+            msg = 'Сейчас в ленте никого. Лента обновляется сама каждые 30 секунд — загляни позже или убери фильтры.';
         }
         return '<div class="tm-feed-empty">' + _tmEsc(msg) + '</div>';
     }
@@ -7371,16 +7365,6 @@ function _drafterCommentText(c) {
         if (!s) return NaN;
         if (/Z$|[+\-]\d\d:?\d\d$/.test(s)) return new Date(s).getTime();
         return new Date(s + 'Z').getTime();
-    }
-
-    // Single source of truth для «активен ли поиск прямо сейчас». Не доверяем
-    // только профильному флагу — бэк может его не успеть погасить, или мы
-    // открыли страницу с уже устаревшими данными в кэше.
-    function _tmIsSearchingActive() {
-        var p = _tm.myProfile;
-        if (!p || !p.is_searching || !p.search_expires_at) return false;
-        var exp = _tmParseUtcLike(p.search_expires_at);
-        return isFinite(exp) && exp > Date.now();
     }
 
     // Проверка: есть ли у меня pending-запрос к этому user_id?
@@ -7458,18 +7442,36 @@ function _drafterCommentText(c) {
         }
         var metaJoiner = ' <span class="tm-player-meta-dot">·</span> ';
 
-        // «Активность» — отдельный sub-row под meta. Не в meta-row потому что
-        // визуально это другой axis (behavior, не gameplay-stats). «🟢 в сети»
-        // или «был N мин назад». stale (>7д) и self — не показываем.
+        // Presence-row под meta: статус (намерение) + активность (присутствие).
+        // Два разных axis: статус = «насколько хочу играть», активность =
+        // «тут ли я сейчас». Показываем оба, разделённые точкой. На self и для
+        // hidden-статуса не рендерим (в ленте hidden не появляется, но на
+        // всякий случай).
         var activityRow = '';
         if (!opts.self) {
+            var presenceBits = [];
+            // Статус-бейдж (цветная точка + короткий лейбл).
+            var sMeta = (p.status && p.status !== 'hidden') ? _tmStatusMeta(p.status) : null;
+            if (sMeta) {
+                presenceBits.push(
+                    '<span class="tm-player-status tm-player-status--' + sMeta.cls + '">' +
+                    '<span class="tm-status-dot tm-status-dot--' + sMeta.cls + '" aria-hidden="true"></span>' +
+                    _tmEsc(sMeta.short) + '</span>'
+                );
+            }
+            // Активность (в сети / был N назад). Для online — без своей точки,
+            // т.к. статус-бейдж уже может иметь точку; просто текст.
             var act = _tmFormatLastActive(p.last_active_at);
             if (act) {
-                var dot = act.kind === 'online'
-                    ? '<span class="tm-active-dot" aria-hidden="true"></span>'
-                    : '';
-                activityRow = '<div class="tm-player-activity tm-player-activity--' +
-                    act.kind + '">' + dot + _tmEsc(act.text) + '</div>';
+                presenceBits.push(
+                    '<span class="tm-player-activity-text tm-player-activity--' +
+                    act.kind + '">' + _tmEsc(act.text) + '</span>'
+                );
+            }
+            if (presenceBits.length) {
+                activityRow = '<div class="tm-player-activity">' +
+                    presenceBits.join(' <span class="tm-player-meta-dot">·</span> ') +
+                '</div>';
             }
         }
 
@@ -7968,57 +7970,154 @@ function _drafterCommentText(c) {
         loadFeed(true);
     };
 
-    // ── Search toggle ───────────────────────────────────────────────────
-    var _tmSearchCountdownTimer = null;
+    // ── Статус видимости (заменил TTL-поиск) ────────────────────────────
+    // 4 статуса: ready_now / looking_regular / looking_casual / hidden.
+    // Постоянные, не истекают. Выбираются в обязательном экране при первом
+    // заходе + быстрым переключателем сверху ленты.
+    var TM_STATUSES = [
+        {
+            key: 'ready_now',
+            label: 'Готов играть сейчас',
+            short: 'Готов сейчас',
+            desc: 'Покажемся выше всех — для тех кто хочет в игру прямо сейчас.',
+            cls: 'ready',
+        },
+        {
+            key: 'looking_regular',
+            label: 'Ищу постоянных тиммейтов',
+            short: 'Ищу постоянных',
+            desc: 'Для поиска людей на регулярную игру.',
+            cls: 'regular',
+        },
+        {
+            key: 'looking_casual',
+            label: 'Ищу, не срочно',
+            short: 'Не срочно',
+            desc: 'Покажемся ниже в ленте — без спешки.',
+            cls: 'casual',
+        },
+        {
+            key: 'hidden',
+            label: 'Не показывать меня',
+            short: 'Скрыт',
+            desc: 'Тебя нет в ленте. Но ты видишь других и можешь звать.',
+            cls: 'hidden',
+        },
+    ];
 
-    function renderSearchCta() {
-        var btn = document.getElementById('tm-search-cta');
-        var label = document.getElementById('tm-search-cta-label');
-        if (!btn || !label) return;
-
-        // Stale-фильтр: если bool=true, но expiry прошёл — синхронизируемся
-        // на фронте сразу (не ждём следующего fetch профиля).
-        if (_tm.myProfile && _tm.myProfile.is_searching && !_tmIsSearchingActive()) {
-            _tm.myProfile.is_searching = false;
+    function _tmStatusMeta(key) {
+        for (var i = 0; i < TM_STATUSES.length; i++) {
+            if (TM_STATUSES[i].key === key) return TM_STATUSES[i];
         }
-        var active = _tmIsSearchingActive();
-        // Mutually exclusive с лобби: если юзер в активном лобби — поиск
-        // дуо запрещён (бэк тоже это enforce'ит). UI делает кнопку disabled
-        // и подсказывает почему.
-        var inLobby = _tmGetMyLobbyId() != null;
+        return null;
+    }
 
-        label.textContent = active ? 'Поиск активен — остановить' : 'Искать пати';
-        btn.classList.toggle('tm-search-cta--active', active);
-        btn.disabled = inLobby && !active;
+    // Рендерит 4 варианта-строки в контейнер (используется и в gate, и в menu).
+    function _tmRenderStatusOptions(containerId, currentKey) {
+        var wrap = document.getElementById(containerId);
+        if (!wrap) return;
+        wrap.innerHTML = TM_STATUSES.map(function (s) {
+            var active = (s.key === currentKey);
+            return '<button type="button" class="tm-status-option' +
+                (active ? ' tm-status-option--active' : '') +
+                '" onclick="tmSetStatus(\'' + s.key + '\')">' +
+                '<span class="tm-status-dot tm-status-dot--' + s.cls + '" aria-hidden="true"></span>' +
+                '<span class="tm-status-option-text">' +
+                  '<span class="tm-status-option-label">' + _tmEsc(s.label) + '</span>' +
+                  '<span class="tm-status-option-desc">' + _tmEsc(s.desc) + '</span>' +
+                '</span>' +
+                (active ? '<i class="ph ph-check tm-status-option-check" aria-hidden="true"></i>' : '') +
+            '</button>';
+        }).join('');
+    }
 
-        var hint = document.getElementById('tm-search-hint');
-        if (hint) {
-            if (inLobby && !active) {
-                hint.textContent = 'Ты в лобби — выйди, чтобы искать дуо';
-            } else if (active) {
-                var minLeft = Math.max(0, Math.ceil(
-                    (_tmParseUtcLike(_tm.myProfile.search_expires_at) - Date.now()) / 60000
-                ));
-                hint.textContent = 'Тебя видят другие · ещё ' + _tmFormatRemaining(minLeft);
-            } else {
-                hint.textContent = '1-на-1 · поиск длится 3 часа';
+    // Оркестратор: решает что показать — окно «заполни профиль», обязательный
+    // выбор статуса, или обычный переключатель. Единая точка истины для трёх
+    // UI-элементов сверху ленты.
+    function _tmUpdateStatusUI() {
+        var gate    = document.getElementById('tm-no-profile-gate');
+        var stGate  = document.getElementById('tm-status-gate');
+        var switcher = document.getElementById('tm-status-switcher');
+        var menu    = document.getElementById('tm-status-menu');
+
+        var p = _tm.myProfile;
+        var hasProfile = !!(p && p.rank);
+        var status = p && p.status;
+
+        if (!hasProfile) {
+            // Шаг 1 — нет профиля.
+            if (gate) gate.hidden = false;
+            if (stGate) stGate.hidden = true;
+            if (switcher) switcher.hidden = true;
+            if (menu) menu.hidden = true;
+            return;
+        }
+        if (!status) {
+            // Шаг 2 — профиль есть, статус не выбран. Обязательный экран.
+            if (gate) gate.hidden = true;
+            if (stGate) {
+                stGate.hidden = false;
+                _tmRenderStatusOptions('tm-status-gate-options', null);
             }
+            if (switcher) switcher.hidden = true;
+            if (menu) menu.hidden = true;
+            return;
         }
-
-        // Тикер раз в минуту обновляет hint с убывающим временем. Когда
-        // поиск выключен (или истёк) — таймер останавливается.
-        _tmStopSearchCountdown();
-        if (active) {
-            _tmSearchCountdownTimer = setInterval(renderSearchCta, 60000);
+        // Шаг 3 — всё выбрано. Показываем переключатель.
+        if (gate) gate.hidden = true;
+        if (stGate) stGate.hidden = true;
+        if (switcher) {
+            switcher.hidden = false;
+            var meta = _tmStatusMeta(status);
+            var dot = document.getElementById('tm-status-switcher-dot');
+            var lbl = document.getElementById('tm-status-switcher-label');
+            if (dot) dot.className = 'tm-status-dot tm-status-dot--' + (meta ? meta.cls : 'hidden');
+            if (lbl) lbl.textContent = meta ? meta.short : status;
         }
     }
+    // Backward-compat: старые call-site'ы зовут _tmUpdateNoProfileGate.
+    window._tmUpdateNoProfileGate = _tmUpdateStatusUI;
 
-    function _tmStopSearchCountdown() {
-        if (_tmSearchCountdownTimer) {
-            clearInterval(_tmSearchCountdownTimer);
-            _tmSearchCountdownTimer = null;
+    window.tmToggleStatusMenu = function () {
+        var menu = document.getElementById('tm-status-menu');
+        if (!menu) return;
+        if (menu.hidden) {
+            _tmRenderStatusOptions('tm-status-menu', _tm.myProfile && _tm.myProfile.status);
+            menu.hidden = false;
+        } else {
+            menu.hidden = true;
         }
-    }
+    };
+
+    // Установить статус (из gate или из menu). POST /status, обновляем локально.
+    window.tmSetStatus = async function (status) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, status: status }),
+            });
+            if (resp.status === 400) {
+                showToast('Сначала заполни профиль');
+                tmOpenProfileSheet();
+                return;
+            }
+            if (!resp.ok) { showToast('Не удалось обновить статус'); return; }
+            if (_tm.myProfile) _tm.myProfile.status = status;
+            // Прячем меню если было открыто, перерисовываем UI.
+            var menu = document.getElementById('tm-status-menu');
+            if (menu) menu.hidden = true;
+            _tmUpdateStatusUI();
+            loadFeed(true);
+            var meta = _tmStatusMeta(status);
+            showToast('Статус: ' + (meta ? meta.short : status), 'ok');
+        } catch (e) {
+            console.warn('[tm] setStatus:', e);
+            showToast('Не удалось обновить статус');
+        }
+    };
 
     function _tmFormatRemaining(minutes) {
         if (minutes < 1)  return 'меньше минуты';
@@ -8047,47 +8146,6 @@ function _drafterCommentText(c) {
         if (days < 7)       return { kind: 'recent', text: 'был ' + days + ' дн. назад' };
         return null;                                            // stale → скрываем
     }
-    window.tmToggleSearch = async function () {
-        var token = _tmGetToken();
-        if (!token) { showToast('Нужна авторизация'); return; }
-        if (!_tm.myProfile) {
-            showToast('Сначала заполни профиль');
-            setTeammatesTab('profile');
-            return;
-        }
-        // Используем normalized state (тот же, что и UI показывает) — иначе
-        // при stale `is_searching=true` + истёкшем expires_at кликаем
-        // search/stop вместо search/start и юзер видит «ничего не произошло».
-        var isSearching = _tmIsSearchingActive();
-        var url = TM_API + '/teammates/' + (isSearching ? 'search/stop' : 'search/start');
-        var resp = await apiFetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: token })
-        });
-        if (resp.status === 400) {
-            showToast('Сначала заполни профиль');
-            setTeammatesTab('profile');
-            return;
-        }
-        if (!resp.ok) { showToast('Не удалось обновить статус'); return; }
-
-        if (isSearching) {
-            // Выключаем — гасим оба поля локально.
-            _tm.myProfile.is_searching = false;
-        } else {
-            // Включаем — НУЖНО локально проставить и expires_at, иначе
-            // renderSearchCta увидит is_searching=true + expiry=null и опять
-            // сбросит флаг через нормализацию. Зеркалим backend-логику now+3h.
-            _tm.myProfile.is_searching = true;
-            _tm.myProfile.search_expires_at = new Date(
-                Date.now() + 3 * 60 * 60 * 1000
-            ).toISOString();
-        }
-        renderSearchCta();
-        loadFeed(true);
-    };
-
     // ── Profile preview / form switch ───────────────────────────────────
     window.tmShowProfilePreview = function () {
         _tm.previewMode = true;
@@ -8352,18 +8410,19 @@ function _drafterCommentText(c) {
             });
             if (!resp.ok) { showToast('Не удалось сохранить'); return; }
             showToast('Профиль сохранён', 'ok');
-            // Сохраняем в локальное состояние, чтобы кнопка поиска корректно обновилась.
+            // Сохраняем в локальное состояние. Статус (status) НЕ трогаем —
+            // он живёт отдельно от профиля и ставится в ленте.
             _tm.myProfile = Object.assign({}, _tm.myProfile || {}, {
                 rank: rank, hours: hours, positions: positions, game_modes: game_modes,
                 microphone: microphone, discord: discord, mood: mood,
                 favorite_heroes: favorite_heroes, about: about
             });
-            renderSearchCta();
             // После сохранения сразу показываем preview — это и фидбек об успехе,
             // и моментальное превью карточки в ленте.
             tmShowProfilePreview();
-            // Скрываем блокирующее окно «Заполни профиль» — оно больше не нужно.
-            _tmUpdateNoProfileGate();
+            // Обновляем UI ленты: окно «заполни профиль» уходит, но если статус
+            // ещё не выбран — при возврате в ленту покажется обязательный выбор.
+            _tmUpdateStatusUI();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } finally {
             if (btn) btn.disabled = false;
@@ -9174,9 +9233,6 @@ function _drafterCommentText(c) {
             showToast('Ты в лобби', 'ok');
             // Refresh: лобби-карточка обновится со мной в слоте.
             await loadLobbies();
-            // is_searching на бэке снимается; reflect locally.
-            if (_tm.myProfile) _tm.myProfile.is_searching = false;
-            renderSearchCta();
         } catch (e) {
             console.warn('[tm] joinLobby exception:', e);
             showToast('Сетевая ошибка — попробуй ещё раз');
@@ -9583,9 +9639,6 @@ function _drafterCommentText(c) {
             showToast('Лобби создано', 'ok');
             tmCloseLobbyForm();
             await loadLobbies();
-            // is_searching на бэке снимается — reflect locally.
-            if (_tm.myProfile) _tm.myProfile.is_searching = false;
-            renderSearchCta();
         } catch (e) {
             console.warn('[tm] submitLobby:', e);
             showToast('Не удалось создать лобби');

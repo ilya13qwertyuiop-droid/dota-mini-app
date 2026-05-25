@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=161" />
+    <link rel="stylesheet" href="styles.css?v=162" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -965,27 +965,42 @@
                 <i class="ph ph-user-circle-plus" aria-hidden="true"></i>
               </div>
               <div class="tm-no-profile-title">Сначала заполни профиль</div>
-              <div class="tm-no-profile-body">Расскажи о себе — ранг, позиции, на что играешь. Без этого другие игроки тебя не увидят, а ты не сможешь искать.</div>
+              <div class="tm-no-profile-body">Расскажи о себе — ранг, позиции, на ком играешь.</div>
               <button type="button" class="tm-primary-btn" onclick="tmOpenProfileSheet()">Заполнить профиль</button>
+            </div>
+          </div>
+
+          <!-- Обязательный экран выбора статуса. Показывается когда профиль
+               заполнен, но status ещё не выбран (NULL). Перекрывает вкладку,
+               нельзя пропустить — пока не выберешь, в ленте тебя нет. -->
+          <div id="tm-status-gate" class="tm-no-profile-gate" hidden>
+            <div class="tm-no-profile-card tm-status-gate-card">
+              <div class="tm-no-profile-icon">
+                <i class="ph ph-broadcast" aria-hidden="true"></i>
+              </div>
+              <div class="tm-no-profile-title">Как тебя показывать?</div>
+              <div class="tm-no-profile-body">Выбери статус — он определяет, как другие видят тебя в ленте. Поменять можно в любой момент.</div>
+              <div class="tm-status-options" id="tm-status-gate-options"></div>
             </div>
           </div>
 
           <!-- Notification-banner о входящих pending-запросах. Виден только
                когда incoming.length > 0. Тап → открывает профиль-sheet на
-               вкладке «Входящие». Решает проблему «куда тапать чтобы ответить
-               на запрос», когда профиль в overlay-sheet. -->
+               вкладке «Входящие». -->
           <button type="button" id="tm-incoming-banner" class="tm-incoming-banner" onclick="tmOpenIncomingFromBanner()" hidden>
             <i class="ph ph-envelope tm-incoming-banner-icon" aria-hidden="true"></i>
             <span class="tm-incoming-banner-text" id="tm-incoming-banner-text">Новых запросов</span>
             <i class="ph ph-arrow-right tm-incoming-banner-arrow" aria-hidden="true"></i>
           </button>
 
-          <!-- Primary CTA: 1-на-1 поиск. Full-width, dominant. -->
-          <button id="tm-search-cta" class="tm-search-cta" onclick="tmToggleSearch()">
-            <span class="tm-search-pulse" aria-hidden="true"></span>
-            <span id="tm-search-cta-label">Искать пати</span>
+          <!-- Быстрый переключатель текущего статуса. Заменил кнопку «Искать
+               пати». Показывает текущий статус, тап разворачивает 4 варианта. -->
+          <button type="button" id="tm-status-switcher" class="tm-status-switcher" onclick="tmToggleStatusMenu()" hidden>
+            <span class="tm-status-dot" id="tm-status-switcher-dot" aria-hidden="true"></span>
+            <span class="tm-status-switcher-label" id="tm-status-switcher-label">—</span>
+            <i class="ph ph-caret-down tm-status-switcher-caret" aria-hidden="true"></i>
           </button>
-          <div class="tm-search-hint" id="tm-search-hint">1-на-1 · поиск длится 3 часа</div>
+          <div class="tm-status-menu" id="tm-status-menu" hidden></div>
 
           <div class="tm-filters" id="tm-filters">
             <div class="tm-filters-bar" id="tm-filters-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="tm-filters-panel" onclick="tmToggleFilters(event)" onkeydown="tmFiltersBarKeydown(event)">
@@ -1416,6 +1431,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=194"></script>
+    <script defer src="script.js?v=195"></script>
   </body>
 </html>
