@@ -6814,6 +6814,7 @@ function _drafterCommentText(c) {
             ranks: [],          // мультивыбор как positions
             positions: [],
             game_modes: [],
+            statuses: [],       // фильтр «кого ищу»: ready_now/looking_regular/looking_casual
             microphone: false,
             discord: false,
         },
@@ -7307,6 +7308,7 @@ function _drafterCommentText(c) {
             if (_tm.filters.ranks.length) params.set('ranks', _tm.filters.ranks.join(','));
             if (_tm.filters.positions.length) params.set('positions', _tm.filters.positions.join(','));
             if (_tm.filters.game_modes.length) params.set('game_modes', _tm.filters.game_modes.join(','));
+            if (_tm.filters.statuses.length) params.set('statuses', _tm.filters.statuses.join(','));
             if (_tm.filters.microphone) params.set('microphone', '1');
             if (_tm.filters.discord)    params.set('discord', '1');
             if (_tm.feedCursor) params.set('cursor', String(_tm.feedCursor));
@@ -7703,7 +7705,26 @@ function _drafterCommentText(c) {
         '</button>';
     }
 
+    // Статусы доступные как фильтр «кого ищу» (hidden нельзя — его нет в ленте).
+    var TM_FILTER_STATUSES = ['ready_now', 'looking_regular', 'looking_casual'];
+
     function renderFilters() {
+        // Статус «кого ищу»: текстовые чипы с цветной точкой.
+        var statusWrap = document.getElementById('tm-filter-status');
+        if (statusWrap) {
+            var stSet = {};
+            for (var sI = 0; sI < _tm.filters.statuses.length; sI++) stSet[_tm.filters.statuses[sI]] = true;
+            statusWrap.innerHTML = TM_FILTER_STATUSES.map(function (key) {
+                var meta = _tmStatusMeta(key);
+                if (!meta) return '';
+                return _tmFchip({
+                    variant: 'mixed',
+                    active: !!stSet[key],
+                    onclick: 'tmToggleFilterStatus(\'' + key + '\')',
+                    content: '<span class="tm-status-dot tm-status-dot--' + meta.cls + '" aria-hidden="true"></span>' + _tmEsc(meta.short),
+                });
+            }).join('');
+        }
         // Ранги: мультивыбор — каждый выбранный отмечен independently.
         var rankWrap = document.getElementById('tm-filter-rank');
         if (rankWrap) {
@@ -7802,6 +7823,20 @@ function _drafterCommentText(c) {
                 onclick: 'tmRemoveFilterValue(event, \'positions\', ' + p + ')',
             });
         });
+
+        // Статусы: один text-pill на категорию (агрегированный список).
+        if (_tm.filters.statuses.length) {
+            var stNames = _tm.filters.statuses.map(function (s) {
+                var meta = _tmStatusMeta(s);
+                return meta ? meta.short : s;
+            }).join(', ');
+            chips.push({
+                kind: 'text',
+                label: stNames,
+                content: _tmEsc(stNames),
+                onclick: 'tmClearFilter(event, \'statuses\')',
+            });
+        }
 
         // Modes: один text-pill на всю категорию (агрегированный список).
         if (_tm.filters.game_modes.length) {
@@ -7908,6 +7943,7 @@ function _drafterCommentText(c) {
         if (type === 'ranks')           _tm.filters.ranks = [];
         else if (type === 'positions')  _tm.filters.positions = [];
         else if (type === 'game_modes') _tm.filters.game_modes = [];
+        else if (type === 'statuses')   _tm.filters.statuses = [];
         else if (type === 'microphone') _tm.filters.microphone = false;
         else if (type === 'discord')    _tm.filters.discord = false;
         renderFilters();
@@ -7932,6 +7968,7 @@ function _drafterCommentText(c) {
         _tm.filters.ranks = [];
         _tm.filters.positions = [];
         _tm.filters.game_modes = [];
+        _tm.filters.statuses = [];
         _tm.filters.microphone = false;
         _tm.filters.discord = false;
         renderFilters();
@@ -7959,6 +7996,13 @@ function _drafterCommentText(c) {
         renderFilters();
         loadFeed(true);
     };
+    window.tmToggleFilterStatus = function (s) {
+        var i = _tm.filters.statuses.indexOf(s);
+        if (i >= 0) _tm.filters.statuses.splice(i, 1);
+        else _tm.filters.statuses.push(s);
+        renderFilters();
+        loadFeed(true);
+    };
     window.tmToggleFilterMic = function () {
         _tm.filters.microphone = !_tm.filters.microphone;
         renderFilters();
@@ -7972,37 +8016,14 @@ function _drafterCommentText(c) {
 
     // ── Статус видимости (заменил TTL-поиск) ────────────────────────────
     // 4 статуса: ready_now / looking_regular / looking_casual / hidden.
-    // Постоянные, не истекают. Выбираются в обязательном экране при первом
-    // заходе + быстрым переключателем сверху ленты.
+    // Постоянные, не истекают. Управляются сегмент-контролом сверху ленты
+    // (всегда видим, не разворачивается). Первый выбор форсится обязательным
+    // экраном. Описания НЕ показываем — лейблы самодостаточны.
     var TM_STATUSES = [
-        {
-            key: 'ready_now',
-            label: 'Готов играть сейчас',
-            short: 'Готов сейчас',
-            desc: 'Покажемся выше всех — для тех кто хочет в игру прямо сейчас.',
-            cls: 'ready',
-        },
-        {
-            key: 'looking_regular',
-            label: 'Ищу постоянных тиммейтов',
-            short: 'Ищу постоянных',
-            desc: 'Для поиска людей на регулярную игру.',
-            cls: 'regular',
-        },
-        {
-            key: 'looking_casual',
-            label: 'Ищу, не срочно',
-            short: 'Не срочно',
-            desc: 'Покажемся ниже в ленте — без спешки.',
-            cls: 'casual',
-        },
-        {
-            key: 'hidden',
-            label: 'Не показывать меня',
-            short: 'Скрыт',
-            desc: 'Тебя нет в ленте. Но ты видишь других и можешь звать.',
-            cls: 'hidden',
-        },
+        { key: 'ready_now',       label: 'Готов играть сейчас',     short: 'Готов',     cls: 'ready'   },
+        { key: 'looking_regular', label: 'Ищу постоянных тиммейтов', short: 'Постоянка', cls: 'regular' },
+        { key: 'looking_casual',  label: 'Ищу, не срочно',          short: 'Не срочно', cls: 'casual'  },
+        { key: 'hidden',          label: 'Не показывать меня',      short: 'Скрыть',     cls: 'hidden'  },
     ];
 
     function _tmStatusMeta(key) {
@@ -8012,33 +8033,48 @@ function _drafterCommentText(c) {
         return null;
     }
 
-    // Рендерит 4 варианта-строки в контейнер (используется и в gate, и в menu).
+    // Сегмент-контрол (всегда видимый переключатель сверху ленты). Активный
+    // сегмент подсвечен цветом своего статуса. Без dropdown, без описаний,
+    // короткие лейблы. Используется когда статус уже выбран.
+    function _tmRenderStatusSegments(containerId, currentKey) {
+        var wrap = document.getElementById(containerId);
+        if (!wrap) return;
+        wrap.innerHTML = TM_STATUSES.map(function (s) {
+            var active = (s.key === currentKey);
+            return '<button type="button" class="tm-status-seg tm-status-seg--' + s.cls +
+                (active ? ' tm-status-seg--active' : '') +
+                '" role="tab" aria-selected="' + (active ? 'true' : 'false') +
+                '" onclick="tmSetStatus(\'' + s.key + '\')">' +
+                '<span class="tm-status-dot tm-status-dot--' + s.cls + '" aria-hidden="true"></span>' +
+                '<span class="tm-status-seg-label">' + _tmEsc(s.short) + '</span>' +
+            '</button>';
+        }).join('');
+    }
+
+    // Вертикальные опции для обязательного экрана (первый выбор). Полные
+    // лейблы (место есть), без описаний — новичку важно понять что он
+    // выбирает, но лишний текст не нужен.
     function _tmRenderStatusOptions(containerId, currentKey) {
         var wrap = document.getElementById(containerId);
         if (!wrap) return;
         wrap.innerHTML = TM_STATUSES.map(function (s) {
             var active = (s.key === currentKey);
-            return '<button type="button" class="tm-status-option' +
+            return '<button type="button" class="tm-status-option tm-status-option--' + s.cls +
                 (active ? ' tm-status-option--active' : '') +
                 '" onclick="tmSetStatus(\'' + s.key + '\')">' +
                 '<span class="tm-status-dot tm-status-dot--' + s.cls + '" aria-hidden="true"></span>' +
-                '<span class="tm-status-option-text">' +
-                  '<span class="tm-status-option-label">' + _tmEsc(s.label) + '</span>' +
-                  '<span class="tm-status-option-desc">' + _tmEsc(s.desc) + '</span>' +
-                '</span>' +
-                (active ? '<i class="ph ph-check tm-status-option-check" aria-hidden="true"></i>' : '') +
+                '<span class="tm-status-option-label">' + _tmEsc(s.label) + '</span>' +
+                '<i class="ph ph-caret-right tm-status-option-arrow" aria-hidden="true"></i>' +
             '</button>';
         }).join('');
     }
 
-    // Оркестратор: решает что показать — окно «заполни профиль», обязательный
-    // выбор статуса, или обычный переключатель. Единая точка истины для трёх
-    // UI-элементов сверху ленты.
+    // Оркестратор: окно «заполни профиль» / обязательный выбор статуса /
+    // постоянный сегмент-контрол. Единая точка истины для UI сверху ленты.
     function _tmUpdateStatusUI() {
-        var gate    = document.getElementById('tm-no-profile-gate');
-        var stGate  = document.getElementById('tm-status-gate');
-        var switcher = document.getElementById('tm-status-switcher');
-        var menu    = document.getElementById('tm-status-menu');
+        var gate     = document.getElementById('tm-no-profile-gate');
+        var stGate   = document.getElementById('tm-status-gate');
+        var segments = document.getElementById('tm-status-segments');
 
         var p = _tm.myProfile;
         var hasProfile = !!(p && p.rank);
@@ -8048,51 +8084,37 @@ function _drafterCommentText(c) {
             // Шаг 1 — нет профиля.
             if (gate) gate.hidden = false;
             if (stGate) stGate.hidden = true;
-            if (switcher) switcher.hidden = true;
-            if (menu) menu.hidden = true;
+            if (segments) segments.hidden = true;
             return;
         }
         if (!status) {
-            // Шаг 2 — профиль есть, статус не выбран. Обязательный экран.
+            // Шаг 2 — профиль есть, статус не выбран. Обязательный экран
+            // (тот же сегмент-контрол, но в блокирующей карточке).
             if (gate) gate.hidden = true;
             if (stGate) {
                 stGate.hidden = false;
                 _tmRenderStatusOptions('tm-status-gate-options', null);
             }
-            if (switcher) switcher.hidden = true;
-            if (menu) menu.hidden = true;
+            if (segments) segments.hidden = true;
             return;
         }
-        // Шаг 3 — всё выбрано. Показываем переключатель.
+        // Шаг 3 — всё выбрано. Постоянный сегмент-контрол сверху.
         if (gate) gate.hidden = true;
         if (stGate) stGate.hidden = true;
-        if (switcher) {
-            switcher.hidden = false;
-            var meta = _tmStatusMeta(status);
-            var dot = document.getElementById('tm-status-switcher-dot');
-            var lbl = document.getElementById('tm-status-switcher-label');
-            if (dot) dot.className = 'tm-status-dot tm-status-dot--' + (meta ? meta.cls : 'hidden');
-            if (lbl) lbl.textContent = meta ? meta.short : status;
+        if (segments) {
+            segments.hidden = false;
+            _tmRenderStatusSegments('tm-status-segments', status);
         }
     }
     // Backward-compat: старые call-site'ы зовут _tmUpdateNoProfileGate.
     window._tmUpdateNoProfileGate = _tmUpdateStatusUI;
 
-    window.tmToggleStatusMenu = function () {
-        var menu = document.getElementById('tm-status-menu');
-        if (!menu) return;
-        if (menu.hidden) {
-            _tmRenderStatusOptions('tm-status-menu', _tm.myProfile && _tm.myProfile.status);
-            menu.hidden = false;
-        } else {
-            menu.hidden = true;
-        }
-    };
-
-    // Установить статус (из gate или из menu). POST /status, обновляем локально.
+    // Установить статус (из gate-сегментов или из верхнего контрола).
     window.tmSetStatus = async function (status) {
         var token = _tmGetToken();
         if (!token) { showToast('Нужна авторизация'); return; }
+        // Если уже этот статус — ничего не делаем (избегаем лишнего запроса).
+        if (_tm.myProfile && _tm.myProfile.status === status) return;
         try {
             var resp = await apiFetch(TM_API + '/teammates/status', {
                 method: 'POST',
@@ -8106,9 +8128,6 @@ function _drafterCommentText(c) {
             }
             if (!resp.ok) { showToast('Не удалось обновить статус'); return; }
             if (_tm.myProfile) _tm.myProfile.status = status;
-            // Прячем меню если было открыто, перерисовываем UI.
-            var menu = document.getElementById('tm-status-menu');
-            if (menu) menu.hidden = true;
             _tmUpdateStatusUI();
             loadFeed(true);
             var meta = _tmStatusMeta(status);

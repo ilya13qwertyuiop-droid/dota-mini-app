@@ -1833,16 +1833,8 @@ _TM_VALID_STATUSES = frozenset({
     "ready_now", "looking_regular", "looking_casual", "hidden",
 })
 # Статусы, при которых профиль показывается в ленте (hidden и NULL — нет).
+# Без приоритезации между ними — статус это фильтр-намерение, не ранжирование.
 _TM_FEED_STATUSES = ("ready_now", "looking_regular", "looking_casual")
-# Приоритет в ленте: больше = выше.
-_TM_STATUS_PRIORITY = {
-    "ready_now": 3,
-    "looking_regular": 2,
-    "looking_casual": 1,
-}
-# «Готов сейчас», но не активен дольше этого — падает в сортировке до уровня
-# looking_regular (чтобы верх ленты был живым, без фонового процесса).
-_TM_READY_NOW_STALE_HOURS = 24
 
 _TM_ABOUT_MAX_LEN = 200
 _TM_MAX_FAVORITE_HEROES = 3
@@ -2223,6 +2215,7 @@ async def api_teammates_feed(
     ranks: str | None = None,
     positions: str | None = None,
     game_modes: str | None = None,
+    statuses: str | None = None,
     microphone: bool | None = None,
     discord: bool | None = None,
     limit: int = Query(default=20, ge=1, le=50),
@@ -2234,26 +2227,34 @@ async def api_teammates_feed(
     Модель статуса (миграция 0012, заменила is_searching+TTL):
       • показываем только status IN (ready_now, looking_regular, looking_casual)
         — hidden и NULL не в ленте.
-      • сортировка по приоритету статуса (ready_now > regular > casual),
-        внутри тира — по свежести активности (last_active_at desc).
-      • «протухший» ready_now (не активен > 24ч) падает в тир looking_regular
-        — чтобы верх ленты был живым без фонового процесса.
+      • БЕЗ приоритезации по статусу — все статусы равны. Сортировка чисто по
+        свежести активности (last_active_at desc) = «по мере появления».
+        Статус — это фильтр-намерение, а не ранжирующий фактор.
+      • опциональный фильтр `statuses` (comma-separated) — показать только
+        выбранные статусы (например, только тех кто «готов сейчас»).
 
-    Пагинация — offset-based (cursor = смещение). Перешли с user_id-курсора
-    потому что сортировка теперь композитная (статус+активность), однополевой
-    курсор не работает. Пул активных невелик — грузим капнутый набор, сортируем
-    в Python, режем по offset.
+    Пагинация — offset-based (cursor = смещение). Пул активных невелик —
+    грузим капнутый набор, режем по offset.
 
     Boolean-фильтры microphone/discord — True оставляет только тех у кого флаг
     тоже True; False = «нет фильтра».
     """
     user_id = _tm_authenticate(token, db)
-    now = datetime.now(timezone.utc)
     offset = int(cursor) if cursor is not None and cursor > 0 else 0
+
+    # Какие статусы показывать. По умолчанию — все feed-статусы. Если задан
+    # фильтр statuses — пересекаем с допустимыми (hidden/мусор отсекаются).
+    status_set = set(_TM_FEED_STATUSES)
+    if statuses:
+        requested = {s.strip() for s in statuses.split(",") if s.strip()}
+        status_set = requested & set(_TM_FEED_STATUSES)
+        if not status_set:
+            # Запросили только невалидные/hidden — пустая лента.
+            return {"items": [], "next_cursor": None}
 
     q = (
         db.query(DBTeammateProfile)
-        .filter(DBTeammateProfile.status.in_(_TM_FEED_STATUSES))
+        .filter(DBTeammateProfile.status.in_(status_set))
         .filter(DBTeammateProfile.user_id != user_id)
     )
 
@@ -2272,8 +2273,7 @@ async def api_teammates_feed(
     if discord:
         q = q.filter(DBTeammateProfile.discord == True)     # noqa: E712
 
-    # Предв. сортировка БД-стороной по активности (индекс), потом досортируем
-    # по статусу в Python. Капаем выборку — глубокая лента в LFG не нужна.
+    # Сортировка — по свежести активности (индекс). Никакой статус-приоритезации.
     _FEED_HARD_CAP = 500
     q = q.order_by(DBTeammateProfile.last_active_at.desc().nullslast())
     raw_rows = q.limit(_FEED_HARD_CAP).all()
@@ -2292,6 +2292,7 @@ async def api_teammates_feed(
         mode_filter = (mode_filter & _TM_VALID_GAME_MODES) or None
 
     # JSON-фильтры позиций/режимов — в Python (JSON-операторы разнятся SQLite/PG).
+    # raw_rows уже отсортирован по активности — порядок сохраняется.
     matched: list[DBTeammateProfile] = []
     for p in raw_rows:
         if pos_filter and not (set(p.positions or []) & pos_filter):
@@ -2300,23 +2301,7 @@ async def api_teammates_feed(
             continue
         matched.append(p)
 
-    # Эффективный приоритет с демоцией протухшего ready_now.
-    stale_cutoff = now - _tm_timedelta(hours=_TM_READY_NOW_STALE_HOURS)
-
-    def _effective_priority(p: DBTeammateProfile) -> int:
-        base = _TM_STATUS_PRIORITY.get(p.status, 0)
-        if p.status == "ready_now":
-            if not p.last_active_at or p.last_active_at < stale_cutoff:
-                return _TM_STATUS_PRIORITY["looking_regular"]  # падает на тир ниже
-        return base
-
-    def _recency_key(p: DBTeammateProfile) -> float:
-        # last_active_at desc; None → в самый низ.
-        return p.last_active_at.timestamp() if p.last_active_at else 0.0
-
-    matched.sort(key=lambda p: (_effective_priority(p), _recency_key(p)), reverse=True)
-
-    # Offset-пагинация по уже отсортированному списку.
+    # Offset-пагинация по уже отсортированному (по активности) списку.
     page = matched[offset: offset + limit]
 
     feed_ids = [p.user_id for p in page]

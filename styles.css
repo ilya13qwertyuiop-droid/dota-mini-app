@@ -8098,47 +8098,51 @@ margin-top: var(--space-4);
 .tm-player-activity-text {}
 .tm-player-activity--online { color: var(--positive); font-weight: var(--font-medium); }
 
-/* Переключатель статуса сверху ленты (заменил кнопку «Искать пати»). */
-.tm-status-switcher {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+/* Сегмент-контрол статуса — всегда видим сверху ленты. 4 равных сегмента,
+   активный подсвечен tinted-фоном цвета своего статуса. Без dropdown. */
+.tm-status-segments {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 11px 14px;
-  margin-bottom: 8px;
+  padding: 4px;
+  margin-bottom: 10px;
+}
+.tm-status-segments[hidden] { display: none; }
+.tm-status-seg {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 3px);
+  padding: 8px 4px;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
   letter-spacing: var(--tracking-tight);
-  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.tm-status-switcher[hidden] { display: none; }
-.tm-status-switcher:hover { border-color: var(--border-strong); }
-.tm-status-switcher .tm-status-dot { width: 9px; height: 9px; }
-.tm-status-switcher-label { flex: 1 1 auto; text-align: left; }
-.tm-status-switcher-caret { font-size: 14px; color: var(--text-tertiary); }
+.tm-status-seg .tm-status-dot { width: 7px; height: 7px; }
+.tm-status-seg-label { overflow: hidden; text-overflow: ellipsis; }
+.tm-status-seg:hover { color: var(--text-primary); }
+/* Активный сегмент — фон tinted цветом статуса + контрастный текст. */
+.tm-status-seg--active { font-weight: var(--font-semibold); color: var(--text-primary); }
+.tm-status-seg--ready.tm-status-seg--active   { background: var(--positive-soft); color: var(--positive); }
+.tm-status-seg--regular.tm-status-seg--active { background: var(--accent-soft); color: var(--accent); }
+.tm-status-seg--casual.tm-status-seg--active  { background: var(--bg-surface); }
+.tm-status-seg--hidden.tm-status-seg--active  { background: var(--bg-surface); color: var(--text-tertiary); }
 
-/* Выпадающее меню статусов (под переключателем). */
-.tm-status-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: 6px;
-  margin: -4px 0 10px;
-}
-.tm-status-menu[hidden] { display: none; }
-
-/* Опция статуса (используется и в меню, и в обязательном gate). */
+/* Вертикальные опции для обязательного экрана (первый выбор). Полные лейблы,
+   без описаний — крупные tap-цели, акцент на «это надо выбрать». */
 .tm-status-options {
   display: flex;
   flex-direction: column;
@@ -8149,49 +8153,40 @@ margin-top: var(--space-4);
 .tm-status-option {
   appearance: none;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   width: 100%;
   text-align: left;
   background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 14px 12px;
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
 .tm-status-option:hover { border-color: var(--border-strong); }
-.tm-status-option--active {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-}
-.tm-status-option .tm-status-dot { margin-top: 4px; }
-.tm-status-option-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
+.tm-status-option:active { transform: scale(0.99); }
+.tm-status-option .tm-status-dot { width: 10px; height: 10px; }
 .tm-status-option-label {
-  font-size: var(--text-sm);
+  flex: 1 1 auto;
+  font-size: var(--text-base);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   letter-spacing: var(--tracking-tight);
 }
-.tm-status-option-desc {
-  font-size: var(--text-2xs);
-  color: var(--text-secondary);
-  line-height: var(--leading-snug);
-}
-.tm-status-option-check {
-  font-size: 16px;
-  color: var(--accent);
+.tm-status-option-arrow {
+  font-size: 15px;
+  color: var(--text-tertiary);
   flex-shrink: 0;
-  align-self: center;
 }
+/* Лёгкая цветная подсветка левого края опции по статусу — связывает
+   опцию с её цветом, помогает ассоциации до выбора. */
+.tm-status-option--ready   { border-left: 3px solid var(--positive); }
+.tm-status-option--regular { border-left: 3px solid var(--accent); }
+.tm-status-option--casual  { border-left: 3px solid var(--text-tertiary); }
+.tm-status-option--hidden  { border-left: 3px solid var(--border-strong); }
 
 /* Карточка обязательного выбора статуса чуть шире — в неё влезают 4 опции. */
 .tm-status-gate-card { max-width: 360px; }

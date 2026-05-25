@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=162" />
+    <link rel="stylesheet" href="styles.css?v=163" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -993,14 +993,10 @@
             <i class="ph ph-arrow-right tm-incoming-banner-arrow" aria-hidden="true"></i>
           </button>
 
-          <!-- Быстрый переключатель текущего статуса. Заменил кнопку «Искать
-               пати». Показывает текущий статус, тап разворачивает 4 варианта. -->
-          <button type="button" id="tm-status-switcher" class="tm-status-switcher" onclick="tmToggleStatusMenu()" hidden>
-            <span class="tm-status-dot" id="tm-status-switcher-dot" aria-hidden="true"></span>
-            <span class="tm-status-switcher-label" id="tm-status-switcher-label">—</span>
-            <i class="ph ph-caret-down tm-status-switcher-caret" aria-hidden="true"></i>
-          </button>
-          <div class="tm-status-menu" id="tm-status-menu" hidden></div>
+          <!-- Сегмент-контрол статуса. Всегда видим, не разворачивается —
+               4 таба, активный подсвечен цветом своего статуса. Заполняется
+               через _tmRenderStatusSegments. -->
+          <div class="tm-status-segments" id="tm-status-segments" role="tablist" aria-label="Мой статус" hidden></div>
 
           <div class="tm-filters" id="tm-filters">
             <div class="tm-filters-bar" id="tm-filters-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="tm-filters-panel" onclick="tmToggleFilters(event)" onkeydown="tmFiltersBarKeydown(event)">
@@ -1015,6 +1011,10 @@
             <div class="tm-filters-panel" id="tm-filters-panel" role="region" aria-label="Фильтры">
               <div class="tm-filters-panel-inner">
                 <div class="tm-filters-panel-content">
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Кого ищу</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-status"></div>
+                  </div>
                   <div class="tm-filter-rack">
                     <span class="tm-filter-rack-label">Ранг</span>
                     <div class="tm-filter-rack-row" id="tm-filter-rank"></div>
@@ -1431,6 +1431,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=195"></script>
+    <script defer src="script.js?v=197"></script>
   </body>
 </html>
