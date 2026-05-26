@@ -2168,13 +2168,16 @@ async def api_teammates_profile_upsert(
             profile.about = about
             profile.updated_at = now
         db.commit()
-    except Exception as exc:
+    except Exception:
+        # Детали (тип исключения, текст БД) пишем в серверный лог, наружу —
+        # generic-текст. Раньше отдавали exc-детали клиенту: это утечка
+        # внутренностей (схема БД, SQL) и непонятно для пользователя.
         logger.exception("[tm/profile] UNCAUGHT upsert user_id=%s", user_id)
         try: db.rollback()
         except Exception: pass
         raise HTTPException(
             status_code=500,
-            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
+            detail="Не удалось сохранить профиль. Попробуй ещё раз.",
         )
     return {"ok": True}
 
@@ -2201,11 +2204,11 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
         out = _tm_serialize_profile(profile, settings)  # уже включает status
         out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
         return out
-    except Exception as exc:
+    except Exception:
         logger.exception("[tm/profile/me] UNCAUGHT user_id=%s", user_id)
         raise HTTPException(
             status_code=500,
-            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
+            detail="Не удалось загрузить профиль. Попробуй ещё раз.",
         )
 
 
@@ -2641,8 +2644,16 @@ async def api_teammates_review_submit(
 # приведении к int.
 
 @app.get("/api/teammates/profile/{user_id}")
-async def api_teammates_profile_public(user_id: int, db: Session = Depends(get_db)):
-    """Публичный профиль игрока + все накопленные теги."""
+async def api_teammates_profile_public(
+    user_id: int, token: str, db: Session = Depends(get_db),
+):
+    """Профиль игрока + накопленные теги. Требует валидный токен.
+
+    Раньше эндпоинт был открыт без авторизации и отдавал Telegram-идентичность
+    (имя, @username, фото) любого user_id. Так как user_id = Telegram ID и они
+    перебираемы, это позволяло без входа собрать контакты всех зарегистрированных
+    (в т.ч. со статусом hidden). Теперь нужен токен — как у /feed и остальных."""
+    _tm_authenticate(token, db)
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="profile not found")

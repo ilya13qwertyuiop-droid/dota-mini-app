@@ -7169,7 +7169,10 @@ function _drafterCommentText(c) {
             return;
         }
         // Дуо: обновляем ленту игроков (без лобби — те живут на своей вкладке).
-        if (_tm.currentTab === 'feed') {
+        // НО не трогаем, если юзер нажал «Показать ещё» (feedPaginated): авто-
+        // рефреш делает loadFeed(true) и сбросил бы его на первую страницу.
+        // Возобновится после ручного «Обновить» или смены фильтра.
+        if (_tm.currentTab === 'feed' && !_tm.feedPaginated) {
             _tmTriggerRefresh('feed');
         }
         // Лобби: обновляем список лобби (без player-cards).
@@ -7211,8 +7214,9 @@ function _drafterCommentText(c) {
         if (document.visibilityState !== 'visible') return;
         _tmRefreshBadge();
         if (!_tmIsPageActive()) return;
-        // Активная вкладка → refresh её основной поток.
-        if (_tm.currentTab === 'feed')  _tmTriggerRefresh('feed');
+        // Активная вкладка → refresh её основной поток. Ленту не сбрасываем,
+        // если юзер на подгруженной странице (см. feedPaginated в _tmPollTick).
+        if (_tm.currentTab === 'feed' && !_tm.feedPaginated) _tmTriggerRefresh('feed');
         if (_tm.currentTab === 'lobby') _tmTriggerRefresh('lobby');
         // Если открыт sheet профиля — заодно обновим requests.
         if (_tmIsProfileSheetOpen())    _tmTriggerRefresh('requests');
@@ -7298,6 +7302,9 @@ function _drafterCommentText(c) {
         if (reset) {
             _tm.feedCursor = null;
             _tm.feedItems = [];
+            // Любой полный сброс (ручной refresh, смена фильтра, первый заход)
+            // возвращает на первую страницу → снимаем «паузу автообновления».
+            _tm.feedPaginated = false;
         }
         var listEl = document.getElementById('tm-feed-list');
         if (reset && listEl) listEl.innerHTML = _tmSkeletonList(3);
@@ -7325,7 +7332,12 @@ function _drafterCommentText(c) {
             _tm.feedLoading = false;
         }
     }
-    window.tmLoadMore = function () { loadFeed(false); };
+    window.tmLoadMore = function () {
+        // Помечаем, что юзер ушёл со страницы 1 → ставим автообновление на паузу,
+        // чтобы поллинг не сбросил подгруженные карточки (см. _tmPollTick).
+        _tm.feedPaginated = true;
+        loadFeed(false);
+    };
 
     function renderFeed() {
         var list = document.getElementById('tm-feed-list');
@@ -8904,7 +8916,11 @@ function _drafterCommentText(c) {
         if (head) head.innerHTML = '<div class="tm-feed-empty">Загрузка…</div>';
         if (_tm.reviewTargetUserId) {
             try {
-                var resp = await apiFetch(TM_API + '/teammates/profile/' + _tm.reviewTargetUserId);
+                // Эндпоинт профиля теперь требует токен (приватность — см. api.py).
+                // Дип-линк из пуша уже добыл токен через _tmEnsureToken до сюда.
+                var _tkn = _tmGetToken();
+                var resp = await apiFetch(TM_API + '/teammates/profile/' + _tm.reviewTargetUserId +
+                    '?token=' + encodeURIComponent(_tkn || ''));
                 if (resp.ok) {
                     var p = await resp.json();
                     _tmRenderReviewTarget(p);
