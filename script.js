@@ -8907,6 +8907,11 @@ function _drafterCommentText(c) {
 
     window.tmOpenReview = async function (requestId, targetUserId) {
         if (!requestId) return;
+        // Если открыта шторка профиля (кнопка «Оценить» в Истории живёт в ней),
+        // её надо закрыть — иначе экран отзыва откроется ПОД оверлеем профиля
+        // (z-index 1100) и будет не виден. Через пуш шторка не открыта, потому
+        // там бага и не было.
+        if (_tmIsProfileSheetOpen()) tmCloseProfileSheet();
         _tm.reviewRequestId = parseInt(requestId, 10);
         _tm.reviewTargetUserId = targetUserId ? parseInt(targetUserId, 10) : null;
         _tm.reviewSelectedTags = [];
