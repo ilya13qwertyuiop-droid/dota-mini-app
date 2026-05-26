@@ -7171,15 +7171,11 @@ function _drafterCommentText(c) {
             _tmStopPolling();
             return;
         }
-        // Дуо: обновляем ленту игроков (без лобби — те живут на своей вкладке).
-        // НО не трогаем, если юзер нажал «Показать ещё» (feedPaginated): авто-
-        // рефреш делает loadFeed(true) и сбросил бы его на первую страницу.
-        // Возобновится после ручного «Обновить» или смены фильтра.
-        if (_tm.currentTab === 'feed' && !_tm.feedPaginated) {
-            _tmTriggerRefresh('feed');
-        }
+        // Ленту НЕ автообновляем: при живом потоке профилей это сбивало
+        // листание (лента пересортировывалась/прыгала под пальцем). Обновление
+        // ленты — только по кнопке «Обновить» (tmRefreshFeed).
         // Лобби: обновляем список лобби (без player-cards).
-        else if (_tm.currentTab === 'lobby') {
+        if (_tm.currentTab === 'lobby') {
             _tmTriggerRefresh('lobby');
         }
         // Профиль-sheet открыт: обновляем requests (если на incoming/outgoing —
@@ -7217,9 +7213,8 @@ function _drafterCommentText(c) {
         if (document.visibilityState !== 'visible') return;
         _tmRefreshBadge();
         if (!_tmIsPageActive()) return;
-        // Активная вкладка → refresh её основной поток. Ленту не сбрасываем,
-        // если юзер на подгруженной странице (см. feedPaginated в _tmPollTick).
-        if (_tm.currentTab === 'feed' && !_tm.feedPaginated) _tmTriggerRefresh('feed');
+        // Ленту при возврате в foreground НЕ сбрасываем — обновление ленты
+        // теперь только по кнопке (см. _tmPollTick). Запросы/лобби — обновляем.
         if (_tm.currentTab === 'lobby') _tmTriggerRefresh('lobby');
         // Если открыт sheet профиля — заодно обновим requests.
         if (_tmIsProfileSheetOpen())    _tmTriggerRefresh('requests');
@@ -7366,7 +7361,7 @@ function _drafterCommentText(c) {
         if (!hasProfile) {
             msg = 'Заполни профиль, чтобы видеть других игроков.';
         } else {
-            msg = 'Сейчас в ленте никого. Лента обновляется сама каждые 30 секунд — загляни позже или убери фильтры.';
+            msg = 'Сейчас в ленте никого. Нажми «Обновить» вверху или убери фильтры.';
         }
         return '<div class="tm-feed-empty">' + _tmEsc(msg) + '</div>';
     }
