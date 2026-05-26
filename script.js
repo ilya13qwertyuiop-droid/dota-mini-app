@@ -6801,10 +6801,6 @@ function _drafterCommentText(c) {
 
     var TM_RANKS = ['Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
     var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
-    // Ключ `stomp` остался от прошлой версии («Бущу»). Семантика изменилась
-    // на «Под пивом» (chill) — данные старых юзеров не теряем, мигрировать
-    // ключ не нужно, меняем только display-label.
-    var TM_MOOD_LABELS = { win: 'На победу', fun: 'Фанюсь', stomp: 'Под пивом' };
     var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
     var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
 
@@ -8250,11 +8246,6 @@ function _drafterCommentText(c) {
         if (micT) { micT.classList.toggle('tm-toggle--on', !!p.microphone); micT.setAttribute('aria-pressed', String(!!p.microphone)); }
         if (dcT)  { dcT.classList.toggle('tm-toggle--on', !!p.discord);     dcT.setAttribute('aria-pressed', String(!!p.discord)); }
 
-        var moodBtns = document.querySelectorAll('.tm-mood-btn');
-        for (var k = 0; k < moodBtns.length; k++) {
-            moodBtns[k].classList.toggle('tm-mood-btn--active', moodBtns[k].getAttribute('data-mood') === p.mood);
-        }
-
         renderHeroSlots();
 
         var ta = document.getElementById('tm-about-input');
@@ -8282,13 +8273,6 @@ function _drafterCommentText(c) {
         t.classList.toggle('tm-toggle--on');
         t.setAttribute('aria-pressed', String(t.classList.contains('tm-toggle--on')));
     };
-    window.tmSetMood = function (m) {
-        var btns = document.querySelectorAll('.tm-mood-btn');
-        for (var i = 0; i < btns.length; i++) {
-            btns[i].classList.toggle('tm-mood-btn--active', btns[i].getAttribute('data-mood') === m);
-        }
-    };
-
     window.tmUpdateAboutCounter = function () {
         var ta = document.getElementById('tm-about-input');
         var counter = document.getElementById('tm-about-counter');
@@ -8400,10 +8384,6 @@ function _drafterCommentText(c) {
         var microphone = !!(micT && micT.classList.contains('tm-toggle--on'));
         var discord    = !!(dcT && dcT.classList.contains('tm-toggle--on'));
 
-        var moodActive = document.querySelector('.tm-mood-btn--active');
-        var mood = moodActive ? moodActive.getAttribute('data-mood') : '';
-        if (!mood) { showToast('Выбери настрой'); return; }
-
         var ta = document.getElementById('tm-about-input');
         var about = (ta && ta.value) || '';
         var favorite_heroes = _tm.favoriteHeroes.slice(0, 3);
@@ -8422,7 +8402,6 @@ function _drafterCommentText(c) {
                     game_modes: game_modes,
                     microphone: microphone,
                     discord: discord,
-                    mood: mood,
                     favorite_heroes: favorite_heroes,
                     about: about
                 })
@@ -8433,7 +8412,7 @@ function _drafterCommentText(c) {
             // он живёт отдельно от профиля и ставится в ленте.
             _tm.myProfile = Object.assign({}, _tm.myProfile || {}, {
                 rank: rank, hours: hours, positions: positions, game_modes: game_modes,
-                microphone: microphone, discord: discord, mood: mood,
+                microphone: microphone, discord: discord,
                 favorite_heroes: favorite_heroes, about: about
             });
             // После сохранения сразу показываем preview — это и фидбек об успехе,
@@ -8658,7 +8637,6 @@ function _drafterCommentText(c) {
         var meta = [];
         if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
         if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
-        if (p.mood) meta.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
         return '<div class="tm-request-head">' +
             avatarHtml +
             '<div class="tm-player-id">' +
@@ -8895,7 +8873,6 @@ function _drafterCommentText(c) {
         var meta = [];
         if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
         if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
-        if (p.mood) meta.push('<span class="tm-player-meta-mood">' + _tmEsc(TM_MOOD_LABELS[p.mood] || p.mood) + '</span>');
         head.innerHTML =
             avatarHtml +
             '<div class="tm-player-id">' +

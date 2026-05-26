@@ -365,8 +365,6 @@ class TeammateProfile(Base):
     game_modes = Column(JSON, nullable=True)
     microphone = Column(Boolean, nullable=False, default=False, server_default="0")
     discord = Column(Boolean, nullable=False, default=False, server_default="0")
-    # Mood: win / fun / stomp
-    mood = Column(String(16), nullable=True)
     # Array of hero_id (capped at 3 in the app layer)
     favorite_heroes = Column(JSON, nullable=True)
     about = Column(Text, nullable=True)

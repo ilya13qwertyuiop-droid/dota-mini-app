@@ -6973,9 +6973,6 @@ margin-top: var(--space-4);
   color: var(--text-tertiary);
   opacity: 0.55;
 }
-.tm-player-meta-mood {
-  letter-spacing: var(--tracking-tight);
-}
 
 /* Comms — inline иконки в мета-строке. Цвет ровно как у row-default
    (secondary), а не tertiary: иначе они читаются как «призраки» рядом
@@ -7298,7 +7295,7 @@ margin-top: var(--space-4);
 }
 .tm-rank-card--active .tm-rank-card-label { color: var(--text-primary); }
 
-/* Position / mode / mood */
+/* Position / mode */
 .tm-positions { display: flex; gap: 6px; flex-wrap: wrap; }
 .tm-position-btn {
   appearance: none;
@@ -7330,8 +7327,8 @@ margin-top: var(--space-4);
   pointer-events: none;
 }
 
-.tm-modes, .tm-mood { display: flex; gap: 6px; flex-wrap: wrap; }
-.tm-mode-btn, .tm-mood-btn {
+.tm-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.tm-mode-btn {
   appearance: none;
   flex: 1 1 auto;
   background: var(--bg-surface);
@@ -7346,8 +7343,8 @@ margin-top: var(--space-4);
   letter-spacing: var(--tracking-tight);
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.tm-mode-btn:hover, .tm-mood-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
-.tm-mode-btn--active, .tm-mood-btn--active {
+.tm-mode-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.tm-mode-btn--active {
   border-color: var(--accent-border);
   background: var(--accent-soft);
   color: var(--text-primary);

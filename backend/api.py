@@ -1822,7 +1822,6 @@ from backend.models import (  # noqa: E402
 _TM_VALID_RANKS = frozenset({
     "Рекрут", "Страж", "Рыцарь", "Герой", "Легенда", "Властелин", "Божество", "Титан",
 })
-_TM_VALID_MOODS = frozenset({"win", "fun", "stomp"})
 _TM_VALID_GAME_MODES = frozenset({"ranked", "normal", "turbo"})
 _TM_POSITIVE_TAGS = frozenset({"Бустер", "Душа компании", "Командный", "No tilted", "1x9"})
 _TM_NEGATIVE_TAGS = frozenset({"Токсик", "Фидер", "AFK", "Фотограф", "Агент Габена"})
@@ -1920,7 +1919,6 @@ def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) ->
         "game_modes":      list(p.game_modes or []),
         "microphone":      bool(p.microphone),
         "discord":         bool(p.discord),
-        "mood":            p.mood,
         "favorite_heroes": list(p.favorite_heroes or []),
         "about":           p.about or "",
         # Статус видимости/намерения (заменил is_searching). NULL = не выбран.
@@ -2037,7 +2035,6 @@ class TeammateProfileUpsert(BaseModel):
     game_modes: list[str]
     microphone: bool
     discord: bool
-    mood: str
     favorite_heroes: list[int] = []
     about: str = ""
 
@@ -2107,8 +2104,6 @@ async def api_teammates_profile_upsert(
         raise HTTPException(status_code=422, detail="invalid rank")
     if not isinstance(data.hours, int) or data.hours < 0 or data.hours > _TM_HOURS_MAX:
         raise HTTPException(status_code=422, detail="hours out of range")
-    if data.mood not in _TM_VALID_MOODS:
-        raise HTTPException(status_code=422, detail="invalid mood")
 
     positions = sorted({int(p) for p in data.positions if int(p) in (1, 2, 3, 4, 5)})
     if not positions:
@@ -2133,7 +2128,6 @@ async def api_teammates_profile_upsert(
             game_modes=game_modes,
             microphone=bool(data.microphone),
             discord=bool(data.discord),
-            mood=data.mood,
             favorite_heroes=favorite_heroes,
             about=about,
             # status НЕ задаём — остаётся NULL, чтобы юзер прошёл обязательный
@@ -2149,7 +2143,6 @@ async def api_teammates_profile_upsert(
         profile.game_modes = game_modes
         profile.microphone = bool(data.microphone)
         profile.discord = bool(data.discord)
-        profile.mood = data.mood
         profile.favorite_heroes = favorite_heroes
         profile.about = about
         profile.updated_at = now
