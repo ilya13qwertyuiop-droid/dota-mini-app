@@ -21,9 +21,15 @@
       rel="stylesheet"
       href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
     />
+    <!-- Fill-вес: нужен для ph-fill (метка первопроходца и т.п.). Без него
+         класс ph-fill не имеет глифов и иконка рендерится пустой. -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css"
+    />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=167" />
+    <link rel="stylesheet" href="styles.css?v=168" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -970,7 +976,7 @@
                    остальных. Скрыт, пока не подгрузится /founders или если места
                    кончились (remaining === 0). Заполняется в _tmRenderFounderCounter. -->
               <div id="tm-founder-counter" class="tm-founder-counter" hidden>
-                <i class="ph-fill ph-flag-pennant tm-founder-counter-icon" aria-hidden="true"></i>
+                <i class="ph-fill ph-rocket-launch tm-founder-counter-icon" aria-hidden="true"></i>
                 <span class="tm-founder-counter-text"></span>
               </div>
               <button type="button" class="tm-primary-btn" onclick="tmOpenProfileSheet()">Заполнить профиль</button>
@@ -1430,6 +1436,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=201"></script>
+    <script defer src="script.js?v=202"></script>
   </body>
 </html>

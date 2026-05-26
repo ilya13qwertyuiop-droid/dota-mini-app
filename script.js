@@ -7527,7 +7527,7 @@ function _drafterCommentText(c) {
         // сигнал, не утяжеляя identity-колонку лишней строкой.
         var founderCls = p.is_founder ? ' tm-player-card--founder' : '';
         var founderFlag = p.is_founder
-            ? '<i class="ph-fill ph-flag-pennant tm-founder-flag" ' +
+            ? '<i class="ph-fill ph-rocket-launch tm-founder-flag" ' +
               'title="Первопроходец — один из первых игроков D2Helper" ' +
               'role="img" aria-label="Первопроходец"></i>'
             : '';
