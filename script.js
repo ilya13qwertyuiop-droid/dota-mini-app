@@ -7521,14 +7521,15 @@ function _drafterCommentText(c) {
             _tm._seenCardIds[p.user_id] = true;
         }
 
-        // Первопроходец — янтарная метка у имени + янтарная рамка карточки.
+        // Первопроходец — янтарный флажок у имени + янтарная рамка карточки.
         // Один из первых N юзеров, заполнивших профиль (см. _TM_FOUNDER_CAP).
+        // Сам флажок без слова — текст в подсказке (title). Рамка + глиф несут
+        // сигнал, не утяжеляя identity-колонку лишней строкой.
         var founderCls = p.is_founder ? ' tm-player-card--founder' : '';
-        var founderBadge = p.is_founder
-            ? '<span class="tm-founder-badge" title="Первопроходец — один из первых игроков D2Helper">' +
-                '<i class="ph-fill ph-medal" aria-hidden="true"></i>' +
-                '<span class="tm-founder-badge-text">Первопроходец</span>' +
-              '</span>'
+        var founderFlag = p.is_founder
+            ? '<i class="ph-fill ph-flag-pennant tm-founder-flag" ' +
+              'title="Первопроходец — один из первых игроков D2Helper" ' +
+              'role="img" aria-label="Первопроходец"></i>'
             : '';
 
         return [
@@ -7536,10 +7537,12 @@ function _drafterCommentText(c) {
               '<header class="tm-player-head">',
                 avatarHtml,
                 '<div class="tm-player-id">',
-                  '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
+                  '<div class="tm-player-name-row">' +
+                    '<span class="tm-player-name">' + _tmEsc(displayName) + '</span>' +
+                    founderFlag +
+                  '</div>',
                   metaRow,
                   activityRow,
-                  founderBadge,
                 '</div>',
                 ctaHtml,
               '</header>',
