@@ -388,7 +388,8 @@ class TeammateProfile(Base):
     # Когда юзер последний раз делал что-то в miniapp (миграция 0010).
     # Bump'ится в _tm_bump_last_active на каждом authenticated endpoint'е.
     # Используется фронтом для отображения «🟢 в сети» / «был N мин назад».
-    last_active_at = Column(DateTime(timezone=True), nullable=True)
+    # index=True (миграция 0015) — лента сортируется ORDER BY last_active_at DESC.
+    last_active_at = Column(DateTime(timezone=True), nullable=True, index=True)
     # Порядковый номер «первопроходца» (миграция 0014). Присваивается при
     # первом заполнении профиля, пока выдано меньше _TM_FOUNDER_CAP.
     # NOT NULL ⇒ юзер — первопроходец (янтарная метка на карточке).
