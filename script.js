@@ -7517,7 +7517,9 @@ function _drafterCommentText(c) {
         // reload приложения кнопка показывала «Позвать», тап → 409 → юзер
         // в замешательстве. _tm.requestsData.outgoing грузится в init.
         var ctaHtml;
-        if (opts.self) {
+        if (opts.self || opts.noCta) {
+            // noCta — карточка во «Входящих»/«Исходящих»: действия (принять/
+            // отклонить/отменить) живут в футере, а не в шапке.
             ctaHtml = '<span></span>';   // grid-slot заглушка, чтобы layout не схлопнулся
         } else if (p.user_id && _tmHasOutgoingPending(p.user_id)) {
             ctaHtml = '<button class="tm-player-cta tm-player-cta--sent" disabled>Уже отправлено</button>';
@@ -7562,6 +7564,9 @@ function _drafterCommentText(c) {
               (heroes  ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
               (p.about ? '<blockquote class="tm-player-about">' + _tmEsc(p.about) + '</blockquote>' : ''),
               (tags    ? '<div class="tm-tags">' + tags + '</div>' : ''),
+              // Футер с действиями (принять/отклонить/отменить) — для карточек
+              // во «Входящих»/«Исходящих». В ленте opts.footer не передаётся.
+              (opts.footer ? '<div class="tm-player-card-actions">' + opts.footer + '</div>' : ''),
             '</article>'
         ].join('');
     }
@@ -8713,32 +8718,22 @@ function _drafterCommentText(c) {
         '</div>';
     }
 
+    // Входящие/исходящие — это та же полная карточка игрока, что и в ленте
+    // (ранг, часы, позиции, режимы, связь, герои, теги, статус, флажок), чтобы
+    // получатель решал по полной картине, а не по урезанной «шапке». Действия
+    // (принять/отклонить/отменить) кладём в футер карточки через opts.footer.
     function _renderIncomingItem(r) {
-        var p = r.profile || {};
-        return [
-            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
-              _tmRenderRequestHead(p),
-              (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
-              '<div class="tm-request-actions">',
-                '<button type="button" class="tm-incoming-accept" onclick="tmRespondRequest(' + r.request_id + ', true, this)">Принять</button>',
-                '<button type="button" class="tm-incoming-decline" onclick="tmRespondRequest(' + r.request_id + ', false, this)">Отклонить</button>',
-              '</div>',
-            '</div>'
-        ].join('');
+        var footer =
+            '<button type="button" class="tm-incoming-accept" onclick="tmRespondRequest(' + r.request_id + ', true, this)">Принять</button>' +
+            '<button type="button" class="tm-incoming-decline" onclick="tmRespondRequest(' + r.request_id + ', false, this)">Отклонить</button>';
+        return _renderPlayerCard(r.profile || {}, { noCta: true, footer: footer });
     }
 
     function _renderOutgoingItem(r) {
-        var p = r.profile || {};
-        return [
-            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
-              _tmRenderRequestHead(p),
-              (p.about ? '<div class="tm-player-about">' + _tmEsc(p.about) + '</div>' : ''),
-              '<div class="tm-request-status-row">',
-                '<span class="tm-status-pending"><span class="tm-status-pending-dot" aria-hidden="true"></span>Ждём ответа</span>',
-                '<button type="button" class="tm-outgoing-cancel" onclick="tmCancelRequest(' + r.request_id + ', this)">Отменить</button>',
-              '</div>',
-            '</div>'
-        ].join('');
+        var footer =
+            '<span class="tm-status-pending"><span class="tm-status-pending-dot" aria-hidden="true"></span>Ждём ответа</span>' +
+            '<button type="button" class="tm-outgoing-cancel" onclick="tmCancelRequest(' + r.request_id + ', this)">Отменить</button>';
+        return _renderPlayerCard(r.profile || {}, { noCta: true, footer: footer });
     }
 
     function _renderHistoryItem(item) {

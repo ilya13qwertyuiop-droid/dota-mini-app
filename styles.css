@@ -7608,6 +7608,15 @@ margin-top: var(--space-4);
   gap: 8px;
   margin-top: 4px;
 }
+/* Футер действий внутри полной карточки игрока (входящие/исходящие).
+   Покрывает оба кейса: входящие — две кнопки flex:1 (равной ширины);
+   исходящие — «ждём ответа» слева + «отменить» справа (space-between). */
+.tm-player-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .tm-request-status-row {
   display: flex;
   align-items: center;
