@@ -99,8 +99,8 @@ from db import (
     ban_user,
     unban_user,
     find_user_id_by_username,
-    get_teammate_stats,
 )
+from stats_db import get_teammate_stats
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
 # db.py при импорте добавляет корень проекта в sys.path, поэтому эти импорты
