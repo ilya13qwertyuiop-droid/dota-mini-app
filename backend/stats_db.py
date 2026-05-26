@@ -29,7 +29,7 @@ Key convention for matchup/synergy pairs:
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import text
@@ -1376,6 +1376,66 @@ def recalculate_all_aggregates() -> None:
         " — matches_used=%d, matchup_pairs=%d, synergy_pairs=%d, heroes=%d",
         len(remaining), len(matchups), len(synergy), len(stats),
     )
+
+
+# ---------------------------------------------------------------------------
+# Teammate-finder stats (для /tm_stats в боте)
+# ---------------------------------------------------------------------------
+
+def get_teammate_stats() -> dict:
+    """Сводка по разделу «Пати» для админ-команды /tm_stats.
+
+    Возвращает счётчики: профили (всего и по статусам), активные за 24ч,
+    первопроходцы, запросы по статусам (+ % принятия), отзывы. Кросс-БД:
+    cutoff для «24ч» считаем в Python и передаём параметром (как в notifier).
+    """
+    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    out: dict = {
+        "profiles_total": 0,
+        "by_status": {},      # status (или 'none') → count
+        "active_24h": 0,
+        "founders": 0,
+        "requests": {},       # status → count
+        "accept_rate": None,  # accepted / (accepted + declined), %
+        "reviews_total": 0,
+    }
+
+    with engine.connect() as conn:
+        out["profiles_total"] = conn.execute(
+            text("SELECT COUNT(*) FROM teammate_profiles")
+        ).scalar() or 0
+
+        for row in conn.execute(
+            text("SELECT status, COUNT(*) FROM teammate_profiles GROUP BY status")
+        ).all():
+            key = row[0] if row[0] is not None else "none"
+            out["by_status"][key] = row[1]
+
+        out["active_24h"] = conn.execute(
+            text("SELECT COUNT(*) FROM teammate_profiles WHERE last_active_at >= :c"),
+            {"c": cutoff_24h},
+        ).scalar() or 0
+
+        out["founders"] = conn.execute(
+            text("SELECT COUNT(*) FROM teammate_profiles WHERE founder_number IS NOT NULL")
+        ).scalar() or 0
+
+        for row in conn.execute(
+            text("SELECT status, COUNT(*) FROM teammate_requests GROUP BY status")
+        ).all():
+            out["requests"][row[0]] = row[1]
+
+        out["reviews_total"] = conn.execute(
+            text("SELECT COUNT(*) FROM teammate_reviews")
+        ).scalar() or 0
+
+    accepted = out["requests"].get("accepted", 0)
+    declined = out["requests"].get("declined", 0)
+    resolved = accepted + declined
+    if resolved:
+        out["accept_rate"] = round(accepted * 100.0 / resolved)
+    return out
 
 
 # ---------------------------------------------------------------------------

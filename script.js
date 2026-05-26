@@ -6933,6 +6933,9 @@ function _drafterCommentText(c) {
         // Параллельно: профиль (для кнопки поиска и формы) + лента + входящие.
         loadMyProfile().then(function (p) {
             _tm.myProfile = p;
+            // Флаг админа — по нему на карточках показывается кнопка модерации
+            // «удалить профиль». Для обычных юзеров is_admin отсутствует/false.
+            _tm.isAdmin = !!(p && p.is_admin);
             _tm.favoriteHeroes = (p && Array.isArray(p.favorite_heroes)) ? p.favorite_heroes.slice() : [];
             renderProfileForm();
             // Avatar-btn в header'е: photo_url появляется только после
@@ -7567,9 +7570,54 @@ function _drafterCommentText(c) {
               // Футер с действиями (принять/отклонить/отменить) — для карточек
               // во «Входящих»/«Исходящих». В ленте opts.footer не передаётся.
               (opts.footer ? '<div class="tm-player-card-actions">' + opts.footer + '</div>' : ''),
+              // Админ-модерация: видна ТОЛЬКО админу (_tm.isAdmin), никогда
+              // обычным юзерам. Не на своей карточке.
+              ((_tm.isAdmin && !opts.self && p.user_id)
+                ? '<div class="tm-admin-row">' +
+                    '<button type="button" class="tm-admin-del" ' +
+                    'onclick="tmAdminDeleteProfile(' + p.user_id + ', this)">' +
+                    '<i class="ph ph-trash" aria-hidden="true"></i> Удалить профиль</button>' +
+                  '</div>'
+                : ''),
             '</article>'
         ].join('');
     }
+
+    // Админ-удаление профиля из ленты (модерация). Доступно только когда
+    // _tm.isAdmin (бэкенд всё равно перепроверяет токен против _TM_ADMIN_IDS).
+    window.tmAdminDeleteProfile = async function (targetUserId, btn) {
+        if (!_tm.isAdmin) return;
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+
+        var doDelete = async function () {
+            if (btn) btn.disabled = true;
+            try {
+                var resp = await apiFetch(TM_API + '/teammates/admin/delete_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: token, target_user_id: targetUserId })
+                });
+                if (!resp.ok) { showToast('Не удалось удалить'); if (btn) btn.disabled = false; return; }
+                showToast('Профиль удалён', 'ok');
+                // Убираем из всех локальных списков и ре-рендерим.
+                _tm.feedItems = (_tm.feedItems || []).filter(function (x) { return x.user_id !== targetUserId; });
+                renderFeed();
+            } catch (e) {
+                console.warn('[tm] admin delete:', e);
+                showToast('Не удалось удалить');
+                if (btn) btn.disabled = false;
+            }
+        };
+
+        // Подтверждение, чтобы не снести профиль случайным тапом.
+        var tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.showConfirm === 'function') {
+            tg.showConfirm('Удалить этот профиль из ленты?', function (ok) { if (ok) doDelete(); });
+        } else if (window.confirm('Удалить этот профиль из ленты?')) {
+            doDelete();
+        }
+    };
 
     window.tmSendRequest = async function (to_user_id, btn) {
         var token = _tmGetToken();

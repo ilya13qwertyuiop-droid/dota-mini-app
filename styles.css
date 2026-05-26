@@ -7608,6 +7608,31 @@ margin-top: var(--space-4);
   gap: 8px;
   margin-top: 4px;
 }
+/* Админ-модерация: тонкая строка снизу карточки, видна только админу.
+   Намеренно неброская — это служебный инструмент, не часть UX игрока. */
+.tm-admin-row {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-2);
+}
+.tm-admin-del {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.tm-admin-del:hover { color: var(--negative); }
+.tm-admin-del:disabled { opacity: 0.5; cursor: default; }
+
 /* Футер действий внутри полной карточки игрока (входящие/исходящие).
    Покрывает оба кейса: входящие — две кнопки flex:1 (равной ширины);
    исходящие — «ждём ответа» слева + «отменить» справа (space-between). */

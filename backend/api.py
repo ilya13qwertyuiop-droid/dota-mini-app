@@ -1841,6 +1841,11 @@ _TM_MAX_FAVORITE_HEROES = 3
 # founder_number (см. миграцию 0014). Янтарная метка на карточке + счётчик
 # «осталось N мест» на экране заполнения. Сам номер наружу не отдаём.
 _TM_FOUNDER_CAP = 1000
+# Админы (модерация профилей из миниапа). Зеркалит ADMIN_IDS в bot.py —
+# держать в синхроне. Можно переопределить через env TM_ADMIN_IDS="id1,id2".
+_TM_ADMIN_IDS: frozenset[int] = frozenset(
+    int(x) for x in os.environ.get("TM_ADMIN_IDS", "556944111").split(",") if x.strip()
+)
 # Замок «раньше игры быть не могло»: нельзя оставить отзыв раньше, чем
 # проходит партия. Турбо ~20 мин, обычная ~40 — 30 мин это безопасный порог,
 # отсекающий «оценку по переписке» сразу после принятия, почти не задевая
@@ -2081,6 +2086,11 @@ class TeammateStatusUpdate(BaseModel):
     status: str  # ready_now / looking_regular / looking_casual / hidden
 
 
+class TeammateAdminDelete(BaseModel):
+    token: str
+    target_user_id: int
+
+
 # ── Party-finder («Лобби») Pydantic models ──────────────────────────────────
 
 class TeammateLobbyCreate(BaseModel):
@@ -2208,6 +2218,8 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
         settings = (user_row.settings if user_row else None) or {}
         out = _tm_serialize_profile(profile, settings)  # уже включает status
         out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
+        # Флаг админа — фронт по нему показывает кнопку модерации на карточках.
+        out["is_admin"] = user_id in _TM_ADMIN_IDS
         return out
     except Exception:
         logger.exception("[tm/profile/me] UNCAUGHT user_id=%s", user_id)
@@ -2236,6 +2248,45 @@ async def api_teammates_founders(db: Session = Depends(get_db)):
         "taken": taken,
         "remaining": max(0, _TM_FOUNDER_CAP - taken),
     }
+
+
+# ── 2c. POST /api/teammates/admin/delete_profile — модерация (только админ) ──
+
+@app.post("/api/teammates/admin/delete_profile")
+async def api_teammates_admin_delete_profile(
+    data: TeammateAdminDelete, db: Session = Depends(get_db),
+):
+    """Удаляет teammate-профиль игрока. Только для админов (_TM_ADMIN_IDS).
+
+    Модерация: убирает плохой профиль из ленты/просмотров. Чистим сам профиль
+    + накопленные на нём теги-репутацию, а его pending-запросы переводим в
+    cancelled (чтобы не висели у получателей). Отзывы/история не трогаем —
+    они ссылаются на user_id и безвредны без профиля."""
+    user_id = _tm_authenticate(data.token, db)
+    if user_id not in _TM_ADMIN_IDS:
+        raise HTTPException(status_code=403, detail="admin only")
+
+    target = data.target_user_id
+    profile = db.get(DBTeammateProfile, target)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+
+    # Pending-запросы игрока (входящие и исходящие) → cancelled.
+    db.query(DBTeammateRequest).filter(
+        ((DBTeammateRequest.from_user_id == target) |
+         (DBTeammateRequest.to_user_id == target)),
+        DBTeammateRequest.status == "pending",
+    ).update({DBTeammateRequest.status: "cancelled"}, synchronize_session=False)
+
+    # Накопленные на игроке теги (его репутация в ленте).
+    db.query(DBTeammateTag).filter(DBTeammateTag.user_id == target).delete(
+        synchronize_session=False
+    )
+
+    db.delete(profile)
+    db.commit()
+    logger.info("[tm/admin] profile %s deleted by admin %s", target, user_id)
+    return {"ok": True}
 
 
 # ── 3. POST /api/teammates/status — установить статус видимости ──────────────

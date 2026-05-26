@@ -99,6 +99,7 @@ from db import (
     ban_user,
     unban_user,
     find_user_id_by_username,
+    get_teammate_stats,
 )
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
@@ -1531,6 +1532,55 @@ async def admin_matches_command(update: Update, _context: ContextTypes.DEFAULT_T
     await update.message.reply_text(f"🧩 Матчей с заполненным game_mode: {count}")
 
 
+# -------- /tm_stats (сводка по разделу «Пати», только для администраторов) --------
+
+async def tm_stats_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Сводка по поиску тиммейтов: профили, статусы, запросы, отзывы."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    try:
+        s = get_teammate_stats()
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Не удалось получить статистику раздела «Пати».")
+        return
+
+    status_labels = {
+        "ready_now":       "Готов сейчас",
+        "looking_regular": "Постоянка",
+        "looking_casual":  "Не срочно",
+        "hidden":          "Скрыт",
+        "none":            "Без статуса",
+    }
+    by_status = s.get("by_status", {})
+    status_lines = "\n".join(
+        f"  • {status_labels.get(k, k)}: {by_status[k]}"
+        for k in ["ready_now", "looking_regular", "looking_casual", "hidden", "none"]
+        if by_status.get(k)
+    ) or "  • —"
+
+    reqs = s.get("requests", {})
+    accept_rate = s.get("accept_rate")
+    accept_str = f"{accept_rate}%" if accept_rate is not None else "—"
+
+    await update.message.reply_text(
+        "📊 Раздел «Пати»\n\n"
+        f"👥 Профилей: {s.get('profiles_total', 0)}\n"
+        f"🟢 Активны за 24ч: {s.get('active_24h', 0)}\n"
+        f"🚀 Первопроходцев: {s.get('founders', 0)}\n\n"
+        "Статусы:\n"
+        f"{status_lines}\n\n"
+        "Запросы:\n"
+        f"  • ожидают: {reqs.get('pending', 0)}\n"
+        f"  • принято: {reqs.get('accepted', 0)}\n"
+        f"  • отклонено: {reqs.get('declined', 0)}\n"
+        f"  • отменено: {reqs.get('cancelled', 0)}\n"
+        f"  • % принятия: {accept_str}\n\n"
+        f"⭐ Отзывов оставлено: {s.get('reviews_total', 0)}"
+    )
+
+
 # -------- /topdraft (скрытая команда для администраторов) --------
 
 async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
@@ -1775,6 +1825,7 @@ def main():
     application.add_handler(CommandHandler("admin_feedback", timed_handler("/admin_feedback")(admin_feedback_command)))
     application.add_handler(CommandHandler("admin_users",    timed_handler("/admin_users")(admin_users_command)))
     application.add_handler(CommandHandler("admin_matches",  timed_handler("/admin_matches")(admin_matches_command)))
+    application.add_handler(CommandHandler("tm_stats",       timed_handler("/tm_stats")(tm_stats_command)))
     application.add_handler(CommandHandler("stats_mode",          timed_handler("/stats_mode")(stats_mode_command)))
     application.add_handler(CommandHandler("force_update_builds", timed_handler("/force_update_builds")(force_update_builds_command)))
     application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))
