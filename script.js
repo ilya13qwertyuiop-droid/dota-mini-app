@@ -8744,23 +8744,6 @@ function _drafterCommentText(c) {
         list.innerHTML = html;
     }
 
-    // Общий блок: avatar + name + meta-row. Используется во всех трёх вкладках.
-    function _tmRenderRequestHead(p) {
-        var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--sm');
-        var displayName = _tmDisplayName(p);
-        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
-        var meta = [];
-        if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
-        if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
-        return '<div class="tm-request-head">' +
-            avatarHtml +
-            '<div class="tm-player-id">' +
-              '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>' +
-              (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
-            '</div>' +
-        '</div>';
-    }
-
     // Входящие/исходящие — это та же полная карточка игрока, что и в ленте
     // (ранг, часы, позиции, режимы, связь, герои, теги, статус, флажок), чтобы
     // получатель решал по полной картине, а не по урезанной «шапке». Действия
@@ -8809,15 +8792,13 @@ function _drafterCommentText(c) {
         } else {
             actionHtml = '<button type="button" class="tm-history-review" onclick="tmOpenReview(' + r.request_id + ', ' + otherId + ')">Оценить игрока</button>';
         }
-        return [
-            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
-              _tmRenderRequestHead(p),
-              '<div class="tm-request-status-row">',
-                (when ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>' : '<span></span>'),
-                actionHtml,
-              '</div>',
-            '</div>'
-        ].join('');
+        // Полная карточка игрока (как в ленте/входящих), а не урезанная шапка —
+        // по просьбе пользователей. «Когда» + действие (оценить/оставлено/замок)
+        // кладём в футер; flex space-between разводит их по краям строки.
+        var whenHtml = when
+            ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>'
+            : '<span></span>';
+        return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actionHtml });
     }
 
     // Лобби-запись в истории — список @ников как tg://-ссылки. Никаких action-
