@@ -21,9 +21,15 @@
       rel="stylesheet"
       href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
     />
+    <!-- Fill-вес: нужен для ph-fill (метка первопроходца и т.п.). Без него
+         класс ph-fill не имеет глифов и иконка рендерится пустой. -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css"
+    />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=139" />
+    <link rel="stylesheet" href="styles.css?v=172" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -90,6 +96,17 @@
               <div class="home-draft-placeholder">Сыграй свой первый драфт</div>
             </div>
             <div class="home-widget-cta" id="home-draft-cta">Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
+          </button>
+
+          <button class="home-card home-widget home-widget--wide home-widget--quiz" id="home-quiz-widget" onclick="switchPage('quiz')">
+            <div class="home-widget-head">
+              <span class="section-eyebrow">Квизы</span>
+            </div>
+            <div class="home-widget-body home-quiz-body">
+              <div class="home-quiz-title">Найти сигнатурку</div>
+              <div class="home-quiz-subtitle">Подбор позиции и сигнатурных героев под твой плейстайл</div>
+            </div>
+            <div class="home-widget-cta">Открыть <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
           </button>
         </div>
 
@@ -918,15 +935,445 @@
       </div>
 
 
+      <!-- Страница поиска тиммейтов -->
+      <div id="page-teammates" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="switchPage('home')" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Поиск пати</div>
+          <div class="tm-page-head-actions">
+            <button type="button" id="tm-help-btn" class="tm-help-btn" onclick="tmOpenHelp()" aria-label="Как это работает">
+              <i class="ph ph-question" aria-hidden="true"></i>
+            </button>
+            <button type="button" id="tm-profile-btn" class="tm-profile-btn" onclick="tmOpenProfileSheet()" aria-label="Мой профиль">
+              <i class="ph ph-user" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Таб-бар временно скрыт: в v1 шипаем только «Дуо», Лобби в коде
+             остаётся работоспособным но не exposed в UI. Чтобы вернуть —
+             убрать `hidden` отсюда и с #tm-pane-lobby. -->
+        <div class="tm-tabs" role="tablist" aria-label="Разделы поиска тиммейтов" hidden>
+          <button class="tm-tab tm-tab--active" role="tab" data-tm-tab="feed" onclick="setTeammatesTab('feed')">Дуо</button>
+          <button class="tm-tab" role="tab" data-tm-tab="lobby" onclick="setTeammatesTab('lobby')">Лобби</button>
+        </div>
+
+        <!-- Вкладка "Дуо" — поиск партнёра 1-на-1 -->
+        <div id="tm-pane-feed" class="tm-pane">
+          <!-- Блокирующее окно для новых юзеров без профиля. Показывается
+               когда _tm.myProfile отсутствует или rank пустой. Перекрывает
+               вкладку — нельзя ничего тапнуть пока не заполнишь профиль. -->
+          <div id="tm-no-profile-gate" class="tm-no-profile-gate" hidden>
+            <div class="tm-no-profile-card">
+              <div class="tm-no-profile-icon">
+                <i class="ph ph-user-circle-plus" aria-hidden="true"></i>
+              </div>
+              <div class="tm-no-profile-title">Сначала заполни профиль</div>
+              <div class="tm-no-profile-body">Расскажи о себе — ранг, позиции, на ком играешь.</div>
+              <!-- Счётчик «первопроходцев» — мотивация заполнить профиль раньше
+                   остальных. Скрыт, пока не подгрузится /founders или если места
+                   кончились (remaining === 0). Заполняется в _tmRenderFounderCounter. -->
+              <div id="tm-founder-counter" class="tm-founder-counter" hidden>
+                <i class="ph-fill ph-rocket-launch tm-founder-counter-icon" aria-hidden="true"></i>
+                <span class="tm-founder-counter-text"></span>
+              </div>
+              <button type="button" class="tm-primary-btn" onclick="tmOpenProfileSheet()">Заполнить профиль</button>
+            </div>
+          </div>
+
+          <!-- Обязательный экран выбора статуса. Показывается когда профиль
+               заполнен, но status ещё не выбран (NULL). Перекрывает вкладку,
+               нельзя пропустить — пока не выберешь, в ленте тебя нет. -->
+          <div id="tm-status-gate" class="tm-no-profile-gate" hidden>
+            <div class="tm-no-profile-card tm-status-gate-card">
+              <div class="tm-no-profile-icon">
+                <i class="ph ph-broadcast" aria-hidden="true"></i>
+              </div>
+              <div class="tm-no-profile-title">Как тебя показывать?</div>
+              <div class="tm-no-profile-body">Выбери статус — он определяет, как другие видят тебя в ленте. Поменять можно в любой момент.</div>
+              <div class="tm-status-options" id="tm-status-gate-options"></div>
+            </div>
+          </div>
+
+          <!-- Notification-banner о входящих pending-запросах. Виден только
+               когда incoming.length > 0. Тап → открывает профиль-sheet на
+               вкладке «Входящие». -->
+          <button type="button" id="tm-incoming-banner" class="tm-incoming-banner" onclick="tmOpenIncomingFromBanner()" hidden>
+            <i class="ph ph-envelope tm-incoming-banner-icon" aria-hidden="true"></i>
+            <span class="tm-incoming-banner-text" id="tm-incoming-banner-text">Новых запросов</span>
+            <i class="ph ph-arrow-right tm-incoming-banner-arrow" aria-hidden="true"></i>
+          </button>
+
+          <!-- Сегмент-контрол статуса. Всегда видим, не разворачивается —
+               4 таба, активный подсвечен цветом своего статуса. Заполняется
+               через _tmRenderStatusSegments. -->
+          <div class="tm-status-segments" id="tm-status-segments" role="tablist" aria-label="Мой статус" hidden></div>
+
+          <div class="tm-filters" id="tm-filters">
+            <div class="tm-filters-bar" id="tm-filters-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="tm-filters-panel" onclick="tmToggleFilters(event)" onkeydown="tmFiltersBarKeydown(event)">
+              <span id="tm-filters-toggle-group" class="tm-filters-toggle-group">
+                <i class="ph ph-caret-down" aria-hidden="true"></i>
+                <span>Фильтры</span>
+                <span class="tm-filters-toggle-count" id="tm-filters-toggle-count" hidden></span>
+              </span>
+              <div class="tm-filters-active-chips" id="tm-filters-active-chips"></div>
+              <button type="button" id="tm-filters-reset" class="tm-filters-reset" onclick="tmResetFilters(event)" hidden>Сбросить</button>
+            </div>
+            <div class="tm-filters-panel" id="tm-filters-panel" role="region" aria-label="Фильтры">
+              <div class="tm-filters-panel-inner">
+                <div class="tm-filters-panel-content">
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Кого ищу</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-status"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Ранг</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-rank"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Позиция</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-pos"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Режим</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-modes"></div>
+                  </div>
+                  <div class="tm-filter-rack">
+                    <span class="tm-filter-rack-label">Связь</span>
+                    <div class="tm-filter-rack-row" id="tm-filter-comms"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tm-pane-head">
+            <span class="tm-pane-head-title">Игроки в поиске</span>
+            <button type="button" id="tm-feed-refresh" class="tm-refresh-btn" onclick="tmRefreshFeed()" aria-label="Обновить ленту">
+              <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
+              <span>Обновить</span>
+            </button>
+          </div>
+
+          <div class="tm-feed-list" id="tm-feed-list">
+            <div class="tm-feed-empty">Загрузка…</div>
+          </div>
+          <button type="button" class="tm-load-more" id="tm-load-more" onclick="tmLoadMore()" hidden>Показать ещё</button>
+        </div>
+
+        <!-- Вкладка "Лобби" — сбор стака 3-5 -->
+        <div id="tm-pane-lobby" class="tm-pane" hidden>
+          <!-- Primary CTA: создать своё лобби. -->
+          <button id="tm-lobby-create-cta" class="tm-search-cta tm-search-cta--lobby" onclick="tmOpenLobbyForm()">
+            <i class="ph ph-plus" aria-hidden="true"></i>
+            <span>Создать лобби</span>
+          </button>
+          <div class="tm-search-hint">Стак на 3–5 человек, длится до 30 минут</div>
+
+          <div class="tm-pane-head">
+            <span class="tm-pane-head-title">Активные лобби</span>
+            <button type="button" id="tm-lobby-refresh" class="tm-refresh-btn" onclick="tmRefreshLobbies()" aria-label="Обновить лобби">
+              <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
+              <span>Обновить</span>
+            </button>
+          </div>
+
+          <!-- Список лобби или empty-state с активным CTA. -->
+          <div class="tm-lobbies-list" id="tm-lobbies-list"></div>
+        </div>
+      </div>
+
+      <!-- Профиль — overlay-sheet (как help-sheet), доступен по avatar-кнопке
+           справа в header'е. Живёт outside page-teammates: position:fixed,
+           inset:0 — рендерится поверх любой page. -->
+      <div id="tm-profile-sheet" class="tm-help-sheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tm-profile-sheet-title">
+        <div class="tm-help-page">
+          <div class="tm-help-page-head">
+            <button type="button" class="tm-back-btn" onclick="tmCloseProfileSheet()" aria-label="Назад">
+              <i class="ph ph-arrow-left" aria-hidden="true"></i>
+            </button>
+            <h1 class="tm-help-page-title" id="tm-profile-sheet-title">Мой профиль</h1>
+          </div>
+          <div class="tm-help-content" id="tm-pane-profile">
+
+          <!-- Preview-режим: как тебя видят в ленте -->
+          <div id="tm-profile-preview" hidden>
+            <div class="tm-preview-banner">
+              <div class="tm-preview-banner-text">
+                <div class="tm-preview-banner-title">Превью</div>
+                <div class="tm-preview-banner-sub">Так тебя видят другие игроки</div>
+              </div>
+              <button type="button" class="tm-edit-btn" onclick="tmEditProfile()">Редактировать</button>
+            </div>
+            <div id="tm-preview-card"></div>
+          </div>
+
+          <!-- Форма заполнения -->
+          <div id="tm-profile-form">
+            <div class="tm-form-row">
+              <div class="tm-form-label">Ранг</div>
+              <div class="tm-rank-scroll" id="tm-rank-scroll"></div>
+            </div>
+
+            <div class="tm-form-row">
+              <div class="tm-form-label">Часов в Dota 2</div>
+              <input type="number" inputmode="numeric" min="0" max="100000" class="tm-input tm-input--mono" id="tm-hours-input" placeholder="3500">
+            </div>
+
+            <div class="tm-form-row">
+              <div class="tm-form-label">Позиции</div>
+              <div class="tm-positions" id="tm-positions">
+                <button type="button" class="tm-position-btn" data-pos="1" onclick="tmTogglePos(1, this)"><img src="/images/positions/pos_1.png" alt="1"></button>
+                <button type="button" class="tm-position-btn" data-pos="2" onclick="tmTogglePos(2, this)"><img src="/images/positions/pos_2.png" alt="2"></button>
+                <button type="button" class="tm-position-btn" data-pos="3" onclick="tmTogglePos(3, this)"><img src="/images/positions/pos_3.png" alt="3"></button>
+                <button type="button" class="tm-position-btn" data-pos="4" onclick="tmTogglePos(4, this)"><img src="/images/positions/pos_4.png" alt="4"></button>
+                <button type="button" class="tm-position-btn" data-pos="5" onclick="tmTogglePos(5, this)"><img src="/images/positions/pos_5.png" alt="5"></button>
+              </div>
+            </div>
+
+            <div class="tm-form-row">
+              <div class="tm-form-label">Режимы</div>
+              <div class="tm-modes" id="tm-modes">
+                <button type="button" class="tm-mode-btn" data-mode="ranked" onclick="tmToggleMode('ranked', this)">Рейтинговый</button>
+                <button type="button" class="tm-mode-btn" data-mode="normal" onclick="tmToggleMode('normal', this)">Обычный</button>
+                <button type="button" class="tm-mode-btn" data-mode="turbo" onclick="tmToggleMode('turbo', this)">Турбо</button>
+              </div>
+            </div>
+
+            <div class="tm-form-row">
+              <div class="tm-form-label">Связь</div>
+              <div class="tm-toggles">
+                <div class="tm-toggle-row">
+                  <div class="tm-toggle-info">
+                    <div class="tm-toggle-name">Микрофон</div>
+                    <div class="tm-toggle-sub">Готов общаться голосом</div>
+                  </div>
+                  <button type="button" class="tm-toggle" id="tm-mic-toggle" onclick="tmToggleMic()" aria-pressed="false"><span class="tm-toggle-dot"></span></button>
+                </div>
+                <div class="tm-toggle-row">
+                  <div class="tm-toggle-info">
+                    <div class="tm-toggle-name">Discord</div>
+                    <div class="tm-toggle-sub">Есть аккаунт</div>
+                  </div>
+                  <button type="button" class="tm-toggle" id="tm-discord-toggle" onclick="tmToggleDiscord()" aria-pressed="false"><span class="tm-toggle-dot"></span></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tm-form-row">
+              <div class="tm-form-label">
+                <span>Любимые герои</span>
+                <span class="tm-form-sub">до 3</span>
+              </div>
+              <div class="tm-hero-slots" id="tm-hero-slots"></div>
+            </div>
+
+            <div class="tm-form-row">
+              <div class="tm-form-label">О себе</div>
+              <textarea id="tm-about-input" class="tm-textarea" maxlength="200" placeholder="Когда играешь, что ищешь, чего избегаешь…" oninput="tmUpdateAboutCounter()"></textarea>
+              <div class="tm-char-counter" id="tm-about-counter">0 / 200</div>
+            </div>
+
+            <button id="tm-save-btn" class="tm-primary-btn" onclick="tmSaveProfile()">Сохранить профиль</button>
+          </div>
+
+          <!-- Запросы: входящие / исходящие / история — три сегмента в одной секции -->
+          <section class="tm-requests-section" id="tm-requests-section">
+            <div class="tm-section-title">
+              <span>Запросы</span>
+              <button type="button" id="tm-requests-refresh" class="tm-refresh-btn" onclick="tmRefreshRequests()" aria-label="Обновить">
+                <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>
+                <span>Обновить</span>
+              </button>
+            </div>
+            <nav class="tm-requests-tabs" role="tablist" aria-label="Тип запросов">
+              <button type="button" class="tm-requests-tab tm-requests-tab--active" data-tm-rt="incoming" role="tab" aria-selected="true" onclick="tmSetRequestsTab('incoming')">
+                Входящие<span class="tm-requests-tab-count" id="tm-rt-count-incoming"></span>
+              </button>
+              <button type="button" class="tm-requests-tab" data-tm-rt="outgoing" role="tab" aria-selected="false" onclick="tmSetRequestsTab('outgoing')">
+                Исходящие<span class="tm-requests-tab-count" id="tm-rt-count-outgoing"></span>
+              </button>
+              <button type="button" class="tm-requests-tab" data-tm-rt="history" role="tab" aria-selected="false" onclick="tmSetRequestsTab('history')">
+                История
+              </button>
+            </nav>
+            <div class="tm-requests-list" id="tm-requests-list">
+              <div class="tm-feed-empty">Загрузка…</div>
+            </div>
+          </section>
+          </div><!-- /tm-help-content #tm-pane-profile -->
+        </div><!-- /tm-help-page -->
+      </div><!-- /tm-profile-sheet -->
+
+      <!-- Страница оценки игрока (открывается по deep link из бота) -->
+      <div id="page-teammate-review" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="switchPage('home')" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Оценить игрока</div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Игрок</div>
+          <div class="tm-review-target" id="tm-review-target">
+            <div class="tm-feed-empty">Загрузка…</div>
+          </div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Выбери теги</div>
+          <div class="tm-review-tags-section">
+            <div class="tm-review-tags-group tm-review-tags-group--positive">
+              <div class="tm-review-tags-group-label">Положительные</div>
+              <div class="tm-review-tags" id="tm-review-tags-positive"></div>
+            </div>
+            <div class="tm-review-tags-group tm-review-tags-group--negative">
+              <div class="tm-review-tags-group-label">Отрицательные</div>
+              <div class="tm-review-tags" id="tm-review-tags-negative"></div>
+            </div>
+          </div>
+        </div>
+        <button id="tm-review-submit" class="tm-primary-btn" onclick="tmSubmitReview()">Отправить отзыв</button>
+        <!-- Мягкий выход для постоянки/не срочно: игра могла ещё не случиться.
+             Закрывает экран без отзыва — оценить можно позже в «Пати» → История. -->
+        <button type="button" class="tm-ghost-btn" onclick="tmReviewNotPlayedYet()">Мы ещё не играли</button>
+      </div>
+
+      <!-- Help-страница раздела тиммейтов. Full-screen overlay, по виду —
+           отдельная страница (back-button → закрытие). -->
+      <div id="tm-help-sheet" class="tm-help-sheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tm-help-title">
+        <div class="tm-help-page">
+          <div class="tm-help-page-head">
+            <button type="button" class="tm-back-btn" onclick="tmCloseHelp()" aria-label="Назад">
+              <i class="ph ph-arrow-left" aria-hidden="true"></i>
+            </button>
+            <h1 class="tm-help-page-title" id="tm-help-title">Как это работает</h1>
+          </div>
+          <div class="tm-help-content">
+            <section class="tm-help-section">
+              <h2 class="tm-help-section-title">Что это</h2>
+              <p class="tm-help-text">Раздел, чтобы найти с кем поиграть в Dota 2. Заполняешь профиль, выбираешь статус — и сразу появляешься в общей ленте. Другие игроки видят тебя, ты их. Понравился кто-то — нажимаешь «Позвать». Если он согласится, оба получите ссылку друг на друга прямо в этом боте.</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h2 class="tm-help-section-title">Профиль</h2>
+              <p class="tm-help-text">Ранг и позиции помогают понять, подходишь ли по уровню. Часы, герои и текст о себе — необязательны, но дают людям больше контекста.</p>
+              <p class="tm-help-text">Профиль открыть и отредактировать можно в любой момент — по аватарке в правом верхнем углу.</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h2 class="tm-help-section-title">Статус</h2>
+              <p class="tm-help-text">Статус показывает, как сильно ты сейчас хочешь играть, и управляет твоей видимостью в ленте. Меняется в один тап — переключателем сверху ленты:</p>
+              <p class="tm-help-text"><b>Готов</b> — хочешь в игру прямо сейчас. <b>Постоянка</b> — ищешь людей на регулярную игру. <b>Не срочно</b> — ищешь, но без спешки. <b>Скрыт</b> — тебя нет в ленте, но ты сам видишь других и можешь звать.</p>
+              <p class="tm-help-text">Лента не ранжирует статусы — все показываются вперемешку, по мере активности. А чтобы найти кого-то с конкретным настроем — есть фильтр «Кого ищу».</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h2 class="tm-help-section-title">Запросы</h2>
+              <p class="tm-help-text">Нажал «Позвать» — игрок получит уведомление от бота. Дальше он либо принимает, либо отклоняет. Если принял — вы оба получаете ссылку друг на друга, можно списываться.</p>
+              <p class="tm-help-text">Свои отправленные запросы видишь в профиле (аватарка справа) → «Исходящие». Там же можно отменить тот, на который передумал ждать ответ. Когда тебя позовут — сверху ленты появится плашка «новые запросы».</p>
+            </section>
+
+            <section class="tm-help-section">
+              <h2 class="tm-help-section-title">Отзывы</h2>
+              <p class="tm-help-text">Через несколько часов после того как вы законтачили, бот спросит, получилось ли поиграть, и предложит оценить напарника. Ещё не играли — ничего страшного: оценить можно позже, в профиле (аватарка справа) → вкладка «История».</p>
+              <p class="tm-help-text">Отзывы анонимные — получатель видит только сумму голосов, не кто их поставил. Это помогает другим игрокам понимать, с кем стоит играть, а с кем нет.</p>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lobby create-form: full-screen overlay, та же механика что help-sheet. -->
+      <div id="tm-lobby-form-sheet" class="tm-help-sheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tm-lobby-form-title">
+        <div class="tm-help-page">
+          <div class="tm-help-page-head">
+            <button type="button" class="tm-back-btn" onclick="tmCloseLobbyForm()" aria-label="Назад">
+              <i class="ph ph-arrow-left" aria-hidden="true"></i>
+            </button>
+            <div class="tm-help-page-title-stack">
+              <h1 class="tm-help-page-title" id="tm-lobby-form-title">Новое лобби</h1>
+              <p class="tm-help-page-subtitle">Опиши пати — игроки увидят и подключатся.</p>
+            </div>
+          </div>
+          <div class="tm-help-content">
+
+            <!-- Section 1: lobby type (size + mode) — это «basic shape» лобби. -->
+            <section class="tm-lobby-form-section">
+              <span class="section-eyebrow">Лобби</span>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Сколько вас будет</div>
+                <div class="tm-modes" id="tm-lobby-size">
+                  <button type="button" class="tm-mode-btn" data-size="3" onclick="tmLobbySetSize(3)">3</button>
+                  <button type="button" class="tm-mode-btn" data-size="4" onclick="tmLobbySetSize(4)">4</button>
+                  <button type="button" class="tm-mode-btn" data-size="5" onclick="tmLobbySetSize(5)">5</button>
+                </div>
+                <div class="tm-form-sub" id="tm-lobby-size-hint">Включая тебя.</div>
+              </div>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Режим</div>
+                <div class="tm-modes" id="tm-lobby-mode">
+                  <button type="button" class="tm-mode-btn" data-mode="ranked" onclick="tmLobbySetMode('ranked')">Рейтинговый</button>
+                  <button type="button" class="tm-mode-btn" data-mode="normal" onclick="tmLobbySetMode('normal')">Обычный</button>
+                  <button type="button" class="tm-mode-btn" data-mode="turbo" onclick="tmLobbySetMode('turbo')">Турбо</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Section 2: состав — кто ты + какие слоты открыты. Визуально
+                 две разные операции: pill-выбор моей роли + slot-tile'ы как
+                 в реальной лобби-карточке (preview + tappable). -->
+            <section class="tm-lobby-form-section">
+              <span class="section-eyebrow">Состав</span>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Ты играешь на</div>
+                <div class="tm-positions tm-positions--host" id="tm-lobby-host-pos"></div>
+                <div class="tm-form-sub">Слот сразу занят тобой. Доступны позиции из твоего профиля.</div>
+              </div>
+              <div class="tm-lobby-form-row">
+                <div class="tm-form-label">Открытые слоты</div>
+                <div class="tm-lobby-form-slots" id="tm-lobby-needed-pos"></div>
+                <div class="tm-form-sub" id="tm-lobby-needed-hint"></div>
+              </div>
+            </section>
+
+            <!-- Section 3: кто может вступить (ранги). Segmented control
+                 вместо чужеродного toggle-pill — visually weight-matched
+                 с size/mode выше. -->
+            <section class="tm-lobby-form-section" id="tm-lobby-rank-section">
+              <span class="section-eyebrow">Кого пускать</span>
+              <div class="tm-lobby-form-row">
+                <div class="tm-segmented" id="tm-lobby-rank-segments" role="tablist" aria-label="Фильтр рангов">
+                  <button type="button" class="tm-segment" data-rank-mode="any" onclick="tmLobbySetRankMode('any')" role="tab">Любой ранг</button>
+                  <button type="button" class="tm-segment" data-rank-mode="filter" onclick="tmLobbySetRankMode('filter')" role="tab">Только эти</button>
+                </div>
+                <div class="tm-rank-chips" id="tm-lobby-rank-chips" hidden></div>
+                <div class="tm-form-sub" id="tm-lobby-rank-hint"></div>
+              </div>
+            </section>
+
+            <!-- Footer: live summary + submit + inline validation error. -->
+            <div class="tm-lobby-form-footer">
+              <div class="tm-lobby-form-summary" id="tm-lobby-form-summary" aria-live="polite"></div>
+              <button type="button" id="tm-lobby-submit" class="tm-primary-btn" onclick="tmSubmitLobby()">Создать лобби</button>
+              <div class="tm-lobby-form-error" id="tm-lobby-form-error" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Нижняя навигация -->
       <nav class="bottom-nav" aria-label="Основная навигация">
         <div class="nav-item active" onclick="switchPage('home', event)">
           <i class="nav-icon ph ph-house" aria-hidden="true"></i>
           <div class="nav-label">Главная</div>
         </div>
-        <div class="nav-item" onclick="switchPage('quiz', event)">
-          <i class="nav-icon ph ph-target" aria-hidden="true"></i>
-          <div class="nav-label">Квизы</div>
+        <div class="nav-item nav-item--tm" onclick="switchPage('teammates', event)">
+          <span class="nav-icon-wrap">
+            <i class="nav-icon ph ph-users-three" aria-hidden="true"></i>
+            <span class="nav-badge" id="nav-tm-badge" hidden></span>
+          </span>
+          <div class="nav-label">Пати</div>
         </div>
         <div class="nav-item" onclick="switchPage('drafter', event)">
           <i class="nav-icon ph ph-strategy" aria-hidden="true"></i>
@@ -992,6 +1439,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=168"></script>
+    <script defer src="script.js?v=209"></script>
   </body>
 </html>

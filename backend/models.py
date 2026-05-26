@@ -343,3 +343,249 @@ class AnalyticsEvent(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+# ---------------------------------------------------------------------------
+# Teammate finder
+# ---------------------------------------------------------------------------
+
+class TeammateProfile(Base):
+    """Per-user profile for the teammate-finder feature."""
+    __tablename__ = "teammate_profiles"
+
+    user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), primary_key=True
+    )
+    # Rank: Рекрут / Страж / Рыцарь / Герой / Легенда / Властелин / Божество / Титан
+    rank = Column(String(32), nullable=True, index=True)
+    hours = Column(Integer, nullable=True)
+    # Array of ints 1..5 (multi-select)
+    positions = Column(JSON, nullable=True)
+    # Array of strings: ranked / normal / turbo
+    game_modes = Column(JSON, nullable=True)
+    microphone = Column(Boolean, nullable=False, default=False, server_default="0")
+    discord = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Array of hero_id (capped at 3 in the app layer)
+    favorite_heroes = Column(JSON, nullable=True)
+    about = Column(Text, nullable=True)
+    # Статус видимости в ленте (миграция 0012, заменил is_searching+TTL):
+    #   ready_now / looking_regular / looking_casual — в ленте (по приоритету)
+    #   hidden — не в ленте (явно скрыл себя)
+    #   NULL   — статус ещё не выбран → юзер увидит обязательный экран выбора
+    # Постоянный (не истекает). Присутствие «в сети» показывает last_active_at.
+    status = Column(String(20), nullable=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    # Когда юзер последний раз делал что-то в miniapp (миграция 0010).
+    # Bump'ится в _tm_bump_last_active на каждом authenticated endpoint'е.
+    # Используется фронтом для отображения «🟢 в сети» / «был N мин назад».
+    last_active_at = Column(DateTime(timezone=True), nullable=True)
+    # Порядковый номер «первопроходца» (миграция 0014). Присваивается при
+    # первом заполнении профиля, пока выдано меньше _TM_FOUNDER_CAP.
+    # NOT NULL ⇒ юзер — первопроходец (янтарная метка на карточке).
+    # NULL     ⇒ обычный юзер. Номер наружу не светим, только факт is_founder.
+    founder_number = Column(Integer, nullable=True)
+
+
+class TeammateRequest(Base):
+    """A request from one user to play together with another user."""
+    __tablename__ = "teammate_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    from_user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    to_user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    # status: pending / accepted / declined
+    status = Column(
+        String(16),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
+    )
+    # Set to True after the 90-minute follow-up reminder has been delivered.
+    review_sent = Column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    # TIMESTAMPTZ — см. миграцию 0008 и комментарий в TeammateProfile выше.
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TeammateReview(Base):
+    """Post-game review left by one user about another."""
+    __tablename__ = "teammate_reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    from_user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False
+    )
+    to_user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    request_id = Column(
+        Integer, ForeignKey("teammate_requests.id"), nullable=False
+    )
+    # Array of tag strings selected by the reviewer.
+    tags = Column(JSON, nullable=False)
+    # TIMESTAMPTZ — см. миграцию 0008.
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class TeammateTag(Base):
+    """Per-user aggregate counter: how many times each tag has been applied.
+
+    Positive pool: Бустер, Душа компании, Командный, No tilted, 1x9.
+    Negative pool: Токсик, Фидер, AFK, Фотограф, Агент Габена.
+    is_positive is stored on every row so a single SELECT can split totals
+    into positive vs negative without an external lookup table.
+    """
+    __tablename__ = "teammate_tags"
+
+    user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), primary_key=True
+    )
+    tag = Column(String(64), primary_key=True)
+    count = Column(Integer, nullable=False, default=1, server_default="1")
+    is_positive = Column(Boolean, nullable=False)
+
+    __table_args__ = (
+        # user_id is the leftmost PK column and already gets a composite index,
+        # but we keep an explicit single-column index to mirror the migration
+        # and the convention used by hero_matchups.ix_hero_matchups_b.
+        Index("ix_teammate_tags_user_id", "user_id"),
+    )
+
+
+# ─── Party-finder («Лобби») ───────────────────────────────────────────────
+
+
+class TeammateLobby(Base):
+    """Instant host-led party-finder лобби (3-5 человек).
+
+    Status lifecycle:
+      open      — собирается, принимает join'ы
+      filled    — все слоты заняты, push разослан, лобби «отплыло»
+      disbanded — host явно распустил
+      expired   — TTL прошёл (см. teammates_notifier worker)
+
+    needed_positions — позиции, которые host ищет (БЕЗ его собственной).
+    Инвариант: party_size == len(needed_positions) + 1, host_position
+    не входит в needed_positions.
+    """
+    __tablename__ = "teammate_lobbies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    host_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=False,
+        index=True,
+    )
+    party_size = Column(Integer, nullable=False)
+    # ranked / normal / turbo — те же значения что и в TeammateProfile.game_modes.
+    mode = Column(String(16), nullable=False)
+    # JSON array of rank strings. NULL = открыто для всех. Обязательно если mode='ranked'.
+    rank_filter = Column(JSON, nullable=True)
+    needed_positions = Column(JSON, nullable=False)
+    host_position = Column(Integer, nullable=False)
+    status = Column(
+        String(16),
+        nullable=False,
+        default="open",
+        server_default="open",
+        index=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    filled_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TeammateLobbySlot(Base):
+    """Один слот лобби. user_id NULL = свободный.
+
+    PK (lobby_id, position): ровно один слот на каждую позицию в лобби.
+    При создании лобби создаётся party_size слотов: host's-position
+    с user_id=host_id, остальные (из needed_positions) с user_id=NULL.
+
+    join: UPDATE … SET user_id=$joiner WHERE lobby_id=$id AND position=$p
+                                          AND user_id IS NULL
+    leave: UPDATE … SET user_id=NULL WHERE lobby_id=$id AND user_id=$leaver
+    """
+    __tablename__ = "teammate_lobby_slots"
+
+    lobby_id = Column(
+        Integer, ForeignKey("teammate_lobbies.id"), primary_key=True
+    )
+    position = Column(Integer, primary_key=True)
+    user_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.user_id"),
+        nullable=True,
+        index=True,
+    )
+    joined_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_teammate_lobby_slots_user_id", "user_id"),
+    )
+
+
+# ─── Bot-editable text templates ──────────────────────────────────────────
+
+
+class BotText(Base):
+    """Override-таблица для текстов, которые шлёт бот.
+
+    Двухуровневая модель: если запись с этим key есть — берётся value;
+    если нет — fallback на DEFAULT_BOT_TEXTS из backend/bot_texts.py.
+    Сброс к дефолту = DELETE row by key.
+
+    Используется через get_text(key, **kwargs) который формирует финальный
+    текст подставляя плейсхолдеры {name}, {user_link}, etc.
+    """
+    __tablename__ = "bot_texts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(64), nullable=False, unique=True, index=True)
+    value = Column(Text, nullable=False)
+    description = Column(String(256), nullable=False, default="", server_default="")
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

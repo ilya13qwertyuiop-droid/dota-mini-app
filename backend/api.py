@@ -172,6 +172,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -1797,3 +1798,1688 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
         }
         for r in rows
     ]
+
+
+# ========== Teammate finder ==========
+#
+# Профиль игрока для поиска тиммейтов + входящие/исходящие запросы + отзывы.
+# Авторизация — существующий get_user_id_by_token (401 при невалидном токене).
+# Логирование запросов — middleware log_requests выше; ничего дополнительно
+# делать не надо.
+
+from datetime import timedelta as _tm_timedelta  # noqa: E402  (локально, чтобы не трогать top-level imports)
+
+from backend.models import (  # noqa: E402
+    TeammateProfile as DBTeammateProfile,
+    TeammateRequest as DBTeammateRequest,
+    TeammateReview as DBTeammateReview,
+    TeammateTag as DBTeammateTag,
+    TeammateLobby as DBTeammateLobby,
+    TeammateLobbySlot as DBTeammateLobbySlot,
+)
+
+
+_TM_VALID_RANKS = frozenset({
+    "Рекрут", "Страж", "Рыцарь", "Герой", "Легенда", "Властелин", "Божество", "Титан",
+})
+_TM_VALID_GAME_MODES = frozenset({"ranked", "normal", "turbo"})
+_TM_POSITIVE_TAGS = frozenset({"Бустер", "Душа компании", "Командный", "No tilted", "1x9"})
+_TM_NEGATIVE_TAGS = frozenset({"Токсик", "Фидер", "AFK", "Фотограф", "Агент Габена"})
+_TM_VALID_TAGS = _TM_POSITIVE_TAGS | _TM_NEGATIVE_TAGS
+
+# Статус видимости в ленте (заменил is_searching+TTL, миграция 0012).
+_TM_VALID_STATUSES = frozenset({
+    "ready_now", "looking_regular", "looking_casual", "hidden",
+})
+# Статусы, при которых профиль показывается в ленте (hidden и NULL — нет).
+# Без приоритезации между ними — статус это фильтр-намерение, не ранжирование.
+_TM_FEED_STATUSES = ("ready_now", "looking_regular", "looking_casual")
+
+_TM_ABOUT_MAX_LEN = 200
+_TM_MAX_FAVORITE_HEROES = 3
+# «Первопроходец» — первым N юзерам, заполнившим профиль, выдаётся
+# founder_number (см. миграцию 0014). Янтарная метка на карточке + счётчик
+# «осталось N мест» на экране заполнения. Сам номер наружу не отдаём.
+_TM_FOUNDER_CAP = 1000
+# Админы (модерация профилей из миниапа). Зеркалит ADMIN_IDS в bot.py —
+# держать в синхроне. Можно переопределить через env TM_ADMIN_IDS="id1,id2".
+_TM_ADMIN_IDS: frozenset[int] = frozenset(
+    int(x) for x in os.environ.get("TM_ADMIN_IDS", "556944111").split(",") if x.strip()
+)
+# Замок «раньше игры быть не могло»: нельзя оставить отзыв раньше, чем
+# проходит партия. Турбо ~20 мин, обычная ~40 — 30 мин это безопасный порог,
+# отсекающий «оценку по переписке» сразу после принятия, почти не задевая
+# честный кейс (реальную игру за меньшее время вместе не сыграть).
+_TM_REVIEW_MIN_MINUTES = 30
+_TM_HOURS_MAX = 100000
+# Soft-лимит на параллельные исходящие запросы. Защита от шотгана:
+# новичок не должен иметь возможность тапнуть «Позвать» на 50 карточках подряд.
+_TM_MAX_OUTGOING_PENDING = 10
+
+# Party-finder («Лобби»)
+_TM_LOBBY_TTL_MINUTES = 30
+_TM_VALID_PARTY_SIZES = frozenset({3, 4, 5})
+# Ранкед-валв-правила: разрешены party 1/2/3/5 (4-стак запрещён). У нас 1-2
+# покрывает обычный 1-на-1 search, поэтому лобби для ranked = 3 или 5.
+_TM_VALID_PARTY_SIZES_RANKED = frozenset({3, 5})
+
+# Используется в inline-кнопке "Открыть" под уведомлением о новом запросе.
+# Если переменная не задана — уведомление всё равно уйдёт, но без кнопки.
+_TM_MINI_APP_URL = os.environ.get("MINI_APP_URL")
+
+
+def _tm_bump_last_active(db: Session, user_id: int) -> None:
+    """Обновляет teammate_profiles.last_active_at = now для данного юзера.
+
+    Best-effort: если у юзера нет teammate_profile (новый юзер, не заполнил
+    форму) — UPDATE с WHERE просто no-op'ит, rowcount=0. Не валим вызов.
+
+    Семантика «last_active»: значение обновляется на КАЖДОМ authenticated
+    teammate-endpoint'е. Auto-polling из миниаппа (30s feed / 90s badge)
+    тоже считается активностью — но это «честно» потому что таймеры paused
+    via Page Visibility API когда вкладка скрыта / телефон заблокирован.
+    Значение реально отражает «миниап открыт перед лицом», а не «процесс
+    тикает в памяти».
+    """
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE teammate_profiles
+                SET last_active_at = :now
+                WHERE user_id = :uid
+                """
+            ),
+            {"now": datetime.now(timezone.utc), "uid": user_id},
+        )
+        db.commit()
+    except Exception:
+        # last_active не критичен — если UPDATE упал (deadlock / лок etc),
+        # просто пропускаем, чтобы не валить основной endpoint.
+        try: db.rollback()
+        except Exception: pass
+
+
+def _tm_authenticate(token: str, db: Session) -> int:
+    """Validate token + bump last_active_at. Use в качестве auth-точки во
+    ВСЕХ teammate-endpoint'ах вместо голого _tm_require_user — это даёт
+    автоматический трекинг активности юзера (см. _tm_bump_last_active)."""
+    uid = _tm_require_user(token=token)
+    _tm_bump_last_active(db, uid)
+    return uid
+
+
+def _tm_require_user(token: str) -> int:
+    """Validates token and returns user_id, or raises 401."""
+    uid = get_user_id_by_token(token)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return uid
+
+
+def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) -> dict:
+    """Base profile payload — fields shared between /me, /feed, /{user_id}.
+
+    `settings` — содержимое user_profiles.settings для данного user_id (если есть).
+    Оттуда подтягиваются telegram-данные (имя/фото/username), чтобы карточка
+    игрока могла показать аватар и ник, а не голый user_id.
+    """
+    s = settings or {}
+    return {
+        "user_id":         p.user_id,
+        "rank":            p.rank,
+        "hours":           p.hours,
+        "positions":       list(p.positions or []),
+        "game_modes":      list(p.game_modes or []),
+        "microphone":      bool(p.microphone),
+        "discord":         bool(p.discord),
+        "favorite_heroes": list(p.favorite_heroes or []),
+        "about":           p.about or "",
+        # Статус видимости/намерения (заменил is_searching). NULL = не выбран.
+        "status":          p.status,
+        # Когда юзер последний раз делал что-то в miniapp (см. _tm_bump_last_active).
+        # Фронт рендерит «🟢 в сети» / «был N мин назад» в meta-row карточки.
+        "last_active_at":  p.last_active_at.isoformat() if p.last_active_at else None,
+        # Первопроходец — янтарная метка на карточке. Сам номер не светим.
+        "is_founder":      p.founder_number is not None,
+        # Telegram identity (из user_profiles.settings)
+        "first_name":      s.get("first_name"),
+        "last_name":       s.get("last_name"),
+        "username":        s.get("username"),
+        "photo_url":       s.get("photo_url"),
+    }
+
+
+def _tm_load_user_settings(db: Session, user_ids: list[int]) -> dict[int, dict]:
+    """Returns {user_id: settings dict} for the given users; empty dict if no row."""
+    if not user_ids:
+        return {}
+    rows = (
+        db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id.in_(user_ids))
+        .all()
+    )
+    return {r.user_id: (r.settings or {}) for r in rows}
+
+
+def _tm_html_safe(value: str | None) -> str:
+    """HTML-escape для безопасной интерполяции в parse_mode=HTML тексты.
+
+    First_name / username приходят из Telegram (валидируется на стороне TG),
+    но всё равно могут содержать `<`, `&`, `"` — без escape'а сообщение
+    отлетит с 400 от Bot API.
+    """
+    import html as _html
+    return _html.escape(value or "", quote=False)
+
+
+async def _tm_send_bot_message(
+    chat_id: int,
+    text: str,
+    with_open_button: bool = False,
+    open_button_url: str | None = None,
+    parse_mode: str | None = None,
+) -> None:
+    """Шлёт сообщение пользователю через Bot API. Fire-and-forget: любая ошибка
+    логируется, исключения наружу не выбрасываются — отправка нотификации
+    никогда не должна валить основной запрос.
+
+    Использует тот же raw-httpx-подход, что и /check-subscription выше (минуя
+    python-telegram-bot Application, который живёт в отдельном процессе bot.py).
+
+    `open_button_url` — кастомный URL для кнопки "Открыть" (например, с
+    query-параметром для deep-link'а внутри миниапа). Если не задан и
+    `with_open_button=True`, используется _TM_MINI_APP_URL как есть.
+    """
+    if not BOT_TOKEN:
+        logger.warning("[tm_notify] BOT_TOKEN missing; skip chat_id=%s", chat_id)
+        return
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload: dict = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if with_open_button:
+        btn_url = open_button_url or _TM_MINI_APP_URL
+        if btn_url:
+            payload["reply_markup"] = {
+                "inline_keyboard": [[
+                    {"text": "Открыть", "web_app": {"url": btn_url}},
+                ]],
+            }
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.post(url, json=payload)
+        if r.status_code != 200:
+            logger.warning(
+                "[tm_notify] sendMessage chat_id=%s failed: %d %s",
+                chat_id, r.status_code, (r.text or "")[:200],
+            )
+    except Exception as e:
+        logger.warning("[tm_notify] sendMessage chat_id=%s error: %s", chat_id, e)
+
+
+def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[dict]]:
+    """Returns {user_id: [{tag, count, is_positive}, ...]} for the given ids."""
+    if not user_ids:
+        return {}
+    rows = (
+        db.query(DBTeammateTag)
+        .filter(DBTeammateTag.user_id.in_(user_ids))
+        .all()
+    )
+    out: dict[int, list[dict]] = {uid: [] for uid in user_ids}
+    for r in rows:
+        out.setdefault(r.user_id, []).append({
+            "tag":         r.tag,
+            "count":       r.count,
+            "is_positive": bool(r.is_positive),
+        })
+    return out
+
+
+# ── Pydantic models ─────────────────────────────────────────────────────────
+
+class TeammateProfileUpsert(BaseModel):
+    token: str
+    rank: str
+    hours: int
+    positions: list[int]
+    game_modes: list[str]
+    microphone: bool
+    discord: bool
+    favorite_heroes: list[int] = []
+    about: str = ""
+
+
+class TeammateTokenOnly(BaseModel):
+    token: str
+
+
+class TeammateRequestCreate(BaseModel):
+    token: str
+    to_user_id: int
+
+
+class TeammateRequestRespond(BaseModel):
+    token: str
+    request_id: int
+    accept: bool
+
+
+class TeammateReviewSubmit(BaseModel):
+    token: str
+    request_id: int
+    tags: list[str]
+
+
+class TeammateRequestCancel(BaseModel):
+    token: str
+    request_id: int
+
+
+class TeammateStatusUpdate(BaseModel):
+    token: str
+    status: str  # ready_now / looking_regular / looking_casual / hidden
+
+
+class TeammateAdminDelete(BaseModel):
+    token: str
+    target_user_id: int
+
+
+# ── Party-finder («Лобби») Pydantic models ──────────────────────────────────
+
+class TeammateLobbyCreate(BaseModel):
+    token: str
+    party_size: int                       # 3 / 4 / 5 (4 запрещён при mode='ranked')
+    mode: str                             # ranked / normal / turbo
+    host_position: int                    # 1..5 — позиция host'а
+    needed_positions: list[int]           # позиции, которые ищем (без host'а)
+    rank_filter: list[str] | None = None  # обязателен для ranked
+
+
+class TeammateLobbyJoin(BaseModel):
+    token: str
+    position: int
+
+
+class TeammateLobbyAction(BaseModel):
+    """Используется для leave / disband — body всех action-endpoint'ов одинаков."""
+    token: str
+
+
+# ── 1. POST /api/teammates/profile — upsert ─────────────────────────────────
+
+@app.post("/api/teammates/profile")
+async def api_teammates_profile_upsert(
+    data: TeammateProfileUpsert, db: Session = Depends(get_db),
+):
+    """Создаёт или обновляет профиль текущего пользователя для поиска тиммейтов."""
+    user_id = _tm_authenticate(data.token, db)
+
+    if data.rank not in _TM_VALID_RANKS:
+        raise HTTPException(status_code=422, detail="invalid rank")
+    if not isinstance(data.hours, int) or data.hours < 0 or data.hours > _TM_HOURS_MAX:
+        raise HTTPException(status_code=422, detail="hours out of range")
+
+    positions = sorted({int(p) for p in data.positions if int(p) in (1, 2, 3, 4, 5)})
+    if not positions:
+        raise HTTPException(status_code=422, detail="positions must contain at least one of 1..5")
+
+    game_modes = sorted({m for m in data.game_modes if m in _TM_VALID_GAME_MODES})
+    if not game_modes:
+        raise HTTPException(status_code=422, detail="game_modes must contain at least one valid mode")
+
+    # Дедуп и обрезка до лимита, чтобы не доверять клиенту слепо.
+    favorite_heroes = list(dict.fromkeys(int(h) for h in (data.favorite_heroes or [])))[:_TM_MAX_FAVORITE_HEROES]
+    about = (data.about or "").strip()[:_TM_ABOUT_MAX_LEN]
+
+    now = datetime.now(timezone.utc)
+    try:
+        profile = db.get(DBTeammateProfile, user_id)
+        if profile is None:
+            # Первопроходец: пока выдано меньше _TM_FOUNDER_CAP номеров, новый
+            # профиль получает следующий. Номер = (выдано) + 1. Гонка двух
+            # параллельных создателей в худшем случае выдаст одинаковый номер —
+            # не страшно, наружу номер не светим, важен только факт is_founder,
+            # а перелёт за cap отсекается ниже.
+            founder_number = None
+            taken = (
+                db.query(DBTeammateProfile)
+                .filter(DBTeammateProfile.founder_number.isnot(None))
+                .count()
+            )
+            if taken < _TM_FOUNDER_CAP:
+                founder_number = taken + 1
+            profile = DBTeammateProfile(
+                user_id=user_id,
+                rank=data.rank,
+                hours=data.hours,
+                positions=positions,
+                game_modes=game_modes,
+                microphone=bool(data.microphone),
+                discord=bool(data.discord),
+                favorite_heroes=favorite_heroes,
+                about=about,
+                # status НЕ задаём — остаётся NULL, чтобы юзер прошёл обязательный
+                # экран выбора статуса в ленте. Профиль и статус — два разных шага.
+                founder_number=founder_number,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(profile)
+        else:
+            profile.rank = data.rank
+            profile.hours = data.hours
+            profile.positions = positions
+            profile.game_modes = game_modes
+            profile.microphone = bool(data.microphone)
+            profile.discord = bool(data.discord)
+            profile.favorite_heroes = favorite_heroes
+            profile.about = about
+            profile.updated_at = now
+        db.commit()
+    except Exception:
+        # Детали (тип исключения, текст БД) пишем в серверный лог, наружу —
+        # generic-текст. Раньше отдавали exc-детали клиенту: это утечка
+        # внутренностей (схема БД, SQL) и непонятно для пользователя.
+        logger.exception("[tm/profile] UNCAUGHT upsert user_id=%s", user_id)
+        try: db.rollback()
+        except Exception: pass
+        raise HTTPException(
+            status_code=500,
+            detail="Не удалось сохранить профиль. Попробуй ещё раз.",
+        )
+    return {"ok": True}
+
+
+# ── 2. GET /api/teammates/profile/me ─────────────────────────────────────────
+# ВАЖНО: объявлен ДО /profile/{user_id}, иначе FastAPI попытается распарсить
+# "me" как int и вернёт 422.
+
+@app.get("/api/teammates/profile/me")
+async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
+    """Возвращает свой профиль (со статусом и тегами) или null.
+
+    Поле status: ready_now / looking_regular / looking_casual / hidden / null.
+    null = статус ещё не выбран → фронт покажет обязательный экран выбора.
+    """
+    user_id = _tm_authenticate(token, db)
+    try:
+        profile = db.get(DBTeammateProfile, user_id)
+        if profile is None:
+            return None
+
+        user_row = db.get(DBUserProfile, user_id)
+        settings = (user_row.settings if user_row else None) or {}
+        out = _tm_serialize_profile(profile, settings)  # уже включает status
+        out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
+        # Флаг админа — фронт по нему показывает кнопку модерации на карточках.
+        out["is_admin"] = user_id in _TM_ADMIN_IDS
+        return out
+    except Exception:
+        logger.exception("[tm/profile/me] UNCAUGHT user_id=%s", user_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Не удалось загрузить профиль. Попробуй ещё раз.",
+        )
+
+
+# ── 2b. GET /api/teammates/founders — счётчик «первопроходцев» ───────────────
+
+@app.get("/api/teammates/founders")
+async def api_teammates_founders(db: Session = Depends(get_db)):
+    """Сколько мест «первопроходца» выдано и сколько осталось.
+
+    Не требует токена — это публичный счётчик для экрана заполнения профиля
+    («осталось N мест»). Номера наружу не отдаём, только агрегаты.
+    """
+    taken = (
+        db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.founder_number.isnot(None))
+        .count()
+    )
+    return {
+        "cap": _TM_FOUNDER_CAP,
+        "taken": taken,
+        "remaining": max(0, _TM_FOUNDER_CAP - taken),
+    }
+
+
+# ── 2c. POST /api/teammates/admin/delete_profile — модерация (только админ) ──
+
+@app.post("/api/teammates/admin/delete_profile")
+async def api_teammates_admin_delete_profile(
+    data: TeammateAdminDelete, db: Session = Depends(get_db),
+):
+    """Удаляет teammate-профиль игрока. Только для админов (_TM_ADMIN_IDS).
+
+    Модерация: убирает плохой профиль из ленты/просмотров. Чистим сам профиль
+    + накопленные на нём теги-репутацию, а его pending-запросы переводим в
+    cancelled (чтобы не висели у получателей). Отзывы/история не трогаем —
+    они ссылаются на user_id и безвредны без профиля."""
+    user_id = _tm_authenticate(data.token, db)
+    if user_id not in _TM_ADMIN_IDS:
+        raise HTTPException(status_code=403, detail="admin only")
+
+    target = data.target_user_id
+    profile = db.get(DBTeammateProfile, target)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+
+    # Pending-запросы игрока (входящие и исходящие) → cancelled.
+    db.query(DBTeammateRequest).filter(
+        ((DBTeammateRequest.from_user_id == target) |
+         (DBTeammateRequest.to_user_id == target)),
+        DBTeammateRequest.status == "pending",
+    ).update({DBTeammateRequest.status: "cancelled"}, synchronize_session=False)
+
+    # Накопленные на игроке теги (его репутация в ленте).
+    db.query(DBTeammateTag).filter(DBTeammateTag.user_id == target).delete(
+        synchronize_session=False
+    )
+
+    db.delete(profile)
+    db.commit()
+    logger.info("[tm/admin] profile %s deleted by admin %s", target, user_id)
+    return {"ok": True}
+
+
+# ── 3. POST /api/teammates/status — установить статус видимости ──────────────
+
+@app.post("/api/teammates/status")
+async def api_teammates_status_set(
+    data: TeammateStatusUpdate, db: Session = Depends(get_db),
+):
+    """Ставит статус профиля. Используется и обязательным экраном выбора при
+    первом заходе, и быстрым переключателем сверху ленты.
+
+    Заменил пару search/start + search/stop из старой TTL-модели."""
+    user_id = _tm_authenticate(data.token, db)
+    if data.status not in _TM_VALID_STATUSES:
+        raise HTTPException(status_code=422, detail="invalid status")
+
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        raise HTTPException(
+            status_code=400,
+            detail="profile not found — fill in profile first",
+        )
+    profile.status = data.status
+    profile.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "status": data.status}
+
+
+# ── 5. GET /api/teammates/feed ──────────────────────────────────────────────
+
+@app.get("/api/teammates/feed")
+async def api_teammates_feed(
+    token: str,
+    ranks: str | None = None,
+    positions: str | None = None,
+    game_modes: str | None = None,
+    statuses: str | None = None,
+    microphone: bool | None = None,
+    discord: bool | None = None,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Лента игроков по статусу видимости.
+
+    Модель статуса (миграция 0012, заменила is_searching+TTL):
+      • показываем только status IN (ready_now, looking_regular, looking_casual)
+        — hidden и NULL не в ленте.
+      • БЕЗ приоритезации по статусу — все статусы равны. Сортировка чисто по
+        свежести активности (last_active_at desc) = «по мере появления».
+        Статус — это фильтр-намерение, а не ранжирующий фактор.
+      • опциональный фильтр `statuses` (comma-separated) — показать только
+        выбранные статусы (например, только тех кто «готов сейчас»).
+
+    Пагинация — offset-based (cursor = смещение). Пул активных невелик —
+    грузим капнутый набор, режем по offset.
+
+    Boolean-фильтры microphone/discord — True оставляет только тех у кого флаг
+    тоже True; False = «нет фильтра».
+    """
+    user_id = _tm_authenticate(token, db)
+    offset = int(cursor) if cursor is not None and cursor > 0 else 0
+
+    # Какие статусы показывать. По умолчанию — все feed-статусы. Если задан
+    # фильтр statuses — пересекаем с допустимыми (hidden/мусор отсекаются).
+    status_set = set(_TM_FEED_STATUSES)
+    if statuses:
+        requested = {s.strip() for s in statuses.split(",") if s.strip()}
+        status_set = requested & set(_TM_FEED_STATUSES)
+        if not status_set:
+            # Запросили только невалидные/hidden — пустая лента.
+            return {"items": [], "next_cursor": None}
+
+    q = (
+        db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.status.in_(status_set))
+        .filter(DBTeammateProfile.user_id != user_id)
+    )
+
+    # Ranks — мультивыбор, comma-separated (как и positions / game_modes).
+    if ranks:
+        rank_set = {r.strip() for r in ranks.split(",") if r.strip()}
+        invalid = rank_set - _TM_VALID_RANKS
+        if invalid:
+            raise HTTPException(status_code=422, detail="invalid rank value(s)")
+        if rank_set:
+            q = q.filter(DBTeammateProfile.rank.in_(rank_set))
+
+    # Boolean column filters — SQL-side, чтобы не тащить лишние строки в Python.
+    if microphone:
+        q = q.filter(DBTeammateProfile.microphone == True)  # noqa: E712
+    if discord:
+        q = q.filter(DBTeammateProfile.discord == True)     # noqa: E712
+
+    # Сортировка — по свежести активности (индекс). Никакой статус-приоритезации.
+    _FEED_HARD_CAP = 500
+    q = q.order_by(DBTeammateProfile.last_active_at.desc().nullslast())
+    raw_rows = q.limit(_FEED_HARD_CAP).all()
+
+    pos_filter: set[int] | None = None
+    if positions:
+        try:
+            pos_filter = {int(x) for x in positions.split(",") if x.strip()}
+        except ValueError:
+            raise HTTPException(status_code=422, detail="positions must be comma-separated integers")
+        pos_filter = {p for p in pos_filter if p in (1, 2, 3, 4, 5)} or None
+
+    mode_filter: set[str] | None = None
+    if game_modes:
+        mode_filter = {m.strip() for m in game_modes.split(",") if m.strip()}
+        mode_filter = (mode_filter & _TM_VALID_GAME_MODES) or None
+
+    # JSON-фильтры позиций/режимов — в Python (JSON-операторы разнятся SQLite/PG).
+    # raw_rows уже отсортирован по активности — порядок сохраняется.
+    matched: list[DBTeammateProfile] = []
+    for p in raw_rows:
+        if pos_filter and not (set(p.positions or []) & pos_filter):
+            continue
+        if mode_filter and not (set(p.game_modes or []) & mode_filter):
+            continue
+        matched.append(p)
+
+    # Offset-пагинация по уже отсортированному (по активности) списку.
+    page = matched[offset: offset + limit]
+
+    feed_ids = [p.user_id for p in page]
+    tags_by_user = _tm_load_tags_grouped(db, feed_ids)
+    settings_by_user = _tm_load_user_settings(db, feed_ids)
+    items: list[dict] = []
+    for p in page:
+        item = _tm_serialize_profile(p, settings_by_user.get(p.user_id))
+        item["tags"] = tags_by_user.get(p.user_id, [])
+        items.append(item)
+
+    next_offset = offset + limit
+    next_cursor = next_offset if next_offset < len(matched) else None
+    return {"items": items, "next_cursor": next_cursor}
+
+
+# ── 6. POST /api/teammates/request — отправить запрос ───────────────────────
+
+@app.post("/api/teammates/request")
+async def api_teammates_request_create(
+    data: TeammateRequestCreate, db: Session = Depends(get_db),
+):
+    """Создаёт pending-запрос от текущего пользователя к to_user_id."""
+    user_id = _tm_authenticate(data.token, db)
+
+    if data.to_user_id == user_id:
+        raise HTTPException(status_code=422, detail="cannot request yourself")
+
+    existing = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.from_user_id == user_id)
+        .filter(DBTeammateRequest.to_user_id == data.to_user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="request already exists")
+
+    # Soft rate-limit на одновременные pending'и. Защита от ситуации, когда
+    # юзер тапает «Позвать» на 30 карточках подряд из любопытства — каждая
+    # генерит push, получатели не понимают что происходит.
+    pending_count = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.from_user_id == user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .count()
+    )
+    if pending_count >= _TM_MAX_OUTGOING_PENDING:
+        raise HTTPException(
+            status_code=429,
+            detail=f"У тебя уже {pending_count} запросов в ожидании. Дождись ответа или отмени старые.",
+        )
+
+    req = DBTeammateRequest(
+        from_user_id=user_id,
+        to_user_id=data.to_user_id,
+        status="pending",
+        review_sent=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+
+    # Достаём имя отправителя для персонализации push'а. «Иван хочет играть»
+    # читается ощутимо лучше, чем «Кто-то хочет играть» — у получателя сразу
+    # есть контекст «о, это конкретный человек, открою посмотрю».
+    sender_row = db.get(DBUserProfile, user_id)
+    sender_settings = (sender_row.settings if sender_row else None) or {}
+    sender_name = (sender_settings.get("first_name") or "").strip() or "Игрок"
+
+    incoming_url = (
+        f"{_TM_MINI_APP_URL}?tm_incoming=1" if _TM_MINI_APP_URL else None
+    )
+    # Шаблон — admin-редактируемый через /admin_text tm_push_new_request.
+    # Дефолт см. backend/bot_texts.py:DEFAULT_BOT_TEXTS. {sender_name}
+    # экранируется через _tm_html_safe ДО форматирования — попадает в шаблон
+    # как уже-HTML-safe значение.
+    from backend.bot_texts import get_text as _get_bot_text
+    push_text = _get_bot_text(
+        "tm_push_new_request",
+        sender_name=_tm_html_safe(sender_name),
+    )
+    await _tm_send_bot_message(
+        chat_id=data.to_user_id,
+        text=push_text,
+        with_open_button=True,
+        open_button_url=incoming_url,
+        parse_mode="HTML",
+    )
+
+    return {"ok": True, "request_id": req.id}
+
+
+# ── 7. POST /api/teammates/request/respond — accept/decline ─────────────────
+
+@app.post("/api/teammates/request/respond")
+async def api_teammates_request_respond(
+    data: TeammateRequestRespond, db: Session = Depends(get_db),
+):
+    """Принять/отклонить входящий запрос."""
+    user_id = _tm_authenticate(data.token, db)
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.to_user_id != user_id:
+        raise HTTPException(status_code=403, detail="not the recipient of this request")
+    if req.status != "pending":
+        raise HTTPException(status_code=409, detail="request already resolved")
+
+    if data.accept:
+        req.status = "accepted"
+        req.accepted_at = datetime.now(timezone.utc)
+    else:
+        req.status = "declined"
+
+    # Снимаем строки бэка с FK до сетевых вызовов — не держим транзакцию
+    # открытой на время HTTP к Bot API.
+    from_id = req.from_user_id
+    to_id   = req.to_user_id
+    accepted = (req.status == "accepted")
+    db.commit()
+
+    # Раньше тут был auto-stop поиска для обоих участников. В status-модели
+    # (миграция 0012) статус постоянный и юзер сам им управляет — насильно
+    # менять его на accept'е неправильно (человек может хотеть ещё поиграть).
+    # Поэтому статус НЕ трогаем.
+
+    if accepted:
+        # Подтягиваем имена / usernames обоих участников.
+        settings_map = _tm_load_user_settings(db, [from_id, to_id])
+        from_s = settings_map.get(from_id) or {}
+        to_s   = settings_map.get(to_id)   or {}
+
+        from_name = (from_s.get("first_name") or "").strip() or "тиммейт"
+        to_name   = (to_s.get("first_name")   or "").strip() or "тиммейт"
+        from_uname = (from_s.get("username") or "").lstrip("@").strip()
+        to_uname   = (to_s.get("username")   or "").lstrip("@").strip()
+
+        # Ключевое: tg://user?id=N открывает чат с пользователем НЕЗАВИСИМО
+        # от наличия у него username. Раньше при отсутствии @ хвост вообще
+        # пропадал — получатель видел «Напиши Иван — он ждёт» и не понимал
+        # куда писать. Теперь имя — это clickable-ссылка в любом случае.
+        from_link = f'<a href="tg://user?id={from_id}">{_tm_html_safe(from_name)}</a>'
+        to_link   = f'<a href="tg://user?id={to_id}">{_tm_html_safe(to_name)}</a>'
+        from_handle = f" (@{_tm_html_safe(from_uname)})" if from_uname else ""
+        to_handle   = f" (@{_tm_html_safe(to_uname)})"   if to_uname   else ""
+
+        # Шаблоны admin-редактируются через /admin_text tm_push_accepted_*.
+        # Плейсхолдеры подставляются здесь — _tm_html_safe + готовые <a>-теги
+        # уже HTML-safe и попадают в шаблон as-is.
+        from backend.bot_texts import get_text as _get_bot_text
+        await _tm_send_bot_message(
+            chat_id=from_id,
+            text=_get_bot_text(
+                "tm_push_accepted_to_sender",
+                receiver_name=_tm_html_safe(to_name),
+                receiver_link=to_link,
+                receiver_handle=to_handle,
+            ),
+            parse_mode="HTML",
+        )
+        await _tm_send_bot_message(
+            chat_id=to_id,
+            text=_get_bot_text(
+                "tm_push_accepted_to_receiver",
+                sender_name=_tm_html_safe(from_name),
+                sender_link=from_link,
+                sender_handle=from_handle,
+            ),
+            parse_mode="HTML",
+        )
+
+    return {"ok": True}
+
+
+# ── 8. GET /api/teammates/requests/incoming ─────────────────────────────────
+
+@app.get("/api/teammates/requests/incoming")
+async def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
+    """Входящие pending-запросы с прикреплённым профилем отправителя."""
+    user_id = _tm_authenticate(token, db)
+
+    rows = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.to_user_id == user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .order_by(DBTeammateRequest.created_at.desc())
+        .all()
+    )
+
+    from_ids = [r.from_user_id for r in rows]
+    profiles_map = {
+        p.user_id: p
+        for p in db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id.in_(from_ids))
+        .all()
+    }
+    tags_by_user = _tm_load_tags_grouped(db, from_ids)
+    settings_by_user = _tm_load_user_settings(db, from_ids)
+
+    result: list[dict] = []
+    for r in rows:
+        profile = profiles_map.get(r.from_user_id)
+        profile_payload = None
+        if profile is not None:
+            profile_payload = _tm_serialize_profile(profile, settings_by_user.get(r.from_user_id))
+            profile_payload["tags"] = tags_by_user.get(r.from_user_id, [])
+        result.append({
+            "request_id":   r.id,
+            "from_user_id": r.from_user_id,
+            "created_at":   r.created_at.isoformat() if r.created_at else None,
+            "profile":      profile_payload,
+        })
+    return result
+
+
+# ── 9. POST /api/teammates/review — оставить отзыв ──────────────────────────
+
+@app.post("/api/teammates/review")
+async def api_teammates_review_submit(
+    data: TeammateReviewSubmit, db: Session = Depends(get_db),
+):
+    """Сохраняет отзыв (список тегов) и инкрементит счётчики в teammate_tags.
+
+    Оставить отзыв может любой из участников accepted-запроса. Цель отзыва —
+    другой участник. Повторный отзыв тем же пользователем по тому же
+    request_id — 409.
+    """
+    user_id = _tm_authenticate(data.token, db)
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.status != "accepted":
+        raise HTTPException(status_code=409, detail="request is not in accepted status")
+    if user_id != req.from_user_id and user_id != req.to_user_id:
+        raise HTTPException(status_code=403, detail="not a participant of this request")
+
+    target_user_id = req.to_user_id if user_id == req.from_user_id else req.from_user_id
+
+    # Дедуп ПО ПАРЕ игроков (from→to), а не по request_id: один человек может
+    # оставить другому ровно один отзыв навсегда — тегов сколько угодно, но
+    # один раз. Иначе повторные коннекты тех же двоих позволяли бы накручивать
+    # счётчики тегов в профиле. Направленно: A→B и B→A — разные отзывы.
+    already = (
+        db.query(DBTeammateReview)
+        .filter(DBTeammateReview.from_user_id == user_id)
+        .filter(DBTeammateReview.to_user_id == target_user_id)
+        .first()
+    )
+    if already is not None:
+        raise HTTPException(status_code=409, detail="Ты уже оставлял отзыв этому игроку")
+
+    # Замок по длине катки: раньше _TM_REVIEW_MIN_MINUTES игры быть не могло,
+    # значит это «оценка по переписке» — отклоняем. accepted_at выставлен при
+    # accept'е; если вдруг None — замок пропускаем (не блокируем легитимный кейс).
+    if req.accepted_at is not None:
+        accepted_at = req.accepted_at
+        if accepted_at.tzinfo is None:
+            accepted_at = accepted_at.replace(tzinfo=timezone.utc)
+        elapsed_min = (datetime.now(timezone.utc) - accepted_at).total_seconds() / 60.0
+        if elapsed_min < _TM_REVIEW_MIN_MINUTES:
+            raise HTTPException(
+                status_code=409,
+                detail="Оценить можно после игры — кнопка станет доступна чуть позже.",
+            )
+
+    # Дедуп + валидация против заранее заданного словаря тегов.
+    raw_tags = list(dict.fromkeys((t or "").strip() for t in (data.tags or [])))
+    valid_tags = [t for t in raw_tags if t in _TM_VALID_TAGS]
+    if not valid_tags:
+        raise HTTPException(status_code=422, detail="no valid tags provided")
+
+    now = datetime.now(timezone.utc)
+
+    db.add(DBTeammateReview(
+        from_user_id=user_id,
+        to_user_id=target_user_id,
+        request_id=data.request_id,
+        tags=valid_tags,
+        created_at=now,
+    ))
+
+    # Upsert teammate_tags (user_id, tag): создаём с count=1 или инкрементим.
+    for tag in valid_tags:
+        is_positive = tag in _TM_POSITIVE_TAGS
+        row = db.get(DBTeammateTag, (target_user_id, tag))
+        if row is None:
+            db.add(DBTeammateTag(
+                user_id=target_user_id,
+                tag=tag,
+                count=1,
+                is_positive=is_positive,
+            ))
+        else:
+            row.count = (row.count or 0) + 1
+
+    db.commit()
+    return {"ok": True}
+
+
+# ── 10. GET /api/teammates/profile/{user_id} — публичный профиль ────────────
+# Объявлен ПОСЛЕ /profile/me — иначе "me" попадёт в этот роут и упадёт на
+# приведении к int.
+
+@app.get("/api/teammates/profile/{user_id}")
+async def api_teammates_profile_public(
+    user_id: int, token: str, db: Session = Depends(get_db),
+):
+    """Профиль игрока + накопленные теги. Требует валидный токен.
+
+    Раньше эндпоинт был открыт без авторизации и отдавал Telegram-идентичность
+    (имя, @username, фото) любого user_id. Так как user_id = Telegram ID и они
+    перебираемы, это позволяло без входа собрать контакты всех зарегистрированных
+    (в т.ч. со статусом hidden). Теперь нужен токен — как у /feed и остальных."""
+    _tm_authenticate(token, db)
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+    user_row = db.get(DBUserProfile, user_id)
+    settings = (user_row.settings if user_row else None) or {}
+    out = _tm_serialize_profile(profile, settings)
+    out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
+    return out
+
+
+# ── 11. GET /api/teammates/requests/outgoing ────────────────────────────────
+
+@app.get("/api/teammates/requests/outgoing")
+async def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
+    """Исходящие pending-запросы текущего пользователя с профилем получателя."""
+    user_id = _tm_authenticate(token, db)
+
+    rows = (
+        db.query(DBTeammateRequest)
+        .filter(DBTeammateRequest.from_user_id == user_id)
+        .filter(DBTeammateRequest.status == "pending")
+        .order_by(DBTeammateRequest.created_at.desc())
+        .all()
+    )
+
+    to_ids = [r.to_user_id for r in rows]
+    profiles_map = {
+        p.user_id: p
+        for p in db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id.in_(to_ids))
+        .all()
+    }
+    tags_by_user = _tm_load_tags_grouped(db, to_ids)
+    settings_by_user = _tm_load_user_settings(db, to_ids)
+
+    result: list[dict] = []
+    for r in rows:
+        profile = profiles_map.get(r.to_user_id)
+        profile_payload = None
+        if profile is not None:
+            profile_payload = _tm_serialize_profile(profile, settings_by_user.get(r.to_user_id))
+            profile_payload["tags"] = tags_by_user.get(r.to_user_id, [])
+        result.append({
+            "request_id": r.id,
+            "to_user_id": r.to_user_id,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "profile":    profile_payload,
+        })
+    return result
+
+
+# ── 12. GET /api/teammates/requests/history ─────────────────────────────────
+
+@app.get("/api/teammates/requests/history")
+async def api_teammates_requests_history(
+    token: str,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = None,   # ISO-строка accepted_at последней показанной строки
+    db: Session = Depends(get_db),
+):
+    """Принятые запросы, где пользователь — отправитель ИЛИ получатель.
+
+    Курсор — ISO-формат `accepted_at` последней отданной строки. Сортировка
+    accepted_at DESC; следующая страница — строки строго раньше курсора.
+    """
+    user_id = _tm_authenticate(token, db)
+
+    q = (
+        db.query(DBTeammateRequest)
+        .filter(
+            (DBTeammateRequest.from_user_id == user_id) |
+            (DBTeammateRequest.to_user_id == user_id)
+        )
+        .filter(DBTeammateRequest.status == "accepted")
+        .filter(DBTeammateRequest.accepted_at.isnot(None))
+    )
+
+    if cursor:
+        try:
+            cursor_dt = datetime.fromisoformat(cursor)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid cursor")
+        # accepted_at теперь TIMESTAMPTZ (миграция 0008). Сравнение работает
+        # с любым tz-aware значением напрямую. Naive-cursor подгоняем к UTC
+        # для обратной совместимости с фронтом, который мог отдать строку
+        # без TZ-маркера до прохождения миграции.
+        if cursor_dt.tzinfo is None:
+            cursor_dt = cursor_dt.replace(tzinfo=timezone.utc)
+        q = q.filter(DBTeammateRequest.accepted_at < cursor_dt)
+
+    rows = (
+        q.order_by(DBTeammateRequest.accepted_at.desc())
+         .limit(limit)
+         .all()
+    )
+
+    # Определяем "другого" участника для каждой строки.
+    other_ids = []
+    for r in rows:
+        other_ids.append(r.to_user_id if r.from_user_id == user_id else r.from_user_id)
+
+    profiles_map = {
+        p.user_id: p
+        for p in db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id.in_(other_ids))
+        .all()
+    }
+    tags_by_user = _tm_load_tags_grouped(db, other_ids)
+    settings_by_user = _tm_load_user_settings(db, other_ids)
+
+    # Оставил ли текущий юзер отзыв этому ЧЕЛОВЕКУ (по паре, не по request_id —
+    # согласовано с дедупом в /review). Если да, все записи с этим игроком в
+    # истории показываются как «отзыв оставлен», а не предлагают оценить снова.
+    reviewed_user_ids: set[int] = set()
+    if other_ids:
+        review_rows = (
+            db.query(DBTeammateReview.to_user_id)
+            .filter(DBTeammateReview.from_user_id == user_id)
+            .filter(DBTeammateReview.to_user_id.in_(other_ids))
+            .all()
+        )
+        reviewed_user_ids = {row[0] for row in review_rows}
+
+    items: list[dict] = []
+    for r in rows:
+        other_id = r.to_user_id if r.from_user_id == user_id else r.from_user_id
+        profile = profiles_map.get(other_id)
+        profile_payload = None
+        if profile is not None:
+            profile_payload = _tm_serialize_profile(profile, settings_by_user.get(other_id))
+            profile_payload["tags"] = tags_by_user.get(other_id, [])
+        items.append({
+            "request_id":     r.id,
+            "other_user_id":  other_id,
+            "accepted_at":    r.accepted_at.isoformat() if r.accepted_at else None,
+            "profile":        profile_payload,
+            "my_review_left": other_id in reviewed_user_ids,
+        })
+
+    next_cursor = items[-1]["accepted_at"] if len(items) == limit and items else None
+    return {"items": items, "next_cursor": next_cursor}
+
+
+# ── 13. POST /api/teammates/request/cancel ──────────────────────────────────
+
+@app.post("/api/teammates/request/cancel")
+async def api_teammates_request_cancel(
+    data: TeammateRequestCancel, db: Session = Depends(get_db),
+):
+    """Отмена исходящего pending-запроса автором. Переводит status в 'cancelled'.
+
+    Получатель не получает отдельного push'а: запрос просто исчезает у него
+    из входящих при следующем рефреше. Это интенциональный low-touch:
+    «передумал — убрал тихо». История запросов это значение не показывает
+    (history фильтрует по status='accepted').
+    """
+    user_id = _tm_authenticate(data.token, db)
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.from_user_id != user_id:
+        raise HTTPException(status_code=403, detail="not the sender of this request")
+    if req.status != "pending":
+        raise HTTPException(status_code=409, detail="request already resolved")
+
+    req.status = "cancelled"
+    db.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Party-finder («Лобби»)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _tm_user_active_lobby_id(db: Session, user_id: int) -> int | None:
+    """Возвращает id активного лобби, в котором участвует user (host или slot),
+    либо None. Активное = status='open' AND expires_at > now."""
+    now = datetime.now(timezone.utc)
+    # Host-membership: лобби со status='open' и я хост.
+    host_lobby = (
+        db.query(DBTeammateLobby.id)
+        .filter(DBTeammateLobby.host_id == user_id)
+        .filter(DBTeammateLobby.status == "open")
+        .filter(DBTeammateLobby.expires_at > now)
+        .first()
+    )
+    if host_lobby:
+        return host_lobby[0]
+    # Slot-membership: ищу слот с этим user_id в активном лобби.
+    slot = (
+        db.query(DBTeammateLobbySlot.lobby_id)
+        .join(DBTeammateLobby, DBTeammateLobby.id == DBTeammateLobbySlot.lobby_id)
+        .filter(DBTeammateLobbySlot.user_id == user_id)
+        .filter(DBTeammateLobby.status == "open")
+        .filter(DBTeammateLobby.expires_at > now)
+        .first()
+    )
+    return slot[0] if slot else None
+
+
+def _tm_serialize_lobby(
+    db: Session,
+    lobby: DBTeammateLobby,
+    slots: list[DBTeammateLobbySlot] | None = None,
+) -> dict:
+    """Сериализует лобби с полным списком слотов (host'а + всех остальных).
+
+    Каждый слот включает мини-профиль user'а (имя/аватар/ранг), если занят.
+    slots — опциональная предзагрузка; если None, грузим внутри (для batch'а
+    list-endpoint'а лучше предзагружать снаружи и передавать сюда).
+    """
+    if slots is None:
+        slots = (
+            db.query(DBTeammateLobbySlot)
+            .filter(DBTeammateLobbySlot.lobby_id == lobby.id)
+            .all()
+        )
+
+    # Загружаем профили + settings'ы участников одним batch'ем.
+    user_ids = [s.user_id for s in slots if s.user_id is not None]
+    if user_ids:
+        profiles_map = {
+            p.user_id: p
+            for p in db.query(DBTeammateProfile)
+            .filter(DBTeammateProfile.user_id.in_(user_ids))
+            .all()
+        }
+        settings_by_user = _tm_load_user_settings(db, user_ids)
+    else:
+        profiles_map, settings_by_user = {}, {}
+
+    def slot_payload(s: DBTeammateLobbySlot) -> dict:
+        if s.user_id is None:
+            return {"position": s.position, "user": None}
+        prof = profiles_map.get(s.user_id)
+        if prof is None:
+            # Юзер существует в TG, но без teammate-профиля — редкий edge
+            # (заполнил профиль host'а до миграции?). Возвращаем минимум.
+            user_data = {
+                "user_id": s.user_id,
+                **(settings_by_user.get(s.user_id) or {}),
+                "rank": None,
+            }
+        else:
+            user_data = _tm_serialize_profile(prof, settings_by_user.get(s.user_id))
+        return {
+            "position": s.position,
+            "user": user_data,
+            "joined_at": s.joined_at.isoformat() if s.joined_at else None,
+        }
+
+    return {
+        "lobby_id":          lobby.id,
+        "host_id":           lobby.host_id,
+        "host_position":     lobby.host_position,
+        "party_size":        lobby.party_size,
+        "mode":              lobby.mode,
+        "rank_filter":       list(lobby.rank_filter or []) or None,
+        "needed_positions":  list(lobby.needed_positions or []),
+        "status":            lobby.status,
+        "created_at":        lobby.created_at.isoformat() if lobby.created_at else None,
+        "expires_at":        lobby.expires_at.isoformat() if lobby.expires_at else None,
+        "filled_at":         lobby.filled_at.isoformat() if lobby.filled_at else None,
+        "slots": sorted(
+            [slot_payload(s) for s in slots],
+            key=lambda x: x["position"],
+        ),
+    }
+
+
+async def _tm_send_lobby_join_push(
+    db: Session, lobby: DBTeammateLobby, joiner_id: int, position: int,
+) -> None:
+    """Host получает пуш «X присоединился на Pos N»."""
+    settings_map = _tm_load_user_settings(db, [joiner_id])
+    joiner_s = settings_map.get(joiner_id) or {}
+    joiner_name = (joiner_s.get("first_name") or "").strip() or "Игрок"
+    open_url = f"{_TM_MINI_APP_URL}?tm_lobby={lobby.id}" if _TM_MINI_APP_URL else None
+    # NB: переменная называется message_text, не text — чтобы не shadow'ить
+    # модульный `from sqlalchemy import text`. Если когда-нибудь добавишь
+    # в эту функцию raw SQL — будет работать без сюрпризов.
+    message_text = (
+        f"➕ <b>{_tm_html_safe(joiner_name)}</b> присоединился на Pos {position}"
+    )
+    await _tm_send_bot_message(
+        chat_id=lobby.host_id,
+        text=message_text,
+        with_open_button=True,
+        open_button_url=open_url,
+        parse_mode="HTML",
+    )
+
+
+async def _tm_send_lobby_filled_pushes(db: Session, lobby: DBTeammateLobby) -> None:
+    """Когда последний слот занят: рассылаем ВСЕМ участникам список @ников
+    с tg://-ссылками, чтобы каждый мог тапнуть и начать чат / собрать группу."""
+    slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id == lobby.id)
+        .all()
+    )
+    user_ids = [s.user_id for s in slots if s.user_id is not None]
+    if not user_ids:
+        return
+    settings_map = _tm_load_user_settings(db, user_ids)
+
+    # Строим список @юзернеймов с tg://-ссылками. Если у юзера нет username,
+    # подставляем first_name (clickable через tg://user?id=).
+    members_html_parts: list[str] = []
+    for uid in user_ids:
+        s = settings_map.get(uid) or {}
+        name = (s.get("first_name") or "").strip() or "тиммейт"
+        uname = (s.get("username") or "").lstrip("@").strip()
+        if uname:
+            members_html_parts.append(
+                f'<a href="tg://user?id={uid}">{_tm_html_safe(name)}</a> '
+                f'(@{_tm_html_safe(uname)})'
+            )
+        else:
+            members_html_parts.append(
+                f'<a href="tg://user?id={uid}">{_tm_html_safe(name)}</a>'
+            )
+    members_block = "\n".join(f"• {p}" for p in members_html_parts)
+
+    # message_text вместо text — см. комментарий в _tm_send_lobby_join_push.
+    message_text = (
+        f"🎮 <b>Пати собрана!</b>\n\n"
+        f"{members_block}\n\n"
+        f"Создайте групповой чат и стартуйте."
+    )
+
+    # Шлём каждому участнику. Параллельная рассылка через httpx-клиент
+    # внутри _tm_send_bot_message — приемлемо.
+    for uid in user_ids:
+        await _tm_send_bot_message(
+            chat_id=uid,
+            text=message_text,
+            parse_mode="HTML",
+        )
+
+
+async def _tm_send_lobby_disband_pushes(
+    db: Session, lobby: DBTeammateLobby, by_host: bool,
+) -> None:
+    """Host распустил → шлём всем members. by_host для текстовки."""
+    slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id == lobby.id)
+        .filter(DBTeammateLobbySlot.user_id.isnot(None))
+        .filter(DBTeammateLobbySlot.user_id != lobby.host_id)
+        .all()
+    )
+    if not slots:
+        return
+    text = "❌ Хост распустил лобби." if by_host else "❌ Лобби распущено."
+    for s in slots:
+        await _tm_send_bot_message(chat_id=s.user_id, text=text)
+
+
+# ── L1. POST /api/teammates/lobby — create ──────────────────────────────────
+
+@app.post("/api/teammates/lobby")
+async def api_teammates_lobby_create(
+    data: TeammateLobbyCreate, db: Session = Depends(get_db),
+):
+    """Создаёт лобби. Host автоматически занимает свой слот."""
+    user_id = _tm_authenticate(data.token, db)
+
+    # Профиль обязателен — без него host не сможет показать ранг/позицию.
+    profile = db.get(DBTeammateProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
+
+    # Не даём создать лобби, если юзер уже в активном лобби.
+    if _tm_user_active_lobby_id(db, user_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ты уже в активном лобби. Выйди из него, чтобы создать новое.",
+        )
+
+    # Валидация полей.
+    if data.mode not in _TM_VALID_GAME_MODES:
+        raise HTTPException(status_code=422, detail="invalid mode")
+    if data.party_size not in _TM_VALID_PARTY_SIZES:
+        raise HTTPException(status_code=422, detail="invalid party_size")
+    if data.mode == "ranked" and data.party_size not in _TM_VALID_PARTY_SIZES_RANKED:
+        raise HTTPException(
+            status_code=422,
+            detail="В рейтинге 4-стак запрещён правилами Доты",
+        )
+
+    if data.host_position not in (1, 2, 3, 4, 5):
+        raise HTTPException(status_code=422, detail="invalid host_position")
+
+    needed = list(data.needed_positions or [])
+    if len(needed) != data.party_size - 1:
+        raise HTTPException(
+            status_code=422,
+            detail="needed_positions должен содержать party_size - 1 значений",
+        )
+    if len(set(needed)) != len(needed):
+        raise HTTPException(status_code=422, detail="duplicate needed_positions")
+    for p in needed:
+        if p not in (1, 2, 3, 4, 5):
+            raise HTTPException(status_code=422, detail="invalid position in needed_positions")
+    if data.host_position in needed:
+        raise HTTPException(
+            status_code=422,
+            detail="host_position не должна быть в needed_positions",
+        )
+
+    # rank_filter обязателен для ranked.
+    rank_filter: list[str] | None = None
+    if data.rank_filter:
+        invalid_ranks = [r for r in data.rank_filter if r not in _TM_VALID_RANKS]
+        if invalid_ranks:
+            raise HTTPException(status_code=422, detail="invalid rank_filter values")
+        # Сохраняем как уникальный sorted список.
+        rank_filter = sorted(set(data.rank_filter))
+    if data.mode == "ranked" and not rank_filter:
+        raise HTTPException(
+            status_code=422,
+            detail="Для ranked-режима укажи допустимые ранги",
+        )
+
+    now = datetime.now(timezone.utc)
+    lobby = DBTeammateLobby(
+        host_id=user_id,
+        party_size=data.party_size,
+        mode=data.mode,
+        rank_filter=rank_filter,
+        needed_positions=needed,
+        host_position=data.host_position,
+        status="open",
+        created_at=now,
+        expires_at=now + _tm_timedelta(minutes=_TM_LOBBY_TTL_MINUTES),
+        filled_at=None,
+    )
+    db.add(lobby)
+    db.flush()  # получить lobby.id до создания слотов
+
+    # Создаём слоты. Host's слот сразу filled, остальные NULL.
+    slots: list[DBTeammateLobbySlot] = []
+    for pos in [data.host_position] + needed:
+        slot = DBTeammateLobbySlot(
+            lobby_id=lobby.id,
+            position=pos,
+            user_id=user_id if pos == data.host_position else None,
+            joined_at=now if pos == data.host_position else None,
+        )
+        slots.append(slot)
+        db.add(slot)
+    db.commit()
+    db.refresh(lobby)
+
+    return _tm_serialize_lobby(db, lobby, slots)
+
+
+# ── L2. GET /api/teammates/lobbies — list active ────────────────────────────
+
+@app.get("/api/teammates/lobbies")
+async def api_teammates_lobbies_list(token: str, db: Session = Depends(get_db)):
+    """Возвращает список активных лобби (status='open', expires_at > now).
+
+    Сортировка: created_at DESC (новые сверху). UI рендерит их над одиночными
+    игроками в ленте. Фронту передаём ВСЕ — фильтрацию по rank_filter тоже,
+    клиент сам решит как подсветить «доступно мне / нет».
+    """
+    _tm_authenticate(token, db)
+    now = datetime.now(timezone.utc)
+
+    lobbies = (
+        db.query(DBTeammateLobby)
+        .filter(DBTeammateLobby.status == "open")
+        .filter(DBTeammateLobby.expires_at > now)
+        .order_by(DBTeammateLobby.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    if not lobbies:
+        return {"items": []}
+
+    lobby_ids = [l.id for l in lobbies]
+    all_slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id.in_(lobby_ids))
+        .all()
+    )
+    slots_by_lobby: dict[int, list[DBTeammateLobbySlot]] = {}
+    for s in all_slots:
+        slots_by_lobby.setdefault(s.lobby_id, []).append(s)
+
+    items = [
+        _tm_serialize_lobby(db, l, slots_by_lobby.get(l.id, []))
+        for l in lobbies
+    ]
+    return {"items": items}
+
+
+# ── L3. POST /api/teammates/lobby/{id}/join ─────────────────────────────────
+
+@app.post("/api/teammates/lobby/{lobby_id}/join")
+async def api_teammates_lobby_join(
+    lobby_id: int, data: TeammateLobbyJoin, db: Session = Depends(get_db),
+):
+    """Open-join: атомарно занимаем пустой слот в указанной position.
+
+    Race-protection: UPDATE … SET user_id=:uid WHERE … AND user_id IS NULL —
+    rowcount=0 значит «слот уже занят кем-то параллельно». Тогда возвращаем 409.
+
+    Все uncaught-исключения логируются с traceback'ом — на staging юзер видит
+    точную точку падения по `[tm/lobby/join]` в логах backend'а.
+    """
+    user_id = _tm_authenticate(data.token, db)
+    logger.info(
+        "[tm/lobby/join] user_id=%s lobby_id=%s position=%s",
+        user_id, lobby_id, data.position,
+    )
+    try:
+        lobby = db.get(DBTeammateLobby, lobby_id)
+        if lobby is None:
+            raise HTTPException(status_code=404, detail="lobby not found")
+        if lobby.status != "open":
+            raise HTTPException(status_code=409, detail="lobby is no longer open")
+
+        now = datetime.now(timezone.utc)
+        if lobby.expires_at <= now:
+            raise HTTPException(status_code=409, detail="lobby has expired")
+
+        # Не даём join'нуть если уже в каком-то активном лобби.
+        existing = _tm_user_active_lobby_id(db, user_id)
+        if existing is not None:
+            if existing == lobby_id:
+                raise HTTPException(status_code=409, detail="ты уже в этом лобби")
+            raise HTTPException(
+                status_code=409,
+                detail="Ты уже в активном лобби. Выйди из него, чтобы вступить в другое.",
+            )
+
+        # Rank-filter: если есть — юзер должен быть в нём.
+        if lobby.rank_filter:
+            profile = db.get(DBTeammateProfile, user_id)
+            if profile is None or profile.rank not in set(lobby.rank_filter):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Твой ранг не подходит под фильтр лобби",
+                )
+
+        # Атомарный claim слота. Возможные failure-modes:
+        # 1) FK violation на user_id → user не зарегистрирован в user_profiles.
+        # 2) Тип :now не совпадает с column-type — для timestamptz передаём
+        #    tz-aware, что мы и делаем (datetime.now(timezone.utc)).
+        result = db.execute(
+            text(
+                """
+                UPDATE teammate_lobby_slots
+                SET user_id = :uid, joined_at = :now
+                WHERE lobby_id = :lid AND position = :pos AND user_id IS NULL
+                """
+            ),
+            {"uid": user_id, "now": now, "lid": lobby_id, "pos": data.position},
+        )
+        if not result.rowcount:
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Этот слот только что заняли. Попробуй другую позицию.",
+            )
+
+        # Проверяем — последний ли это слот? Все остальные слоты лобби заняты?
+        remaining_empty = (
+            db.query(DBTeammateLobbySlot)
+            .filter(DBTeammateLobbySlot.lobby_id == lobby_id)
+            .filter(DBTeammateLobbySlot.user_id.is_(None))
+            .count()
+        )
+
+        just_filled = False
+        if remaining_empty == 0:
+            # Лобби собрано — переводим в filled, фиксируем filled_at.
+            lobby.status = "filled"
+            lobby.filled_at = now
+            just_filled = True
+
+        db.commit()
+        db.refresh(lobby)
+
+        # Push'и:
+        #   - если лобби только что заполнилось → рассылаем «пати собрана» ВСЕМ
+        #     участникам (включая host'а).
+        #   - иначе → host получает «X присоединился».
+        if just_filled:
+            await _tm_send_lobby_filled_pushes(db, lobby)
+        else:
+            await _tm_send_lobby_join_push(db, lobby, user_id, data.position)
+
+        return _tm_serialize_lobby(db, lobby)
+
+    except HTTPException:
+        # Не логируем 4xx — это нормальные business-кейсы (заняли слот /
+        # ранг не подходит / уже в лобби). 5xx внизу.
+        raise
+    except Exception as exc:
+        logger.exception(
+            "[tm/lobby/join] UNCAUGHT user_id=%s lobby_id=%s position=%s",
+            user_id, lobby_id, data.position,
+        )
+        try: db.rollback()
+        except Exception: pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
+        )
+
+
+# ── L4. POST /api/teammates/lobby/{id}/leave ────────────────────────────────
+
+@app.post("/api/teammates/lobby/{lobby_id}/leave")
+async def api_teammates_lobby_leave(
+    lobby_id: int, data: TeammateLobbyAction, db: Session = Depends(get_db),
+):
+    """Member выходит из своего слота. Если выходит host — это disband
+    (но мы возвращаем 409 чтобы фронт явно вызвал /disband — UI там другой)."""
+    user_id = _tm_authenticate(data.token, db)
+
+    lobby = db.get(DBTeammateLobby, lobby_id)
+    if lobby is None:
+        raise HTTPException(status_code=404, detail="lobby not found")
+    if lobby.status != "open":
+        raise HTTPException(status_code=409, detail="lobby is no longer open")
+    if lobby.host_id == user_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Host не может «выйти» — используй роспуск лобби.",
+        )
+
+    result = db.execute(
+        text(
+            """
+            UPDATE teammate_lobby_slots
+            SET user_id = NULL, joined_at = NULL
+            WHERE lobby_id = :lid AND user_id = :uid
+            """
+        ),
+        {"lid": lobby_id, "uid": user_id},
+    )
+    if not result.rowcount:
+        db.commit()
+        raise HTTPException(status_code=404, detail="ты не в этом лобби")
+
+    db.commit()
+
+    # Push'им host'у — «X вышел». Имя берём из user_profiles.settings.
+    settings_map = _tm_load_user_settings(db, [user_id])
+    leaver_s = settings_map.get(user_id) or {}
+    leaver_name = (leaver_s.get("first_name") or "").strip() or "Игрок"
+    open_url = f"{_TM_MINI_APP_URL}?tm_lobby={lobby.id}" if _TM_MINI_APP_URL else None
+    await _tm_send_bot_message(
+        chat_id=lobby.host_id,
+        text=f"➖ <b>{_tm_html_safe(leaver_name)}</b> вышел из лобби",
+        with_open_button=True,
+        open_button_url=open_url,
+        parse_mode="HTML",
+    )
+
+    return {"ok": True}
+
+
+# ── L5. POST /api/teammates/lobby/{id}/disband ──────────────────────────────
+
+@app.post("/api/teammates/lobby/{lobby_id}/disband")
+async def api_teammates_lobby_disband(
+    lobby_id: int, data: TeammateLobbyAction, db: Session = Depends(get_db),
+):
+    """Host распускает лобби. Members получают пуш."""
+    user_id = _tm_authenticate(data.token, db)
+
+    lobby = db.get(DBTeammateLobby, lobby_id)
+    if lobby is None:
+        raise HTTPException(status_code=404, detail="lobby not found")
+    if lobby.host_id != user_id:
+        raise HTTPException(status_code=403, detail="only host can disband")
+    if lobby.status != "open":
+        raise HTTPException(status_code=409, detail="lobby is no longer open")
+
+    # Сначала push'им members (пока ещё видим состав), потом меняем status.
+    await _tm_send_lobby_disband_pushes(db, lobby, by_host=True)
+
+    lobby.status = "disbanded"
+    db.commit()
+
+    return {"ok": True}
+
+
+# ── L6. GET /api/teammates/lobbies/history ──────────────────────────────────
+
+@app.get("/api/teammates/lobbies/history")
+async def api_teammates_lobbies_history(
+    token: str, db: Session = Depends(get_db),
+):
+    """История лобби, в которых юзер участвовал и которые ЗАПОЛНИЛИСЬ.
+
+    Disbanded / expired не показываем — это «лобби не состоялось», а юзер
+    хочет видеть «с кем играл». Без пагинации: hard cap 50 (на v1 этого
+    хватит, плюс легко merge'ить с requests/history на фронте).
+    """
+    user_id = _tm_authenticate(token, db)
+
+    # Берём id лобби в которых я участвовал (host ИЛИ занимал слот).
+    my_lobby_ids_rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT l.id, l.filled_at
+            FROM teammate_lobbies l
+            LEFT JOIN teammate_lobby_slots s ON s.lobby_id = l.id
+            WHERE l.status = 'filled'
+              AND (l.host_id = :uid OR s.user_id = :uid)
+            ORDER BY l.filled_at DESC
+            LIMIT 50
+            """
+        ),
+        {"uid": user_id},
+    ).fetchall()
+
+    lobby_ids = [r[0] for r in my_lobby_ids_rows]
+    if not lobby_ids:
+        return {"items": []}
+
+    lobbies = (
+        db.query(DBTeammateLobby)
+        .filter(DBTeammateLobby.id.in_(lobby_ids))
+        .all()
+    )
+    # Order according to my_lobby_ids_rows.
+    lobby_by_id = {l.id: l for l in lobbies}
+
+    # Batch slots.
+    all_slots = (
+        db.query(DBTeammateLobbySlot)
+        .filter(DBTeammateLobbySlot.lobby_id.in_(lobby_ids))
+        .all()
+    )
+    slots_by_lobby: dict[int, list[DBTeammateLobbySlot]] = {}
+    for s in all_slots:
+        slots_by_lobby.setdefault(s.lobby_id, []).append(s)
+
+    items: list[dict] = []
+    for lid, _filled_at in my_lobby_ids_rows:
+        lobby = lobby_by_id.get(lid)
+        if lobby is None:
+            continue
+        items.append(_tm_serialize_lobby(db, lobby, slots_by_lobby.get(lid, [])))
+    return {"items": items}

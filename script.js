@@ -479,6 +479,12 @@
             if (pageName === 'profile') {
                 initProfile();
             }
+            if (pageName === 'teammates') {
+                // initTeammatesPage определён в отдельном IIFE и экспортирован
+                // как window._tmInitPage. Без этого вызова заход через
+                // bottom-nav оставлял страницу без подгруженного профиля.
+                if (typeof window._tmInitPage === 'function') window._tmInitPage();
+            }
         }
 
         function startPositionQuiz() {
@@ -512,19 +518,15 @@
         }
 
         function goToPositionQuiz() {
-            // переключаемся на вкладку "Квизы"
+            // переключаемся на вкладку «Квизы». Квизы больше не в bottom-nav
+            // (слот заняли «Тиммейты»), поэтому никакой nav-item не подсвечиваем —
+            // switchPage уже снял active со всех элементов.
             switchPage('quiz');
-            document.querySelectorAll('.nav-item')[1].classList.add('active');
-            document.querySelectorAll('.nav-item')[0].classList.remove('active');
-
-            // сразу открываем сам квиз по позициям
             startPositionQuiz();
         }
 
         function goToHeroQuiz() {
             switchPage('quiz');
-            document.querySelectorAll('.nav-item')[1].classList.add('active');
-            document.querySelectorAll('.nav-item')[0].classList.remove('active');
             startHeroQuiz();
         }
 
@@ -2879,8 +2881,10 @@ function goBackFromFeedback() {
                  document.getElementById('page-home');
     target.classList.add('active');
 
-    // Восстанавливаем нав-элемент
-    var navMap = { home: 0, quiz: 1, drafter: 2, database: 3, profile: 4 };
+    // Восстанавливаем нав-элемент. Квизы больше не в bottom-nav — после
+    // возврата с feedback с quiz-страницы ни один nav-item не подсвечивается
+    // (страница доступна через виджет главной).
+    var navMap = { home: 0, teammates: 1, drafter: 2, database: 3, profile: 4 };
     var navIdx = navMap[_prevPageBeforeFeedback];
     if (navIdx !== undefined) {
         var navItems = document.querySelectorAll('.nav-item');
@@ -3537,7 +3541,7 @@ var _metaDragActive = false;
 var _metaDragDX = 0;
 
 // PATCH VERSION — обновлять вручную при выходе нового патча
-const CURRENT_PATCH = '7.41b';
+const CURRENT_PATCH = '7.41c';
 
 function _resolveMetaPatch(data) {
     return CURRENT_PATCH;
@@ -4328,27 +4332,72 @@ function setDrafterMode(mode) {
     }
 }
 
+// Показывает баннер с ошибкой загрузки matchups_all прямо в панели анализа.
+// Кнопка «Попробовать снова» сбрасывает баннер и заново дергает _ensureAnalysisData.
+function _showAnalysisLoadError() {
+    var panel = document.getElementById('drafter-mode-analysis');
+    if (!panel) return;
+    if (document.getElementById('analysis-load-error')) return;
+    var box = document.createElement('div');
+    box.id = 'analysis-load-error';
+    box.className = 'analysis-load-error';
+    var text = document.createElement('div');
+    text.className = 'analysis-load-error-text';
+    text.textContent = 'Не удалось загрузить данные для анализа. Проверьте соединение.';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'analysis-load-error-retry';
+    btn.textContent = 'Попробовать снова';
+    btn.addEventListener('click', function() {
+        _hideAnalysisLoadError();
+        _ensureAnalysisData();
+    });
+    box.appendChild(text);
+    box.appendChild(btn);
+    panel.insertBefore(box, panel.firstChild);
+}
+
+function _hideAnalysisLoadError() {
+    var box = document.getElementById('analysis-load-error');
+    if (box && box.parentNode) box.parentNode.removeChild(box);
+}
+
 function _ensureAnalysisData() {
     if (_analysisMatchups && _analysisPopularity) return;
     if (_analysisDataLoading) return;
     _analysisDataLoading = true;
+    _hideAnalysisLoadError();
 
     var base = window.API_BASE_URL;
+    // Cache-Control: no-store — VPN-прокси и браузеры иначе могут отдать
+    // устаревший снапшот матчапов и сломать драфтер между релизами.
+    var noStore = { headers: { 'Cache-Control': 'no-store' } };
+    var matchupsFailed = false;
     var p1 = _analysisMatchups
         ? Promise.resolve(null)
-        : apiFetch(base + '/draft/matchups_all')
-            .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(d) { if (d) _analysisMatchups = d; });
+        : apiFetch(base + '/draft/matchups_all', noStore)
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function(d) { _analysisMatchups = d; })
+            .catch(function(e) {
+                matchupsFailed = true;
+                console.warn('[analysis] matchups_all failed:', e);
+            });
     var p2 = _analysisPopularity
         ? Promise.resolve(null)
-        : apiFetch(base + '/draft/popularity')
+        : apiFetch(base + '/draft/popularity', noStore)
             .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(d) { if (d) _analysisPopularity = d; });
+            .then(function(d) { if (d) _analysisPopularity = d; })
+            .catch(function(e) { console.warn('[analysis] popularity failed:', e); });
 
-    Promise.all([p1, p2]).catch(function(e) {
-        console.warn('[analysis] data load failed:', e);
-    }).then(function() {
+    Promise.all([p1, p2]).then(function() {
         _analysisDataLoading = false;
+        if (matchupsFailed && !_analysisMatchups) {
+            _showAnalysisLoadError();
+            return;
+        }
         // Если открыт sheet — обновляем его содержимое с реальными данными
         if (_analysisSheetMode === 'picker') {
             renderAnalysisSheetGrid();
@@ -5590,7 +5639,10 @@ function selectDrafterHero(heroId) {
 }
 
 var _toastTimer = null;
-function showToast(msg) {
+// kind: 'ok' — зелёный (положительные подтверждения); по умолчанию красный
+// (ошибки и состояния-блокировки). Существующие call sites без второго
+// аргумента остаются красными — это полностью backward-compatible.
+function showToast(msg, kind) {
     var el = document.getElementById('app-toast');
     if (!el) {
         el = document.createElement('div');
@@ -5599,6 +5651,10 @@ function showToast(msg) {
         document.body.appendChild(el);
     }
     el.textContent = msg;
+    // Чистим прошлый модификатор перед применением нового — иначе зелёный
+    // toast после красного «прилипает» к зелёной палитре до перерендера.
+    el.classList.remove('app-toast--ok');
+    if (kind === 'ok') el.classList.add('app-toast--ok');
     el.classList.add('app-toast--visible');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(function() {
@@ -6730,4 +6786,3022 @@ function _drafterCommentText(c) {
     }
     return '';
 }
+
+
+// ========== TEAMMATES ==========
+//
+// Логика страницы "Поиск тиммейтов": лента, профиль, заявки, отзывы.
+// Использует существующие apiFetch / USER_TOKEN / showToast / switchPage и
+// существующие хелперы window.dotaHeroIds / window.dotaHeroIdToName /
+// window.getHeroIconUrlByName / window.openHeroesCatalog.
+// Ничего из существующего кода не модифицирует.
+
+(function () {
+    var TM_API = (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL) || '/api';
+
+    var TM_RANKS = ['Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
+    var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
+    var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
+    var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
+
+    var _tm = {
+        myProfile: null,
+        filters: {
+            ranks: [],          // мультивыбор как positions
+            positions: [],
+            game_modes: [],
+            statuses: [],       // фильтр «кого ищу»: ready_now/looking_regular/looking_casual
+            microphone: false,
+            discord: false,
+        },
+        filtersOpen: false,                   // collapsed by default
+        feedCursor: null,
+        feedLoading: false,
+        favoriteHeroes: [],
+        currentTab: 'feed',
+        reviewRequestId: null,
+        reviewTargetUserId: null,
+        reviewSelectedTags: [],
+        feedItems: [],
+        previewMode: false,
+        pollTimer: null,
+
+        // ── Requests sub-tab state (внутри "Мой профиль") ────────────
+        requestsTab: 'incoming',
+        requestsData:    { incoming: [], outgoing: [], history: [] },
+        requestsLoading: { incoming: false, outgoing: false, history: false },
+        historyCursor: null,
+
+        // ── Party-finder («Лобби») ───────────────────────────────────
+        // lobbies — массив {lobby_id, host_id, party_size, mode, status,
+        //                   rank_filter, needed_positions, host_position,
+        //                   expires_at, slots: [{position, user, joined_at}]}
+        lobbies: [],
+        lobbiesLoading: false,
+        // Состояние формы создания. Обнуляется при tmOpenLobbyForm.
+        lobbyForm: null,
+    };
+
+    var _TM_POLL_INTERVAL_MS = 30000;  // 30 секунд между авто-обновлениями
+
+    // Tier 1-8: Рекрут=1 … Титан=8.
+    function _tmRankTier(rank) {
+        var i = TM_RANKS.indexOf(rank);
+        return i >= 0 ? i + 1 : 0;
+    }
+
+    // Реальные иконки рангов из проекта — /rank_icons/medal_N.png (N=1..8).
+    // Размер задаётся CSS-классом (.tm-rank-icon / --sm / --xs).
+    function _tmRankIconImg(rank, modifier) {
+        var tier = _tmRankTier(rank);
+        if (!tier) return '';
+        var cls = 'tm-rank-icon' + (modifier ? ' ' + modifier : '');
+        return '<img class="' + cls + '" src="/rank_icons/medal_' + tier + '.png" ' +
+            'alt="' + _tmEsc(rank || ('Тир ' + tier)) + '" ' +
+            'onerror="this.style.display=\'none\'">';
+    }
+
+    function _tmPosIcon(p) { return '/images/positions/pos_' + p + '.png'; }
+    function _tmEsc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+            return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+        });
+    }
+    function _tmFormatHours(h) {
+        if (h == null || isNaN(h)) return '';
+        var n = Math.max(0, parseInt(h, 10) || 0);
+        // 1500 → "1 500", 12345 → "12 345" — узкий пробел для группировки тысяч.
+        return n.toLocaleString('ru-RU').replace(/ /g, ' ');
+    }
+    function _tmHeroIconById(id) {
+        var name = (window.dotaHeroIdToName || {})[id];
+        if (!name) return { name: '', url: '' };
+        var url = window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '';
+        return { name: name, url: url };
+    }
+    function _tmGetToken() { return (typeof USER_TOKEN === 'string' && USER_TOKEN) ? USER_TOKEN : ''; }
+
+    // ── Telegram identity helpers ──────────────────────────────────────
+    function _tmDisplayName(p) {
+        if (!p) return '';
+        var first = (p.first_name || '').trim();
+        var last  = (p.last_name  || '').trim();
+        var full  = (first + ' ' + last).trim();
+        if (full) return full;
+        if (p.username) return '@' + p.username;
+        return 'Игрок ' + (p.user_id || '');
+    }
+    function _tmAvatarInitial(p) {
+        var src = (p && (p.first_name || p.username || '')).trim();
+        var ch = src.charAt(0);
+        return ch ? ch.toUpperCase() : '·';
+    }
+    // Авотарка как в существующем _renderAvatar профиля: <img> при наличии
+    // photo_url, иначе круг с инициалом на --bg-elevated.
+    function _tmAvatarHtml(p, modifier) {
+        var cls = 'tm-player-avatar' + (modifier ? ' ' + modifier : '');
+        if (p && p.photo_url) {
+            return '<div class="' + cls + '">' +
+                '<img src="' + _tmEsc(p.photo_url) + '" alt="" ' +
+                'onerror="var w=this.parentNode;w.classList.add(\'tm-player-avatar--fallback\');w.textContent=\'' +
+                _tmEsc(_tmAvatarInitial(p)) + '\';">' +
+            '</div>';
+        }
+        return '<div class="' + cls + ' tm-player-avatar--fallback">' +
+            _tmEsc(_tmAvatarInitial(p)) +
+        '</div>';
+    }
+
+    // ── Entry point from home widget ────────────────────────────────────
+    // Используется deep-link обработчиком (?tm_incoming=1 из push'а бота)
+    // и потенциально другими внешними entry-point'ами. Сам init теперь
+    // вызывается из switchPage('teammates') — здесь только подсвечиваем
+    // nav-item, потому что event у нас нет.
+    window.goToTeammates = function () {
+        switchPage('teammates');
+        var navItems = document.querySelectorAll('.nav-item');
+        if (navItems[1]) navItems[1].classList.add('active');
+    };
+
+    function initTeammatesPage() {
+        // Очистка устаревшего currentTab='profile' из старых сессий (профиль
+        // теперь sheet, не tab) — иначе setTeammatesTab сразу его перехватит
+        // и откроет sheet при каждом заходе.
+        if (_tm.currentTab === 'profile') _tm.currentTab = 'feed';
+        setTeammatesTab(_tm.currentTab || 'feed');
+        renderFilters();
+        // Параллельно: профиль (для кнопки поиска и формы) + лента + входящие.
+        loadMyProfile().then(function (p) {
+            _tm.myProfile = p;
+            // Флаг админа — по нему на карточках показывается кнопка модерации
+            // «удалить профиль». Для обычных юзеров is_admin отсутствует/false.
+            _tm.isAdmin = !!(p && p.is_admin);
+            _tm.favoriteHeroes = (p && Array.isArray(p.favorite_heroes)) ? p.favorite_heroes.slice() : [];
+            renderProfileForm();
+            // Avatar-btn в header'е: photo_url появляется только после
+            // loadMyProfile, поэтому update делаем именно здесь.
+            _tmUpdateProfileBtnAvatar();
+            // Если профиль уже есть — показываем preview, иначе остаёмся на форме.
+            if (p && p.rank) {
+                tmShowProfilePreview();
+            } else {
+                tmShowProfileForm();
+            }
+            // Единый оркестратор UI сверху ленты: окно «заполни профиль» /
+            // обязательный выбор статуса / переключатель статуса.
+            _tmUpdateStatusUI();
+        }).catch(function (e) { console.warn('[tm] loadMyProfile:', e); });
+        loadFeed(true);
+        loadLobbies();
+        loadRequestsForTab(_tm.requestsTab);
+        // Счётчик «первопроходцев» для окна «заполни профиль». Fire-and-forget,
+        // не блокирует ленту; рендерится, только если место ещё есть.
+        _tmLoadFounders();
+        // Outgoing-список нужен ленте для cross-check «уже отправил ли я этому?».
+        // Без этого после reload кнопка «Позвать» показывалась снова, юзер
+        // тапал → 409 → toast «Запрос уже отправлен» → confusing UX. Грузим
+        // в фоне даже если активная вкладка не outgoing — payload маленький.
+        if (_tm.requestsTab !== 'outgoing') loadOutgoing();
+        // Стартуем авто-обновление активной вкладки каждые 30 секунд.
+        _tmStartPolling();
+        // Включаем pulse на «?» если юзер первый раз в разделе.
+        _tmInitHelpPulse();
+    }
+
+    // Экспортим init на window — switchPage снаружи IIFE вызывает его при
+    // заходе на страницу через bottom-nav (см. switchPage case 'teammates').
+    // Раньше init работал ТОЛЬКО при заходе через goToTeammates с виджета
+    // главной, а tab-bar просто менял .active без подгрузки данных →
+    // профиль/фильтры/CTA «Искать пати» оставались в пустом стейте.
+    window._tmInitPage = initTeammatesPage;
+
+    // ── Help-sheet «Как это работает» ─────────────────────────────────
+    // localStorage-флаг ставится либо при первом тапе (юзер сам нашёл),
+    // либо после полного цикла pulse-анимации (увидел и пропустил —
+    // повторно не дёргаем).
+
+    function _tmInitHelpPulse() {
+        var btn = document.getElementById('tm-help-btn');
+        if (!btn) return;
+        var seen = false;
+        try { seen = localStorage.getItem('tm_help_seen') === '1'; } catch (e) {}
+        if (seen) return;
+        btn.classList.add('tm-help-btn--pulse');
+        // После 3-х циклов animation (CSS: animation: ... 3) последняя
+        // итерация генерирует animationend. Тогда фиксируем «показано».
+        var onEnd = function (ev) {
+            // CSS на ::before-псевдо — animationend всплывёт от элемента
+            // владельца псевдо (button). Игнорируем чужие анимации.
+            if (ev && ev.animationName !== 'tmHelpPulse') return;
+            btn.removeEventListener('animationend', onEnd);
+            btn.classList.remove('tm-help-btn--pulse');
+            try { localStorage.setItem('tm_help_seen', '1'); } catch (e) {}
+        };
+        btn.addEventListener('animationend', onEnd);
+    }
+
+    // System back-button handling: при открытии help-sheet делаем pushState,
+    // на popstate (Android-system-back, iOS swipe-back, Telegram BackButton)
+    // закрываем шторку, не выкидывая юзера из мини-аппа целиком. Флаг и
+    // listener отдельные, чтобы избежать рекурсии: tmCloseHelp снимает
+    // listener ПЕРЕД history.back(), на popstate listener тоже снимается
+    // первым делом.
+    var _tmHelpHistoryActive = false;
+
+    function _tmDoCloseHelpVisual() {
+        var sheet = document.getElementById('tm-help-sheet');
+        if (!sheet) return;
+        sheet.classList.remove('tm-help-sheet--open');
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
+    }
+
+    function _tmHandleHelpPopstate() {
+        window.removeEventListener('popstate', _tmHandleHelpPopstate);
+        _tmHelpHistoryActive = false;
+        _tmDoCloseHelpVisual();
+    }
+
+    window.tmOpenHelp = function () {
+        var sheet = document.getElementById('tm-help-sheet');
+        if (!sheet) return;
+        // Сначала снимаем hidden (display:none блокирует transition), затем
+        // следующим кадром добавляем --open чтобы slide-in реально проиграл.
+        sheet.hidden = false;
+        sheet.setAttribute('aria-hidden', 'false');
+        // Force reflow перед добавлением класса — иначе браузер
+        // схлопнет «display:none → translateX(0)» в одно состояние.
+        // eslint-disable-next-line no-unused-expressions
+        sheet.offsetHeight;
+        sheet.classList.add('tm-help-sheet--open');
+        document.body.style.overflow = 'hidden';
+        // Регистрируем «фейковую» history-точку для перехвата system-back.
+        // Без неё system-back на Android закрывает весь мини-апп.
+        if (!_tmHelpHistoryActive) {
+            try {
+                history.pushState({ tmHelp: true }, '');
+                _tmHelpHistoryActive = true;
+                window.addEventListener('popstate', _tmHandleHelpPopstate);
+            } catch (e) {
+                // history API может быть запрещён в некоторых embedded-кейсах —
+                // просто игнорим, fallback на header back-button останется.
+            }
+        }
+        // Юзер сам нашёл и тапнул → pulse больше не нужен никогда.
+        var btn = document.getElementById('tm-help-btn');
+        if (btn) btn.classList.remove('tm-help-btn--pulse');
+        try { localStorage.setItem('tm_help_seen', '1'); } catch (e) {}
+    };
+
+    window.tmCloseHelp = function () {
+        // Если зашли через pushState — корректно откатываем history-точку,
+        // ИНАЧЕ при следующем system-back юзер увидит «пустой» popstate
+        // и улетит из мини-аппа.
+        if (_tmHelpHistoryActive) {
+            window.removeEventListener('popstate', _tmHandleHelpPopstate);
+            _tmHelpHistoryActive = false;
+            try { history.back(); } catch (e) {}
+        }
+        _tmDoCloseHelpVisual();
+    };
+
+    // ── Profile-sheet ───────────────────────────────────────────────
+    // Профиль (форма + запросы + история) переехал из tab'а в overlay-sheet.
+    // Открывается по avatar-btn в header'е. Та же history-механика что
+    // help-sheet — system-back закрывает шторку, не выкидывает из миниапа.
+    var _tmProfileHistoryActive = false;
+
+    function _tmDoCloseProfileSheetVisual() {
+        var sheet = document.getElementById('tm-profile-sheet');
+        if (!sheet) return;
+        sheet.classList.remove('tm-help-sheet--open');
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
+    }
+
+    function _tmHandleProfilePopstate() {
+        window.removeEventListener('popstate', _tmHandleProfilePopstate);
+        _tmProfileHistoryActive = false;
+        _tmDoCloseProfileSheetVisual();
+    }
+
+    window.tmOpenProfileSheet = function () {
+        var sheet = document.getElementById('tm-profile-sheet');
+        if (!sheet) return;
+        sheet.hidden = false;
+        sheet.setAttribute('aria-hidden', 'false');
+        // eslint-disable-next-line no-unused-expressions
+        sheet.offsetHeight;
+        sheet.classList.add('tm-help-sheet--open');
+        document.body.style.overflow = 'hidden';
+        if (!_tmProfileHistoryActive) {
+            try {
+                history.pushState({ tmProfile: true }, '');
+                _tmProfileHistoryActive = true;
+                window.addEventListener('popstate', _tmHandleProfilePopstate);
+            } catch (e) { /* history blocked in some embeds */ }
+        }
+    };
+
+    window.tmCloseProfileSheet = function () {
+        if (_tmProfileHistoryActive) {
+            window.removeEventListener('popstate', _tmHandleProfilePopstate);
+            _tmProfileHistoryActive = false;
+            try { history.back(); } catch (e) {}
+        }
+        _tmDoCloseProfileSheetVisual();
+    };
+
+    // Avatar-кнопка в header'е: после loadMyProfile подставляем photo_url
+    // если есть. Иначе остаётся ph-user fallback из HTML. Вызывается из
+    // initTeammatesPage после loadMyProfile (см. ниже).
+    function _tmUpdateProfileBtnAvatar() {
+        var btn = document.getElementById('tm-profile-btn');
+        if (!btn) return;
+        var p = _tm.myProfile;
+        var url = p && p.photo_url;
+        if (!url) {
+            btn.classList.remove('tm-profile-btn--has-photo');
+            return;
+        }
+        // Если <img> уже стоит — обновим src. Иначе вставим.
+        var img = btn.querySelector('img');
+        if (img) {
+            if (img.src !== url) img.src = url;
+        } else {
+            img = document.createElement('img');
+            img.src = url;
+            img.alt = '';
+            img.onerror = function () {
+                btn.classList.remove('tm-profile-btn--has-photo');
+                if (img.parentNode) img.parentNode.removeChild(img);
+            };
+            btn.appendChild(img);
+        }
+        btn.classList.add('tm-profile-btn--has-photo');
+    }
+
+    // ── Auto-poll lifecycle ────────────────────────────────────────────
+    // Останавливать polling при уходе со страницы тиммейтов мы НЕ через
+    // wrap switchPage (хрупко) — а через self-check в каждом tick'е:
+    // если page-teammates не active, тик сам себя глушит. Худший случай —
+    // один лишний холостой тик после навигации, дальше тишина.
+
+    function _tmIsPageActive() {
+        var p = document.getElementById('page-teammates');
+        return !!(p && p.classList.contains('active'));
+    }
+
+    function _tmPollTick() {
+        if (!_tmIsPageActive()) {
+            _tmStopPolling();
+            return;
+        }
+        // Дуо: обновляем ленту игроков (без лобби — те живут на своей вкладке).
+        // НО не трогаем, если юзер нажал «Показать ещё» (feedPaginated): авто-
+        // рефреш делает loadFeed(true) и сбросил бы его на первую страницу.
+        // Возобновится после ручного «Обновить» или смены фильтра.
+        if (_tm.currentTab === 'feed' && !_tm.feedPaginated) {
+            _tmTriggerRefresh('feed');
+        }
+        // Лобби: обновляем список лобби (без player-cards).
+        else if (_tm.currentTab === 'lobby') {
+            _tmTriggerRefresh('lobby');
+        }
+        // Профиль-sheet открыт: обновляем requests (если на incoming/outgoing —
+        // history сама-обновляется только на manual refresh, иначе ломалась
+        // бы пагинация прямо во время просмотра).
+        if (_tmIsProfileSheetOpen() &&
+            (_tm.requestsTab === 'incoming' || _tm.requestsTab === 'outgoing')) {
+            _tmTriggerRefresh('requests');
+        }
+    }
+
+    function _tmIsProfileSheetOpen() {
+        var sheet = document.getElementById('tm-profile-sheet');
+        return !!(sheet && sheet.classList.contains('tm-help-sheet--open'));
+    }
+
+    function _tmStartPolling() {
+        _tmStopPolling();
+        _tm.pollTimer = setInterval(_tmPollTick, _TM_POLL_INTERVAL_MS);
+    }
+
+    function _tmStopPolling() {
+        if (_tm.pollTimer != null) {
+            clearInterval(_tm.pollTimer);
+            _tm.pollTimer = null;
+        }
+    }
+
+    // При возврате приложения в foreground (юзер ушёл в Telegram-чат, увидел
+    // push «X принял твой запрос», вернулся в миниап) — мгновенный refresh
+    // не дожидаясь следующего 30s-полл-тика. Это закрывает лаг «accepted
+    // запрос ещё висит как pending в исходящих». Также обновляем badge на
+    // bottom-nav (входящие могли поменяться).
+    function _tmHandleVisibilityChange() {
+        if (document.visibilityState !== 'visible') return;
+        _tmRefreshBadge();
+        if (!_tmIsPageActive()) return;
+        // Активная вкладка → refresh её основной поток. Ленту не сбрасываем,
+        // если юзер на подгруженной странице (см. feedPaginated в _tmPollTick).
+        if (_tm.currentTab === 'feed' && !_tm.feedPaginated) _tmTriggerRefresh('feed');
+        if (_tm.currentTab === 'lobby') _tmTriggerRefresh('lobby');
+        // Если открыт sheet профиля — заодно обновим requests.
+        if (_tmIsProfileSheetOpen())    _tmTriggerRefresh('requests');
+    }
+    document.addEventListener('visibilitychange', _tmHandleVisibilityChange);
+
+    // Общий путь для авто-poll'а и manual-кнопок: крутим иконку, дёргаем
+    // соответствующий loader, останавливаем спиннер в finally.
+    async function _tmTriggerRefresh(kind) {
+        // Сопоставление kind → spinner-button id (для feedback при рефреше).
+        var btnId = (
+            kind === 'feed'     ? 'tm-feed-refresh'     :
+            kind === 'lobby'    ? 'tm-lobby-refresh'    :
+            kind === 'requests' ? 'tm-requests-refresh' : null
+        );
+        var btn = btnId ? document.getElementById(btnId) : null;
+        if (btn) btn.classList.add('tm-refresh-btn--spinning');
+        try {
+            if (kind === 'feed') {
+                await loadFeed(true);
+            } else if (kind === 'lobby') {
+                await loadLobbies();
+            } else if (kind === 'requests') {
+                await loadRequestsForTab(_tm.requestsTab);
+            }
+        } finally {
+            if (btn) btn.classList.remove('tm-refresh-btn--spinning');
+        }
+    }
+
+    // Глобальные хендлеры для onclick'ов в HTML. Перезапускаем poll-таймер,
+    // чтобы 30s отсчёт пошёл от момента ручного refresh'а — а не лупил
+    // auto-call сразу после ручного.
+    window.tmRefreshFeed = function () {
+        _tmTriggerRefresh('feed');
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
+    window.tmRefreshRequests = function () {
+        _tmTriggerRefresh('requests');
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
+    window.initTeammatesPage = initTeammatesPage;
+
+    window.setTeammatesTab = function (tab) {
+        // Old 'profile' tab → теперь профиль в overlay-sheet (avatar-btn в
+        // header). Если что-то вызывает setTeammatesTab('profile') (deep-link
+        // handler, persisted _tm.currentTab от старой сессии) — открываем
+        // sheet и остаёмся на 'feed' для tab-bar UI.
+        if (tab === 'profile') {
+            if (typeof window.tmOpenProfileSheet === 'function') tmOpenProfileSheet();
+            tab = 'feed';
+        }
+        if (tab !== 'feed' && tab !== 'lobby') tab = 'feed';
+        _tm.currentTab = tab;
+
+        var tabs = document.querySelectorAll('.tm-tab');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].classList.toggle('tm-tab--active', tabs[i].getAttribute('data-tm-tab') === tab);
+        }
+        var pf = document.getElementById('tm-pane-feed');
+        var pl = document.getElementById('tm-pane-lobby');
+        if (pf) pf.hidden = (tab !== 'feed');
+        if (pl) pl.hidden = (tab !== 'lobby');
+
+        // На вкладке Лобби сразу запрашиваем свежий список — юзер пришёл
+        // целенаправленно посмотреть/создать лобби.
+        if (tab === 'lobby') loadLobbies();
+    };
+
+    // ── My profile ──────────────────────────────────────────────────────
+    async function loadMyProfile() {
+        var token = _tmGetToken();
+        if (!token) return null;
+        var resp = await apiFetch(TM_API + '/teammates/profile/me?token=' + encodeURIComponent(token));
+        if (!resp.ok) return null;
+        try { return await resp.json(); } catch (e) { return null; }
+    }
+
+    // ── Feed ────────────────────────────────────────────────────────────
+    async function loadFeed(reset) {
+        if (_tm.feedLoading) return;
+        _tm.feedLoading = true;
+        if (reset) {
+            _tm.feedCursor = null;
+            _tm.feedItems = [];
+            // Любой полный сброс (ручной refresh, смена фильтра, первый заход)
+            // возвращает на первую страницу → снимаем «паузу автообновления».
+            _tm.feedPaginated = false;
+        }
+        var listEl = document.getElementById('tm-feed-list');
+        if (reset && listEl) listEl.innerHTML = _tmSkeletonList(3);
+        try {
+            var params = new URLSearchParams();
+            params.set('token', _tmGetToken());
+            if (_tm.filters.ranks.length) params.set('ranks', _tm.filters.ranks.join(','));
+            if (_tm.filters.positions.length) params.set('positions', _tm.filters.positions.join(','));
+            if (_tm.filters.game_modes.length) params.set('game_modes', _tm.filters.game_modes.join(','));
+            if (_tm.filters.statuses.length) params.set('statuses', _tm.filters.statuses.join(','));
+            if (_tm.filters.microphone) params.set('microphone', '1');
+            if (_tm.filters.discord)    params.set('discord', '1');
+            if (_tm.feedCursor) params.set('cursor', String(_tm.feedCursor));
+            var resp = await apiFetch(TM_API + '/teammates/feed?' + params.toString());
+            if (!resp.ok) {
+                if (listEl) listEl.innerHTML = '<div class="tm-feed-empty">Не удалось загрузить ленту</div>';
+                return;
+            }
+            var data = await resp.json();
+            var items = (data && data.items) || [];
+            _tm.feedItems = reset ? items.slice() : _tm.feedItems.concat(items);
+            _tm.feedCursor = data && data.next_cursor;
+            renderFeed();
+        } finally {
+            _tm.feedLoading = false;
+        }
+    }
+    window.tmLoadMore = function () {
+        // Помечаем, что юзер ушёл со страницы 1 → ставим автообновление на паузу,
+        // чтобы поллинг не сбросил подгруженные карточки (см. _tmPollTick).
+        _tm.feedPaginated = true;
+        loadFeed(false);
+    };
+
+    function renderFeed() {
+        var list = document.getElementById('tm-feed-list');
+        var loadMore = document.getElementById('tm-load-more');
+        if (!list) return;
+        if (!_tm.feedItems.length) {
+            list.innerHTML = _tmFeedEmptyState();
+            if (loadMore) loadMore.hidden = true;
+            return;
+        }
+        list.innerHTML = _tm.feedItems.map(_renderPlayerCard).join('');
+        if (loadMore) loadMore.hidden = !_tm.feedCursor;
+    }
+
+    // Состояние пустой ленты — зависит от профиля и статуса поиска.
+    // Один универсальный текст «попробуй сам включить поиск» был ложным
+    // в двух из трёх ситуаций: для юзера БЕЗ профиля «включи поиск» бессмыслен,
+    // а для юзера С активным поиском это вообще не релевантно.
+    function _tmFeedEmptyState() {
+        var profile = _tm.myProfile;
+        var hasProfile = !!(profile && profile.rank);
+        var msg;
+        if (!hasProfile) {
+            msg = 'Заполни профиль, чтобы видеть других игроков.';
+        } else {
+            msg = 'Сейчас в ленте никого. Лента обновляется сама каждые 30 секунд — загляни позже или убери фильтры.';
+        }
+        return '<div class="tm-feed-empty">' + _tmEsc(msg) + '</div>';
+    }
+
+    // Парсит ISO-строку безопасно: если в строке нет TZ-маркера (нет 'Z',
+    // нет '+HH:MM' / '-HH:MM' хвоста), трактуем как UTC. Без этого браузер
+    // парсит naive date-time как ЛОКАЛЬНОЕ время — для юзера в МСК сдвиг
+    // на -3ч, и search_expires_at кажется уже истёкшим (см. /profile/me на
+    // бэке — теперь оно отдаёт «+00:00», но defense-in-depth не повредит,
+    // если кто-то добавит другую naive-сериализацию).
+    function _tmParseUtcLike(s) {
+        if (!s) return NaN;
+        if (/Z$|[+\-]\d\d:?\d\d$/.test(s)) return new Date(s).getTime();
+        return new Date(s + 'Z').getTime();
+    }
+
+    // Проверка: есть ли у меня pending-запрос к этому user_id?
+    // Используется в _renderPlayerCard для cross-check'а после reload.
+    function _tmHasOutgoingPending(to_user_id) {
+        var list = _tm.requestsData && _tm.requestsData.outgoing;
+        if (!Array.isArray(list)) return false;
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].to_user_id === to_user_id) return true;
+        }
+        return false;
+    }
+
+    // Set of user_id'ов, чьи карточки уже были отрисованы в текущей сессии.
+    // Нужен чтобы reveal-анимация (.tm-player-card--enter) играла ТОЛЬКО при
+    // первом появлении карточки в ленте — иначе каждый poll-тик (30s) будет
+    // re-играть animation на всех видимых карточках. Set живёт в _tm, чтобы
+    // переживал re-render'ы; чистится при leave-from-page если нужно.
+    if (!_tm._seenCardIds) _tm._seenCardIds = Object.create(null);
+
+    function _renderPlayerCard(p, opts) {
+        opts = opts || {};
+
+        var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--lg');
+        var displayName = _tmDisplayName(p);
+        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
+
+        // Pos icons как inline-spans внутри spec-row (не отдельный блок).
+        var posIcons = (p.positions || []).map(function (n) {
+            return '<img class="tm-player-pos-icon" src="' + _tmEsc(_tmPosIcon(n)) + '" alt="Поз ' + n + '">';
+        }).join('');
+
+        var modesText = (p.game_modes || []).map(function (m) {
+            return TM_MODE_LABELS[m] || m;
+        }).join(', ');
+
+        // Comms — inline иконки в мета-строке. Mood ОСОЗНАННО исключён:
+        // в ленте все ищут «как-то играть», моуд не помогает выбору, а текстуру
+        // мета-строки удлиняет. Mood будет на /profile/{id}-deep-link'е.
+        var commsBits = [];
+        if (p.microphone) commsBits.push('<i class="ph ph-microphone-stage" title="Микрофон" aria-hidden="true"></i>');
+        if (p.discord)    commsBits.push('<i class="ph ph-chats-circle" title="Discord" aria-hidden="true"></i>');
+        var commsInline = commsBits.length
+            ? '<span class="tm-player-comms-inline">' + commsBits.join('') + '</span>'
+            : '';
+
+        // Hero-тайлы 32×32. Если избранных героев нет — НЕ показываем
+        // пустой ряд (раньше код вставлял пустой div со срывом ритма).
+        var heroes = (p.favorite_heroes || []).map(function (id) {
+            var info = _tmHeroIconById(id);
+            return '<div class="tm-hero-tile" title="' + _tmEsc(info.name) + '">' +
+                '<img src="' + _tmEsc(info.url) + '" alt="' + _tmEsc(info.name) + '" onerror="this.style.display=\'none\'">' +
+                '</div>';
+        }).join('');
+
+        // Tag — счётчик inline в моно-шрифте, без вложенного pill.
+        var tags = (p.tags || []).map(function (t) {
+            var cls = t.is_positive ? 'tm-tag--positive' : 'tm-tag--negative';
+            var countHtml = t.count
+                ? '<span class="tm-tag-count">' + t.count + '</span>'
+                : '';
+            return '<span class="tm-tag ' + cls + '">' + _tmEsc(t.tag) + countHtml + '</span>';
+        }).join('');
+
+        // Identity-meta строка: [medal]Divine · 3 500 ч [🎤 💬]
+        var metaParts = [];
+        if (p.rank) {
+            metaParts.push(
+                '<span class="tm-player-rank">' + rankIcon +
+                '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>'
+            );
+        }
+        if (p.hours != null) {
+            metaParts.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+        }
+        var metaJoiner = ' <span class="tm-player-meta-dot">·</span> ';
+
+        // Presence-row под meta: статус (намерение) + активность (присутствие).
+        // Два разных axis: статус = «насколько хочу играть», активность =
+        // «тут ли я сейчас». Показываем оба, разделённые точкой. На self и для
+        // hidden-статуса не рендерим (в ленте hidden не появляется, но на
+        // всякий случай).
+        var activityRow = '';
+        if (!opts.self) {
+            var presenceBits = [];
+            // Статус-бейдж (цветная точка + короткий лейбл).
+            var sMeta = (p.status && p.status !== 'hidden') ? _tmStatusMeta(p.status) : null;
+            if (sMeta) {
+                presenceBits.push(
+                    '<span class="tm-player-status tm-player-status--' + sMeta.cls + '">' +
+                    '<span class="tm-status-dot tm-status-dot--' + sMeta.cls + '" aria-hidden="true"></span>' +
+                    _tmEsc(sMeta.short) + '</span>'
+                );
+            }
+            // Активность (в сети / был N назад). Для online — без своей точки,
+            // т.к. статус-бейдж уже может иметь точку; просто текст.
+            var act = _tmFormatLastActive(p.last_active_at);
+            if (act) {
+                presenceBits.push(
+                    '<span class="tm-player-activity-text tm-player-activity--' +
+                    act.kind + '">' + _tmEsc(act.text) + '</span>'
+                );
+            }
+            if (presenceBits.length) {
+                activityRow = '<div class="tm-player-activity">' +
+                    presenceBits.join(' <span class="tm-player-meta-dot">·</span> ') +
+                '</div>';
+            }
+        }
+
+        var metaRow = '';
+        if (metaParts.length || commsInline) {
+            metaRow = '<div class="tm-player-meta-row">' +
+                metaParts.join(metaJoiner) +
+                commsInline +
+            '</div>';
+        }
+
+        // Spec-row: позиции + режимы слитно (одна группа «как играю»),
+        // не split-attention left/right. Если оба пусты — секцию не рендерим.
+        var specRow = '';
+        if (posIcons || modesText) {
+            var specParts = [];
+            if (posIcons)   specParts.push('<span class="tm-player-positions">' + posIcons + '</span>');
+            if (modesText)  specParts.push('<span class="tm-player-modes">' + _tmEsc(modesText) + '</span>');
+            specRow = '<div class="tm-player-spec">' +
+                specParts.join('<span class="tm-player-spec-sep">·</span>') +
+            '</div>';
+        }
+
+        // CTA «Позвать» — теперь В identity-row рядом с именем (action proximate
+        // to identity), а не в подвале после 5 строк инфо. В preview-режиме —
+        // пусто (банер сверху уже объясняет «это превью»).
+        //
+        // Cross-check с outgoing-pending: если я этому юзеру уже отправил
+        // запрос, рендерим кнопку в --sent-стейте сразу. Без этого после
+        // reload приложения кнопка показывала «Позвать», тап → 409 → юзер
+        // в замешательстве. _tm.requestsData.outgoing грузится в init.
+        var ctaHtml;
+        if (opts.self || opts.noCta) {
+            // noCta — карточка во «Входящих»/«Исходящих»: действия (принять/
+            // отклонить/отменить) живут в футере, а не в шапке.
+            ctaHtml = '<span></span>';   // grid-slot заглушка, чтобы layout не схлопнулся
+        } else if (p.user_id && _tmHasOutgoingPending(p.user_id)) {
+            ctaHtml = '<button class="tm-player-cta tm-player-cta--sent" disabled>Уже отправлено</button>';
+        } else {
+            ctaHtml = '<button class="tm-player-cta" onclick="tmSendRequest(' + p.user_id + ', this)">Позвать</button>';
+        }
+
+        // Reveal-анимация только для НОВЫХ карточек (первое появление в этой
+        // сессии). Иначе на каждом poll-тике лента бы дёргалась.
+        var enterCls = '';
+        if (p.user_id && !_tm._seenCardIds[p.user_id]) {
+            enterCls = ' tm-player-card--enter';
+            _tm._seenCardIds[p.user_id] = true;
+        }
+
+        // Первопроходец — янтарный флажок у имени + янтарная рамка карточки.
+        // Один из первых N юзеров, заполнивших профиль (см. _TM_FOUNDER_CAP).
+        // Сам флажок без слова — текст в подсказке (title). Рамка + глиф несут
+        // сигнал, не утяжеляя identity-колонку лишней строкой.
+        var founderCls = p.is_founder ? ' tm-player-card--founder' : '';
+        var founderFlag = p.is_founder
+            ? '<i class="ph-fill ph-rocket-launch tm-founder-flag" ' +
+              'title="Первопроходец — один из первых игроков D2Helper" ' +
+              'role="img" aria-label="Первопроходец"></i>'
+            : '';
+
+        return [
+            '<article class="tm-player-card' + enterCls + founderCls + '" data-user-id="' + (p.user_id || '') + '">',
+              '<header class="tm-player-head">',
+                avatarHtml,
+                '<div class="tm-player-id">',
+                  '<div class="tm-player-name-row">' +
+                    '<span class="tm-player-name">' + _tmEsc(displayName) + '</span>' +
+                    founderFlag +
+                  '</div>',
+                  metaRow,
+                  activityRow,
+                '</div>',
+                ctaHtml,
+              '</header>',
+              specRow,
+              (heroes  ? '<div class="tm-player-heroes">' + heroes + '</div>' : ''),
+              (p.about ? '<blockquote class="tm-player-about">' + _tmEsc(p.about) + '</blockquote>' : ''),
+              (tags    ? '<div class="tm-tags">' + tags + '</div>' : ''),
+              // Футер с действиями (принять/отклонить/отменить) — для карточек
+              // во «Входящих»/«Исходящих». В ленте opts.footer не передаётся.
+              (opts.footer ? '<div class="tm-player-card-actions">' + opts.footer + '</div>' : ''),
+              // Админ-модерация: видна ТОЛЬКО админу (_tm.isAdmin), никогда
+              // обычным юзерам. Не на своей карточке.
+              ((_tm.isAdmin && !opts.self && p.user_id)
+                ? '<div class="tm-admin-row">' +
+                    '<button type="button" class="tm-admin-del" ' +
+                    'onclick="tmAdminDeleteProfile(' + p.user_id + ', this)">' +
+                    '<i class="ph ph-trash" aria-hidden="true"></i> Удалить профиль</button>' +
+                  '</div>'
+                : ''),
+            '</article>'
+        ].join('');
+    }
+
+    // Админ-удаление профиля из ленты (модерация). Доступно только когда
+    // _tm.isAdmin (бэкенд всё равно перепроверяет токен против _TM_ADMIN_IDS).
+    window.tmAdminDeleteProfile = async function (targetUserId, btn) {
+        if (!_tm.isAdmin) return;
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+
+        var doDelete = async function () {
+            if (btn) btn.disabled = true;
+            try {
+                var resp = await apiFetch(TM_API + '/teammates/admin/delete_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: token, target_user_id: targetUserId })
+                });
+                if (!resp.ok) { showToast('Не удалось удалить'); if (btn) btn.disabled = false; return; }
+                showToast('Профиль удалён', 'ok');
+                // Убираем из всех локальных списков и ре-рендерим.
+                _tm.feedItems = (_tm.feedItems || []).filter(function (x) { return x.user_id !== targetUserId; });
+                renderFeed();
+            } catch (e) {
+                console.warn('[tm] admin delete:', e);
+                showToast('Не удалось удалить');
+                if (btn) btn.disabled = false;
+            }
+        };
+
+        // Подтверждение, чтобы не снести профиль случайным тапом.
+        var tg = window.Telegram && window.Telegram.WebApp;
+        if (tg && typeof tg.showConfirm === 'function') {
+            tg.showConfirm('Удалить этот профиль из ленты?', function (ok) { if (ok) doDelete(); });
+        } else if (window.confirm('Удалить этот профиль из ленты?')) {
+            doDelete();
+        }
+    };
+
+    window.tmSendRequest = async function (to_user_id, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, to_user_id: to_user_id })
+            });
+            if (resp.status === 409) {
+                showToast('Запрос уже отправлен');
+                if (btn) _tmMarkCtaSent(btn, 'Уже отправлено');
+                return;
+            }
+            if (resp.status === 429) {
+                var errData;
+                try { errData = await resp.json(); } catch (e) { errData = null; }
+                showToast((errData && errData.detail) || 'Слишком много запросов в ожидании');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            showToast('Запрос отправлен', 'ok');
+            if (btn) _tmMarkCtaSent(btn, 'Запрос отправлен');
+            // Локально мирорим состояние: чтобы при re-render'е ленты (poll-tick
+            // или refresh) кнопка осталась в --sent-state, а не вернулась к
+            // «Позвать». Реальный outgoing-список подтянется фоном.
+            if (!_tm.requestsData) _tm.requestsData = { incoming: [], outgoing: [], history: [] };
+            if (!Array.isArray(_tm.requestsData.outgoing)) _tm.requestsData.outgoing = [];
+            _tm.requestsData.outgoing.push({ to_user_id: to_user_id });
+            loadOutgoing();
+        } catch (e) {
+            console.warn('[tm] sendRequest:', e);
+            showToast('Не удалось отправить запрос');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // Анимированный переход CTA «Позвать» → «Запрос отправлен». Раньше был
+    // мгновенный textContent-swap — резкий jump. Теперь короткий fade+scale
+    // через CSS-класс .tm-player-cta--just-sent (0.34s), параллельно ставим
+    // постоянный --sent для серого цвета. Класс --just-sent снимаем по
+    // animationend, чтобы не висел.
+    function _tmMarkCtaSent(btn, text) {
+        if (!btn) return;
+        btn.textContent = text;
+        btn.disabled = true;
+        btn.classList.add('tm-player-cta--sent', 'tm-player-cta--just-sent');
+        var onEnd = function () {
+            btn.removeEventListener('animationend', onEnd);
+            btn.classList.remove('tm-player-cta--just-sent');
+        };
+        btn.addEventListener('animationend', onEnd);
+    }
+
+    // ── Skeleton-карточка для первого монтирования ленты ──────────────
+    // Заменяет «Загрузка…»-текст. Структура зеркалит реальную карточку
+    // (avatar | name+meta | CTA сверху, spec ниже), чтобы при появлении
+    // данных не было layout-shift'а.
+    function _tmSkeletonCard() {
+        return [
+            '<div class="tm-skeleton-card">',
+              '<div class="tm-skeleton-card-head">',
+                '<div class="tm-skeleton-avatar"></div>',
+                '<div>',
+                  '<div class="tm-skeleton-line tm-skeleton-line--name"></div>',
+                  '<div class="tm-skeleton-line tm-skeleton-line--meta"></div>',
+                '</div>',
+                '<div class="tm-skeleton-line tm-skeleton-line--cta"></div>',
+              '</div>',
+              '<div class="tm-skeleton-line tm-skeleton-line--spec"></div>',
+            '</div>',
+        ].join('');
+    }
+    function _tmSkeletonList(count) {
+        var n = count || 3;
+        var items = [];
+        for (var i = 0; i < n; i++) items.push(_tmSkeletonCard());
+        return '<div class="tm-skeleton-list">' + items.join('') + '</div>';
+    }
+
+    // ── Badge для bottom-nav «Тиммейты» + динамический сабтайтл главной ──
+    // Лёгкий global-polling: входящие pending каждые 90s, плюс one-shot на
+    // App-load. Юзер видит «есть N запросов» даже если он сейчас на странице
+    // Героев / Главной / Драфтере. Реюзит /requests/incoming (нет отдельного
+    // count-endpoint'а; пэйлоад мал — payload-overhead приемлем).
+    var _TM_BADGE_POLL_MS = 90000;
+    async function _tmRefreshBadge() {
+        var token = _tmGetToken();
+        if (!token) return;
+        try {
+            var resp = await apiFetch(
+                TM_API + '/teammates/requests/incoming?token=' + encodeURIComponent(token)
+            );
+            if (!resp.ok) return;
+            var data = await resp.json();
+            var count = Array.isArray(data) ? data.length : 0;
+            _tmApplyBadge(count);
+            _tmApplyHomeSubtitle(count);
+        } catch (e) {
+            // Тихо: badge — second-class сигнал, не валим ради него UX.
+        }
+    }
+    function _tmApplyBadge(count) {
+        var badge = document.getElementById('nav-tm-badge');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count > 9 ? '9+' : String(count);
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+    function _tmApplyHomeSubtitle(count) {
+        var sub = document.querySelector('#home-teammates-widget .home-tm-subtitle');
+        if (!sub) return;
+        if (count > 0) {
+            // Простая склонение-логика: 1 запрос / 2-4 запроса / 5+ запросов.
+            // Узкий русско-специфичный кейс, не тянем целую i18n-либу.
+            var label;
+            var mod10  = count % 10;
+            var mod100 = count % 100;
+            if (mod100 >= 11 && mod100 <= 14)      label = 'запросов';
+            else if (mod10 === 1)                  label = 'запрос';
+            else if (mod10 >= 2 && mod10 <= 4)     label = 'запроса';
+            else                                   label = 'запросов';
+            sub.textContent = 'У тебя ' + count + ' входящих ' + label;
+        } else {
+            sub.textContent = 'Подбери напарника по рангу, позиции и настрою';
+        }
+    }
+    // Глобальный polling. Запускаем один раз при загрузке DOM (с задержкой
+    // ~1.5s — даём токену успеть подсосаться) и потом каждые 90s.
+    function _tmStartBadgePolling() {
+        if (window._tmBadgeTimer) return;
+        setTimeout(_tmRefreshBadge, 1500);
+        window._tmBadgeTimer = setInterval(_tmRefreshBadge, _TM_BADGE_POLL_MS);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _tmStartBadgePolling);
+    } else {
+        _tmStartBadgePolling();
+    }
+
+    // ── Filters ─────────────────────────────────────────────────────────
+    // Все 4 категории используют ОДИН класс .tm-fchip с тремя content-
+    // модификаторами: --icon (квадрат с картинкой), --text (только текст),
+    // --mixed (иконка + текст). Формула рамки/фона/active одинаковая.
+
+    var TM_GAME_MODES_ORDER = ['ranked', 'normal', 'turbo'];
+
+    function _tmFchip(opts) {
+        // opts: { variant: 'icon'|'text'|'mixed', active, onclick, label, content, title }
+        var cls = 'tm-fchip tm-fchip--' + opts.variant + (opts.active ? ' tm-fchip--active' : '');
+        var titleAttr = opts.title ? ' title="' + _tmEsc(opts.title) + '"' : '';
+        var labelAttr = opts.label ? ' aria-label="' + _tmEsc(opts.label) + '"' : '';
+        var pressed   = ' aria-pressed="' + (opts.active ? 'true' : 'false') + '"';
+        return '<button type="button" class="' + cls + '"' + titleAttr + labelAttr + pressed +
+            ' onclick="' + opts.onclick + '">' +
+            opts.content +
+        '</button>';
+    }
+
+    // Статусы доступные как фильтр «кого ищу» (hidden нельзя — его нет в ленте).
+    var TM_FILTER_STATUSES = ['ready_now', 'looking_regular', 'looking_casual'];
+
+    function renderFilters() {
+        // Статус «кого ищу»: текстовые чипы с цветной точкой.
+        var statusWrap = document.getElementById('tm-filter-status');
+        if (statusWrap) {
+            var stSet = {};
+            for (var sI = 0; sI < _tm.filters.statuses.length; sI++) stSet[_tm.filters.statuses[sI]] = true;
+            statusWrap.innerHTML = TM_FILTER_STATUSES.map(function (key) {
+                var meta = _tmStatusMeta(key);
+                if (!meta) return '';
+                return _tmFchip({
+                    variant: 'mixed',
+                    active: !!stSet[key],
+                    onclick: 'tmToggleFilterStatus(\'' + key + '\')',
+                    content: '<span class="tm-status-dot tm-status-dot--' + meta.cls + '" aria-hidden="true"></span>' + _tmEsc(meta.short),
+                });
+            }).join('');
+        }
+        // Ранги: мультивыбор — каждый выбранный отмечен independently.
+        var rankWrap = document.getElementById('tm-filter-rank');
+        if (rankWrap) {
+            var rankSet = {};
+            for (var rIdx = 0; rIdx < _tm.filters.ranks.length; rIdx++) rankSet[_tm.filters.ranks[rIdx]] = true;
+            rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
+                var tier = i + 1;
+                return _tmFchip({
+                    variant: 'icon',
+                    active: !!rankSet[r],
+                    onclick: 'tmToggleFilterRank(\'' + _tmEsc(r) + '\')',
+                    title: r,
+                    label: r,
+                    content: '<img src="/rank_icons/medal_' + tier + '.png" alt="" onerror="this.style.display=\'none\'">',
+                });
+            }).join('');
+        }
+        // Позиции: 5 чипов с иконкой позиции.
+        var posWrap = document.getElementById('tm-filter-pos');
+        if (posWrap) {
+            var posSet = {};
+            for (var i = 0; i < _tm.filters.positions.length; i++) posSet[_tm.filters.positions[i]] = true;
+            posWrap.innerHTML = [1,2,3,4,5].map(function (n) {
+                return _tmFchip({
+                    variant: 'icon',
+                    active: !!posSet[n],
+                    onclick: 'tmToggleFilterPos(' + n + ')',
+                    title: 'Позиция ' + n,
+                    label: 'Позиция ' + n,
+                    content: '<img src="' + _tmPosIcon(n) + '" alt="">',
+                });
+            }).join('');
+        }
+        // Режимы: текстовые чипы.
+        var modesWrap = document.getElementById('tm-filter-modes');
+        if (modesWrap) {
+            var modeSet = {};
+            for (var j = 0; j < _tm.filters.game_modes.length; j++) modeSet[_tm.filters.game_modes[j]] = true;
+            modesWrap.innerHTML = TM_GAME_MODES_ORDER.map(function (m) {
+                return _tmFchip({
+                    variant: 'text',
+                    active: !!modeSet[m],
+                    onclick: 'tmToggleFilterMode(\'' + _tmEsc(m) + '\')',
+                    content: _tmEsc(TM_MODE_LABELS[m] || m),
+                });
+            }).join('');
+        }
+        // Связь: микрофон/discord — иконка + текст.
+        var commsWrap = document.getElementById('tm-filter-comms');
+        if (commsWrap) {
+            commsWrap.innerHTML =
+                _tmFchip({
+                    variant: 'mixed',
+                    active: !!_tm.filters.microphone,
+                    onclick: 'tmToggleFilterMic()',
+                    content: '<i class="ph ph-microphone-stage" aria-hidden="true"></i>Микрофон',
+                }) +
+                _tmFchip({
+                    variant: 'mixed',
+                    active: !!_tm.filters.discord,
+                    onclick: 'tmToggleFilterDiscord()',
+                    content: '<i class="ph ph-chats-circle" aria-hidden="true"></i>Discord',
+                });
+        }
+
+        _tmRenderFilterChips();
+    }
+
+    // Активные фильтры в свёрнутом баре. Две формы:
+    //   kind='icon' — квадратный 24×24 тайл (medal/pos image или phosphor icon).
+    //                 Один тайл на каждое выбранное значение (ranks/positions
+    //                 показываются по-одному; тап убирает конкретное значение).
+    //   kind='text' — длинный pill с текстом + ×. Используется для game_modes
+    //                 (одна категория с агрегированным списком).
+    function _tmActiveFilterChips() {
+        var chips = [];
+
+        // Ranks: один icon-тайл на каждый выбранный ранг — medal_N.png.
+        _tm.filters.ranks.forEach(function (r) {
+            var tier = TM_RANKS.indexOf(r) + 1;
+            if (tier < 1) return;
+            chips.push({
+                kind: 'icon',
+                label: r,
+                content: '<img src="/rank_icons/medal_' + tier + '.png" alt="" onerror="this.style.display=\'none\'">',
+                onclick: 'tmRemoveFilterValue(event, \'ranks\', \'' + _tmEsc(r) + '\')',
+            });
+        });
+
+        // Positions: один icon-тайл на каждую выбранную позицию.
+        _tm.filters.positions.slice().sort(function (a, b) { return a - b; }).forEach(function (p) {
+            chips.push({
+                kind: 'icon',
+                label: 'Позиция ' + p,
+                content: '<img src="' + _tmPosIcon(p) + '" alt="">',
+                onclick: 'tmRemoveFilterValue(event, \'positions\', ' + p + ')',
+            });
+        });
+
+        // Статусы: один text-pill на категорию (агрегированный список).
+        if (_tm.filters.statuses.length) {
+            var stNames = _tm.filters.statuses.map(function (s) {
+                var meta = _tmStatusMeta(s);
+                return meta ? meta.short : s;
+            }).join(', ');
+            chips.push({
+                kind: 'text',
+                label: stNames,
+                content: _tmEsc(stNames),
+                onclick: 'tmClearFilter(event, \'statuses\')',
+            });
+        }
+
+        // Modes: один text-pill на всю категорию (агрегированный список).
+        if (_tm.filters.game_modes.length) {
+            var modeNames = _tm.filters.game_modes.map(function (m) { return TM_MODE_LABELS[m] || m; }).join(', ');
+            chips.push({
+                kind: 'text',
+                label: modeNames,
+                content: _tmEsc(modeNames),
+                onclick: 'tmClearFilter(event, \'game_modes\')',
+            });
+        }
+
+        // Microphone / Discord: icon-only (phosphor 14px).
+        if (_tm.filters.microphone) {
+            chips.push({
+                kind: 'icon',
+                label: 'Микрофон',
+                content: '<i class="ph ph-microphone" aria-hidden="true"></i>',
+                onclick: 'tmClearFilter(event, \'microphone\')',
+            });
+        }
+        if (_tm.filters.discord) {
+            chips.push({
+                kind: 'icon',
+                label: 'Discord',
+                content: '<i class="ph ph-discord-logo" aria-hidden="true"></i>',
+                onclick: 'tmClearFilter(event, \'discord\')',
+            });
+        }
+
+        return chips;
+    }
+
+    function _tmRenderFilterChips() {
+        var chips = _tmActiveFilterChips();
+        var hasActive = chips.length > 0;
+
+        var wrap = document.getElementById('tm-filters-active-chips');
+        if (wrap) {
+            wrap.innerHTML = chips.map(function (c) {
+                var cls = 'tm-filter-chip-active tm-filter-chip-active--' + c.kind;
+                if (c.kind === 'icon') {
+                    return '<button type="button" class="' + cls + '" ' +
+                        'onclick="' + c.onclick + '" ' +
+                        'title="' + _tmEsc(c.label) + '" ' +
+                        'aria-label="Убрать фильтр: ' + _tmEsc(c.label) + '">' +
+                        c.content +
+                    '</button>';
+                }
+                // text-вариант: pill с лейблом и × справа
+                return '<button type="button" class="' + cls + '" ' +
+                    'onclick="' + c.onclick + '" ' +
+                    'aria-label="Убрать фильтр: ' + _tmEsc(c.label) + '">' +
+                    '<span class="tm-filter-chip-active-label">' + c.content + '</span>' +
+                    '<span class="tm-filter-chip-active-x" aria-hidden="true">×</span>' +
+                '</button>';
+            }).join('');
+        }
+
+        var countEl = document.getElementById('tm-filters-toggle-count');
+        if (countEl) {
+            if (hasActive) {
+                countEl.textContent = chips.length;
+                countEl.hidden = false;
+            } else {
+                countEl.hidden = true;
+            }
+        }
+
+        var resetEl = document.getElementById('tm-filters-reset');
+        if (resetEl) resetEl.hidden = !(_tm.filtersOpen && hasActive);
+
+        var grp = document.getElementById('tm-filters-toggle-group');
+        if (grp) grp.classList.toggle('tm-filters-toggle-group--active', hasActive);
+    }
+
+    window.tmToggleFilters = function (ev) {
+        // Игнорируем клики, которые произошли по дочерним интерактивным
+        // элементам (× на активных чипах, кнопка «Сбросить»). Они сами
+        // обрабатывают свои события и stopPropagation'ят.
+        if (ev && ev.target && ev.target.closest) {
+            if (ev.target.closest('.tm-filter-chip-active')) return;
+            if (ev.target.closest('.tm-filters-reset')) return;
+        }
+        _tm.filtersOpen = !_tm.filtersOpen;
+        var root = document.getElementById('tm-filters');
+        var bar  = document.getElementById('tm-filters-bar');
+        if (root) root.classList.toggle('tm-filters--open', _tm.filtersOpen);
+        if (bar)  bar.setAttribute('aria-expanded', String(_tm.filtersOpen));
+        _tmRenderFilterChips();
+    };
+
+    // Клавиатурная активация bar'а — он role="button", но не настоящая кнопка.
+    window.tmFiltersBarKeydown = function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+            if (ev.target && ev.target.closest && ev.target.closest('.tm-filter-chip-active, .tm-filters-reset')) return;
+            ev.preventDefault();
+            tmToggleFilters();
+        }
+    };
+
+    window.tmClearFilter = function (ev, type) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        if (type === 'ranks')           _tm.filters.ranks = [];
+        else if (type === 'positions')  _tm.filters.positions = [];
+        else if (type === 'game_modes') _tm.filters.game_modes = [];
+        else if (type === 'statuses')   _tm.filters.statuses = [];
+        else if (type === 'microphone') _tm.filters.microphone = false;
+        else if (type === 'discord')    _tm.filters.discord = false;
+        renderFilters();
+        loadFeed(true);
+    };
+
+    // Точечное удаление ОДНОГО значения из мульти-фильтра (rank или position):
+    // тап по конкретному chip-тайлу убирает именно его, остальные остаются.
+    window.tmRemoveFilterValue = function (ev, type, value) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        var arr = _tm.filters[type];
+        if (Array.isArray(arr)) {
+            var i = arr.indexOf(value);
+            if (i >= 0) arr.splice(i, 1);
+        }
+        renderFilters();
+        loadFeed(true);
+    };
+
+    window.tmResetFilters = function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        _tm.filters.ranks = [];
+        _tm.filters.positions = [];
+        _tm.filters.game_modes = [];
+        _tm.filters.statuses = [];
+        _tm.filters.microphone = false;
+        _tm.filters.discord = false;
+        renderFilters();
+        loadFeed(true);
+    };
+
+    window.tmToggleFilterRank = function (rank) {
+        var i = _tm.filters.ranks.indexOf(rank);
+        if (i >= 0) _tm.filters.ranks.splice(i, 1);
+        else _tm.filters.ranks.push(rank);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterPos = function (p) {
+        var i = _tm.filters.positions.indexOf(p);
+        if (i >= 0) _tm.filters.positions.splice(i, 1);
+        else _tm.filters.positions.push(p);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterMode = function (m) {
+        var i = _tm.filters.game_modes.indexOf(m);
+        if (i >= 0) _tm.filters.game_modes.splice(i, 1);
+        else _tm.filters.game_modes.push(m);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterStatus = function (s) {
+        var i = _tm.filters.statuses.indexOf(s);
+        if (i >= 0) _tm.filters.statuses.splice(i, 1);
+        else _tm.filters.statuses.push(s);
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterMic = function () {
+        _tm.filters.microphone = !_tm.filters.microphone;
+        renderFilters();
+        loadFeed(true);
+    };
+    window.tmToggleFilterDiscord = function () {
+        _tm.filters.discord = !_tm.filters.discord;
+        renderFilters();
+        loadFeed(true);
+    };
+
+    // ── Статус видимости (заменил TTL-поиск) ────────────────────────────
+    // 4 статуса: ready_now / looking_regular / looking_casual / hidden.
+    // Постоянные, не истекают. Управляются сегмент-контролом сверху ленты
+    // (всегда видим, не разворачивается). Первый выбор форсится обязательным
+    // экраном. Описания НЕ показываем — лейблы самодостаточны.
+    var TM_STATUSES = [
+        { key: 'ready_now',       label: 'Готов играть сейчас',     short: 'Готов',     cls: 'ready'   },
+        { key: 'looking_regular', label: 'Ищу постоянных тиммейтов', short: 'Постоянка', cls: 'regular' },
+        { key: 'looking_casual',  label: 'Ищу, не срочно',          short: 'Не срочно', cls: 'casual'  },
+        { key: 'hidden',          label: 'Не показывать меня',      short: 'Скрыть',     cls: 'hidden'  },
+    ];
+
+    function _tmStatusMeta(key) {
+        for (var i = 0; i < TM_STATUSES.length; i++) {
+            if (TM_STATUSES[i].key === key) return TM_STATUSES[i];
+        }
+        return null;
+    }
+
+    // Сегмент-контрол (всегда видимый переключатель сверху ленты). Активный
+    // сегмент подсвечен цветом своего статуса. Без dropdown, без описаний,
+    // короткие лейблы. Используется когда статус уже выбран.
+    function _tmRenderStatusSegments(containerId, currentKey) {
+        var wrap = document.getElementById(containerId);
+        if (!wrap) return;
+        wrap.innerHTML = TM_STATUSES.map(function (s) {
+            var active = (s.key === currentKey);
+            return '<button type="button" class="tm-status-seg tm-status-seg--' + s.cls +
+                (active ? ' tm-status-seg--active' : '') +
+                '" role="tab" aria-selected="' + (active ? 'true' : 'false') +
+                '" onclick="tmSetStatus(\'' + s.key + '\')">' +
+                '<span class="tm-status-dot tm-status-dot--' + s.cls + '" aria-hidden="true"></span>' +
+                '<span class="tm-status-seg-label">' + _tmEsc(s.short) + '</span>' +
+            '</button>';
+        }).join('');
+    }
+
+    // Вертикальные опции для обязательного экрана (первый выбор). Полные
+    // лейблы (место есть), без описаний — новичку важно понять что он
+    // выбирает, но лишний текст не нужен.
+    function _tmRenderStatusOptions(containerId, currentKey) {
+        var wrap = document.getElementById(containerId);
+        if (!wrap) return;
+        wrap.innerHTML = TM_STATUSES.map(function (s) {
+            var active = (s.key === currentKey);
+            return '<button type="button" class="tm-status-option tm-status-option--' + s.cls +
+                (active ? ' tm-status-option--active' : '') +
+                '" onclick="tmSetStatus(\'' + s.key + '\')">' +
+                '<span class="tm-status-dot tm-status-dot--' + s.cls + '" aria-hidden="true"></span>' +
+                '<span class="tm-status-option-label">' + _tmEsc(s.label) + '</span>' +
+                '<i class="ph ph-caret-right tm-status-option-arrow" aria-hidden="true"></i>' +
+            '</button>';
+        }).join('');
+    }
+
+    // Оркестратор: окно «заполни профиль» / обязательный выбор статуса /
+    // постоянный сегмент-контрол. Единая точка истины для UI сверху ленты.
+    function _tmUpdateStatusUI() {
+        var gate     = document.getElementById('tm-no-profile-gate');
+        var stGate   = document.getElementById('tm-status-gate');
+        var segments = document.getElementById('tm-status-segments');
+
+        var p = _tm.myProfile;
+        var hasProfile = !!(p && p.rank);
+        var status = p && p.status;
+
+        if (!hasProfile) {
+            // Шаг 1 — нет профиля.
+            if (gate) gate.hidden = false;
+            if (stGate) stGate.hidden = true;
+            if (segments) segments.hidden = true;
+            return;
+        }
+        if (!status) {
+            // Шаг 2 — профиль есть, статус не выбран. Обязательный экран
+            // (тот же сегмент-контрол, но в блокирующей карточке).
+            if (gate) gate.hidden = true;
+            if (stGate) {
+                stGate.hidden = false;
+                _tmRenderStatusOptions('tm-status-gate-options', null);
+            }
+            if (segments) segments.hidden = true;
+            return;
+        }
+        // Шаг 3 — всё выбрано. Постоянный сегмент-контрол сверху.
+        if (gate) gate.hidden = true;
+        if (stGate) stGate.hidden = true;
+        if (segments) {
+            segments.hidden = false;
+            _tmRenderStatusSegments('tm-status-segments', status);
+        }
+    }
+    // Backward-compat: старые call-site'ы зовут _tmUpdateNoProfileGate.
+    window._tmUpdateNoProfileGate = _tmUpdateStatusUI;
+
+    // ── Счётчик «первопроходцев» ──────────────────────────────────────
+    // Публичный агрегат /teammates/founders → {cap, taken, remaining}.
+    // Показываем в окне «заполни профиль» как «Осталось N мест первопроходца»,
+    // чтобы подтолкнуть новичка заполнить профиль раньше. Кешируем в _tm.
+    function _tmLoadFounders() {
+        apiFetch(TM_API + '/teammates/founders')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data) return;
+                _tm.founders = data;
+                _tmRenderFounderCounter();
+            })
+            .catch(function (e) { console.warn('[tm] loadFounders:', e); });
+    }
+
+    // Русская плюрализация: _tmPlural(1,'место','места','мест') → 'место'.
+    function _tmPlural(n, one, few, many) {
+        var mod10 = n % 10, mod100 = n % 100;
+        if (mod10 === 1 && mod100 !== 11) return one;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+        return many;
+    }
+
+    function _tmRenderFounderCounter() {
+        var el = document.getElementById('tm-founder-counter');
+        if (!el) return;
+        var f = _tm.founders;
+        // Без данных или места кончились — счётчик не показываем (молча).
+        if (!f || !f.remaining || f.remaining <= 0) { el.hidden = true; return; }
+        var txt = el.querySelector('.tm-founder-counter-text');
+        if (txt) {
+            txt.textContent = 'Осталось ' + f.remaining + ' ' +
+                _tmPlural(f.remaining, 'место', 'места', 'мест') +
+                ' первопроходца';
+        }
+        el.hidden = false;
+    }
+
+    // Установить статус (из gate-сегментов или из верхнего контрола).
+    window.tmSetStatus = async function (status) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        // Если уже этот статус — ничего не делаем (избегаем лишнего запроса).
+        if (_tm.myProfile && _tm.myProfile.status === status) return;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, status: status }),
+            });
+            if (resp.status === 400) {
+                showToast('Сначала заполни профиль');
+                tmOpenProfileSheet();
+                return;
+            }
+            if (!resp.ok) { showToast('Не удалось обновить статус'); return; }
+            if (_tm.myProfile) _tm.myProfile.status = status;
+            _tmUpdateStatusUI();
+            loadFeed(true);
+            var meta = _tmStatusMeta(status);
+            showToast('Статус: ' + (meta ? meta.short : status), 'ok');
+        } catch (e) {
+            console.warn('[tm] setStatus:', e);
+            showToast('Не удалось обновить статус');
+        }
+    };
+
+    function _tmFormatRemaining(minutes) {
+        if (minutes < 1)  return 'меньше минуты';
+        if (minutes < 60) return minutes + ' мин';
+        var h = Math.floor(minutes / 60);
+        var m = minutes % 60;
+        return m === 0 ? (h + ' ч') : (h + ' ч ' + m + ' мин');
+    }
+
+    // «Был активен N назад» / «в сети». Источник — поле last_active_at в
+    // _tm_serialize_profile. Возвращает объект { kind, text } где kind ∈
+    // {'online', 'recent', null}: 'online' включает dot-индикатор, 'recent'
+    // только текст, null = ничего не показывать (stale или нет данных).
+    function _tmFormatLastActive(iso) {
+        if (!iso) return null;
+        var lastMs = _tmParseUtcLike(iso);
+        if (!isFinite(lastMs)) return null;
+        var diffMin = Math.floor((Date.now() - lastMs) / 60000);
+        if (diffMin < 0)    return null;                       // часы фронта впереди — игнор
+        if (diffMin < 2)    return { kind: 'online', text: 'в сети' };
+        if (diffMin < 60)   return { kind: 'recent', text: 'был ' + diffMin + ' мин назад' };
+        var hrs = Math.floor(diffMin / 60);
+        if (hrs < 24)       return { kind: 'recent', text: 'был ' + hrs + ' ч назад' };
+        var days = Math.floor(hrs / 24);
+        if (days === 1)     return { kind: 'recent', text: 'вчера' };
+        if (days < 7)       return { kind: 'recent', text: 'был ' + days + ' дн. назад' };
+        return null;                                            // stale → скрываем
+    }
+    // ── Profile preview / form switch ───────────────────────────────────
+    window.tmShowProfilePreview = function () {
+        _tm.previewMode = true;
+        var preview = document.getElementById('tm-profile-preview');
+        var form = document.getElementById('tm-profile-form');
+        // Раздел «Запросы» виден только когда профиль готов (preview-режим).
+        // При редактировании юзер ещё не закончил основную задачу — запросы
+        // ему пока не нужны, лишний шум.
+        var reqSection = document.getElementById('tm-requests-section');
+        if (preview) preview.hidden = false;
+        if (form) form.hidden = true;
+        if (reqSection) reqSection.hidden = false;
+        _tmRenderProfilePreview(_tm.myProfile);
+    };
+    window.tmShowProfileForm = function () {
+        _tm.previewMode = false;
+        var preview = document.getElementById('tm-profile-preview');
+        var form = document.getElementById('tm-profile-form');
+        var reqSection = document.getElementById('tm-requests-section');
+        if (preview) preview.hidden = true;
+        if (form) form.hidden = false;
+        if (reqSection) reqSection.hidden = true;
+    };
+    window.tmEditProfile = function () { tmShowProfileForm(); };
+
+    // Показать/спрятать блокирующее окно «Заполни профиль». Вызывается:
+    //   • при initTeammatesPage после loadMyProfile (первый показ)
+    //   • после успешного save профиля (юзер заполнил — скрываем)
+    function _tmUpdateNoProfileGate() {
+        var gate = document.getElementById('tm-no-profile-gate');
+        if (!gate) return;
+        var hasProfile = !!(_tm.myProfile && _tm.myProfile.rank);
+        gate.hidden = hasProfile;
+    }
+    window._tmUpdateNoProfileGate = _tmUpdateNoProfileGate;
+
+    function _tmRenderProfilePreview(profile) {
+        var holder = document.getElementById('tm-preview-card');
+        if (!holder) return;
+        if (!profile || !profile.rank) {
+            holder.innerHTML = '<div class="tm-feed-empty">Профиль ещё не заполнен</div>';
+            return;
+        }
+        holder.innerHTML = _renderPlayerCard(profile, { self: true });
+    }
+
+    // ── Profile form ────────────────────────────────────────────────────
+    function renderProfileForm() {
+        var p = _tm.myProfile || {};
+
+        var rankWrap = document.getElementById('tm-rank-scroll');
+        if (rankWrap) {
+            rankWrap.innerHTML = TM_RANKS.map(function (r) {
+                var cls = (r === p.rank) ? 'tm-rank-card tm-rank-card--active' : 'tm-rank-card';
+                return '<button type="button" class="' + cls + '" data-rank="' + _tmEsc(r) + '" onclick="tmSelectRank(\'' + _tmEsc(r) + '\')">' +
+                    _tmRankIconImg(r, 'tm-rank-icon--md') +
+                    '<span class="tm-rank-card-label">' + _tmEsc(r) + '</span>' +
+                '</button>';
+            }).join('');
+        }
+
+        var hoursInput = document.getElementById('tm-hours-input');
+        if (hoursInput) hoursInput.value = (p.hours != null) ? p.hours : '';
+
+        var posBtns = document.querySelectorAll('.tm-position-btn');
+        var posSet = {};
+        (p.positions || []).forEach(function (n) { posSet[n] = true; });
+        for (var i = 0; i < posBtns.length; i++) {
+            var n = parseInt(posBtns[i].getAttribute('data-pos'), 10);
+            posBtns[i].classList.toggle('tm-position-btn--active', !!posSet[n]);
+        }
+
+        var modeBtns = document.querySelectorAll('.tm-mode-btn');
+        var modeSet = {};
+        (p.game_modes || []).forEach(function (m) { modeSet[m] = true; });
+        for (var j = 0; j < modeBtns.length; j++) {
+            var m = modeBtns[j].getAttribute('data-mode');
+            modeBtns[j].classList.toggle('tm-mode-btn--active', !!modeSet[m]);
+        }
+
+        var micT = document.getElementById('tm-mic-toggle');
+        var dcT = document.getElementById('tm-discord-toggle');
+        if (micT) { micT.classList.toggle('tm-toggle--on', !!p.microphone); micT.setAttribute('aria-pressed', String(!!p.microphone)); }
+        if (dcT)  { dcT.classList.toggle('tm-toggle--on', !!p.discord);     dcT.setAttribute('aria-pressed', String(!!p.discord)); }
+
+        renderHeroSlots();
+
+        var ta = document.getElementById('tm-about-input');
+        if (ta) { ta.value = p.about || ''; tmUpdateAboutCounter(); }
+    }
+
+    window.tmSelectRank = function (r) {
+        if (!_tm.myProfile) _tm.myProfile = {};
+        _tm.myProfile.rank = r;
+        var cards = document.querySelectorAll('.tm-rank-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.toggle('tm-rank-card--active', cards[i].getAttribute('data-rank') === r);
+        }
+    };
+
+    window.tmTogglePos = function (_p, btn) { btn.classList.toggle('tm-position-btn--active'); };
+    window.tmToggleMode = function (_m, btn) { btn.classList.toggle('tm-mode-btn--active'); };
+    window.tmToggleMic = function () {
+        var t = document.getElementById('tm-mic-toggle'); if (!t) return;
+        t.classList.toggle('tm-toggle--on');
+        t.setAttribute('aria-pressed', String(t.classList.contains('tm-toggle--on')));
+    };
+    window.tmToggleDiscord = function () {
+        var t = document.getElementById('tm-discord-toggle'); if (!t) return;
+        t.classList.toggle('tm-toggle--on');
+        t.setAttribute('aria-pressed', String(t.classList.contains('tm-toggle--on')));
+    };
+    window.tmUpdateAboutCounter = function () {
+        var ta = document.getElementById('tm-about-input');
+        var counter = document.getElementById('tm-about-counter');
+        if (!ta || !counter) return;
+        var len = (ta.value || '').length;
+        counter.textContent = len + ' / 200';
+    };
+
+    function renderHeroSlots() {
+        var wrap = document.getElementById('tm-hero-slots');
+        if (!wrap) return;
+        var html = '';
+        for (var i = 0; i < 3; i++) {
+            var id = _tm.favoriteHeroes[i];
+            if (id) {
+                var info = _tmHeroIconById(id);
+                html += '<button type="button" class="tm-hero-slot tm-hero-slot--filled" onclick="tmRemoveHero(' + i + ')" title="' + _tmEsc(info.name) + '">' +
+                    '<img class="tm-hero-slot-img" src="' + _tmEsc(info.url) + '" alt="' + _tmEsc(info.name) + '" onerror="this.style.display=\'none\'">' +
+                    '<span class="tm-hero-slot-x">×</span>' +
+                '</button>';
+            } else {
+                html += '<button type="button" class="tm-hero-slot tm-hero-slot--empty" onclick="tmOpenHeroPicker()" aria-label="Добавить героя">' +
+                    '<i class="ph ph-plus" aria-hidden="true"></i>' +
+                '</button>';
+            }
+        }
+        wrap.innerHTML = html;
+    }
+    window.tmRemoveHero = function (idx) {
+        _tm.favoriteHeroes.splice(idx, 1);
+        renderHeroSlots();
+    };
+    // Reuse существующего каталога героев — никакого собственного picker'а.
+    // Стратегия: вешаем capture-phase listener на оверлей, перехватываем клик
+    // по тайлу до того, как сработает дефолтный обработчик (matchup/drafter),
+    // и подбираем героя в фавориты. MutationObserver на attribute=hidden чистит
+    // listener при закрытии каталога любым способом (X, backdrop, ESC).
+    window.tmOpenHeroPicker = function () {
+        if (_tm.favoriteHeroes.length >= 3) { showToast('Уже выбрано 3 героя'); return; }
+        if (typeof window.openHeroesCatalog !== 'function') {
+            console.warn('[tm] openHeroesCatalog недоступен');
+            return;
+        }
+        var overlay = document.getElementById('heroes-catalog-overlay');
+        if (!overlay) return;
+
+        var mo;
+        function cleanup() {
+            overlay.removeEventListener('click', interceptor, true);
+            if (mo) { mo.disconnect(); mo = null; }
+        }
+        function interceptor(e) {
+            var t = e.target;
+            var tile = t && t.closest ? t.closest('.heroes-catalog-tile') : null;
+            if (!tile) return;
+            var name = tile.getAttribute('data-hero-name');
+            if (!name) return;
+            var id = (window.dotaHeroIds || {})[name];
+            if (!id) return;
+            // Гасим bubble-phase handler оригинального каталога.
+            e.stopPropagation();
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            if (_tm.favoriteHeroes.indexOf(id) === -1 && _tm.favoriteHeroes.length < 3) {
+                _tm.favoriteHeroes.push(id);
+                renderHeroSlots();
+            }
+            cleanup();
+            if (typeof window.closeHeroesCatalog === 'function') {
+                window.closeHeroesCatalog();
+            }
+        }
+
+        overlay.addEventListener('click', interceptor, true);
+        // Каталог скрывается через overlay.hidden=true — ловим этот переход.
+        if (typeof MutationObserver === 'function') {
+            mo = new MutationObserver(function () {
+                if (overlay.hidden) cleanup();
+            });
+            mo.observe(overlay, { attributes: true, attributeFilter: ['hidden'] });
+        }
+
+        window.openHeroesCatalog();
+    };
+
+    window.tmSaveProfile = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+
+        var rankActive = document.querySelector('.tm-rank-card--active');
+        var rank = rankActive ? rankActive.getAttribute('data-rank') : '';
+        if (!rank) { showToast('Выбери ранг'); return; }
+
+        var hoursInput = document.getElementById('tm-hours-input');
+        var hours = parseInt((hoursInput && hoursInput.value) || '0', 10);
+        if (!(hours >= 0)) { showToast('Укажи часы корректно'); return; }
+
+        var posBtns = document.querySelectorAll('.tm-position-btn--active');
+        var positions = [];
+        for (var i = 0; i < posBtns.length; i++) positions.push(parseInt(posBtns[i].getAttribute('data-pos'), 10));
+        if (!positions.length) { showToast('Выбери хотя бы одну позицию'); return; }
+
+        var modeBtns = document.querySelectorAll('.tm-mode-btn--active');
+        var game_modes = [];
+        for (var j = 0; j < modeBtns.length; j++) game_modes.push(modeBtns[j].getAttribute('data-mode'));
+        if (!game_modes.length) { showToast('Выбери хотя бы один режим'); return; }
+
+        var micT = document.getElementById('tm-mic-toggle');
+        var dcT = document.getElementById('tm-discord-toggle');
+        var microphone = !!(micT && micT.classList.contains('tm-toggle--on'));
+        var discord    = !!(dcT && dcT.classList.contains('tm-toggle--on'));
+
+        var ta = document.getElementById('tm-about-input');
+        var about = (ta && ta.value) || '';
+        var favorite_heroes = _tm.favoriteHeroes.slice(0, 3);
+
+        var btn = document.getElementById('tm-save-btn');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token,
+                    rank: rank,
+                    hours: hours,
+                    positions: positions,
+                    game_modes: game_modes,
+                    microphone: microphone,
+                    discord: discord,
+                    favorite_heroes: favorite_heroes,
+                    about: about
+                })
+            });
+            if (!resp.ok) { showToast('Не удалось сохранить'); return; }
+            showToast('Профиль сохранён', 'ok');
+            // Сохраняем в локальное состояние. Статус (status) НЕ трогаем —
+            // он живёт отдельно от профиля и ставится в ленте.
+            _tm.myProfile = Object.assign({}, _tm.myProfile || {}, {
+                rank: rank, hours: hours, positions: positions, game_modes: game_modes,
+                microphone: microphone, discord: discord,
+                favorite_heroes: favorite_heroes, about: about
+            });
+            // После сохранения сразу показываем preview — это и фидбек об успехе,
+            // и моментальное превью карточки в ленте.
+            tmShowProfilePreview();
+            // Обновляем UI ленты: окно «заполни профиль» уходит, но если статус
+            // ещё не выбран — при возврате в ленту покажется обязательный выбор.
+            _tmUpdateStatusUI();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Requests: incoming / outgoing / history ─────────────────────────
+    // Единая модель: три параллельных списка в _tm.requestsData, активная
+    // вкладка в _tm.requestsTab. Лоадер пишет в свою ячейку, рендер выбирает
+    // нужную по активной вкладке. Render'еры карточек разделены по типу.
+
+    async function loadIncoming() {
+        if (_tm.requestsLoading.incoming) return;
+        _tm.requestsLoading.incoming = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            var resp = await apiFetch(TM_API + '/teammates/requests/incoming?token=' + encodeURIComponent(token));
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = []; }
+            _tm.requestsData.incoming = Array.isArray(data) ? data : [];
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'incoming') _tmRenderRequests();
+        } finally {
+            _tm.requestsLoading.incoming = false;
+        }
+    }
+
+    async function loadOutgoing() {
+        if (_tm.requestsLoading.outgoing) return;
+        _tm.requestsLoading.outgoing = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            var resp = await apiFetch(TM_API + '/teammates/requests/outgoing?token=' + encodeURIComponent(token));
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = []; }
+            _tm.requestsData.outgoing = Array.isArray(data) ? data : [];
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'outgoing') _tmRenderRequests();
+        } finally {
+            _tm.requestsLoading.outgoing = false;
+        }
+    }
+
+    async function loadHistory(reset) {
+        if (_tm.requestsLoading.history) return;
+        _tm.requestsLoading.history = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            if (reset) {
+                _tm.historyCursor = null;
+                _tm.requestsData.history = [];
+            }
+            var params = new URLSearchParams();
+            params.set('token', token);
+            params.set('limit', '20');
+            if (_tm.historyCursor) params.set('cursor', _tm.historyCursor);
+
+            // Load 1-на-1 history (paginated) + лобби history (no pagination,
+            // только при reset) параллельно. Сортируем по timestamp DESC.
+            var reqPromise = apiFetch(TM_API + '/teammates/requests/history?' + params.toString());
+            var lobPromise = reset
+                ? apiFetch(TM_API + '/teammates/lobbies/history?token=' + encodeURIComponent(token))
+                : Promise.resolve(null);
+
+            var responses = await Promise.all([reqPromise, lobPromise]);
+            var reqResp = responses[0];
+            var lobResp = responses[1];
+
+            var reqItems = [];
+            if (reqResp && reqResp.ok) {
+                try {
+                    var reqData = await reqResp.json();
+                    reqItems = ((reqData && reqData.items) || []).map(function (r) {
+                        r._type = 'request';
+                        r._sortAt = r.accepted_at;
+                        return r;
+                    });
+                    _tm.historyCursor = reqData && reqData.next_cursor;
+                } catch (e) { /* tolerate parse */ }
+            }
+
+            var lobItems = [];
+            if (lobResp && lobResp.ok) {
+                try {
+                    var lobData = await lobResp.json();
+                    lobItems = ((lobData && lobData.items) || []).map(function (l) {
+                        l._type = 'lobby';
+                        l._sortAt = l.filled_at;
+                        return l;
+                    });
+                } catch (e) { /* tolerate parse */ }
+            }
+
+            var combined;
+            if (reset) {
+                // Свежая загрузка: оба источника, merge + sort.
+                combined = reqItems.concat(lobItems);
+            } else {
+                // Load-more: лобби-история уже загружена на первой странице,
+                // догружаем только requests (с пагинацией). Сохраняем уже
+                // показанные элементы.
+                combined = _tm.requestsData.history.concat(reqItems);
+            }
+            // Сортируем по timestamp DESC (последние сверху).
+            combined.sort(function (a, b) {
+                var aT = a._sortAt ? new Date(a._sortAt).getTime() : 0;
+                var bT = b._sortAt ? new Date(b._sortAt).getTime() : 0;
+                return bT - aT;
+            });
+            _tm.requestsData.history = combined;
+            if (_tm.requestsTab === 'history') _tmRenderRequests();
+        } finally {
+            _tm.requestsLoading.history = false;
+        }
+    }
+
+    async function loadRequestsForTab(tab) {
+        if (tab === 'incoming') return loadIncoming();
+        if (tab === 'outgoing') return loadOutgoing();
+        if (tab === 'history')  return loadHistory(true);
+    }
+
+    function _tmUpdateRequestsCounts() {
+        var incEl = document.getElementById('tm-rt-count-incoming');
+        var outEl = document.getElementById('tm-rt-count-outgoing');
+        var inc = _tm.requestsData.incoming.length;
+        var out = _tm.requestsData.outgoing.length;
+        if (incEl) incEl.textContent = inc ? String(inc) : '';
+        if (outEl) outEl.textContent = out ? String(out) : '';
+        // Sync два дополнительных incoming-индикатора:
+        //   1) Banner сверху Дуо-пейна — счётчик с правильным склонением
+        //   2) Точка на avatar-btn в header'е — secondary visual cue
+        _tmRenderIncomingBanner(inc);
+        _tmUpdateProfileBtnIncomingDot(inc);
+    }
+
+    // Banner: «N новых запрос(а/ов)» с действие-стрелкой. Скрыт когда count=0.
+    function _tmRenderIncomingBanner(count) {
+        var banner = document.getElementById('tm-incoming-banner');
+        if (!banner) return;
+        if (!count || count <= 0) {
+            banner.hidden = true;
+            return;
+        }
+        var textEl = document.getElementById('tm-incoming-banner-text');
+        if (textEl) {
+            // Русское склонение: 1 запрос / 2-4 запроса / 5+ запросов.
+            var mod10  = count % 10;
+            var mod100 = count % 100;
+            var label;
+            if (mod100 >= 11 && mod100 <= 14)  label = 'новых запросов';
+            else if (mod10 === 1)              label = 'новый запрос';
+            else if (mod10 >= 2 && mod10 <= 4) label = 'новых запроса';
+            else                               label = 'новых запросов';
+            textEl.textContent = count + ' ' + label;
+        }
+        banner.hidden = false;
+    }
+
+    function _tmUpdateProfileBtnIncomingDot(count) {
+        var btn = document.getElementById('tm-profile-btn');
+        if (!btn) return;
+        btn.classList.toggle('tm-profile-btn--has-incoming', !!(count && count > 0));
+    }
+
+    // Тап на banner → открыть профиль-sheet, переключить sub-tab на 'incoming'.
+    window.tmOpenIncomingFromBanner = function () {
+        if (typeof window.tmOpenProfileSheet === 'function') tmOpenProfileSheet();
+        if (typeof window.tmSetRequestsTab === 'function') tmSetRequestsTab('incoming');
+    };
+
+    function _tmRequestsEmptyState(tab) {
+        var msg;
+        if (tab === 'incoming') {
+            msg = 'Никто пока не звал тебя играть. Выставь статус в Ленте, чтобы тебя видели другие.';
+        } else if (tab === 'outgoing') {
+            msg = 'Ты пока никому не написал. Найди тиммейта в Ленте.';
+        } else {
+            msg = 'Здесь появятся игроки, с которыми ты сыграешь через D2Helper.';
+        }
+        return '<div class="tm-feed-empty">' + msg + '</div>';
+    }
+
+    function _tmRenderRequests() {
+        var list = document.getElementById('tm-requests-list');
+        if (!list) return;
+        var tab = _tm.requestsTab;
+        var items = _tm.requestsData[tab] || [];
+        if (!items.length) {
+            list.innerHTML = _tmRequestsEmptyState(tab);
+            return;
+        }
+        var html;
+        if (tab === 'incoming')       html = items.map(_renderIncomingItem).join('');
+        else if (tab === 'outgoing')  html = items.map(_renderOutgoingItem).join('');
+        else /* history */            html = items.map(_renderHistoryItem).join('');
+        // Load-more для history (если есть next_cursor).
+        if (tab === 'history' && _tm.historyCursor) {
+            html += '<button type="button" class="tm-load-more" onclick="tmLoadMoreHistory()">Показать ещё</button>';
+        }
+        list.innerHTML = html;
+    }
+
+    // Общий блок: avatar + name + meta-row. Используется во всех трёх вкладках.
+    function _tmRenderRequestHead(p) {
+        var avatarHtml = _tmAvatarHtml(p, 'tm-player-avatar--sm');
+        var displayName = _tmDisplayName(p);
+        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
+        var meta = [];
+        if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
+        if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+        return '<div class="tm-request-head">' +
+            avatarHtml +
+            '<div class="tm-player-id">' +
+              '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>' +
+              (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
+            '</div>' +
+        '</div>';
+    }
+
+    // Входящие/исходящие — это та же полная карточка игрока, что и в ленте
+    // (ранг, часы, позиции, режимы, связь, герои, теги, статус, флажок), чтобы
+    // получатель решал по полной картине, а не по урезанной «шапке». Действия
+    // (принять/отклонить/отменить) кладём в футер карточки через opts.footer.
+    function _renderIncomingItem(r) {
+        var footer =
+            '<button type="button" class="tm-incoming-accept" onclick="tmRespondRequest(' + r.request_id + ', true, this)">Принять</button>' +
+            '<button type="button" class="tm-incoming-decline" onclick="tmRespondRequest(' + r.request_id + ', false, this)">Отклонить</button>';
+        return _renderPlayerCard(r.profile || {}, { noCta: true, footer: footer });
+    }
+
+    function _renderOutgoingItem(r) {
+        var footer =
+            '<span class="tm-status-pending"><span class="tm-status-pending-dot" aria-hidden="true"></span>Ждём ответа</span>' +
+            '<button type="button" class="tm-outgoing-cancel" onclick="tmCancelRequest(' + r.request_id + ', this)">Отменить</button>';
+        return _renderPlayerCard(r.profile || {}, { noCta: true, footer: footer });
+    }
+
+    function _renderHistoryItem(item) {
+        // Dispatcher: 1-на-1 request vs filled лобби. Тип проставляет loadHistory.
+        if (item && item._type === 'lobby') return _renderHistoryLobbyItem(item);
+        return _renderHistoryRequestItem(item);
+    }
+
+    // Замок отзыва: True, если с момента принятия прошло меньше 30 минут
+    // (раньше игры быть не могло). Должно совпадать с _TM_REVIEW_MIN_MINUTES
+    // на бэкенде. Парсим accepted_at как UTC-like (см. _tmParseUtcLike).
+    var _TM_REVIEW_GATE_MS = 30 * 60 * 1000;
+    function _tmReviewGateActive(acceptedAt) {
+        var t = _tmParseUtcLike(acceptedAt);
+        if (isNaN(t)) return false;   // нет даты — не блокируем
+        return (Date.now() - t) < _TM_REVIEW_GATE_MS;
+    }
+
+    function _renderHistoryRequestItem(r) {
+        var p = r.profile || {};
+        var when = _tmRelativeDate(r.accepted_at);
+        var otherId = r.other_user_id != null ? r.other_user_id : 'null';
+        var actionHtml;
+        if (r.my_review_left) {
+            actionHtml = '<span class="tm-history-done"><i class="ph ph-check-circle" aria-hidden="true"></i>Отзыв оставлен</span>';
+        } else if (_tmReviewGateActive(r.accepted_at)) {
+            // Замок «раньше игры быть не могло» (30 мин с принятия) — синхронно
+            // с бэкендом. Вместо кнопки показываем тихую подсказку.
+            actionHtml = '<span class="tm-history-when">Оценить можно после игры</span>';
+        } else {
+            actionHtml = '<button type="button" class="tm-history-review" onclick="tmOpenReview(' + r.request_id + ', ' + otherId + ')">Оценить игрока</button>';
+        }
+        return [
+            '<div class="tm-request-item" data-request-id="' + r.request_id + '">',
+              _tmRenderRequestHead(p),
+              '<div class="tm-request-status-row">',
+                (when ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>' : '<span></span>'),
+                actionHtml,
+              '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    // Лобби-запись в истории — список @ников как tg://-ссылки. Никаких action-
+    // кнопок: бот уже отправил юзеру эти @ники в момент заполнения, юзер может
+    // написать в личку напрямую без посредников (см. design brief).
+    function _renderHistoryLobbyItem(lobby) {
+        var myId = _tm.myProfile && _tm.myProfile.user_id;
+        var slots = (lobby.slots || []).slice().sort(function (a, b) {
+            return a.position - b.position;
+        });
+        // Members = все участники КРОМЕ меня (мне зачем мой собственный @ник).
+        var otherMembersHtml = slots
+            .filter(function (s) { return s.user && s.user.user_id !== myId; })
+            .map(function (s) {
+                var u = s.user;
+                var name = _tmDisplayName(u);
+                var uname = (u.username || '').toString().replace(/^@/, '');
+                var label = uname ? ('@' + uname) : name;
+                return '<a class="tm-history-lobby-member" href="tg://user?id=' + u.user_id + '">' +
+                    _tmEsc(label) +
+                '</a>';
+            }).join(', ');
+
+        var when = _tmRelativeDate(lobby.filled_at);
+        var modeLabel = TM_LOBBY_MODE_LABELS[lobby.mode] || lobby.mode;
+
+        return [
+            '<div class="tm-request-item tm-request-item--lobby" data-lobby-id="' + lobby.lobby_id + '">',
+              '<div class="tm-history-lobby-head">',
+                '<i class="ph ph-users-three" aria-hidden="true"></i>',
+                '<span class="tm-history-lobby-title">Лобби на ' + lobby.party_size + ' · ' + _tmEsc(modeLabel) + '</span>',
+              '</div>',
+              (otherMembersHtml
+                ? '<div class="tm-history-lobby-members">' + otherMembersHtml + '</div>'
+                : ''),
+              '<div class="tm-request-status-row">',
+                (when ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>' : '<span></span>'),
+                '<span></span>',
+              '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    // Относительная дата для истории: «3 ч назад», «2 дн. назад», fallback → «15 мая».
+    function _tmRelativeDate(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var diffMs = Date.now() - d.getTime();
+        if (diffMs < 0) diffMs = 0;
+        var min = Math.floor(diffMs / 60000);
+        var hr  = Math.floor(diffMs / 3600000);
+        var day = Math.floor(diffMs / 86400000);
+        if (min < 1)  return 'только что';
+        if (min < 60) return min + ' мин назад';
+        if (hr  < 24) return hr  + ' ч назад';
+        if (day < 30) return day + ' дн. назад';
+        try {
+            return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+        } catch (e) {
+            return d.toISOString().slice(0, 10);
+        }
+    }
+
+    // ── Tab switching + actions ─────────────────────────────────────────
+
+    window.tmSetRequestsTab = function (tab) {
+        if (tab !== 'incoming' && tab !== 'outgoing' && tab !== 'history') return;
+        _tm.requestsTab = tab;
+        var btns = document.querySelectorAll('.tm-requests-tab');
+        for (var i = 0; i < btns.length; i++) {
+            var isActive = btns[i].getAttribute('data-tm-rt') === tab;
+            btns[i].classList.toggle('tm-requests-tab--active', isActive);
+            btns[i].setAttribute('aria-selected', String(isActive));
+        }
+        // Сначала рендерим то, что уже есть (мгновенный UX), потом грузим свежее.
+        _tmRenderRequests();
+        loadRequestsForTab(tab);
+        // Авто-poll-timer резетим, чтобы 30s отсчёт пошёл от свежей загрузки.
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
+
+    window.tmLoadMoreHistory = function () { loadHistory(false); };
+
+    window.tmRespondRequest = async function (requestId, accept, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/request/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, request_id: requestId, accept: !!accept })
+            });
+            if (!resp.ok) { showToast('Не удалось ответить'); return; }
+            // Accept — положительное действие (зелёный); decline — отрицательное (красный).
+            if (accept) showToast('Запрос принят', 'ok');
+            else        showToast('Запрос отклонён');
+            // Optimistic: убираем из incoming сразу. Сервер-truth подтянем рефрешем.
+            _tm.requestsData.incoming = _tm.requestsData.incoming.filter(function (x) {
+                return x.request_id !== requestId;
+            });
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'incoming') _tmRenderRequests();
+            // Если приняли — history теперь устарела, заставим перезагрузить при следующем входе.
+            if (accept) _tm.requestsData.history = [];
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    window.tmCancelRequest = async function (requestId, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/request/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, request_id: requestId })
+            });
+            if (!resp.ok) {
+                if (resp.status === 409) showToast('Запрос уже не активен');
+                else showToast('Не удалось отменить');
+                return;
+            }
+            showToast('Запрос отменён', 'ok');
+            _tm.requestsData.outgoing = _tm.requestsData.outgoing.filter(function (x) {
+                return x.request_id !== requestId;
+            });
+            _tmUpdateRequestsCounts();
+            if (_tm.requestsTab === 'outgoing') _tmRenderRequests();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Review screen ───────────────────────────────────────────────────
+
+    window.tmOpenReview = async function (requestId, targetUserId) {
+        if (!requestId) return;
+        // Если открыта шторка профиля (кнопка «Оценить» в Истории живёт в ней),
+        // её надо закрыть — иначе экран отзыва откроется ПОД оверлеем профиля
+        // (z-index 1100) и будет не виден. Через пуш шторка не открыта, потому
+        // там бага и не было.
+        if (_tmIsProfileSheetOpen()) tmCloseProfileSheet();
+        _tm.reviewRequestId = parseInt(requestId, 10);
+        _tm.reviewTargetUserId = targetUserId ? parseInt(targetUserId, 10) : null;
+        _tm.reviewSelectedTags = [];
+        switchPage('teammate-review');
+        _tmRenderReviewTags();
+        var head = document.getElementById('tm-review-target');
+        if (head) head.innerHTML = '<div class="tm-feed-empty">Загрузка…</div>';
+        if (_tm.reviewTargetUserId) {
+            try {
+                // Эндпоинт профиля теперь требует токен (приватность — см. api.py).
+                // Дип-линк из пуша уже добыл токен через _tmEnsureToken до сюда.
+                var _tkn = _tmGetToken();
+                var resp = await apiFetch(TM_API + '/teammates/profile/' + _tm.reviewTargetUserId +
+                    '?token=' + encodeURIComponent(_tkn || ''));
+                if (resp.ok) {
+                    var p = await resp.json();
+                    _tmRenderReviewTarget(p);
+                } else {
+                    if (head) head.innerHTML = '<div class="tm-feed-empty">Не удалось загрузить профиль игрока</div>';
+                }
+            } catch (e) {
+                console.warn('[tm] review target:', e);
+            }
+        } else if (head) {
+            head.innerHTML = '<div class="tm-feed-empty">Игрок</div>';
+        }
+    };
+
+    function _tmRenderReviewTarget(p) {
+        var head = document.getElementById('tm-review-target');
+        if (!head) return;
+        var avatarHtml = _tmAvatarHtml(p);
+        var displayName = _tmDisplayName(p);
+        var rankIcon = _tmRankIconImg(p.rank, 'tm-rank-icon--xs');
+        var meta = [];
+        if (p.rank) meta.push('<span class="tm-player-rank">' + rankIcon + '<span class="tm-player-rank-text">' + _tmEsc(p.rank) + '</span></span>');
+        if (p.hours != null) meta.push('<span class="tm-player-hours"><span class="tm-player-meta-num">' + _tmFormatHours(p.hours) + '</span> ч</span>');
+        head.innerHTML =
+            avatarHtml +
+            '<div class="tm-player-id">' +
+              '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>' +
+              (meta.length ? '<div class="tm-player-meta-row">' + meta.join(' <span class="tm-player-meta-dot">·</span> ') + '</div>' : '') +
+            '</div>';
+    }
+
+    function _tmRenderReviewTags() {
+        var posWrap = document.getElementById('tm-review-tags-positive');
+        var negWrap = document.getElementById('tm-review-tags-negative');
+        var render = function (tag, cls) {
+            return '<button type="button" class="tm-review-tag ' + cls + '" data-tag="' + _tmEsc(tag) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(tag) + '\', this)">' + _tmEsc(tag) + '</button>';
+        };
+        if (posWrap) posWrap.innerHTML = TM_POSITIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--positive'); }).join('');
+        if (negWrap) negWrap.innerHTML = TM_NEGATIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--negative'); }).join('');
+    }
+
+    window.tmToggleReviewTag = function (tag, btn) {
+        var i = _tm.reviewSelectedTags.indexOf(tag);
+        if (i >= 0) _tm.reviewSelectedTags.splice(i, 1);
+        else _tm.reviewSelectedTags.push(tag);
+        btn.classList.toggle('tm-review-tag--selected');
+    };
+
+    window.tmSubmitReview = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (!_tm.reviewRequestId) { showToast('Нет запроса для оценки'); return; }
+        if (!_tm.reviewSelectedTags.length) { showToast('Выбери хотя бы один тег'); return; }
+
+        var btn = document.getElementById('tm-review-submit');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/review', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token,
+                    request_id: _tm.reviewRequestId,
+                    tags: _tm.reviewSelectedTags.slice()
+                })
+            });
+            if (resp.status === 409) {
+                // 409 = либо уже оценивал, либо замок по длине катки. Текст
+                // приходит с бэка (detail) — показываем его.
+                var d409; try { d409 = (await resp.json()).detail; } catch (e) { d409 = null; }
+                showToast(d409 || 'Ты уже оценивал этого игрока');
+                return;
+            }
+            if (!resp.ok) { showToast('Не удалось отправить отзыв'); return; }
+            showToast('Спасибо за отзыв', 'ok');
+            _tm.reviewRequestId = null;
+            _tm.reviewTargetUserId = null;
+            _tm.reviewSelectedTags = [];
+            switchPage('home');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // «Мы ещё не играли» — мягкий выход без отзыва. Для постоянки/не срочно
+    // игра могла ещё не случиться; не заставляем оценивать. Бот повторно не
+    // напоминает (review_sent уже выставлен при отправке пуша), а оценить
+    // можно позже в «Пати» → История.
+    window.tmReviewNotPlayedYet = function () {
+        _tm.reviewRequestId = null;
+        _tm.reviewTargetUserId = null;
+        _tm.reviewSelectedTags = [];
+        showToast('Хорошо — оценишь позже, в Истории');
+        switchPage('home');
+    };
+
+    // ── Deep links ───────────────────────────────────────────────────
+    //   ?teammate_review=<request_id>&teammate_target=<user_id>
+    //     → открыть экран оценки игрока.
+    //   ?tm_incoming=1
+    //     → открыть страницу тиммейтов на вкладке "Мой профиль"
+    //       (там же показывается секция "Входящие запросы").
+    //
+    // Порядок инициализации критичен:
+    //   1) Дожидаемся DOMContentLoaded. Скрипт грузится с defer, поэтому к
+    //      моменту его выполнения readyState='interactive', но другие
+    //      DOMContentLoaded-обработчики ещё не отстреляли. Синхронный запуск
+    //      deep-link'а раньше них — и есть основной баг "попадаю на главную".
+    //   2) Дожидаемся валидного токена. Уведомление приходит на URL без
+    //      ?token=, поэтому USER_TOKEN изначально пуст. Первый API-вызов
+    //      (например, GET /profile/<id>) ушёл бы с пустой строкой токена,
+    //      получил 401 и НЕ был бы корректно пересобран в apiFetch
+    //      (текущий ретрай URL не умеет вставлять токен в пустое место).
+    //      Поэтому проактивно выпускаем свежий токен через refreshToken()
+    //      ДО любых deep-link API-вызовов.
+
+    async function _tmEnsureToken() {
+        // Если токен пришёл в URL — используем как есть.
+        if (_tmGetToken()) return true;
+        // Иначе тянем через initData. refreshToken() сам дедуплицирует
+        // параллельные вызовы через _refreshInFlight, поэтому безопасно
+        // звать его проактивно — никакого двойного запроса не будет.
+        try {
+            var t = (typeof refreshToken === 'function') ? await refreshToken() : null;
+            return !!t;
+        } catch (e) {
+            console.warn('[tm] deep-link: pre-refresh failed:', e);
+            return false;
+        }
+    }
+
+    async function _tmCheckDeepLink() {
+        var params;
+        try { params = new URLSearchParams(window.location.search); }
+        catch (e) { return; }
+
+        var reviewId = params.get('teammate_review');
+        var tmIncoming = (params.get('tm_incoming') === '1');
+        if (!reviewId && !tmIncoming) return;
+
+        // (2) Гарантируем токен перед навигацией. Если не удалось — refreshToken
+        //     уже показал auth-banner; всё равно пытаемся открыть экран, потому
+        //     что иначе пользователь увидит главную и не поймёт, куда вёл клик.
+        await _tmEnsureToken();
+
+        try {
+            if (reviewId) {
+                var targetId = params.get('teammate_target');
+                tmOpenReview(parseInt(reviewId, 10), targetId ? parseInt(targetId, 10) : null);
+                return;
+            }
+            if (tmIncoming) {
+                // Профиль теперь в overlay-sheet, не tab. Открываем страницу
+                // тиммейтов, потом sheet поверх с requests-tab='incoming'.
+                goToTeammates();
+                if (typeof window.tmOpenProfileSheet === 'function') {
+                    tmOpenProfileSheet();
+                }
+                tmSetRequestsTab('incoming');
+            }
+        } catch (e) {
+            console.warn('[tm] deep-link handler error:', e);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Party-finder («Лобби»)
+    // ─────────────────────────────────────────────────────────────────
+
+    var _TM_LOBBY_TTL_MIN = 30;
+    var _TM_LOBBY_VALID_SIZES = [3, 4, 5];
+    var _TM_LOBBY_VALID_SIZES_RANKED = [3, 5];
+
+    // Загрузка активных лобби. Кладём в _tm.lobbies, ререндерим.
+    async function loadLobbies() {
+        if (_tm.lobbiesLoading) return;
+        _tm.lobbiesLoading = true;
+        try {
+            var token = _tmGetToken();
+            if (!token) return;
+            var resp = await apiFetch(
+                TM_API + '/teammates/lobbies?token=' + encodeURIComponent(token)
+            );
+            if (!resp.ok) return;
+            var data;
+            try { data = await resp.json(); } catch (e) { data = { items: [] }; }
+            _tm.lobbies = Array.isArray(data && data.items) ? data.items : [];
+            renderLobbies();
+        } catch (e) {
+            console.warn('[tm] loadLobbies:', e);
+        } finally {
+            _tm.lobbiesLoading = false;
+        }
+    }
+    window.tmRefreshLobbies = function () {
+        _tmTriggerRefresh('lobby');
+        if (_tmIsPageActive()) _tmStartPolling();
+    };
+
+    // Вычисляет lobby_id, в котором участвует текущий юзер (host или member).
+    // null если ни в каком. Источник истины — клиентский кэш _tm.lobbies.
+    function _tmGetMyLobbyId() {
+        var myId = _tm.myProfile && _tm.myProfile.user_id;
+        if (!myId) return null;
+        for (var i = 0; i < _tm.lobbies.length; i++) {
+            var l = _tm.lobbies[i];
+            if (l.host_id === myId) return l.lobby_id;
+            for (var j = 0; j < (l.slots || []).length; j++) {
+                var s = l.slots[j];
+                if (s.user && s.user.user_id === myId) return l.lobby_id;
+            }
+        }
+        return null;
+    }
+
+    function renderLobbies() {
+        var listEl = document.getElementById('tm-lobbies-list');
+        if (!listEl) return;
+        if (!_tm.lobbies.length) {
+            // Empty-state с активным CTA — «be the first», не «no data».
+            // CTA-кнопка дублирует primary вверху панели для удобства тапа
+            // прямо из пустого экрана, без подъёма наверх.
+            listEl.innerHTML = [
+                '<div class="tm-lobby-empty">',
+                  '<div class="tm-lobby-empty-icon"><i class="ph ph-users-three" aria-hidden="true"></i></div>',
+                  '<div class="tm-lobby-empty-title">Никто не собирает стак</div>',
+                  '<div class="tm-lobby-empty-body">Создай первое лобби — оно появится в ленте, и другие игроки смогут к тебе подключиться.</div>',
+                '</div>',
+            ].join('');
+            return;
+        }
+        var myLobbyId = _tmGetMyLobbyId();
+        listEl.innerHTML = _tm.lobbies.map(function (l) {
+            return _renderLobbyCard(l, { myLobbyId: myLobbyId });
+        }).join('');
+    }
+
+    var TM_LOBBY_MODE_LABELS = { ranked: 'Рейтинговый', normal: 'Обычный', turbo: 'Турбо' };
+
+    function _renderLobbyCard(lobby, opts) {
+        opts = opts || {};
+        var slots = (lobby.slots || []).slice().sort(function (a, b) {
+            return a.position - b.position;
+        });
+
+        // Host data — берём из его слота.
+        var hostSlot = null;
+        for (var i = 0; i < slots.length; i++) {
+            if (slots[i].position === lobby.host_position) hostSlot = slots[i];
+        }
+        var hostUser = hostSlot && hostSlot.user;
+        var hostName = hostUser ? _tmDisplayName(hostUser) : 'Хост';
+        var hostAvatar = hostUser
+            ? _tmAvatarHtml(hostUser, 'tm-player-avatar--lg')
+            : '<div class="tm-player-avatar tm-player-avatar--lg tm-player-avatar--fallback">·</div>';
+
+        // Filled count для footer'а.
+        var filledCount = 0;
+        for (var k = 0; k < slots.length; k++) if (slots[k].user) filledCount++;
+
+        // Сколько минут осталось — простая локальная разница.
+        var expMs = _tmParseUtcLike(lobby.expires_at);
+        var minLeft = Math.max(0, Math.ceil((expMs - Date.now()) / 60000));
+        var expiresLabel = (minLeft > 0 && isFinite(minLeft))
+            ? ('истекает через ' + _tmFormatRemaining(minLeft))
+            : 'истекает';
+
+        // Member-state: я в этом лобби?
+        var amInThisLobby = opts.myLobbyId === lobby.lobby_id;
+        var amInOtherLobby = !amInThisLobby && opts.myLobbyId != null;
+        var amHost = amInThisLobby && _tm.myProfile && _tm.myProfile.user_id === lobby.host_id;
+
+        // Action-кнопка справа в head'е (показываем только если я участник).
+        var actionBtn = '';
+        if (amHost) {
+            actionBtn = '<button class="tm-lobby-action" onclick="tmDisbandLobby(' + lobby.lobby_id + ', this)">Распустить</button>';
+        } else if (amInThisLobby) {
+            actionBtn = '<button class="tm-lobby-action" onclick="tmLeaveLobby(' + lobby.lobby_id + ', this)">Выйти</button>';
+        }
+
+        // Rank-filter защита: если у лобби rank_filter и мой ранг не в нём → join disabled.
+        var myRank = _tm.myProfile && _tm.myProfile.rank;
+        var rankBlocked = false;
+        if (lobby.rank_filter && lobby.rank_filter.length) {
+            if (!myRank || lobby.rank_filter.indexOf(myRank) === -1) rankBlocked = true;
+        }
+        var joinDisabled = amInOtherLobby || rankBlocked;
+
+        // Slot-grid: для каждого slot — либо avatar (если занят), либо tappable
+        // empty-circle с position-иконкой.
+        var slotsHtml = slots.map(function (s) {
+            if (s.user) {
+                // Filled. Host slot — accent border.
+                var isHost = (s.user.user_id === lobby.host_id);
+                var cls = 'tm-lobby-slot tm-lobby-slot--filled' + (isHost ? ' tm-lobby-slot--host' : '');
+                var ava = _tmAvatarHtmlInner(s.user);
+                return '<div class="' + cls + '" title="Pos ' + s.position + '">' + ava + '</div>';
+            }
+            // Empty. Tap → join (если не disabled).
+            var cls2 = 'tm-lobby-slot tm-lobby-slot--empty' + (joinDisabled ? ' tm-lobby-slot--disabled' : '');
+            var onclick = joinDisabled
+                ? ''
+                : ' onclick="tmJoinLobbySlot(' + lobby.lobby_id + ', ' + s.position + ', this)"';
+            return '<div class="' + cls2 + '"' + onclick + ' title="Pos ' + s.position + '">' +
+                '<img src="' + _tmEsc(_tmPosIcon(s.position)) + '" alt="Pos ' + s.position + '">' +
+            '</div>';
+        }).join('');
+
+        // Meta-line под именем: ранг хоста · режим · (если rank_filter — диапазон рангов).
+        var metaParts = [];
+        if (hostUser && hostUser.rank) {
+            metaParts.push(
+                '<span class="tm-player-rank">' + _tmRankIconImg(hostUser.rank, 'tm-rank-icon--xs') +
+                '<span class="tm-player-rank-text">' + _tmEsc(hostUser.rank) + '</span></span>'
+            );
+        }
+        metaParts.push(
+            '<span class="tm-lobby-meta-mode">' + _tmEsc(TM_LOBBY_MODE_LABELS[lobby.mode] || lobby.mode) + '</span>'
+        );
+        if (lobby.rank_filter && lobby.rank_filter.length) {
+            // Сжимаем 8 рангов в диапазон first–last.
+            metaParts.push(
+                '<span>' + _tmEsc(lobby.rank_filter[0]) +
+                (lobby.rank_filter.length > 1 ? '–' + _tmEsc(lobby.rank_filter[lobby.rank_filter.length - 1]) : '') +
+                '</span>'
+            );
+        }
+        var metaJoiner = ' <span class="tm-lobby-meta-dot">·</span> ';
+        var metaRow = '<div class="tm-lobby-meta">' + metaParts.join(metaJoiner) + '</div>';
+
+        // Footer: «3 из 5 · истекает через 24 мин» + если rankBlocked, прибавляем reason
+        var footerText = filledCount + ' из ' + lobby.party_size +
+            ' <span class="tm-lobby-footer-dot">·</span> ' + expiresLabel;
+        if (rankBlocked) {
+            footerText += ' <span class="tm-lobby-footer-dot">·</span> твой ранг не подходит';
+        } else if (amInOtherLobby) {
+            footerText += ' <span class="tm-lobby-footer-dot">·</span> ты в другом лобби';
+        }
+
+        return [
+            '<article class="tm-lobby-card" data-lobby-id="' + lobby.lobby_id + '">',
+              '<header class="tm-lobby-head">',
+                hostAvatar,
+                '<div class="tm-lobby-host-info">',
+                  '<div class="tm-lobby-host-name">Лобби ' + _tmEsc(hostName) + '</div>',
+                  metaRow,
+                '</div>',
+                actionBtn,
+              '</header>',
+              '<div class="tm-lobby-slots">' + slotsHtml + '</div>',
+              '<div class="tm-lobby-footer">' + footerText + '</div>',
+            '</article>'
+        ].join('');
+    }
+
+    // Хелпер: avatar — внутренности (без обёртки .tm-player-avatar div'а),
+    // используется внутри slot-circle где обёртка уже есть.
+    function _tmAvatarHtmlInner(user) {
+        if (user && user.photo_url) {
+            return '<img src="' + _tmEsc(user.photo_url) + '" alt="">';
+        }
+        var src = (user && (user.first_name || user.username || '')).trim();
+        var ch = src ? src.charAt(0).toUpperCase() : '·';
+        return '<span class="tm-lobby-slot-initial">' + _tmEsc(ch) + '</span>';
+    }
+
+    // ── Lobby actions ────────────────────────────────────────────────
+
+    window.tmJoinLobbySlot = async function (lobbyId, position, slotEl) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        // Optimistic UI: затемняем slot пока ждём ответ. Если 4xx — откатываем.
+        if (slotEl) slotEl.classList.add('tm-lobby-slot--disabled');
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby/' + lobbyId + '/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, position: position }),
+            });
+            if (!resp.ok) {
+                // Подробный лог для диагностики (status + body) — без этого
+                // юзер видит только generic «Не удалось», диагностировать
+                // удалённо невозможно.
+                var rawBody = '';
+                var err;
+                try { rawBody = await resp.text(); } catch (e) { /* пусто */ }
+                try { err = rawBody ? JSON.parse(rawBody) : null; } catch (e) { err = null; }
+                console.warn('[tm] joinLobby failed:', resp.status, rawBody);
+                var detail = (err && (err.detail || err.message)) ||
+                             ('Ошибка ' + resp.status);
+                showToast(detail);
+                if (slotEl) slotEl.classList.remove('tm-lobby-slot--disabled');
+                return;
+            }
+            showToast('Ты в лобби', 'ok');
+            // Refresh: лобби-карточка обновится со мной в слоте.
+            await loadLobbies();
+        } catch (e) {
+            console.warn('[tm] joinLobby exception:', e);
+            showToast('Сетевая ошибка — попробуй ещё раз');
+            if (slotEl) slotEl.classList.remove('tm-lobby-slot--disabled');
+        }
+    };
+
+    window.tmLeaveLobby = async function (lobbyId, btn) {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby/' + lobbyId + '/leave', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token }),
+            });
+            if (!resp.ok) {
+                var err;
+                try { err = await resp.json(); } catch (e) { err = null; }
+                showToast((err && err.detail) || 'Не удалось выйти');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showToast('Ты вышел из лобби', 'ok');
+            await loadLobbies();
+        } catch (e) {
+            console.warn('[tm] leaveLobby:', e);
+            showToast('Не удалось выйти');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    window.tmDisbandLobby = async function (lobbyId, btn) {
+        if (!window.confirm('Распустить лобби? Все участники получат уведомление.')) return;
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby/' + lobbyId + '/disband', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token }),
+            });
+            if (!resp.ok) {
+                showToast('Не удалось распустить');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showToast('Лобби распущено', 'ok');
+            await loadLobbies();
+        } catch (e) {
+            console.warn('[tm] disbandLobby:', e);
+            showToast('Не удалось распустить');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // ── Create-lobby form ────────────────────────────────────────────
+
+    function _tmInitLobbyForm() {
+        // Defaults: ranked, 5, host_position = первая позиция из профиля.
+        var profile = _tm.myProfile;
+        var positions = (profile && Array.isArray(profile.positions)) ? profile.positions : [];
+        _tm.lobbyForm = {
+            party_size: 5,
+            mode: 'ranked',
+            host_position: positions[0] || null,
+            needed_positions: [],
+            rank_filter: [],
+            rank_filter_enabled: true,  // в ranked всегда включён
+        };
+        // Если в профиле есть ранг — заполняем default rank_filter (host'а ранг ±2).
+        if (profile && profile.rank) {
+            var idx = TM_RANKS.indexOf(profile.rank);
+            if (idx >= 0) {
+                var lo = Math.max(0, idx - 2);
+                var hi = Math.min(TM_RANKS.length - 1, idx + 2);
+                _tm.lobbyForm.rank_filter = TM_RANKS.slice(lo, hi + 1);
+            }
+        }
+    }
+
+    window.tmOpenLobbyForm = function () {
+        if (!_tm.myProfile || !_tm.myProfile.rank) {
+            showToast('Сначала заполни профиль');
+            setTeammatesTab('profile');
+            return;
+        }
+        if (_tmGetMyLobbyId() != null) {
+            showToast('Ты уже в активном лобби');
+            return;
+        }
+        _tmInitLobbyForm();
+        _tmRenderLobbyForm();
+        var sheet = document.getElementById('tm-lobby-form-sheet');
+        if (!sheet) return;
+        sheet.hidden = false;
+        sheet.setAttribute('aria-hidden', 'false');
+        // eslint-disable-next-line no-unused-expressions
+        sheet.offsetHeight;
+        sheet.classList.add('tm-help-sheet--open');
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.tmCloseLobbyForm = function () {
+        var sheet = document.getElementById('tm-lobby-form-sheet');
+        if (!sheet) return;
+        sheet.classList.remove('tm-help-sheet--open');
+        sheet.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        var onEnd = function () {
+            sheet.removeEventListener('transitionend', onEnd);
+            if (!sheet.classList.contains('tm-help-sheet--open')) {
+                sheet.hidden = true;
+            }
+        };
+        sheet.addEventListener('transitionend', onEnd);
+    };
+
+    function _tmRenderLobbyForm() {
+        var f = _tm.lobbyForm;
+        if (!f) return;
+
+        var rankedLocked = (f.mode === 'ranked');
+
+        // ── Section 1: Лобби ────────────────────────────────────────
+        // Size — disable 4 при ranked.
+        var sizeBtns = document.querySelectorAll('#tm-lobby-size .tm-mode-btn');
+        sizeBtns.forEach(function (b) {
+            var size = parseInt(b.getAttribute('data-size'), 10);
+            var disabled = (rankedLocked && size === 4);
+            b.disabled = disabled;
+            b.classList.toggle('tm-mode-btn--active', size === f.party_size && !disabled);
+        });
+        var sizeHint = document.getElementById('tm-lobby-size-hint');
+        if (sizeHint) {
+            sizeHint.textContent = rankedLocked
+                ? 'В рейтинге 4-стак запрещён правилами Доты — только 3 или 5.'
+                : 'Включая тебя.';
+        }
+
+        var modeBtns = document.querySelectorAll('#tm-lobby-mode .tm-mode-btn');
+        modeBtns.forEach(function (b) {
+            b.classList.toggle('tm-mode-btn--active', b.getAttribute('data-mode') === f.mode);
+        });
+
+        // ── Section 2: Состав ───────────────────────────────────────
+        // Host position — pill-buttons, single-select из профильных позиций.
+        var hostPosWrap = document.getElementById('tm-lobby-host-pos');
+        if (hostPosWrap) {
+            var profilePositions = (_tm.myProfile && _tm.myProfile.positions) || [];
+            hostPosWrap.innerHTML = [1, 2, 3, 4, 5].map(function (p) {
+                var inProfile = profilePositions.indexOf(p) !== -1;
+                var active = (p === f.host_position);
+                var cls = 'tm-position-btn'
+                    + (active ? ' tm-position-btn--active' : '')
+                    + (inProfile ? '' : ' tm-position-btn--disabled');
+                var onclick = inProfile ? ' onclick="tmLobbySetHostPos(' + p + ')"' : '';
+                return '<button type="button" class="' + cls + '"' + onclick + ' data-pos="' + p + '">' +
+                    '<img src="' + _tmEsc(_tmPosIcon(p)) + '" alt="' + p + '">' +
+                '</button>';
+            }).join('');
+        }
+
+        // Needed positions — slot-tiles (48×48 dashed circles), echo'ят реальные
+        // лобби-слоты в ленте. Visually distinct от host-pill'ов выше.
+        var neededWrap = document.getElementById('tm-lobby-needed-pos');
+        if (neededWrap) {
+            var needSet = {};
+            for (var i = 0; i < f.needed_positions.length; i++) needSet[f.needed_positions[i]] = true;
+            neededWrap.innerHTML = [1, 2, 3, 4, 5].map(function (p) {
+                var isHostSlot = (p === f.host_position);
+                var active = !!needSet[p];
+                var cls = 'tm-lobby-form-slot'
+                    + (active ? ' tm-lobby-form-slot--active' : '')
+                    + (isHostSlot ? ' tm-lobby-form-slot--disabled' : '');
+                var onclick = isHostSlot ? '' : ' onclick="tmLobbyToggleNeededPos(' + p + ')"';
+                var title = isHostSlot ? 'Это твой слот' : 'Pos ' + p;
+                return '<button type="button" class="' + cls + '"' + onclick +
+                    ' data-pos="' + p + '" title="' + title + '" aria-label="' + title + '">' +
+                    '<img src="' + _tmEsc(_tmPosIcon(p)) + '" alt="">' +
+                '</button>';
+            }).join('');
+        }
+        var neededHint = document.getElementById('tm-lobby-needed-hint');
+        if (neededHint) {
+            var needLimit = f.party_size - 1;
+            var picked = f.needed_positions.length;
+            var hintText;
+            if (picked === 0) {
+                hintText = 'Тап чтобы открыть слот · нужно ' + needLimit + '.';
+            } else if (picked < needLimit) {
+                hintText = 'Открыто ' + picked + ' из ' + needLimit + ' · ещё ' + (needLimit - picked) + '.';
+            } else {
+                hintText = 'Все ' + needLimit + ' слотов открыты.';
+            }
+            neededHint.textContent = hintText;
+        }
+
+        // ── Section 3: Кого пускать (rank segments) ────────────────
+        var rankSegBtns = document.querySelectorAll('#tm-lobby-rank-segments .tm-segment');
+        rankSegBtns.forEach(function (b) {
+            var mode = b.getAttribute('data-rank-mode');
+            var active = (mode === 'filter') === !!f.rank_filter_enabled;
+            b.classList.toggle('tm-segment--active', active);
+            // В ranked сегмент «Любой ранг» заблочен — нельзя выключить.
+            var locked = (rankedLocked && mode === 'any');
+            b.disabled = locked;
+            b.classList.toggle('tm-segment--locked', locked);
+        });
+        var rankChips = document.getElementById('tm-lobby-rank-chips');
+        var rankHint  = document.getElementById('tm-lobby-rank-hint');
+        if (rankChips) {
+            rankChips.hidden = !f.rank_filter_enabled;
+            if (f.rank_filter_enabled) {
+                var rfSet = {};
+                for (var ri = 0; ri < f.rank_filter.length; ri++) rfSet[f.rank_filter[ri]] = true;
+                rankChips.innerHTML = TM_RANKS.map(function (r, idx) {
+                    var tier = idx + 1;
+                    return _tmFchip({
+                        variant: 'icon',
+                        active: !!rfSet[r],
+                        onclick: 'tmLobbyToggleRankChip(\'' + _tmEsc(r) + '\')',
+                        title: r,
+                        label: r,
+                        content: '<img src="/rank_icons/medal_' + tier + '.png" alt="" onerror="this.style.display=\'none\'">',
+                    });
+                }).join('');
+            }
+        }
+        if (rankHint) {
+            if (rankedLocked) {
+                rankHint.textContent = 'В рейтинге выбор обязателен — Dota не запустит matchmake с большим разбросом.';
+            } else if (f.rank_filter_enabled) {
+                rankHint.textContent = 'Тап на ранг — добавить/убрать.';
+            } else {
+                rankHint.textContent = 'Лобби увидят игроки любого ранга.';
+            }
+        }
+
+        // ── Footer: summary + validation ────────────────────────────
+        // Live-update summary даёт юзеру preview того что он создаёт ПЕРЕД
+        // тапом submit. Validation error (если есть) — explicit reason почему
+        // submit disabled, вместо «кнопка серая, почему?».
+        var summaryEl = document.getElementById('tm-lobby-form-summary');
+        var errorEl   = document.getElementById('tm-lobby-form-error');
+        var submitBtn = document.getElementById('tm-lobby-submit');
+
+        var canSubmit =
+            f.host_position != null &&
+            f.needed_positions.length === (f.party_size - 1) &&
+            (!rankedLocked || f.rank_filter.length > 0);
+
+        // Reason для validation hint.
+        var errorText = '';
+        if (!canSubmit) {
+            if (f.host_position == null)                                 errorText = 'Выбери свою позицию.';
+            else if (f.needed_positions.length < (f.party_size - 1))     errorText = 'Открой все ' + (f.party_size - 1) + ' слот' + ((f.party_size - 1) === 1 ? '' : 'а');
+            else if (rankedLocked && f.rank_filter.length === 0)         errorText = 'Выбери допустимые ранги.';
+        }
+
+        if (summaryEl) {
+            var modeLabel = TM_LOBBY_MODE_LABELS[f.mode] || f.mode;
+            var parts = [
+                '<strong>' + f.party_size + '-стак</strong>',
+                _tmEsc(modeLabel),
+            ];
+            if (f.host_position != null) {
+                parts.push('ты <strong>Pos ' + f.host_position + '</strong>');
+            }
+            if (f.needed_positions.length) {
+                var sorted = f.needed_positions.slice().sort(function (a, b) { return a - b; });
+                parts.push('нужны <strong>Pos ' + sorted.join(', ') + '</strong>');
+            }
+            if (f.rank_filter_enabled && f.rank_filter.length) {
+                var sortedRanks = f.rank_filter.slice().sort(function (a, b) {
+                    return TM_RANKS.indexOf(a) - TM_RANKS.indexOf(b);
+                });
+                var rangeText = sortedRanks.length === 1
+                    ? sortedRanks[0]
+                    : sortedRanks[0] + '–' + sortedRanks[sortedRanks.length - 1];
+                parts.push(_tmEsc(rangeText));
+            }
+            summaryEl.innerHTML = parts.join(' · ');
+        }
+        if (errorEl) {
+            errorEl.textContent = errorText;
+            errorEl.hidden = !errorText;
+        }
+        if (submitBtn) submitBtn.disabled = !canSubmit;
+    }
+
+    window.tmLobbySetSize = function (size) {
+        var f = _tm.lobbyForm; if (!f) return;
+        // 4 запрещён при ranked.
+        if (f.mode === 'ranked' && size === 4) return;
+        if (_TM_LOBBY_VALID_SIZES.indexOf(size) === -1) return;
+        f.party_size = size;
+        // Если выбранных needed > нового лимита — обрезаем.
+        if (f.needed_positions.length > size - 1) {
+            f.needed_positions = f.needed_positions.slice(0, size - 1);
+        }
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbySetMode = function (mode) {
+        var f = _tm.lobbyForm; if (!f) return;
+        f.mode = mode;
+        // Переключение на ranked: если был size=4 — гоним в 5.
+        if (mode === 'ranked' && f.party_size === 4) f.party_size = 5;
+        // rank-filter включается принудительно для ranked.
+        if (mode === 'ranked') f.rank_filter_enabled = true;
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbySetHostPos = function (p) {
+        var f = _tm.lobbyForm; if (!f) return;
+        f.host_position = p;
+        // Если host_position попал в needed — убираем.
+        var idx = f.needed_positions.indexOf(p);
+        if (idx !== -1) f.needed_positions.splice(idx, 1);
+        _tmRenderLobbyForm();
+    };
+
+    window.tmLobbyToggleNeededPos = function (p) {
+        var f = _tm.lobbyForm; if (!f) return;
+        if (p === f.host_position) return;
+        var idx = f.needed_positions.indexOf(p);
+        if (idx !== -1) {
+            f.needed_positions.splice(idx, 1);
+        } else {
+            if (f.needed_positions.length >= f.party_size - 1) {
+                showToast('Уже выбрано ' + (f.party_size - 1));
+                return;
+            }
+            f.needed_positions.push(p);
+        }
+        _tmRenderLobbyForm();
+    };
+
+    // Segmented control: 'any' (любой ранг) ⇆ 'filter' (только эти).
+    // В ranked-режиме 'any' заблокирован (UI-уровень + повторная защита тут).
+    window.tmLobbySetRankMode = function (mode) {
+        var f = _tm.lobbyForm; if (!f) return;
+        if (f.mode === 'ranked' && mode === 'any') {
+            showToast('В рейтинге выбор рангов обязателен');
+            return;
+        }
+        var wantEnabled = (mode === 'filter');
+        if (wantEnabled === !!f.rank_filter_enabled) return;
+        f.rank_filter_enabled = wantEnabled;
+        if (!wantEnabled) f.rank_filter = [];
+        _tmRenderLobbyForm();
+    };
+    // Backward-compat alias на случай если где-то в коде остался старый вызов.
+    window.tmLobbyToggleRankFilter = function () {
+        var f = _tm.lobbyForm; if (!f) return;
+        window.tmLobbySetRankMode(f.rank_filter_enabled ? 'any' : 'filter');
+    };
+
+    window.tmLobbyToggleRankChip = function (r) {
+        var f = _tm.lobbyForm; if (!f) return;
+        var idx = f.rank_filter.indexOf(r);
+        if (idx !== -1) f.rank_filter.splice(idx, 1);
+        else f.rank_filter.push(r);
+        // Сохраняем sorted-by-tier для красивого отображения «Legend–Divine».
+        f.rank_filter.sort(function (a, b) { return TM_RANKS.indexOf(a) - TM_RANKS.indexOf(b); });
+        _tmRenderLobbyForm();
+    };
+
+    window.tmSubmitLobby = async function () {
+        var f = _tm.lobbyForm; if (!f) return;
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+
+        var payload = {
+            token: token,
+            party_size: f.party_size,
+            mode: f.mode,
+            host_position: f.host_position,
+            needed_positions: f.needed_positions.slice(),
+        };
+        // rank_filter включаем в payload только если active.
+        if (f.rank_filter_enabled && f.rank_filter.length) {
+            payload.rank_filter = f.rank_filter.slice();
+        }
+
+        var btn = document.getElementById('tm-lobby-submit');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/lobby', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                var err;
+                try { err = await resp.json(); } catch (e) { err = null; }
+                showToast((err && err.detail) || 'Не удалось создать лобби');
+                if (btn) btn.disabled = false;
+                return;
+            }
+            showToast('Лобби создано', 'ok');
+            tmCloseLobbyForm();
+            await loadLobbies();
+        } catch (e) {
+            console.warn('[tm] submitLobby:', e);
+            showToast('Не удалось создать лобби');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    // (1) Откладываем запуск ВСЕГДА до DOMContentLoaded.
+    //     Defer-скрипт выполняется при readyState='interactive' — раньше, чем
+    //     ready-listener'ы остальных секций приложения. Старая ветка
+    //     «иначе вызвать сразу» создавала ту самую гонку.
+    if (document.readyState === 'complete') {
+        // Страница уже полностью загружена (поздний reflow / тестовый запуск).
+        _tmCheckDeepLink();
+    } else {
+        document.addEventListener('DOMContentLoaded', _tmCheckDeepLink, { once: true });
+    }
+})();
 
