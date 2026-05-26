@@ -6951,6 +6951,9 @@ function _drafterCommentText(c) {
         loadFeed(true);
         loadLobbies();
         loadRequestsForTab(_tm.requestsTab);
+        // Счётчик «первопроходцев» для окна «заполни профиль». Fire-and-forget,
+        // не блокирует ленту; рендерится, только если место ещё есть.
+        _tmLoadFounders();
         // Outgoing-список нужен ленте для cross-check «уже отправил ли я этому?».
         // Без этого после reload кнопка «Позвать» показывалась снова, юзер
         // тапал → 409 → toast «Запрос уже отправлен» → confusing UX. Грузим
@@ -7518,14 +7521,25 @@ function _drafterCommentText(c) {
             _tm._seenCardIds[p.user_id] = true;
         }
 
+        // Первопроходец — янтарная метка у имени + янтарная рамка карточки.
+        // Один из первых N юзеров, заполнивших профиль (см. _TM_FOUNDER_CAP).
+        var founderCls = p.is_founder ? ' tm-player-card--founder' : '';
+        var founderBadge = p.is_founder
+            ? '<span class="tm-founder-badge" title="Первопроходец — один из первых игроков D2Helper">' +
+                '<i class="ph-fill ph-medal" aria-hidden="true"></i>' +
+                '<span class="tm-founder-badge-text">Первопроходец</span>' +
+              '</span>'
+            : '';
+
         return [
-            '<article class="tm-player-card' + enterCls + '" data-user-id="' + (p.user_id || '') + '">',
+            '<article class="tm-player-card' + enterCls + founderCls + '" data-user-id="' + (p.user_id || '') + '">',
               '<header class="tm-player-head">',
                 avatarHtml,
                 '<div class="tm-player-id">',
                   '<div class="tm-player-name">' + _tmEsc(displayName) + '</div>',
                   metaRow,
                   activityRow,
+                  founderBadge,
                 '</div>',
                 ctaHtml,
               '</header>',
@@ -8104,6 +8118,44 @@ function _drafterCommentText(c) {
     }
     // Backward-compat: старые call-site'ы зовут _tmUpdateNoProfileGate.
     window._tmUpdateNoProfileGate = _tmUpdateStatusUI;
+
+    // ── Счётчик «первопроходцев» ──────────────────────────────────────
+    // Публичный агрегат /teammates/founders → {cap, taken, remaining}.
+    // Показываем в окне «заполни профиль» как «Осталось N мест первопроходца»,
+    // чтобы подтолкнуть новичка заполнить профиль раньше. Кешируем в _tm.
+    function _tmLoadFounders() {
+        apiFetch(TM_API + '/teammates/founders')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data) return;
+                _tm.founders = data;
+                _tmRenderFounderCounter();
+            })
+            .catch(function (e) { console.warn('[tm] loadFounders:', e); });
+    }
+
+    // Русская плюрализация: _tmPlural(1,'место','места','мест') → 'место'.
+    function _tmPlural(n, one, few, many) {
+        var mod10 = n % 10, mod100 = n % 100;
+        if (mod10 === 1 && mod100 !== 11) return one;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+        return many;
+    }
+
+    function _tmRenderFounderCounter() {
+        var el = document.getElementById('tm-founder-counter');
+        if (!el) return;
+        var f = _tm.founders;
+        // Без данных или места кончились — счётчик не показываем (молча).
+        if (!f || !f.remaining || f.remaining <= 0) { el.hidden = true; return; }
+        var txt = el.querySelector('.tm-founder-counter-text');
+        if (txt) {
+            txt.textContent = 'Осталось ' + f.remaining + ' ' +
+                _tmPlural(f.remaining, 'место', 'места', 'мест') +
+                ' первопроходца';
+        }
+        el.hidden = false;
+    }
 
     // Установить статус (из gate-сегментов или из верхнего контрола).
     window.tmSetStatus = async function (status) {

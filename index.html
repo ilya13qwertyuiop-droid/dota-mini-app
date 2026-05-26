@@ -23,7 +23,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=165" />
+    <link rel="stylesheet" href="styles.css?v=166" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -966,6 +966,13 @@
               </div>
               <div class="tm-no-profile-title">Сначала заполни профиль</div>
               <div class="tm-no-profile-body">Расскажи о себе — ранг, позиции, на ком играешь.</div>
+              <!-- Счётчик «первопроходцев» — мотивация заполнить профиль раньше
+                   остальных. Скрыт, пока не подгрузится /founders или если места
+                   кончились (remaining === 0). Заполняется в _tmRenderFounderCounter. -->
+              <div id="tm-founder-counter" class="tm-founder-counter" hidden>
+                <i class="ph-fill ph-medal tm-founder-counter-icon" aria-hidden="true"></i>
+                <span class="tm-founder-counter-text"></span>
+              </div>
               <button type="button" class="tm-primary-btn" onclick="tmOpenProfileSheet()">Заполнить профиль</button>
             </div>
           </div>
@@ -1423,6 +1430,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=199"></script>
+    <script defer src="script.js?v=200"></script>
   </body>
 </html>

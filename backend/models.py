@@ -389,6 +389,11 @@ class TeammateProfile(Base):
     # Bump'ится в _tm_bump_last_active на каждом authenticated endpoint'е.
     # Используется фронтом для отображения «🟢 в сети» / «был N мин назад».
     last_active_at = Column(DateTime(timezone=True), nullable=True)
+    # Порядковый номер «первопроходца» (миграция 0014). Присваивается при
+    # первом заполнении профиля, пока выдано меньше _TM_FOUNDER_CAP.
+    # NOT NULL ⇒ юзер — первопроходец (янтарная метка на карточке).
+    # NULL     ⇒ обычный юзер. Номер наружу не светим, только факт is_founder.
+    founder_number = Column(Integer, nullable=True)
 
 
 class TeammateRequest(Base):

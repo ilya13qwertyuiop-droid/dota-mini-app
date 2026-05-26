@@ -6884,6 +6884,39 @@ margin-top: var(--space-4);
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* «Первопроходец» — один из первых игроков. Янтарная рамка карточки
+   (1px по всему периметру, НЕ боковая полоса — стрипы под запретом)
+   + очень лёгкий янтарный фон, чтобы выделить без крика. */
+.tm-player-card--founder {
+  border-color: rgba(210, 153, 34, 0.45);
+  background:
+    linear-gradient(rgba(210, 153, 34, 0.045), rgba(210, 153, 34, 0.045)),
+    var(--bg-surface);
+}
+.tm-player-card--founder:hover,
+.tm-player-card--founder:focus-within {
+  border-color: rgba(210, 153, 34, 0.7);
+}
+/* Метка у имени: янтарная медаль + «Первопроходец». Компактная, моно-капс,
+   живёт в tm-player-id под presence-row. */
+.tm-founder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+.tm-founder-badge i {
+  font-size: 0.95em;
+  line-height: 1;
+}
+.tm-founder-badge-text { line-height: 1; }
+
 /* Head = grid [avatar | id | cta]. CTA живёт В identity-row, не внизу
    карточки — чтобы action был proximate to identity, а не в подвале
    после 5 строк инфо. */
@@ -8052,6 +8085,26 @@ margin-top: var(--space-4);
   width: 100%;
   margin-top: var(--space-1);
 }
+
+/* Счётчик «осталось N мест первопроходца» — янтарный pill в окне
+   «заполни профиль». Тонкая рамка + лёгкий фон, semantic-only amber. */
+.tm-founder-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-3);
+  padding: 5px 12px;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  border-radius: var(--radius-md);
+  background: rgba(210, 153, 34, 0.07);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+.tm-founder-counter-icon { font-size: 1.05em; line-height: 1; }
 
 /* ── Статус видимости: точки, бейджи, переключатель, меню, gate ─────── */
 

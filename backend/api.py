@@ -1837,6 +1837,10 @@ _TM_FEED_STATUSES = ("ready_now", "looking_regular", "looking_casual")
 
 _TM_ABOUT_MAX_LEN = 200
 _TM_MAX_FAVORITE_HEROES = 3
+# «Первопроходец» — первым N юзерам, заполнившим профиль, выдаётся
+# founder_number (см. миграцию 0014). Янтарная метка на карточке + счётчик
+# «осталось N мест» на экране заполнения. Сам номер наружу не отдаём.
+_TM_FOUNDER_CAP = 1000
 _TM_HOURS_MAX = 100000
 # Soft-лимит на параллельные исходящие запросы. Защита от шотгана:
 # новичок не должен иметь возможность тапнуть «Позвать» на 50 карточках подряд.
@@ -1926,6 +1930,8 @@ def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) ->
         # Когда юзер последний раз делал что-то в miniapp (см. _tm_bump_last_active).
         # Фронт рендерит «🟢 в сети» / «был N мин назад» в meta-row карточки.
         "last_active_at":  p.last_active_at.isoformat() if p.last_active_at else None,
+        # Первопроходец — янтарная метка на карточке. Сам номер не светим.
+        "is_founder":      p.founder_number is not None,
         # Telegram identity (из user_profiles.settings)
         "first_name":      s.get("first_name"),
         "last_name":       s.get("last_name"),
@@ -2118,36 +2124,58 @@ async def api_teammates_profile_upsert(
     about = (data.about or "").strip()[:_TM_ABOUT_MAX_LEN]
 
     now = datetime.now(timezone.utc)
-    profile = db.get(DBTeammateProfile, user_id)
-    if profile is None:
-        profile = DBTeammateProfile(
-            user_id=user_id,
-            rank=data.rank,
-            hours=data.hours,
-            positions=positions,
-            game_modes=game_modes,
-            microphone=bool(data.microphone),
-            discord=bool(data.discord),
-            favorite_heroes=favorite_heroes,
-            about=about,
-            # status НЕ задаём — остаётся NULL, чтобы юзер прошёл обязательный
-            # экран выбора статуса в ленте. Профиль и статус — два разных шага.
-            created_at=now,
-            updated_at=now,
+    try:
+        profile = db.get(DBTeammateProfile, user_id)
+        if profile is None:
+            # Первопроходец: пока выдано меньше _TM_FOUNDER_CAP номеров, новый
+            # профиль получает следующий. Номер = (выдано) + 1. Гонка двух
+            # параллельных создателей в худшем случае выдаст одинаковый номер —
+            # не страшно, наружу номер не светим, важен только факт is_founder,
+            # а перелёт за cap отсекается ниже.
+            founder_number = None
+            taken = (
+                db.query(DBTeammateProfile)
+                .filter(DBTeammateProfile.founder_number.isnot(None))
+                .count()
+            )
+            if taken < _TM_FOUNDER_CAP:
+                founder_number = taken + 1
+            profile = DBTeammateProfile(
+                user_id=user_id,
+                rank=data.rank,
+                hours=data.hours,
+                positions=positions,
+                game_modes=game_modes,
+                microphone=bool(data.microphone),
+                discord=bool(data.discord),
+                favorite_heroes=favorite_heroes,
+                about=about,
+                # status НЕ задаём — остаётся NULL, чтобы юзер прошёл обязательный
+                # экран выбора статуса в ленте. Профиль и статус — два разных шага.
+                founder_number=founder_number,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(profile)
+        else:
+            profile.rank = data.rank
+            profile.hours = data.hours
+            profile.positions = positions
+            profile.game_modes = game_modes
+            profile.microphone = bool(data.microphone)
+            profile.discord = bool(data.discord)
+            profile.favorite_heroes = favorite_heroes
+            profile.about = about
+            profile.updated_at = now
+        db.commit()
+    except Exception as exc:
+        logger.exception("[tm/profile] UNCAUGHT upsert user_id=%s", user_id)
+        try: db.rollback()
+        except Exception: pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
         )
-        db.add(profile)
-    else:
-        profile.rank = data.rank
-        profile.hours = data.hours
-        profile.positions = positions
-        profile.game_modes = game_modes
-        profile.microphone = bool(data.microphone)
-        profile.discord = bool(data.discord)
-        profile.favorite_heroes = favorite_heroes
-        profile.about = about
-        profile.updated_at = now
-
-    db.commit()
     return {"ok": True}
 
 
@@ -2163,15 +2191,43 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     null = статус ещё не выбран → фронт покажет обязательный экран выбора.
     """
     user_id = _tm_authenticate(token, db)
-    profile = db.get(DBTeammateProfile, user_id)
-    if profile is None:
-        return None
+    try:
+        profile = db.get(DBTeammateProfile, user_id)
+        if profile is None:
+            return None
 
-    user_row = db.get(DBUserProfile, user_id)
-    settings = (user_row.settings if user_row else None) or {}
-    out = _tm_serialize_profile(profile, settings)  # уже включает status
-    out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
-    return out
+        user_row = db.get(DBUserProfile, user_id)
+        settings = (user_row.settings if user_row else None) or {}
+        out = _tm_serialize_profile(profile, settings)  # уже включает status
+        out["tags"] = _tm_load_tags_grouped(db, [user_id]).get(user_id, [])
+        return out
+    except Exception as exc:
+        logger.exception("[tm/profile/me] UNCAUGHT user_id=%s", user_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
+        )
+
+
+# ── 2b. GET /api/teammates/founders — счётчик «первопроходцев» ───────────────
+
+@app.get("/api/teammates/founders")
+async def api_teammates_founders(db: Session = Depends(get_db)):
+    """Сколько мест «первопроходца» выдано и сколько осталось.
+
+    Не требует токена — это публичный счётчик для экрана заполнения профиля
+    («осталось N мест»). Номера наружу не отдаём, только агрегаты.
+    """
+    taken = (
+        db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.founder_number.isnot(None))
+        .count()
+    )
+    return {
+        "cap": _TM_FOUNDER_CAP,
+        "taken": taken,
+        "remaining": max(0, _TM_FOUNDER_CAP - taken),
+    }
 
 
 # ── 3. POST /api/teammates/status — установить статус видимости ──────────────
