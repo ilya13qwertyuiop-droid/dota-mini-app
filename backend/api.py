@@ -1867,6 +1867,10 @@ _TM_VALID_PARTY_SIZES_RANKED = frozenset({3, 5})
 # Если переменная не задана — уведомление всё равно уйдёт, но без кнопки.
 _TM_MINI_APP_URL = os.environ.get("MINI_APP_URL")
 
+# Троттлинг записи last_active_at: не чаще раза в N секунд на юзера.
+# Срезает write-amplification (одно открытие миниаппа = несколько auth-вызовов).
+_TM_BUMP_THROTTLE_SEC = 60
+
 
 def _tm_bump_last_active(db: Session, user_id: int) -> None:
     """Обновляет teammate_profiles.last_active_at = now для данного юзера.
@@ -1874,23 +1878,27 @@ def _tm_bump_last_active(db: Session, user_id: int) -> None:
     Best-effort: если у юзера нет teammate_profile (новый юзер, не заполнил
     форму) — UPDATE с WHERE просто no-op'ит, rowcount=0. Не валим вызов.
 
-    Семантика «last_active»: значение обновляется на КАЖДОМ authenticated
-    teammate-endpoint'е. Auto-polling из миниаппа (30s feed / 90s badge)
-    тоже считается активностью — но это «честно» потому что таймеры paused
-    via Page Visibility API когда вкладка скрыта / телефон заблокирован.
-    Значение реально отражает «миниап открыт перед лицом», а не «процесс
-    тикает в памяти».
+    Семантика «last_active»: значение обновляется на authenticated teammate-
+    endpoint'е, но НЕ чаще раза в _TM_BUMP_THROTTLE_SEC (по умолчанию 60с).
+    Троттлинг: одно открытие миниаппа = несколько авторизованных вызовов
+    (profile/me + feed + входящие + исходящие), и без него каждый из них писал
+    бы в БД. WHERE-условие `last_active_at < cutoff` отсекает повторы на уровне
+    одного UPDATE — без лишнего SELECT. Для «в сети / был N мин назад» точность
+    до минуты избыточна, так что 60с-гранулярность не вредит UX.
     """
     try:
+        now = datetime.now(timezone.utc)
+        cutoff = now - _tm_timedelta(seconds=_TM_BUMP_THROTTLE_SEC)
         db.execute(
             text(
                 """
                 UPDATE teammate_profiles
                 SET last_active_at = :now
                 WHERE user_id = :uid
+                  AND (last_active_at IS NULL OR last_active_at < :cutoff)
                 """
             ),
-            {"now": datetime.now(timezone.utc), "uid": user_id},
+            {"now": now, "cutoff": cutoff, "uid": user_id},
         )
         db.commit()
     except Exception:
