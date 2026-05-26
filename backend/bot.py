@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import html
 import logging
 import os
 import re
@@ -1465,18 +1466,21 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
 
     def build_entry(e: dict) -> str:
         stars = "★" * (e["rating"] or 0) + "☆" * (4 - (e["rating"] or 0)) if e["rating"] else "—"
+        # ВАЖНО: текст отзыва, username и теги — пользовательские; экранируем
+        # под parse_mode="HTML", иначе символы < > & ломают парсинг → Telegram
+        # отдаёт 400 и команда падает без ответа.
         uname = (
-            f'<a href="tg://user?id={e["user_id"]}">@{e["username"]}</a>'
+            f'<a href="tg://user?id={e["user_id"]}">@{html.escape(e["username"])}</a>'
             if e["username"]
             else (f'user {e["user_id"]}' if e["user_id"] else "аноним")
         )
-        tags_str = " ".join(f"#{t}" for t in e["tags"]) if e["tags"] else ""
+        tags_str = " ".join(f"#{html.escape(str(t))}" for t in e["tags"]) if e["tags"] else ""
         date_str = e["created_at"].strftime("%d.%m %H:%M") if e["created_at"] else "?"
         source_icon = "📱" if e["source"] == "mini_app" else "🤖"
         return (
             f"<b>#{e['id']}</b> {source_icon} {stars} · {uname} · {date_str}\n"
             + (f"{tags_str}\n" if tags_str else "")
-            + f"{e['message']}"
+            + f"{html.escape(e['message'] or '')}"
         )
 
     # Разбиваем по 10 отзывов на сообщение; первое сообщение содержит header
@@ -1491,7 +1495,17 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
         # Safety: если вдруг один отзыв огромный — обрезаем до лимита
         if len(text) > 4096:
             text = text[:4090] + "\n…"
-        await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+        # Отправку оборачиваем: один битый блок не должен ронять всю команду
+        # без ответа. На сбое HTML-парсинга шлём как plain-text (теги станут
+        # видны, но сообщение хотя бы дойдёт).
+        try:
+            await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+        except Exception:
+            traceback.print_exc()
+            try:
+                await update.message.reply_text(text, disable_web_page_preview=True)
+            except Exception:
+                traceback.print_exc()
 
 
 # -------- /admin_users (скрытая команда для администраторов) --------
