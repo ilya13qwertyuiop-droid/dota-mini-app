@@ -1841,6 +1841,11 @@ _TM_MAX_FAVORITE_HEROES = 3
 # founder_number (см. миграцию 0014). Янтарная метка на карточке + счётчик
 # «осталось N мест» на экране заполнения. Сам номер наружу не отдаём.
 _TM_FOUNDER_CAP = 1000
+# Замок «раньше игры быть не могло»: нельзя оставить отзыв раньше, чем
+# проходит партия. Турбо ~20 мин, обычная ~40 — 30 мин это безопасный порог,
+# отсекающий «оценку по переписке» сразу после принятия, почти не задевая
+# честный кейс (реальную игру за меньшее время вместе не сыграть).
+_TM_REVIEW_MIN_MINUTES = 30
 _TM_HOURS_MAX = 100000
 # Soft-лимит на параллельные исходящие запросы. Защита от шотгана:
 # новичок не должен иметь возможность тапнуть «Позвать» на 50 карточках подряд.
@@ -2596,14 +2601,32 @@ async def api_teammates_review_submit(
 
     target_user_id = req.to_user_id if user_id == req.from_user_id else req.from_user_id
 
+    # Дедуп ПО ПАРЕ игроков (from→to), а не по request_id: один человек может
+    # оставить другому ровно один отзыв навсегда — тегов сколько угодно, но
+    # один раз. Иначе повторные коннекты тех же двоих позволяли бы накручивать
+    # счётчики тегов в профиле. Направленно: A→B и B→A — разные отзывы.
     already = (
         db.query(DBTeammateReview)
-        .filter(DBTeammateReview.request_id == data.request_id)
         .filter(DBTeammateReview.from_user_id == user_id)
+        .filter(DBTeammateReview.to_user_id == target_user_id)
         .first()
     )
     if already is not None:
-        raise HTTPException(status_code=409, detail="review already submitted")
+        raise HTTPException(status_code=409, detail="Ты уже оставлял отзыв этому игроку")
+
+    # Замок по длине катки: раньше _TM_REVIEW_MIN_MINUTES игры быть не могло,
+    # значит это «оценка по переписке» — отклоняем. accepted_at выставлен при
+    # accept'е; если вдруг None — замок пропускаем (не блокируем легитимный кейс).
+    if req.accepted_at is not None:
+        accepted_at = req.accepted_at
+        if accepted_at.tzinfo is None:
+            accepted_at = accepted_at.replace(tzinfo=timezone.utc)
+        elapsed_min = (datetime.now(timezone.utc) - accepted_at).total_seconds() / 60.0
+        if elapsed_min < _TM_REVIEW_MIN_MINUTES:
+            raise HTTPException(
+                status_code=409,
+                detail="Оценить можно после игры — кнопка станет доступна чуть позже.",
+            )
 
     # Дедуп + валидация против заранее заданного словаря тегов.
     raw_tags = list(dict.fromkeys((t or "").strip() for t in (data.tags or [])))
@@ -2764,17 +2787,18 @@ async def api_teammates_requests_history(
     tags_by_user = _tm_load_tags_grouped(db, other_ids)
     settings_by_user = _tm_load_user_settings(db, other_ids)
 
-    # Проверяем, оставил ли текущий юзер отзыв по каждому request_id.
-    request_ids = [r.id for r in rows]
-    my_review_request_ids: set[int] = set()
-    if request_ids:
+    # Оставил ли текущий юзер отзыв этому ЧЕЛОВЕКУ (по паре, не по request_id —
+    # согласовано с дедупом в /review). Если да, все записи с этим игроком в
+    # истории показываются как «отзыв оставлен», а не предлагают оценить снова.
+    reviewed_user_ids: set[int] = set()
+    if other_ids:
         review_rows = (
-            db.query(DBTeammateReview.request_id)
+            db.query(DBTeammateReview.to_user_id)
             .filter(DBTeammateReview.from_user_id == user_id)
-            .filter(DBTeammateReview.request_id.in_(request_ids))
+            .filter(DBTeammateReview.to_user_id.in_(other_ids))
             .all()
         )
-        my_review_request_ids = {row[0] for row in review_rows}
+        reviewed_user_ids = {row[0] for row in review_rows}
 
     items: list[dict] = []
     for r in rows:
@@ -2789,7 +2813,7 @@ async def api_teammates_requests_history(
             "other_user_id":  other_id,
             "accepted_at":    r.accepted_at.isoformat() if r.accepted_at else None,
             "profile":        profile_payload,
-            "my_review_left": r.id in my_review_request_ids,
+            "my_review_left": other_id in reviewed_user_ids,
         })
 
     next_cursor = items[-1]["accepted_at"] if len(items) == limit and items else None

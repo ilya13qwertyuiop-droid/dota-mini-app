@@ -90,6 +90,36 @@ def _first_name(user_id: int) -> str:
     return html.escape(name or "напарник", quote=False)
 
 
+def _has_review(from_user_id: int, to_user_id: int) -> bool:
+    """True, если from уже оставил отзыв на to (per-pair дедуп, как в /review).
+
+    Нужно, чтобы не напоминать «оцени игрока» тому, кто этого игрока уже
+    оценил: при правиле «один отзыв навсегда» повторный коннект тех же двоих
+    не даёт оставить новый отзыв, и напоминание было бы тупиковым.
+
+    На ошибке БД возвращаем False (лучше отправить лишнее напоминание, чем
+    потерять легитимное)."""
+    try:
+        with SessionLocal() as session:
+            row = session.execute(
+                text(
+                    """
+                    SELECT 1 FROM teammate_reviews
+                    WHERE from_user_id = :f AND to_user_id = :t
+                    LIMIT 1
+                    """
+                ),
+                {"f": from_user_id, "t": to_user_id},
+            ).first()
+            return row is not None
+    except Exception as e:
+        logger.warning(
+            "[tm_notifier] _has_review(%s→%s) failed: %s",
+            from_user_id, to_user_id, e,
+        )
+        return False
+
+
 def _review_url(request_id: int, target_user_id: int) -> str | None:
     """Deep-link на экран отзыва. None — если MINI_APP_URL не задан.
 
@@ -230,25 +260,50 @@ async def process_pending_reviews() -> int:
                 continue
 
             # 3) У каждого участника свой target — оцениваешь ДРУГОГО.
-            #    Имя в тексте — это имя того, КОГО оцениваешь.
-            url_for_from = _review_url(req_id, to_user_id)
-            url_for_to   = _review_url(req_id, from_user_id)
-            name_for_from = _first_name(to_user_id)    # from оценивает to
-            name_for_to   = _first_name(from_user_id)  # to оценивает from
+            #    Напоминаем только тому, кто этого игрока ЕЩЁ НЕ оценивал
+            #    (правило «один отзыв на пару навсегда»): иначе напоминание
+            #    тупиковое — оставить отзыв уже нельзя. Частый кейс — повторный
+            #    коннект тех же двоих после прошлой совместной игры.
+            need_from = not _has_review(from_user_id, to_user_id)  # from оценивает to
+            need_to   = not _has_review(to_user_id, from_user_id)  # to оценивает from
 
-            ok_from = await _send_review_reminder(client, from_user_id, url_for_from, name_for_from)
-            ok_to   = await _send_review_reminder(client, to_user_id,   url_for_to,   name_for_to)
+            if not need_from and not need_to:
+                # Оба уже оценили друг друга — напоминать не о чем. review_sent
+                # уже claimed=TRUE, просто идём дальше (одноразовая «уборка»).
+                logger.info(
+                    "[tm_notifier] request=%d skipped: both already reviewed",
+                    req_id,
+                )
+                continue
 
-            if ok_from or ok_to:
+            ok_from = True
+            ok_to = True
+            if need_from:
+                name_for_from = _first_name(to_user_id)
+                ok_from = await _send_review_reminder(
+                    client, from_user_id, _review_url(req_id, to_user_id), name_for_from
+                )
+            if need_to:
+                name_for_to = _first_name(from_user_id)
+                ok_to = await _send_review_reminder(
+                    client, to_user_id, _review_url(req_id, from_user_id), name_for_to
+                )
+
+            # Доставлено хотя бы одно НУЖНОЕ напоминание? Тогда считаем успехом
+            # и НЕ откатываем — даже если вторая нужная отправка отвалилась
+            # (иначе ретрай заспамил бы того, кому уже дошло). Откат только если
+            # не доставлено ничего из нужного.
+            delivered = (need_from and ok_from) or (need_to and ok_to)
+            if delivered:
                 sent_count += 1
                 logger.info(
-                    "[tm_notifier] request=%d notified: from_user=%s to_user=%s",
-                    req_id, ok_from, ok_to,
+                    "[tm_notifier] request=%d notified: from=%s(need=%s) to=%s(need=%s)",
+                    req_id, ok_from, need_from, ok_to, need_to,
                 )
             else:
-                # 4) Полный отказ обоих — откатываем флаг, попробуем ещё раз
-                # на следующем цикле. Сценарии: Telegram API лёг целиком, оба
-                # юзера заблокировали бота, или сетевая ошибка httpx.
+                # 4) Ни одно нужное напоминание не доставлено — откатываем флаг,
+                # попробуем ещё раз на следующем цикле. Сценарии: Telegram API
+                # лёг, юзер(ы) заблокировали бота, сетевая ошибка httpx.
                 # Частичный успех НЕ откатываем — иначе при ретрае спам успешному.
                 with SessionLocal() as session:
                     session.execute(

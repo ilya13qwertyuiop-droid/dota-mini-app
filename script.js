@@ -8747,6 +8747,16 @@ function _drafterCommentText(c) {
         return _renderHistoryRequestItem(item);
     }
 
+    // Замок отзыва: True, если с момента принятия прошло меньше 30 минут
+    // (раньше игры быть не могло). Должно совпадать с _TM_REVIEW_MIN_MINUTES
+    // на бэкенде. Парсим accepted_at как UTC-like (см. _tmParseUtcLike).
+    var _TM_REVIEW_GATE_MS = 30 * 60 * 1000;
+    function _tmReviewGateActive(acceptedAt) {
+        var t = _tmParseUtcLike(acceptedAt);
+        if (isNaN(t)) return false;   // нет даты — не блокируем
+        return (Date.now() - t) < _TM_REVIEW_GATE_MS;
+    }
+
     function _renderHistoryRequestItem(r) {
         var p = r.profile || {};
         var when = _tmRelativeDate(r.accepted_at);
@@ -8754,6 +8764,10 @@ function _drafterCommentText(c) {
         var actionHtml;
         if (r.my_review_left) {
             actionHtml = '<span class="tm-history-done"><i class="ph ph-check-circle" aria-hidden="true"></i>Отзыв оставлен</span>';
+        } else if (_tmReviewGateActive(r.accepted_at)) {
+            // Замок «раньше игры быть не могло» (30 мин с принятия) — синхронно
+            // с бэкендом. Вместо кнопки показываем тихую подсказку.
+            actionHtml = '<span class="tm-history-when">Оценить можно после игры</span>';
         } else {
             actionHtml = '<button type="button" class="tm-history-review" onclick="tmOpenReview(' + r.request_id + ', ' + otherId + ')">Оценить игрока</button>';
         }
@@ -8992,7 +9006,13 @@ function _drafterCommentText(c) {
                     tags: _tm.reviewSelectedTags.slice()
                 })
             });
-            if (resp.status === 409) { showToast('Отзыв уже отправлен'); return; }
+            if (resp.status === 409) {
+                // 409 = либо уже оценивал, либо замок по длине катки. Текст
+                // приходит с бэка (detail) — показываем его.
+                var d409; try { d409 = (await resp.json()).detail; } catch (e) { d409 = null; }
+                showToast(d409 || 'Ты уже оценивал этого игрока');
+                return;
+            }
             if (!resp.ok) { showToast('Не удалось отправить отзыв'); return; }
             showToast('Спасибо за отзыв', 'ok');
             _tm.reviewRequestId = null;
