@@ -8999,6 +8999,18 @@ function _drafterCommentText(c) {
         }
     };
 
+    // «Мы ещё не играли» — мягкий выход без отзыва. Для постоянки/не срочно
+    // игра могла ещё не случиться; не заставляем оценивать. Бот повторно не
+    // напоминает (review_sent уже выставлен при отправке пуша), а оценить
+    // можно позже в «Пати» → История.
+    window.tmReviewNotPlayedYet = function () {
+        _tm.reviewRequestId = null;
+        _tm.reviewTargetUserId = null;
+        _tm.reviewSelectedTags = [];
+        showToast('Хорошо — оценишь позже, в Истории');
+        switchPage('home');
+    };
+
     // ── Deep links ───────────────────────────────────────────────────
     //   ?teammate_review=<request_id>&teammate_target=<user_id>
     //     → открыть экран оценки игрока.

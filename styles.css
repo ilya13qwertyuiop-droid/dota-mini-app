@@ -7497,6 +7497,25 @@ margin-top: var(--space-4);
 .tm-primary-btn:hover { background: var(--accent-hover); }
 .tm-primary-btn:disabled { opacity: 0.6; cursor: default; }
 
+/* Вторичная «ghost»-кнопка: текст без заливки. Для необязательного действия
+   рядом с primary (например «Мы ещё не играли» на экране отзыва). */
+.tm-ghost-btn {
+  width: 100%;
+  appearance: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 0;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: var(--tracking-tight);
+  transition: color 0.15s;
+}
+.tm-ghost-btn:hover { color: var(--text-primary); }
+
 /* ── Requests section: входящие / исходящие / история ─────────────── */
 /* Отступ выше намеренно компактнее: preview-карточка и форма уже
    визуально завершаются padding'ом, дополнительный 24+16 = 40px

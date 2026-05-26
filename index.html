@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=169" />
+    <link rel="stylesheet" href="styles.css?v=170" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1235,6 +1235,9 @@
           </div>
         </div>
         <button id="tm-review-submit" class="tm-primary-btn" onclick="tmSubmitReview()">Отправить отзыв</button>
+        <!-- Мягкий выход для постоянки/не срочно: игра могла ещё не случиться.
+             Закрывает экран без отзыва — оценить можно позже в «Пати» → История. -->
+        <button type="button" class="tm-ghost-btn" onclick="tmReviewNotPlayedYet()">Мы ещё не играли</button>
       </div>
 
       <!-- Help-страница раздела тиммейтов. Full-screen overlay, по виду —
@@ -1274,7 +1277,7 @@
 
             <section class="tm-help-section">
               <h2 class="tm-help-section-title">Отзывы</h2>
-              <p class="tm-help-text">Через 90 минут после того как ты принял запрос (или твой запрос приняли), бот предложит оценить тиммейта.</p>
+              <p class="tm-help-text">Через несколько часов после того как вы законтачили, бот спросит, получилось ли поиграть, и предложит оценить напарника. Ещё не играли — ничего страшного: оценить можно позже, в профиле (аватарка справа) → вкладка «История».</p>
               <p class="tm-help-text">Отзывы анонимные — получатель видит только сумму голосов, не кто их поставил. Это помогает другим игрокам понимать, с кем стоит играть, а с кем нет.</p>
             </section>
           </div>
@@ -1436,6 +1439,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=203"></script>
+    <script defer src="script.js?v=204"></script>
   </body>
 </html>

@@ -24,7 +24,7 @@ after a teammate request was accepted.
 один раз. На single-worker-деплое это бесплатная страховка.
 
 Конфигурация через переменные окружения:
-    TM_REVIEW_DELAY_MINUTES    — задержка перед напоминанием (default 90)
+    TM_REVIEW_DELAY_MINUTES    — задержка перед напоминанием (default 180 = 3 ч)
     TM_NOTIFIER_INTERVAL_SEC   — период поллинга (default 60)
     TM_NOTIFIER_BATCH_SIZE     — макс. напоминаний за один проход (default 100)
     BOT_TOKEN                  — токен бота (обязательно)
@@ -33,6 +33,7 @@ after a teammate request was accepted.
 """
 
 import asyncio
+import html
 import logging
 import os
 import time
@@ -48,7 +49,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN: str | None = os.environ.get("BOT_TOKEN")
 MINI_APP_URL: str | None = os.environ.get("MINI_APP_URL")
 
-REVIEW_DELAY_MINUTES   = int(os.environ.get("TM_REVIEW_DELAY_MINUTES", "90"))
+REVIEW_DELAY_MINUTES   = int(os.environ.get("TM_REVIEW_DELAY_MINUTES", "180"))
 POLL_INTERVAL_SECONDS  = int(os.environ.get("TM_NOTIFIER_INTERVAL_SEC", "60"))
 BATCH_SIZE             = int(os.environ.get("TM_NOTIFIER_BATCH_SIZE", "100"))
 
@@ -61,14 +62,32 @@ _REMINDER_FALLBACK = (
 )
 
 
-def _reminder_text() -> str:
+def _reminder_text(name: str) -> str:
     """Достаёт текст напоминания через bot_texts.get_text. Lazy-import чтобы
-    не делать models/database side-effect-ы на module-import notifier'а."""
+    не делать models/database side-effect-ы на module-import notifier'а.
+
+    `name` — имя ВТОРОГО игрока (того, кого оцениваешь); подставляется в
+    плейсхолдер {name}. Уже должно быть HTML-safe (см. _first_name)."""
     try:
         from backend.bot_texts import get_text as _get
-        return _get("tm_push_review_reminder")
+        return _get("tm_push_review_reminder", name=name)
     except Exception:
         return _REMINDER_FALLBACK
+
+
+def _first_name(user_id: int) -> str:
+    """Имя игрока из user_profiles.settings, HTML-escaped и готовое к вставке
+    в parse_mode=HTML текст. Фолбэк «напарник», если профиля/имени нет."""
+    try:
+        from backend.models import UserProfile
+        with SessionLocal() as session:
+            row = session.get(UserProfile, user_id)
+            settings = (row.settings if row is not None else None) or {}
+            name = (settings.get("first_name") or "").strip()
+    except Exception as e:
+        logger.warning("[tm_notifier] _first_name(%s) failed: %s", user_id, e)
+        name = ""
+    return html.escape(name or "напарник", quote=False)
 
 
 def _review_url(request_id: int, target_user_id: int) -> str | None:
@@ -87,17 +106,19 @@ async def _send_review_reminder(
     client: httpx.AsyncClient,
     chat_id: int,
     button_url: str | None,
+    other_name: str,
 ) -> bool:
     """Один sendMessage. Возвращает True, если Telegram принял запрос.
 
-    Все ошибки только логируются — fire-and-forget по тому же контракту,
-    что и `_tm_send_bot_message` в api.py.
+    `other_name` — имя игрока, которого получатель будет оценивать (уже
+    HTML-safe). Все ошибки только логируются — fire-and-forget по тому же
+    контракту, что и `_tm_send_bot_message` в api.py.
     """
     if not BOT_TOKEN:
         return False
     payload: dict = {
         "chat_id": chat_id,
-        "text": _reminder_text(),
+        "text": _reminder_text(other_name),
         # HTML — потому что admin может добавить <b>/<tg-emoji> в шаблон.
         # Default-fallback это plain text, parse_mode='HTML' для него тоже
         # безопасен (там нет '<' '>' '&'-символов).
@@ -209,11 +230,14 @@ async def process_pending_reviews() -> int:
                 continue
 
             # 3) У каждого участника свой target — оцениваешь ДРУГОГО.
+            #    Имя в тексте — это имя того, КОГО оцениваешь.
             url_for_from = _review_url(req_id, to_user_id)
             url_for_to   = _review_url(req_id, from_user_id)
+            name_for_from = _first_name(to_user_id)    # from оценивает to
+            name_for_to   = _first_name(from_user_id)  # to оценивает from
 
-            ok_from = await _send_review_reminder(client, from_user_id, url_for_from)
-            ok_to   = await _send_review_reminder(client, to_user_id,   url_for_to)
+            ok_from = await _send_review_reminder(client, from_user_id, url_for_from, name_for_from)
+            ok_to   = await _send_review_reminder(client, to_user_id,   url_for_to,   name_for_to)
 
             if ok_from or ok_to:
                 sent_count += 1
