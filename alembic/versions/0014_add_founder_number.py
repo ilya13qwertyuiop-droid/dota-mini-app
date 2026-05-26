@@ -30,12 +30,36 @@ def _columns(bind, table: str) -> set[str]:
     return {c["name"] for c in insp.get_columns(table)}
 
 
+# Должно совпадать с _TM_FOUNDER_CAP в backend/api.py.
+_FOUNDER_CAP = 1000
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     if "founder_number" not in _columns(bind, "teammate_profiles"):
         op.add_column(
             "teammate_profiles",
             sa.Column("founder_number", sa.Integer(), nullable=True),
+        )
+        # Backfill: уже существующие профили — самые ранние пользователи,
+        # они и есть первопроходцы. Нумеруем по дате создания (1..cap).
+        # ROW_NUMBER работает и в PostgreSQL, и в современном SQLite.
+        bind.execute(
+            sa.text(
+                """
+                WITH ranked AS (
+                    SELECT user_id,
+                           ROW_NUMBER() OVER (ORDER BY created_at, user_id) AS rn
+                    FROM teammate_profiles
+                )
+                UPDATE teammate_profiles AS tp
+                SET founder_number = ranked.rn
+                FROM ranked
+                WHERE tp.user_id = ranked.user_id
+                  AND ranked.rn <= :cap
+                """
+            ),
+            {"cap": _FOUNDER_CAP},
         )
 
 
