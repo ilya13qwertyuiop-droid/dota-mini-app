@@ -1439,6 +1439,121 @@ def get_teammate_stats() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Analytics overview (для /analytics в боте)
+# ---------------------------------------------------------------------------
+
+def get_analytics_overview(days: int = 7) -> dict:
+    """Сводка по аналитике: DAU/новые/вернувшиеся по дням, использование по
+    фичам за окно `days` дней, retention D1/D7 по cohort'ам.
+
+    Все даты считаем по UTC-суткам (day = [00:00 UTC, 24:00 UTC)). Это
+    единообразно и не зависит от часового пояса сервера.
+    """
+    now = datetime.now(timezone.utc)
+    today_mid = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    window_start = today_mid - timedelta(days=days - 1)
+    window_end = today_mid + timedelta(days=1)
+
+    daily: list[dict] = []
+    with engine.connect() as conn:
+        # 1) Дневная разбивка: DAU + новые + вернувшиеся.
+        for offset in range(days - 1, -1, -1):
+            d_start = today_mid - timedelta(days=offset)
+            d_end = d_start + timedelta(days=1)
+            dau = conn.execute(
+                text(
+                    "SELECT COUNT(DISTINCT user_id) FROM analytics_events "
+                    "WHERE user_id IS NOT NULL AND created_at >= :s AND created_at < :e"
+                ),
+                {"s": d_start, "e": d_end},
+            ).scalar() or 0
+            new_users = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM user_profiles "
+                    "WHERE created_at >= :s AND created_at < :e"
+                ),
+                {"s": d_start, "e": d_end},
+            ).scalar() or 0
+            daily.append({
+                "day":       d_start.strftime("%Y-%m-%d"),
+                "dau":       dau,
+                "new":       new_users,
+                "returning": max(0, dau - new_users),
+            })
+
+        # 2) Использование по фичам за всё окно.
+        feature_rows = conn.execute(
+            text(
+                "SELECT event, COUNT(*) AS opens, COUNT(DISTINCT user_id) AS users "
+                "FROM analytics_events "
+                "WHERE created_at >= :s AND created_at < :e "
+                "GROUP BY event ORDER BY opens DESC"
+            ),
+            {"s": window_start, "e": window_end},
+        ).all()
+        features = [
+            {"event": r[0], "opens": r[1], "users": r[2]}
+            for r in feature_rows
+        ]
+
+        # 3) Retention D1 / D7 — средние по cohort'ам.
+        d1 = _retention_avg(conn, today_mid, lookback_days=14, gap=1)
+        d7 = _retention_avg(conn, today_mid, lookback_days=21, gap=7)
+
+    return {
+        "window_days":   days,
+        "daily":         daily,
+        "features":      features,
+        "retention_d1":  d1,
+        "retention_d7":  d7,
+    }
+
+
+def _retention_avg(conn, today_mid: datetime, lookback_days: int, gap: int) -> dict:
+    """Средний % retention для cohorts последних lookback_days дней,
+    замеренный через `gap` дней после регистрации.
+
+    Cohort = юзеры, зарегистрировавшиеся в день X (user_profiles.created_at).
+    Retained = из них те, у кого было хотя бы одно событие в день X+gap.
+    Возвращает {cohorts, avg_pct} — на сколько cohorts усреднили и % в среднем.
+    Пропускаем cohorts, для которых return-окно ещё не закрылось (в будущем).
+    """
+    pcts: list[float] = []
+    horizon_end = today_mid + timedelta(days=1)
+    for offset in range(gap, gap + lookback_days):
+        cohort_start = today_mid - timedelta(days=offset)
+        cohort_end = cohort_start + timedelta(days=1)
+        ret_start = cohort_start + timedelta(days=gap)
+        ret_end = ret_start + timedelta(days=1)
+        if ret_end > horizon_end:
+            continue
+
+        cohort_size = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM user_profiles "
+                "WHERE created_at >= :s AND created_at < :e"
+            ),
+            {"s": cohort_start, "e": cohort_end},
+        ).scalar() or 0
+        if not cohort_size:
+            continue
+        retained = conn.execute(
+            text(
+                "SELECT COUNT(DISTINCT ae.user_id) FROM analytics_events ae "
+                "JOIN user_profiles up ON up.user_id = ae.user_id "
+                "WHERE up.created_at >= :cs AND up.created_at < :ce "
+                "  AND ae.created_at >= :rs AND ae.created_at < :re"
+            ),
+            {"cs": cohort_start, "ce": cohort_end, "rs": ret_start, "re": ret_end},
+        ).scalar() or 0
+        pcts.append(100.0 * retained / cohort_size)
+
+    if not pcts:
+        return {"cohorts": 0, "avg_pct": None}
+    return {"cohorts": len(pcts), "avg_pct": round(sum(pcts) / len(pcts))}
+
+
+# ---------------------------------------------------------------------------
 # Backfill helpers — match_players for pre-existing matches
 # ---------------------------------------------------------------------------
 
