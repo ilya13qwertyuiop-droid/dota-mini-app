@@ -1800,6 +1800,49 @@ async def api_draft_history(token: str, db: Session = Depends(get_db)):
     ]
 
 
+# ========== Analytics ==========
+#
+# Один эндпоинт для записи событий миниаппа в analytics_events. Фронт зовёт
+# из switchPage на каждое открытие страницы. События с бота пишутся напрямую
+# из bot.py через db.log_event. Просмотр — admin-команда /analytics в боте.
+
+# Аллоулист событий миниаппа: жёстко зафиксирован, чтобы клиент не мог
+# засорять таблицу произвольными строками. Расширяется по мере появления
+# новых страниц.
+_ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
+    "page_home",
+    "page_drafter",
+    "page_quiz",
+    "page_database",
+    "page_profile",
+    "page_teammates",
+    "page_teammate_review",
+    "page_donate",
+    "page_feedback",
+    "page_news",
+})
+
+
+class AnalyticsEventBody(BaseModel):
+    token: str
+    event: str
+
+
+@app.post("/api/analytics/event")
+async def api_analytics_event(data: AnalyticsEventBody):
+    """Принимает событие с миниаппа. Жёсткий аллоулист по имени; невалидные
+    игнорируются с 422, чтобы клиент не пихал произвольный мусор."""
+    if data.event not in _ANALYTICS_ALLOWED_EVENTS:
+        raise HTTPException(status_code=422, detail="unknown event")
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    # log_event сам глотает любые ошибки записи — endpoint всегда возвращает ok.
+    from backend.db import log_event as _log_event
+    _log_event(data.event, user_id)
+    return {"ok": True}
+
+
 # ========== Teammate finder ==========
 #
 # Профиль игрока для поиска тиммейтов + входящие/исходящие запросы + отзывы.

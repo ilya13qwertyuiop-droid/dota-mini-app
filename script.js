@@ -452,6 +452,20 @@
             saveResultToBackend(result);
         }
 
+        // Простая «трекалка» аналитики: fire-and-forget POST в /analytics/event.
+        // Бэкенд проверяет аллоулист событий, так что мусор не попадёт в таблицу.
+        // Никогда не валит UI — все ошибки глотаются.
+        function _track(event) {
+            try {
+                if (!event || !USER_TOKEN) return;
+                apiFetch(`${window.API_BASE_URL}/analytics/event`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: USER_TOKEN, event: event })
+                }).catch(function () { /* fire-and-forget */ });
+            } catch (e) { /* never break UI */ }
+        }
+
         function switchPage(pageName, event) {
             // Скрыть undo-toast Анализа — он position:fixed и иначе виден на новой странице
             if (typeof _hideAnalysisUndoToast === 'function') _hideAnalysisUndoToast();
@@ -485,6 +499,10 @@
                 // bottom-nav оставлял страницу без подгруженного профиля.
                 if (typeof window._tmInitPage === 'function') window._tmInitPage();
             }
+
+            // Аналитика: одно событие «страница открыта» (page_<name>).
+            // Дефис → подчёркивание под имя в аллоулисте (page_teammate_review).
+            _track('page_' + String(pageName || '').replace(/-/g, '_'));
         }
 
         function startPositionQuiz() {

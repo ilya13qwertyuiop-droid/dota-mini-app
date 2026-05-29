@@ -66,6 +66,24 @@ def timed_handler(cmd: str):
     return decorator
 
 
+def logged_event(event: str):
+    """Декоратор: пишет одно событие в analytics_events перед вызовом хендлера.
+
+    Применяется поверх timed_handler в регистрации команд. Никогда не валит
+    основной поток (log_event сам глотает ошибки записи)."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            try:
+                uid = update.effective_user.id if update.effective_user else None
+                log_event(event, uid)
+            except Exception:
+                pass
+            return await fn(update, context)
+        return wrapper
+    return decorator
+
+
 try:
     from PIL import Image, ImageDraw, ImageFont
     _PIL_OK = True
@@ -100,8 +118,9 @@ from db import (
     ban_user,
     unban_user,
     find_user_id_by_username,
+    log_event,
 )
-from stats_db import get_teammate_stats
+from stats_db import get_teammate_stats, get_analytics_overview
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
 # db.py при импорте добавляет корень проекта в sys.path, поэтому эти импорты
@@ -1595,6 +1614,93 @@ async def tm_stats_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# -------- /analytics (общая аналитика, только для администраторов) --------
+
+# Лейблы для имён событий — чтобы в дайджесте было читаемо, а не «page_drafter».
+_ANALYTICS_EVENT_LABELS = {
+    "bot_start":             "/start",
+    "bot_help":              "/help",
+    "bot_quiz_last":         "/last_quiz",
+    "bot_quiz_hero":         "/hero_quiz",
+    "bot_counters":          "/counters",
+    "bot_synergy":           "/synergy",
+    "bot_news":              "/news",
+    "bot_feedback":          "/feedback",
+    "page_home":             "Главная",
+    "page_drafter":          "Драфтер",
+    "page_quiz":             "Квизы",
+    "page_database":         "База героев",
+    "page_profile":          "Профиль",
+    "page_teammates":        "Пати",
+    "page_teammate_review":  "Экран отзыва",
+    "page_donate":           "Поддержка",
+    "page_feedback":         "Фидбек",
+    "page_news":             "Новости",
+}
+
+
+async def analytics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сводка по активности и использованию — для админа. По умолчанию окно 7 дней;
+    можно указать аргументом: /analytics 14."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    # Парсим окно из аргумента (опц.).
+    days = 7
+    try:
+        if context.args:
+            n = int(context.args[0])
+            if 1 <= n <= 60:
+                days = n
+    except (ValueError, IndexError):
+        pass
+
+    try:
+        a = await asyncio.to_thread(get_analytics_overview, days=days)
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Не удалось получить аналитику.")
+        return
+
+    # 1) Дневная разбивка
+    daily = a.get("daily", [])
+    total_dau = sum(d["dau"] for d in daily)
+    total_new = sum(d["new"] for d in daily)
+    avg_dau = round(total_dau / len(daily)) if daily else 0
+    daily_lines = "\n".join(
+        f"  • {d['day']} — DAU {d['dau']} (нов: {d['new']} · верн: {d['returning']})"
+        for d in daily
+    ) or "  • —"
+
+    # 2) Использование по фичам — сортировано по opens
+    feats = a.get("features", [])
+    feat_lines = "\n".join(
+        f"  • {_ANALYTICS_EVENT_LABELS.get(f['event'], f['event'])}: "
+        f"{f['opens']} откр · {f['users']} юзеров"
+        for f in feats
+    ) or "  • —"
+
+    # 3) Retention
+    d1 = a.get("retention_d1") or {}
+    d7 = a.get("retention_d7") or {}
+    def _ret_line(label, r):
+        pct = r.get("avg_pct")
+        cohorts = r.get("cohorts", 0)
+        if pct is None:
+            return f"  • {label}: — (нет данных)"
+        return f"  • {label}: {pct}% (по {cohorts} cohort'ам)"
+
+    await update.message.reply_text(
+        f"📊 Аналитика D2Helper (окно {days} дн.)\n\n"
+        f"📅 По дням:\n{daily_lines}\n\n"
+        f"📈 Итого за окно: новых {total_new} · средний DAU ≈ {avg_dau}\n\n"
+        f"🔧 Использование по фичам:\n{feat_lines}\n\n"
+        f"♻ Retention:\n"
+        f"{_ret_line('D1', d1)}\n"
+        f"{_ret_line('D7', d7)}"
+    )
+
+
 # -------- /topdraft (скрытая команда для администраторов) --------
 
 async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
@@ -1828,18 +1934,19 @@ def main():
         .build()
     )
 
-    application.add_handler(CommandHandler("start",      timed_handler("/start")(start)))
-    application.add_handler(CommandHandler("help",       timed_handler("/help")(help_command)))
-    application.add_handler(CommandHandler("last_quiz",  timed_handler("/last_quiz")(last_quiz_command)))
-    application.add_handler(CommandHandler("hero_quiz",  timed_handler("/hero_quiz")(hero_quiz_command)))
-    application.add_handler(CommandHandler("counters",   timed_handler("/counters")(counters_command)))
-    application.add_handler(CommandHandler("synergy",    timed_handler("/synergy")(synergy_command)))
-    application.add_handler(CommandHandler("news",            timed_handler("/news")(news_command)))
-    application.add_handler(CommandHandler("feedback",       timed_handler("/feedback")(feedback_command)))
+    application.add_handler(CommandHandler("start",      logged_event("bot_start")(timed_handler("/start")(start))))
+    application.add_handler(CommandHandler("help",       logged_event("bot_help")(timed_handler("/help")(help_command))))
+    application.add_handler(CommandHandler("last_quiz",  logged_event("bot_quiz_last")(timed_handler("/last_quiz")(last_quiz_command))))
+    application.add_handler(CommandHandler("hero_quiz",  logged_event("bot_quiz_hero")(timed_handler("/hero_quiz")(hero_quiz_command))))
+    application.add_handler(CommandHandler("counters",   logged_event("bot_counters")(timed_handler("/counters")(counters_command))))
+    application.add_handler(CommandHandler("synergy",    logged_event("bot_synergy")(timed_handler("/synergy")(synergy_command))))
+    application.add_handler(CommandHandler("news",            logged_event("bot_news")(timed_handler("/news")(news_command))))
+    application.add_handler(CommandHandler("feedback",       logged_event("bot_feedback")(timed_handler("/feedback")(feedback_command))))
     application.add_handler(CommandHandler("admin_feedback", timed_handler("/admin_feedback")(admin_feedback_command)))
     application.add_handler(CommandHandler("admin_users",    timed_handler("/admin_users")(admin_users_command)))
     application.add_handler(CommandHandler("admin_matches",  timed_handler("/admin_matches")(admin_matches_command)))
     application.add_handler(CommandHandler("tm_stats",       timed_handler("/tm_stats")(tm_stats_command)))
+    application.add_handler(CommandHandler("analytics",      timed_handler("/analytics")(analytics_command)))
     application.add_handler(CommandHandler("stats_mode",          timed_handler("/stats_mode")(stats_mode_command)))
     application.add_handler(CommandHandler("force_update_builds", timed_handler("/force_update_builds")(force_update_builds_command)))
     application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))

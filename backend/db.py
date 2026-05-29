@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import BannedUser, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
+from backend.models import AnalyticsEvent, BannedUser, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +419,27 @@ def mark_news_notified(guid: str) -> None:
         if row is not None:
             row.notified_at = datetime.now(timezone.utc)
             session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+def log_event(event: str, user_id: int | None) -> None:
+    """Пишет одно событие в analytics_events. Best-effort: ошибки логируются,
+    но никогда не пробрасываются — аналитика не должна валить юзер-флоу.
+
+    `event` — snake_case идентификатор (например, 'bot_start', 'page_drafter').
+    Обрезается до 64 символов (под колонку). `user_id` может быть None для
+    анонимных событий (пока не используется, но допустимо схемой)."""
+    if not event:
+        return
+    try:
+        with SessionLocal() as session:
+            session.add(AnalyticsEvent(event=event[:64], user_id=user_id))
+            session.commit()
+    except Exception as e:
+        logger.warning("[analytics] log_event(%s, %s) failed: %s", event, user_id, e)
 
 
 # ---------------------------------------------------------------------------
