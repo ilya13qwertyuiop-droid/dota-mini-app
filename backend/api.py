@@ -211,8 +211,13 @@ if not CHECK_CHAT_ID:
 
 
 # --- DB init (idempotent; Alembic is the authoritative source for PostgreSQL) ---
-create_all_tables()       # creates all tables if they don't exist (SQLite convenience)
-init_stats_tables()       # migration: adds rank_bucket column if missing
+# Раньше тут было два вызова: create_all_tables() явно + init_stats_tables(),
+# который сам внутри зовёт create_all_tables(). При 4 uvicorn-воркерах это
+# давало 8 одновременных проходов startup-миграций → на PostgreSQL мы регулярно
+# ловили дедлоки на user_profiles (см. database.py:create_all_tables).
+# Оставлен только init_stats_tables — он гарантированно зовёт create_all_tables
+# первым шагом, плюс делает свои миграции по stats-таблицам.
+init_stats_tables()
 _init_rl_table()          # rate limiting table for /api/draft/evaluate
 # --- DB init end ---
 
