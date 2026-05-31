@@ -60,6 +60,37 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+# ---------------------------------------------------------------------------
+# Startup-migration helpers (защита от дедлоков при одновременном старте)
+# ---------------------------------------------------------------------------
+
+# ID для pg_advisory_xact_lock — сериализует startup-миграции между процессами
+# (несколько uvicorn-воркеров + bot стартуют одновременно). Значение
+# произвольное, но обязано совпадать во всех вызовах. На SQLite не используется.
+_STARTUP_MIGRATION_LOCK_ID = 9_876_543_210
+
+
+def _column_exists(conn, table: str, column: str) -> bool:
+    """Кросс-БД проверка наличия колонки. SQLite — PRAGMA, PG — information_schema.
+
+    Используется ПЕРЕД ALTER TABLE в стартовых миграциях, чтобы на уже
+    мигрированной БД ALTER не выполнялся вовсе. Иначе на PostgreSQL ALTER
+    берёт AccessExclusiveLock на таблицу на время попытки даже при no-op
+    исходе — и при параллельном старте нескольких процессов это даёт дедлок.
+    """
+    if _is_sqlite:
+        rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        return any(r[1] == column for r in rows)
+    row = conn.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :t AND column_name = :c"
+        ),
+        {"t": table, "c": column},
+    ).fetchone()
+    return row is not None
+
+
 def get_db() -> Generator:
     """FastAPI dependency: yields a SQLAlchemy Session and closes it after use."""
     db = SessionLocal()
@@ -95,11 +126,24 @@ def create_all_tables() -> None:
     )
     Base.metadata.create_all(bind=engine)
 
-    # Idempotent inline migrations — same pattern as init_stats_tables() in stats_db.py.
-    # These run on every startup so the schema stays in sync even if Alembic hasn't been
-    # applied yet (e.g. SQLite dev database created via create_all before migrations existed).
+    # Idempotent inline-миграция: user_profiles.created_at, если её нет.
+    # Раньше это был голый try/except ALTER TABLE. На Postgres `ALTER TABLE`
+    # ВСЕГДА берёт AccessExclusiveLock на таблицу на время попытки — даже
+    # когда колонка уже есть и итог «no-op» (после try/except). При
+    # одновременном старте нескольких процессов (uvicorn 4 воркера + bot)
+    # параллельные попытки + живой трафик на user_profiles порождали дедлоки.
+    #
+    # Защита в два слоя:
+    #   1) pg_advisory_xact_lock — сериализует startup-миграции между
+    #      процессами в рамках одного движка; на SQLite не нужен (один писатель);
+    #   2) existence-check через _column_exists — на уже мигрированной БД
+    #      ALTER не выполняется вообще, всё превращается в один SELECT
+    #      из information_schema без локов на пользовательской таблице.
     with engine.begin() as conn:
-        try:
+        if not _is_sqlite:
+            conn.execute(
+                text("SELECT pg_advisory_xact_lock(:id)"),
+                {"id": _STARTUP_MIGRATION_LOCK_ID},
+            )
+        if not _column_exists(conn, "user_profiles", "created_at"):
             conn.execute(text("ALTER TABLE user_profiles ADD COLUMN created_at TIMESTAMP"))
-        except Exception:
-            pass  # column already exists
