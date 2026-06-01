@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=173" />
+    <link rel="stylesheet" href="styles.css?v=174" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1429,10 +1429,10 @@
           <i class="ph ph-house-line" aria-hidden="true"></i>
         </button>
 
-        <div class="dock-pill" role="tablist" aria-label="Категории" data-hub="play">
+        <div class="dock-pill dock-pill--idle" role="tablist" aria-label="Категории" data-hub="play">
           <span class="dock-pill__thumb" aria-hidden="true"></span>
-          <button type="button" class="dock-pill__seg active" role="tab"
-                  data-hub="play" aria-selected="true"
+          <button type="button" class="dock-pill__seg" role="tab"
+                  data-hub="play" aria-selected="false"
                   onclick="goToHub('play', event)">
             <span class="dock-pill__seg-label">Играть</span>
             <span class="dock-pill__seg-badge" id="nav-tm-badge" hidden></span>
@@ -1500,6 +1500,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=213"></script>
+    <script defer src="script.js?v=214"></script>
   </body>
 </html>

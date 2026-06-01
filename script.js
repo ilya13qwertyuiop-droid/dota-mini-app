@@ -538,14 +538,30 @@
             if (homeBtn) homeBtn.classList.toggle('active', pageName === 'home');
             if (profileBtn) profileBtn.classList.toggle('active', pageName === 'profile');
 
-            // Хаб подсвечиваем только если страница реально к нему относится.
-            // На home/profile/feedback/etc. — оставляем последнее состояние пилюли,
-            // чтобы при следующем тапе по ней юзер вернулся туда, где был.
+            // Определяем, относится ли текущая страница к одному из хабов.
+            // Если да — пилюля подсвечивает соответствующий сегмент. Если нет
+            // (Главная/Профиль/Feedback/etc) — пилюля уходит в IDLE: thumb
+            // растворяется, оба сегмента нейтральные. Так юзеру однозначно
+            // видно, где он сейчас находится: либо одна из боковых кнопок,
+            // либо один из сегментов пилюли — но никогда оба сразу и никогда
+            // ничего «висящего из прошлого».
             var hub = null;
             if (pageName === 'hub-play') hub = 'play';
             else if (pageName === 'hub-tools') hub = 'tools';
             else if (pageName in _NAV_FEATURE_TO_HUB) hub = _NAV_FEATURE_TO_HUB[pageName];
-            if (hub) _setPillHub(hub);
+
+            var pill = document.querySelector('.dock-pill');
+            if (!pill) return;
+            if (hub) {
+                pill.classList.remove('dock-pill--idle');
+                _setPillHub(hub);
+            } else {
+                pill.classList.add('dock-pill--idle');
+                pill.querySelectorAll('.dock-pill__seg').forEach(function (s) {
+                    s.classList.remove('active');
+                    s.setAttribute('aria-selected', 'false');
+                });
+            }
         }
 
         // Тап по сегменту пилюли: переключаем активный хаб и сразу открываем
@@ -579,7 +595,11 @@
                 if (Math.abs(dx) > 28 && Math.abs(dx) > Math.abs(dy) * 1.5) {
                     var current = pill.getAttribute('data-hub') || 'play';
                     var next = dx < 0 ? 'tools' : 'play';
-                    if (next !== current) goToHub(next);
+                    // В idle (юзер на Главной/Профиле) переход совершаем всегда,
+                    // даже если next === current — он явно ткнул в пилюлю и ждёт
+                    // навигации, а не «ничего не произошло».
+                    var idle = pill.classList.contains('dock-pill--idle');
+                    if (idle || next !== current) goToHub(next);
                 }
             }, { passive: true });
         }
