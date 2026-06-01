@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=176" />
+    <link rel="stylesheet" href="styles.css?v=177" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -257,6 +257,10 @@
 
       <!-- Страница квизов -->
       <div id="page-quiz" class="page">
+        <div class="section-tabs" role="tablist" aria-label="Раздел Играть">
+          <button type="button" class="section-tab" role="tab" data-page="teammates" onclick="switchPage('teammates', event)">Пати</button>
+          <button type="button" class="section-tab" role="tab" data-page="quiz" onclick="switchPage('quiz', event)">Квизы</button>
+        </div>
         <!-- Список доступных квизов -->
         <div id="quiz-list">
           <div class="dashboard-header">
@@ -520,6 +524,10 @@
 
       <!-- Страница драфтера -->
       <div id="page-drafter" class="page">
+        <div class="section-tabs" role="tablist" aria-label="Раздел Инструменты">
+          <button type="button" class="section-tab" role="tab" data-page="drafter" onclick="switchPage('drafter', event)">Драфтер</button>
+          <button type="button" class="section-tab" role="tab" data-page="database" onclick="switchPage('database', event)">Герои</button>
+        </div>
 
         <!-- Экран драфта -->
         <div id="drafter-main">
@@ -737,6 +745,10 @@
 
       <!-- Страница матчапов -->
       <div id="page-database" class="page">
+        <div class="section-tabs" role="tablist" aria-label="Раздел Инструменты">
+          <button type="button" class="section-tab" role="tab" data-page="drafter" onclick="switchPage('drafter', event)">Драфтер</button>
+          <button type="button" class="section-tab" role="tab" data-page="database" onclick="switchPage('database', event)">Герои</button>
+        </div>
 
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
@@ -937,6 +949,10 @@
 
       <!-- Страница поиска тиммейтов -->
       <div id="page-teammates" class="page">
+        <div class="section-tabs" role="tablist" aria-label="Раздел Играть">
+          <button type="button" class="section-tab" role="tab" data-page="teammates" onclick="switchPage('teammates', event)">Пати</button>
+          <button type="button" class="section-tab" role="tab" data-page="quiz" onclick="switchPage('quiz', event)">Квизы</button>
+        </div>
         <div class="tm-page-head">
           <button type="button" class="tm-back-btn" onclick="switchPage('home')" aria-label="Назад">
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
@@ -1363,90 +1379,33 @@
       </div>
 
       <!-- Нижняя навигация -->
-      <!-- Хаб «Играть»: вход в социально-развлекательные разделы. -->
-      <div id="page-hub-play" class="page hub-page">
-        <header class="hub-head">
-          <h1 class="hub-title">Играть</h1>
-          <p class="hub-sub">Найди партию или прокачай знания</p>
-        </header>
-        <div class="hub-grid">
-          <button class="hub-card" type="button" onclick="switchPage('teammates', event)">
-            <span class="hub-card__halo" aria-hidden="true"></span>
-            <span class="hub-card__icon-wrap">
-              <i class="ph-fill ph-users-three hub-card__icon" aria-hidden="true"></i>
-            </span>
-            <span class="hub-card__title">Пати</span>
-            <span class="hub-card__desc">Ищи тиммейтов под свой ранг и стиль</span>
-            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
-          </button>
-          <button class="hub-card" type="button" onclick="switchPage('quiz', event)">
-            <span class="hub-card__halo" aria-hidden="true"></span>
-            <span class="hub-card__icon-wrap">
-              <i class="ph-fill ph-puzzle-piece hub-card__icon" aria-hidden="true"></i>
-            </span>
-            <span class="hub-card__title">Квизы</span>
-            <span class="hub-card__desc">Угадай героев по силуэтам и сигнатуркам</span>
-            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Хаб «Инструменты»: вход в драфт-инструменты и базу знаний. -->
-      <div id="page-hub-tools" class="page hub-page">
-        <header class="hub-head">
-          <h1 class="hub-title">Инструменты</h1>
-          <p class="hub-sub">Готовься к драфту и изучай мету</p>
-        </header>
-        <div class="hub-grid">
-          <button class="hub-card" type="button" onclick="switchPage('drafter', event)">
-            <span class="hub-card__halo" aria-hidden="true"></span>
-            <span class="hub-card__icon-wrap">
-              <i class="ph-fill ph-strategy hub-card__icon" aria-hidden="true"></i>
-            </span>
-            <span class="hub-card__title">Драфтер</span>
-            <span class="hub-card__desc">Контр-пики, синергии и рекомендации</span>
-            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
-          </button>
-          <button class="hub-card" type="button" onclick="switchPage('database', event)">
-            <span class="hub-card__halo" aria-hidden="true"></span>
-            <span class="hub-card__icon-wrap">
-              <i class="ph-fill ph-shield hub-card__icon" aria-hidden="true"></i>
-            </span>
-            <span class="hub-card__title">Герои</span>
-            <span class="hub-card__desc">База, абилки и популярные сборки</span>
-            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Floating dock: три плавающих glass-блока. Главная и Профиль —
-           круглые кнопки по краям. Центральная пилюля — переключатель
-           между двумя хабами с плавно скользящим thumb'ом, поддерживает
-           горизонтальный swipe (см. _initDockSwipe в script.js).        -->
+      <!-- Floating dock: один плавающий glass-бар с 4 прямыми разделами.
+           Главная · Играть · Инструменты · Профиль — каждый в 1 тап.
+           Внутри «Играть»/«Инструменты» переключение между фичами — через
+           секционные верхние табы (.section-tabs) на самих страницах. -->
       <nav class="dock" aria-label="Основная навигация">
-        <button type="button" class="dock-btn dock-btn--home active"
-                onclick="switchPage('home', event)" aria-label="Главная">
-          <i class="ph ph-house-line" aria-hidden="true"></i>
+        <button type="button" class="dock-tab active" data-section="home"
+                onclick="goSection('home', event)">
+          <i class="ph ph-house-line dock-tab__icon" aria-hidden="true"></i>
+          <span class="dock-tab__label">Главная</span>
         </button>
-
-        <div class="dock-pill dock-pill--idle" role="tablist" aria-label="Категории" data-hub="play">
-          <span class="dock-pill__thumb" aria-hidden="true"></span>
-          <button type="button" class="dock-pill__seg" role="tab"
-                  data-hub="play" aria-selected="false"
-                  onclick="goToHub('play', event)">
-            <span class="dock-pill__seg-label">Играть</span>
-            <span class="dock-pill__seg-badge" id="nav-tm-badge" hidden></span>
-          </button>
-          <button type="button" class="dock-pill__seg" role="tab"
-                  data-hub="tools" aria-selected="false"
-                  onclick="goToHub('tools', event)">
-            <span class="dock-pill__seg-label">Инструменты</span>
-          </button>
-        </div>
-
-        <button type="button" class="dock-btn dock-btn--profile"
-                onclick="switchPage('profile', event)" aria-label="Профиль">
-          <i class="ph ph-user" aria-hidden="true"></i>
+        <button type="button" class="dock-tab" data-section="play"
+                onclick="goSection('play', event)">
+          <span class="dock-tab__icon-wrap">
+            <i class="ph ph-game-controller dock-tab__icon" aria-hidden="true"></i>
+            <span class="dock-tab__badge" id="nav-tm-badge" hidden></span>
+          </span>
+          <span class="dock-tab__label">Играть</span>
+        </button>
+        <button type="button" class="dock-tab" data-section="tools"
+                onclick="goSection('tools', event)">
+          <i class="ph ph-strategy dock-tab__icon" aria-hidden="true"></i>
+          <span class="dock-tab__label">Инструменты</span>
+        </button>
+        <button type="button" class="dock-tab" data-section="profile"
+                onclick="goSection('profile', event)">
+          <i class="ph ph-user dock-tab__icon" aria-hidden="true"></i>
+          <span class="dock-tab__label">Профиль</span>
         </button>
       </nav>
     </div>
@@ -1500,6 +1459,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=216"></script>
+    <script defer src="script.js?v=217"></script>
   </body>
 </html>

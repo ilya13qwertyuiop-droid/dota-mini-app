@@ -500,110 +500,56 @@
                 if (typeof window._tmInitPage === 'function') window._tmInitPage();
             }
 
-            // Синхронизация floating dock'а: подсветка home/profile, активный
-            // сегмент пилюли в зависимости от того, к какому хабу принадлежит
-            // текущая страница (см. _NAV_FEATURE_TO_HUB).
-            _syncDockFromPage(pageName);
+            // Синхронизация навигации: активный таб дока (4 раздела) +
+            // активный секционный таб (Пати/Квизы, Драфтер/Герои).
+            _syncNavFromPage(pageName);
 
             // Аналитика: одно событие «страница открыта» (page_<name>).
             // Дефис → подчёркивание под имя в аллоулисте (page_teammate_review).
             _track('page_' + String(pageName || '').replace(/-/g, '_'));
         }
 
-        // ── Floating dock state ──────────────────────────────────────────
-        // Какая фича к какому хабу относится — определяет, какой сегмент
-        // пилюли подсвечен, когда пользователь внутри фичи.
-        var _NAV_FEATURE_TO_HUB = {
+        // ── Навигация: разделы дока + секционные табы ─────────────────────
+        // К какому разделу дока относится каждая страница (для подсветки таба).
+        var _PAGE_TO_SECTION = {
+            home: 'home',
             teammates: 'play',
-            'teammate-review': 'play',
             quiz: 'play',
+            'teammate-review': 'play',
             drafter: 'tools',
             database: 'tools',
+            profile: 'profile',
+        };
+        // Основная (стартовая) фича каждого раздела — куда ведёт таб дока.
+        var _SECTION_PRIMARY = {
+            home: 'home',
+            play: 'teammates',
+            tools: 'drafter',
+            profile: 'profile',
         };
 
-        function _setPillHub(hub) {
-            var pill = document.querySelector('.dock-pill');
-            if (!pill) return;
-            pill.setAttribute('data-hub', hub);
-            pill.querySelectorAll('.dock-pill__seg').forEach(function (s) {
-                var on = s.getAttribute('data-hub') === hub;
-                s.classList.toggle('active', on);
-                s.setAttribute('aria-selected', on ? 'true' : 'false');
+        // Тап по табу дока: открываем основную фичу раздела в 1 тап.
+        window.goSection = function (section, event) {
+            var page = _SECTION_PRIMARY[section] || 'home';
+            switchPage(page, event);
+        };
+
+        function _syncNavFromPage(pageName) {
+            var section = _PAGE_TO_SECTION[pageName] || null;
+            // Подсветка таба дока — ровно один активный (или ни одного на
+            // служебных страницах вроде feedback/donate/news).
+            document.querySelectorAll('.dock-tab').forEach(function (tab) {
+                tab.classList.toggle('active', tab.getAttribute('data-section') === section);
+            });
+            // Подсветка секционного таба во всех .section-tabs барах (они
+            // продублированы на страницах раздела; держим в синхроне по data-page).
+            document.querySelectorAll('.section-tab').forEach(function (t) {
+                t.classList.toggle('active', t.getAttribute('data-page') === pageName);
             });
         }
-
-        function _syncDockFromPage(pageName) {
-            var homeBtn = document.querySelector('.dock-btn--home');
-            var profileBtn = document.querySelector('.dock-btn--profile');
-            if (homeBtn) homeBtn.classList.toggle('active', pageName === 'home');
-            if (profileBtn) profileBtn.classList.toggle('active', pageName === 'profile');
-
-            // Определяем, относится ли текущая страница к одному из хабов.
-            // Если да — пилюля подсвечивает соответствующий сегмент. Если нет
-            // (Главная/Профиль/Feedback/etc) — пилюля уходит в IDLE: thumb
-            // растворяется, оба сегмента нейтральные. Так юзеру однозначно
-            // видно, где он сейчас находится: либо одна из боковых кнопок,
-            // либо один из сегментов пилюли — но никогда оба сразу и никогда
-            // ничего «висящего из прошлого».
-            var hub = null;
-            if (pageName === 'hub-play') hub = 'play';
-            else if (pageName === 'hub-tools') hub = 'tools';
-            else if (pageName in _NAV_FEATURE_TO_HUB) hub = _NAV_FEATURE_TO_HUB[pageName];
-
-            var pill = document.querySelector('.dock-pill');
-            if (!pill) return;
-            if (hub) {
-                pill.classList.remove('dock-pill--idle');
-                _setPillHub(hub);
-            } else {
-                pill.classList.add('dock-pill--idle');
-                pill.querySelectorAll('.dock-pill__seg').forEach(function (s) {
-                    s.classList.remove('active');
-                    s.setAttribute('aria-selected', 'false');
-                });
-            }
-        }
-
-        // Тап по сегменту пилюли: переключаем активный хаб и сразу открываем
-        // соответствующий хаб-экран. _setPillHub вызывается тут синхронно,
-        // плюс ещё раз внутри switchPage → _syncDockFromPage (идемпотентно).
-        window.goToHub = function (hub, event) {
-            _setPillHub(hub);
-            switchPage('hub-' + hub, event);
-        };
-
-        // Горизонтальный swipe по пилюле — нативный iOS-жест. >28px горизонталь,
-        // и горизонтальное преобладание над вертикалью × 1.5 (чтобы скролл
-        // страницы по диагонали не запускал смену хаба случайно).
-        function _initDockSwipe() {
-            var pill = document.querySelector('.dock-pill');
-            if (!pill) return;
-            var startX = 0, startY = 0, active = false;
-            pill.addEventListener('touchstart', function (e) {
-                if (e.touches.length !== 1) return;
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                active = true;
-            }, { passive: true });
-            pill.addEventListener('touchend', function (e) {
-                if (!active) return;
-                active = false;
-                var t = e.changedTouches && e.changedTouches[0];
-                if (!t) return;
-                var dx = t.clientX - startX;
-                var dy = t.clientY - startY;
-                if (Math.abs(dx) > 28 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                    var current = pill.getAttribute('data-hub') || 'play';
-                    var next = dx < 0 ? 'tools' : 'play';
-                    // В idle (юзер на Главной/Профиле) переход совершаем всегда,
-                    // даже если next === current — он явно ткнул в пилюлю и ждёт
-                    // навигации, а не «ничего не произошло».
-                    var idle = pill.classList.contains('dock-pill--idle');
-                    if (idle || next !== current) goToHub(next);
-                }
-            }, { passive: true });
-        }
-        _initDockSwipe();
+        // Экспорт для функций вне этого scope (feedback/donate/meta-клик и т.п.),
+        // которые показывают страницу вручную, минуя switchPage.
+        window._dockActivateByPage = _syncNavFromPage;
 
         function startPositionQuiz() {
             document.getElementById('quiz-list').style.display = 'none';
@@ -649,9 +595,8 @@
         }
 
         function goToMatchups() {
+            // switchPage сам подсветит раздел «Инструменты» и таб «Герои».
             switchPage('database');
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.querySelectorAll('.nav-item')[3].classList.add('active');
         }
 
         function initQuiz() {
@@ -2986,8 +2931,8 @@ function goToFeedback() {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-feedback').classList.add('active');
 
-    // Убираем активную метку с нав-элементов
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    // Feedback — не раздел дока: снимаем подсветку со всех табов.
+    if (window._dockActivateByPage) window._dockActivateByPage(null);
 
     // Сбрасываем форму
     _resetFeedbackForm();
@@ -2999,16 +2944,9 @@ function goBackFromFeedback() {
                  document.getElementById('page-home');
     target.classList.add('active');
 
-    // Восстанавливаем нав-элемент. Квизы больше не в bottom-nav — после
-    // возврата с feedback с quiz-страницы ни один nav-item не подсвечивается
-    // (страница доступна через виджет главной).
-    var navMap = { home: 0, teammates: 1, drafter: 2, database: 3, profile: 4 };
-    var navIdx = navMap[_prevPageBeforeFeedback];
-    if (navIdx !== undefined) {
-        var navItems = document.querySelectorAll('.nav-item');
-        if (navItems[navIdx]) navItems[navIdx].classList.add('active');
-    } else {
-        document.querySelectorAll('.nav-item')[0].classList.add('active');
+    // Подсветка таба дока по разделу страницы, на которую вернулись.
+    if (window._dockActivateByPage) {
+        window._dockActivateByPage(_prevPageBeforeFeedback || 'home');
     }
 }
 
@@ -3141,13 +3079,14 @@ async function submitFeedback() {
 function goToDonate() {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-donate').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    // Donate — не раздел дока: снимаем подсветку.
+    if (window._dockActivateByPage) window._dockActivateByPage(null);
 }
 
 function goBackFromDonate() {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-home').classList.add('active');
-    document.querySelectorAll('.nav-item')[0].classList.add('active');
+    if (window._dockActivateByPage) window._dockActivateByPage('home');
 }
 
 function openDonationAlerts() {
@@ -3185,9 +3124,7 @@ var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', '
 function _metaHeroClick(heroName) {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-database').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
-    var navItems = document.querySelectorAll('.nav-item');
-    if (navItems[3]) navItems[3].classList.add('active');
+    if (window._dockActivateByPage) window._dockActivateByPage('database');
     _heroPageActiveTab = 'build';
     matchupPage.selectHero(heroName);
 }
@@ -7036,9 +6973,8 @@ function _drafterCommentText(c) {
     // вызывается из switchPage('teammates') — здесь только подсвечиваем
     // nav-item, потому что event у нас нет.
     window.goToTeammates = function () {
+        // switchPage сам подсветит раздел «Играть» и таб «Пати».
         switchPage('teammates');
-        var navItems = document.querySelectorAll('.nav-item');
-        if (navItems[1]) navItems[1].classList.add('active');
     };
 
     function initTeammatesPage() {
