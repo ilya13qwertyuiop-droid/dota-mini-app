@@ -500,10 +500,90 @@
                 if (typeof window._tmInitPage === 'function') window._tmInitPage();
             }
 
+            // Синхронизация floating dock'а: подсветка home/profile, активный
+            // сегмент пилюли в зависимости от того, к какому хабу принадлежит
+            // текущая страница (см. _NAV_FEATURE_TO_HUB).
+            _syncDockFromPage(pageName);
+
             // Аналитика: одно событие «страница открыта» (page_<name>).
             // Дефис → подчёркивание под имя в аллоулисте (page_teammate_review).
             _track('page_' + String(pageName || '').replace(/-/g, '_'));
         }
+
+        // ── Floating dock state ──────────────────────────────────────────
+        // Какая фича к какому хабу относится — определяет, какой сегмент
+        // пилюли подсвечен, когда пользователь внутри фичи.
+        var _NAV_FEATURE_TO_HUB = {
+            teammates: 'play',
+            'teammate-review': 'play',
+            quiz: 'play',
+            drafter: 'tools',
+            database: 'tools',
+        };
+
+        function _setPillHub(hub) {
+            var pill = document.querySelector('.dock-pill');
+            if (!pill) return;
+            pill.setAttribute('data-hub', hub);
+            pill.querySelectorAll('.dock-pill__seg').forEach(function (s) {
+                var on = s.getAttribute('data-hub') === hub;
+                s.classList.toggle('active', on);
+                s.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+        }
+
+        function _syncDockFromPage(pageName) {
+            var homeBtn = document.querySelector('.dock-btn--home');
+            var profileBtn = document.querySelector('.dock-btn--profile');
+            if (homeBtn) homeBtn.classList.toggle('active', pageName === 'home');
+            if (profileBtn) profileBtn.classList.toggle('active', pageName === 'profile');
+
+            // Хаб подсвечиваем только если страница реально к нему относится.
+            // На home/profile/feedback/etc. — оставляем последнее состояние пилюли,
+            // чтобы при следующем тапе по ней юзер вернулся туда, где был.
+            var hub = null;
+            if (pageName === 'hub-play') hub = 'play';
+            else if (pageName === 'hub-tools') hub = 'tools';
+            else if (pageName in _NAV_FEATURE_TO_HUB) hub = _NAV_FEATURE_TO_HUB[pageName];
+            if (hub) _setPillHub(hub);
+        }
+
+        // Тап по сегменту пилюли: переключаем активный хаб и сразу открываем
+        // соответствующий хаб-экран. _setPillHub вызывается тут синхронно,
+        // плюс ещё раз внутри switchPage → _syncDockFromPage (идемпотентно).
+        window.goToHub = function (hub, event) {
+            _setPillHub(hub);
+            switchPage('hub-' + hub, event);
+        };
+
+        // Горизонтальный swipe по пилюле — нативный iOS-жест. >28px горизонталь,
+        // и горизонтальное преобладание над вертикалью × 1.5 (чтобы скролл
+        // страницы по диагонали не запускал смену хаба случайно).
+        function _initDockSwipe() {
+            var pill = document.querySelector('.dock-pill');
+            if (!pill) return;
+            var startX = 0, startY = 0, active = false;
+            pill.addEventListener('touchstart', function (e) {
+                if (e.touches.length !== 1) return;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                active = true;
+            }, { passive: true });
+            pill.addEventListener('touchend', function (e) {
+                if (!active) return;
+                active = false;
+                var t = e.changedTouches && e.changedTouches[0];
+                if (!t) return;
+                var dx = t.clientX - startX;
+                var dy = t.clientY - startY;
+                if (Math.abs(dx) > 28 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                    var current = pill.getAttribute('data-hub') || 'play';
+                    var next = dx < 0 ? 'tools' : 'play';
+                    if (next !== current) goToHub(next);
+                }
+            }, { passive: true });
+        }
+        _initDockSwipe();
 
         function startPositionQuiz() {
             document.getElementById('quiz-list').style.display = 'none';

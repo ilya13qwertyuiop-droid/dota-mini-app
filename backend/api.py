@@ -1825,6 +1825,9 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_donate",
     "page_feedback",
     "page_news",
+    # Хабы из нового floating dock (см. styles.css `.dock-pill`).
+    "page_hub_play",
+    "page_hub_tools",
 })
 
 

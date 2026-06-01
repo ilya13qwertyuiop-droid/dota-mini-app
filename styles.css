@@ -171,7 +171,8 @@ font-feature-settings: 'cv11', 'ss01', 'ss03';
 text-rendering: optimizeLegibility;
 min-height: 100dvh;
 color: var(--text-main);
-padding-bottom: var(--nav-height);
+/* Учитываем плавающий dock: высоту nav + safe-area нижнего края iPhone. */
+padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
 }
 
 /* Заголовки — плотный leading, чуть подтянутый tracking */
@@ -1056,55 +1057,287 @@ border-color: var(--accent-border);
 transform: translateY(-1px);
 }
 
-.bottom-nav {
-position: fixed;
-bottom: 0;
-left: 0;
-right: 0;
-height: var(--nav-height);
-background: var(--bg-base);
-border-top: 1px solid var(--border-subtle);
-display: flex;
-justify-content: space-between;
-align-items: center;
-padding: 0 var(--space-1);
-z-index: 1000;
+/* ── Floating dock (liquid glass) ──────────────────────────────────────
+   Не прилипает к низу: три плавающих glass-блока в строке. Слева —
+   круглая Главная, в центре пилюля-переключатель хабов (Играть / Инструменты),
+   справа — круглый Профиль. Под пилюлей едет thumb со скользящей анимацией.
+   Backdrop-filter blur + saturate + тонкий inset-highlight сверху создают
+   ощущение «лёд на тёмной поверхности» — iOS-26-стиль, адаптированный под
+   тёмную палитру и slate-blue акцент проекта.                              */
+
+:root {
+  /* Один токен поверхности dock'а — переиспользуется в side-кнопках и пилюле. */
+  --dock-glass-bg: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 100%),
+                   color-mix(in oklch, var(--bg-base) 68%, transparent);
+  --dock-glass-border: rgba(255,255,255,0.10);
+  --dock-glass-shadow:
+    0 18px 40px -14px rgba(0, 0, 0, 0.62),
+    0 1px 0 0 rgba(255, 255, 255, 0.07) inset;
+  --dock-blur: 28px;
+  --dock-sat: 1.55;
 }
 
-.nav-item {
-display: flex;
-flex-direction: column;
-align-items: center;
-gap: var(--space-1);
-padding: var(--space-2) var(--space-1);
-cursor: pointer;
-transition: color 0.15s ease;
-color: var(--text-tertiary);
-flex: 1;
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 4px));
+  z-index: var(--z-nav);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  padding: 0 14px;
+  pointer-events: none;       /* зазоры не перехватывают тапы */
+}
+.dock > * { pointer-events: auto; }
+
+/* — Боковые круглые кнопки (Главная / Профиль) — */
+.dock-btn {
+  appearance: none;
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: inherit;
+  background: var(--dock-glass-bg);
+  border: 0.5px solid var(--dock-glass-border);
+  box-shadow: var(--dock-glass-shadow);
+  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  transition: color 0.18s ease, transform 0.18s ease, box-shadow 0.28s ease;
+}
+.dock-btn i { font-size: 22px; line-height: 1; }
+.dock-btn:hover { color: var(--text-primary); }
+.dock-btn:active { transform: scale(0.94); }
+
+/* Active: подсветка иконки + тонкий accent-ring изнутри. Только в текущем
+   разделе подсвечивается соответствующая кнопка (см. _syncDockFromPage). */
+.dock-btn.active {
+  color: var(--text-primary);
+  box-shadow:
+    0 18px 40px -14px rgba(0, 0, 0, 0.62),
+    0 1px 0 0 rgba(255, 255, 255, 0.10) inset,
+    0 0 0 1px color-mix(in oklch, var(--accent) 60%, transparent) inset;
 }
 
-.nav-item:hover {
-color: var(--text-secondary);
+/* — Центральная пилюля с двумя сегментами и скользящим thumb'ом — */
+.dock-pill {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 52px;
+  border-radius: 999px;
+  padding: 5px;
+  background: var(--dock-glass-bg);
+  border: 0.5px solid var(--dock-glass-border);
+  box-shadow: var(--dock-glass-shadow);
+  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  overflow: hidden;
+  touch-action: pan-y;       /* вертикальный скролл, горизонталь ловим вручную */
 }
 
-.nav-item.active {
-color: var(--text-primary);
+/* Скользящая «таблетка» под текстом активного сегмента. Анимация — exponential
+   ease-out (320-380ms), как у системных iOS-сегмент-контролов. */
+.dock-pill__thumb {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc(50% - 5px);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03)),
+    color-mix(in oklch, var(--accent) 22%, transparent);
+  border: 0.5px solid color-mix(in oklch, var(--accent) 40%, transparent);
+  box-shadow:
+    0 6px 18px -4px color-mix(in oklch, var(--accent) 45%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.10) inset;
+  transform: translate3d(0, 0, 0);
+  transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+  pointer-events: none;
+}
+.dock-pill[data-hub="tools"] .dock-pill__thumb {
+  transform: translate3d(100%, 0, 0);
 }
 
-.nav-icon {
-font-size: var(--text-lg);
-opacity: 0.85;
-transition: opacity 0.15s ease;
+.dock-pill__seg {
+  appearance: none;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  transition: color 0.22s ease, font-weight 0.22s ease;
+  white-space: nowrap;
+}
+.dock-pill__seg:hover { color: var(--text-primary); }
+.dock-pill__seg.active {
+  color: var(--text-primary);
+  font-weight: var(--font-semibold);
 }
 
-.nav-item.active .nav-icon {
-opacity: 1;
+/* Бейдж входящих запросов «Пати» — едет вместе с сегментом «Играть». */
+.dock-pill__seg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+.dock-pill__seg-badge[hidden] { display: none; }
+
+/* Reduced motion: убираем скольжение thumb'а. */
+@media (prefers-reduced-motion: reduce) {
+  .dock-pill__thumb { transition: none; }
+  .dock-btn { transition: none; }
 }
 
-.nav-label {
-font-size: var(--text-2xs);
-font-weight: var(--font-medium);
-letter-spacing: var(--tracking-normal);
+/* ── Хаб-страницы (Играть / Инструменты): крупные карточки 2-up ──────── */
+
+.hub-page {
+  padding: 28px 16px calc(var(--nav-height) + 24px);
+}
+.hub-head { margin-bottom: 22px; }
+.hub-title {
+  margin: 0;
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+.hub-sub {
+  margin: 6px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  letter-spacing: var(--tracking-tight);
+}
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.hub-card {
+  appearance: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+  min-height: 172px;
+  padding: 18px 16px;
+  gap: 10px;
+  border-radius: var(--radius-xl, 18px);
+  border: 0.5px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0)) ,
+    var(--bg-surface);
+  color: inherit;
+  font-family: inherit;
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+              border-color 0.2s ease,
+              background-color 0.2s ease;
+}
+/* Лёгкое акцентное свечение в верхнем-левом углу карточки — едва заметное,
+   служит «характером», не «декорацией». */
+.hub-card__halo {
+  position: absolute;
+  top: -50px;
+  left: -50px;
+  width: 160px;
+  height: 160px;
+  border-radius: 999px;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--accent) 28%, transparent),
+    transparent 70%
+  );
+  filter: blur(6px);
+  opacity: 0.7;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.hub-card:hover { border-color: var(--border-default); }
+.hub-card:hover .hub-card__halo { opacity: 0.95; }
+.hub-card:active { transform: scale(0.97); }
+
+.hub-card > *:not(.hub-card__halo) { position: relative; z-index: 1; }
+
+.hub-card__icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0)),
+    color-mix(in oklch, var(--accent) 16%, transparent);
+  border: 0.5px solid color-mix(in oklch, var(--accent) 32%, transparent);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+.hub-card__icon {
+  font-size: 22px;
+  color: var(--accent);
+  line-height: 1;
+}
+.hub-card__title {
+  margin-top: 4px;
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.15;
+}
+.hub-card__desc {
+  margin-top: auto;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.hub-card__arrow {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 14px;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+  transition: transform 0.22s ease, color 0.22s ease, opacity 0.22s ease;
+}
+.hub-card:hover .hub-card__arrow {
+  transform: translate(2px, -2px);
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 .placeholder {

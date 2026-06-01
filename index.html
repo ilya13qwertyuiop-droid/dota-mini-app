@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=172" />
+    <link rel="stylesheet" href="styles.css?v=173" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1363,30 +1363,91 @@
       </div>
 
       <!-- Нижняя навигация -->
-      <nav class="bottom-nav" aria-label="Основная навигация">
-        <div class="nav-item active" onclick="switchPage('home', event)">
-          <i class="nav-icon ph ph-house" aria-hidden="true"></i>
-          <div class="nav-label">Главная</div>
+      <!-- Хаб «Играть»: вход в социально-развлекательные разделы. -->
+      <div id="page-hub-play" class="page hub-page">
+        <header class="hub-head">
+          <h1 class="hub-title">Играть</h1>
+          <p class="hub-sub">Найди партию или прокачай знания</p>
+        </header>
+        <div class="hub-grid">
+          <button class="hub-card" type="button" onclick="switchPage('teammates', event)">
+            <span class="hub-card__halo" aria-hidden="true"></span>
+            <span class="hub-card__icon-wrap">
+              <i class="ph-fill ph-users-three hub-card__icon" aria-hidden="true"></i>
+            </span>
+            <span class="hub-card__title">Пати</span>
+            <span class="hub-card__desc">Ищи тиммейтов под свой ранг и стиль</span>
+            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
+          </button>
+          <button class="hub-card" type="button" onclick="switchPage('quiz', event)">
+            <span class="hub-card__halo" aria-hidden="true"></span>
+            <span class="hub-card__icon-wrap">
+              <i class="ph-fill ph-puzzle-piece hub-card__icon" aria-hidden="true"></i>
+            </span>
+            <span class="hub-card__title">Квизы</span>
+            <span class="hub-card__desc">Угадай героев по силуэтам и сигнатуркам</span>
+            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
+          </button>
         </div>
-        <div class="nav-item nav-item--tm" onclick="switchPage('teammates', event)">
-          <span class="nav-icon-wrap">
-            <i class="nav-icon ph ph-users-three" aria-hidden="true"></i>
-            <span class="nav-badge" id="nav-tm-badge" hidden></span>
-          </span>
-          <div class="nav-label">Пати</div>
+      </div>
+
+      <!-- Хаб «Инструменты»: вход в драфт-инструменты и базу знаний. -->
+      <div id="page-hub-tools" class="page hub-page">
+        <header class="hub-head">
+          <h1 class="hub-title">Инструменты</h1>
+          <p class="hub-sub">Готовься к драфту и изучай мету</p>
+        </header>
+        <div class="hub-grid">
+          <button class="hub-card" type="button" onclick="switchPage('drafter', event)">
+            <span class="hub-card__halo" aria-hidden="true"></span>
+            <span class="hub-card__icon-wrap">
+              <i class="ph-fill ph-strategy hub-card__icon" aria-hidden="true"></i>
+            </span>
+            <span class="hub-card__title">Драфтер</span>
+            <span class="hub-card__desc">Контр-пики, синергии и рекомендации</span>
+            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
+          </button>
+          <button class="hub-card" type="button" onclick="switchPage('database', event)">
+            <span class="hub-card__halo" aria-hidden="true"></span>
+            <span class="hub-card__icon-wrap">
+              <i class="ph-fill ph-shield hub-card__icon" aria-hidden="true"></i>
+            </span>
+            <span class="hub-card__title">Герои</span>
+            <span class="hub-card__desc">База, абилки и популярные сборки</span>
+            <i class="ph ph-arrow-up-right hub-card__arrow" aria-hidden="true"></i>
+          </button>
         </div>
-        <div class="nav-item" onclick="switchPage('drafter', event)">
-          <i class="nav-icon ph ph-strategy" aria-hidden="true"></i>
-          <div class="nav-label">Драфтер</div>
+      </div>
+
+      <!-- Floating dock: три плавающих glass-блока. Главная и Профиль —
+           круглые кнопки по краям. Центральная пилюля — переключатель
+           между двумя хабами с плавно скользящим thumb'ом, поддерживает
+           горизонтальный swipe (см. _initDockSwipe в script.js).        -->
+      <nav class="dock" aria-label="Основная навигация">
+        <button type="button" class="dock-btn dock-btn--home active"
+                onclick="switchPage('home', event)" aria-label="Главная">
+          <i class="ph ph-house-line" aria-hidden="true"></i>
+        </button>
+
+        <div class="dock-pill" role="tablist" aria-label="Категории" data-hub="play">
+          <span class="dock-pill__thumb" aria-hidden="true"></span>
+          <button type="button" class="dock-pill__seg active" role="tab"
+                  data-hub="play" aria-selected="true"
+                  onclick="goToHub('play', event)">
+            <span class="dock-pill__seg-label">Играть</span>
+            <span class="dock-pill__seg-badge" id="nav-tm-badge" hidden></span>
+          </button>
+          <button type="button" class="dock-pill__seg" role="tab"
+                  data-hub="tools" aria-selected="false"
+                  onclick="goToHub('tools', event)">
+            <span class="dock-pill__seg-label">Инструменты</span>
+          </button>
         </div>
-        <div class="nav-item" onclick="switchPage('database', event)">
-          <i class="nav-icon ph ph-shield" aria-hidden="true"></i>
-          <div class="nav-label">Герои</div>
-        </div>
-        <div class="nav-item" onclick="switchPage('profile', event)">
-          <i class="nav-icon ph ph-user" aria-hidden="true"></i>
-          <div class="nav-label">Профиль</div>
-        </div>
+
+        <button type="button" class="dock-btn dock-btn--profile"
+                onclick="switchPage('profile', event)" aria-label="Профиль">
+          <i class="ph ph-user" aria-hidden="true"></i>
+        </button>
       </nav>
     </div>
 
@@ -1439,6 +1500,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=212"></script>
+    <script defer src="script.js?v=213"></script>
   </body>
 </html>
