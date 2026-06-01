@@ -605,28 +605,6 @@
         }
         _initDockSwipe();
 
-        // SVG-преломление включаем ТОЛЬКО там, где движок реально умеет SVG-фильтр
-        // как вход backdrop-filter — это Chromium (десктоп / Android-вебвью).
-        // Safari/WebKit (iOS Telegram) и Chrome-on-iOS (CriOS, тоже WebKit) НЕ
-        // умеют — там остаётся чистый frosted-glass, без поломки. Детект по UA:
-        // надёжного feature-query для этой связки в браузерах нет.
-        function _initDockRefraction() {
-            try {
-                var ua = navigator.userAgent || '';
-                var isIOS = /iPad|iPhone|iPod/.test(ua) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                var isWebKitOnly = /AppleWebKit/.test(ua) &&
-                    !/Chrome|Chromium|Edg|OPR/.test(ua);
-                var isChromeOnIOS = /CriOS|FxiOS/.test(ua);   // тоже WebKit под капотом
-                if (isIOS || isWebKitOnly || isChromeOnIOS) return;
-                var isChromium = /Chrome|Chromium|Edg|OPR/.test(ua);
-                if (!isChromium) return;
-                var dock = document.querySelector('.dock');
-                if (dock) dock.classList.add('dock--refract');
-            } catch (e) { /* при любом сомнении — frosted без преломления */ }
-        }
-        _initDockRefraction();
-
         function startPositionQuiz() {
             document.getElementById('quiz-list').style.display = 'none';
             document.getElementById('quiz-content-container').style.display = 'block';

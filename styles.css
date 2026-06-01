@@ -1066,26 +1066,16 @@ transform: translateY(-1px);
    тёмную палитру и slate-blue акцент проекта.                              */
 
 :root {
-  /* Тёмное стекло (как референс-бар Telegram на тёмном фоне). КЛЮЧЕВОЙ принцип:
-     заливка — почти прозрачный ТЁМНЫЙ тинт, а не белый молочный градиент.
-     Белая заливка + brightness = «яичный» глянцевый пластик. Стекло должно
-     ПРОПУСКАТЬ контент: его делает blur + saturate, а «материальность» —
-     тонкие чёткие блики ТОЛЬКО по кромке (hairline), не пелена по площади.
-     Тинт чуть уведён в slate-blue (бренд-hue) для подсознательной цельности. */
-  --dock-tint: rgba(14, 16, 24, 0.44);
-  --dock-glass-border: rgba(255, 255, 255, 0.12);
+  /* Чистое тёмное матовое стекло — как премиальные мини-аппы. ПРИНЦИП:
+     минимализм. Один блюр + одна тонкая граница + одна мягкая тень. Никаких
+     specular-бликов, accent-колец, многослойных inset'ов — именно нагромождение
+     «стеклянных эффектов» читается как ИИ-слоп. Блюр делает всю работу сам. */
+  --dock-tint: rgba(20, 22, 28, 0.52);
+  --dock-glass-border: rgba(255, 255, 255, 0.08);
   --dock-glass-shadow:
-    /* Внешняя мягкая тень — «парение» над контентом */
-    0 16px 40px -12px rgba(0, 0, 0, 0.72),
-    0 2px 8px -2px   rgba(0, 0, 0, 0.45),
-    /* Чёткий ЯРКИЙ тонкий top-rim (0.5px) — главный «стеклянный» сигнал,
-       это блик света на верхнем ребре, а НЕ заливка поверхности */
-    inset 0 0.6px 0 0 rgba(255, 255, 255, 0.42),
-    /* Едва заметный внутренний контур по всей грани */
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.05),
-    /* «Толщина» материала — тёмный rim по нижнему внутреннему ребру */
-    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.30);
-  --dock-blur: 22px;
+    0 10px 34px -8px rgba(0, 0, 0, 0.58),
+    0 2px 6px -2px  rgba(0, 0, 0, 0.40);
+  --dock-blur: 20px;
   --dock-sat: 1.8;
 }
 
@@ -1117,33 +1107,13 @@ transform: translateY(-1px);
   color: var(--text-secondary);
   font-family: inherit;
   background: var(--dock-tint);
-  border: 0.5px solid var(--dock-glass-border);
+  border: 1px solid var(--dock-glass-border);
   box-shadow: var(--dock-glass-shadow);
   backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
   -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
-  transition: color 0.2s ease, transform 0.18s ease, box-shadow 0.32s ease;
-  overflow: hidden;            /* sheen-псевдоэлемент не вылезает за круг */
-}
-/* Specular-блик: мягкое световое пятно в верхней части, как свет на изогнутом
-   стекле. Низкая непрозрачность + узкая зона сверху — НЕ заливает поверхность. */
-.dock-btn::before,
-.dock-pill::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    120% 80% at 50% -25%,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.05) 32%,
-    transparent 60%
-  );
-  pointer-events: none;
-  z-index: 0;
+  transition: color 0.2s ease, transform 0.18s ease, background-color 0.2s ease;
 }
 .dock-btn i {
-  position: relative;
-  z-index: 1;
   font-size: 22px;
   line-height: 1;
   transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
@@ -1154,18 +1124,13 @@ transform: translateY(-1px);
 /* Active = «вы здесь». Признаков несколько, чтобы было однозначно видно
    издалека: ярче иконка (accent), легчайший accent-glow за иконкой,
    тонкое accent-кольцо по внутреннему контуру. Slight scale-up иконки. */
+/* Active = «вы здесь»: чуть светлее заливка + accent-цвет иконки. Без колец
+   и свечений — спокойно и чисто, в духе референса. */
 .dock-btn.active {
   color: var(--accent);
-  box-shadow:
-    0 16px 40px -12px rgba(0, 0, 0, 0.72),
-    0 2px 8px -2px   rgba(0, 0, 0, 0.45),
-    inset 0 0.6px 0 0 rgba(255, 255, 255, 0.42),
-    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.30),
-    /* Accent-ring внутри + лёгкое внешнее accent-свечение = «вы здесь» */
-    inset 0 0 0 1px color-mix(in oklch, var(--accent) 55%, transparent),
-    0 0 22px -6px color-mix(in oklch, var(--accent) 60%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, var(--dock-tint));
+  border-color: color-mix(in oklch, var(--accent) 28%, var(--dock-glass-border));
 }
-.dock-btn.active i { transform: scale(1.06); }
 
 /* — Центральная пилюля с двумя сегментами и скользящим thumb'ом — */
 .dock-pill {
@@ -1176,7 +1141,7 @@ transform: translateY(-1px);
   border-radius: 999px;
   padding: 5px;
   background: var(--dock-tint);
-  border: 0.5px solid var(--dock-glass-border);
+  border: 1px solid var(--dock-glass-border);
   box-shadow: var(--dock-glass-shadow);
   backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
   -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
@@ -1194,20 +1159,8 @@ transform: translateY(-1px);
   left: 5px;
   width: calc(50% - 5px);
   border-radius: 999px;
-  background:
-    linear-gradient(180deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      rgba(255, 255, 255, 0.02) 50%,
-      rgba(255, 255, 255, 0)    100%),
-    color-mix(in oklch, var(--accent) 38%, transparent);
-  border: 0.5px solid color-mix(in oklch, var(--accent) 45%, rgba(255,255,255,0.2));
-  box-shadow:
-    /* Внешнее accent-свечение — даёт «жидкое» ощущение */
-    0 6px 18px -4px color-mix(in oklch, var(--accent) 55%, transparent),
-    /* Тонкий top-rim — мини-блик на ребре */
-    inset 0 0.6px 0 0 rgba(255, 255, 255, 0.34),
-    /* «Толщина» — нижний внутренний rim */
-    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.16);
+  background: color-mix(in oklch, var(--accent) 32%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
   transform: translate3d(0, 0, 0);
   opacity: 1;
   z-index: 1;                  /* над sheen-псевдоэлементом (z-index:0) */
@@ -1269,15 +1222,6 @@ transform: translateY(-1px);
   line-height: 1;
 }
 .dock-pill__seg-badge[hidden] { display: none; }
-
-/* SVG-преломление (только Chromium, класс вешается из JS — _initDockRefraction).
-   Добавляем url(#dock-liquid) к backdrop-filter: контент за стеклом слегка
-   искажается у краёв — настоящее «жидкое стекло», а не плоский блюр. На
-   Safari/WebKit класс не вешается, поэтому этот блок там просто не применяется. */
-.dock--refract .dock-btn,
-.dock--refract .dock-pill {
-  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat)) url(#dock-liquid);
-}
 
 /* Reduced motion: убираем скольжение thumb'а. */
 @media (prefers-reduced-motion: reduce) {

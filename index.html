@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=175" />
+    <link rel="stylesheet" href="styles.css?v=176" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1449,25 +1449,6 @@
           <i class="ph ph-user" aria-hidden="true"></i>
         </button>
       </nav>
-
-      <!-- SVG-фильтр преломления для liquid glass. Применяется к доку ТОЛЬКО на
-           Chromium-движках (Android-вебвью) — через класс .dock--refract,
-           который вешает _initDockRefraction в script.js после проверки движка.
-           Safari/WebKit (iOS Telegram) не умеет SVG как вход backdrop-filter,
-           поэтому там фильтр не включается и остаётся чистый frosted-glass.
-           Лёгкая крупноволновая турбулентность даёт «толстое неровное стекло»,
-           сквозь которое контент слегка преломляется — а не плоский блюр. -->
-      <svg class="dock-svg-defs" aria-hidden="true" focusable="false"
-           width="0" height="0" style="position:absolute;pointer-events:none">
-        <filter id="dock-liquid" x="-15%" y="-15%" width="130%" height="130%"
-                color-interpolation-filters="sRGB">
-          <feTurbulence type="fractalNoise" baseFrequency="0.006 0.009"
-                        numOctaves="2" seed="11" result="noise" />
-          <feGaussianBlur in="noise" stdDeviation="1.4" result="softNoise" />
-          <feDisplacementMap in="SourceGraphic" in2="softNoise" scale="11"
-                             xChannelSelector="R" yChannelSelector="G" />
-        </filter>
-      </svg>
     </div>
 
     <!-- Инициализация Telegram WebApp -->
@@ -1519,6 +1500,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=215"></script>
+    <script defer src="script.js?v=216"></script>
   </body>
 </html>
