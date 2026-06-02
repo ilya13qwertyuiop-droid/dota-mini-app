@@ -532,7 +532,7 @@
         var _DOCK_MENU = {
             play: [
                 { label: 'Пати',  page: 'teammates', icon: 'ph-users-three' },
-                { label: 'Квизы', page: 'quiz',      icon: 'ph-puzzle-piece' },
+                { label: 'Мини-игры', page: 'quiz',  icon: 'ph-puzzle-piece' },
             ],
             tools: [
                 { label: 'Драфтер', page: 'drafter',  icon: 'ph-strategy' },
