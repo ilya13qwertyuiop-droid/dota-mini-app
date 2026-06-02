@@ -552,31 +552,24 @@
             if (!m) return;
             var items = _DOCK_MENU[section] || [];
             var currentId = (document.querySelector('.page.active') || {}).id || '';
-            m.innerHTML = items.map(function (it) {
+            // Первый пункт улетает влево, второй — вправо.
+            m.innerHTML = items.map(function (it, idx) {
+                var side = idx === 0 ? 'left' : 'right';
                 var active = ('page-' + it.page) === currentId ? ' active' : '';
-                return '<button type="button" class="dock-menu__item' + active + '" role="menuitem" ' +
-                    'onclick="_dockMenuGo(\'' + it.page + '\')">' +
-                    '<i class="ph ' + it.icon + '" aria-hidden="true"></i>' + it.label + '</button>';
+                return '<button type="button" class="dock-bubble dock-bubble--' + side + active + '" ' +
+                    'role="menuitem" onclick="_dockMenuGo(\'' + it.page + '\')">' +
+                    '<span class="dock-bubble__circle"><i class="ph ' + it.icon + '" aria-hidden="true"></i></span>' +
+                    '<span class="dock-bubble__label">' + it.label + '</span>' +
+                    '</button>';
             }).join('');
             m.hidden = false;
             _dockMenuSection = section;
-            // Позиционируем пузырь над тапнутым табом: по центру таба, прижато
-            // к низу над доком, с зажимом в пределах экрана. Хвостик (--tail-x)
-            // ставим строго под центр таба — даже если сам пузырь сместился
-            // из-за зажима у края.
+            // Якорь #dock-menu (нулевой размер) ставим в центр тапнутого таба,
+            // по его верхней кромке. Пузырьки разлетаются от этой точки по
+            // диагоналям (см. .dock-bubble в CSS).
             var r = anchor.getBoundingClientRect();
-            // offsetWidth — layout-ширина без учёта transform (во время анимации
-            // scale getBoundingClientRect вернул бы уменьшенную).
-            var mw = m.offsetWidth;
-            var tabCenter = r.left + r.width / 2;
-            var left = tabCenter - mw / 2;
-            left = Math.max(10, Math.min(left, window.innerWidth - mw - 10));
-            m.style.left = left + 'px';
-            m.style.bottom = (window.innerHeight - r.top + 10) + 'px';
-            // Хвостик: смещение от левого края пузыря до центра таба, в пределах
-            // [16, ширина-16], чтобы не вылез за скруглённые углы.
-            var tailX = Math.max(16, Math.min(tabCenter - left, mw - 16));
-            m.style.setProperty('--tail-x', tailX + 'px');
+            m.style.left = (r.left + r.width / 2) + 'px';
+            m.style.bottom = (window.innerHeight - r.top + 4) + 'px';
         }
 
         // Тап по пункту меню → переход + закрытие.
