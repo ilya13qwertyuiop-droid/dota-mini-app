@@ -1154,56 +1154,76 @@ transform: translateY(-1px);
 }
 .dock-tab__badge[hidden] { display: none; }
 
-/* ── Всплывающее мини-меню над доком (разделы «Играть» / «Инструменты») ──
-   Открывается тапом по табу-разделу, показывает 2 фичи. Та же стеклянная
-   поверхность, что и док. Позиционируется в JS над тапнутым табом. Заменило
-   верхние секц-табы — те стыковались с собственными вкладками страниц. */
+/* ── Всплывающий пузырь над доком (разделы «Играть» / «Инструменты») ─────
+   Речевой пузырь с хвостиком, указывающим на тапнутый таб. Две фичи в ряд.
+   Та же стеклянная поверхность, что и док. Позиция и горизонтальное смещение
+   хвостика (--tail-x) задаются в JS (_openDockMenu). Заменил верхние секц-табы
+   — те стыковались с собственными вкладками страниц. */
 .dock-menu {
   position: fixed;
   z-index: calc(var(--z-nav) + 1);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 184px;
+  flex-direction: row;
+  gap: 4px;
   padding: 6px;
-  border-radius: 18px;
+  border-radius: 20px;
   background: var(--dock-tint);
   border: 1px solid var(--dock-glass-border);
   box-shadow: var(--dock-glass-shadow);
   backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
   -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
-  transform-origin: bottom center;
-  animation: dockMenuIn 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  /* Раскрытие «из хвостика»: origin в точке привязки к табу. */
+  transform-origin: var(--tail-x, 50%) bottom;
+  animation: dockMenuIn 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .dock-menu[hidden] { display: none; }
+/* Хвостик — повёрнутый квадрат, торчит снизу и указывает на таб. Берёт ту же
+   подложку + видимые (нижние-правые) грани с тем же бордером, что у пузыря. */
+.dock-menu::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: var(--tail-x, 50%);
+  width: 13px;
+  height: 13px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--dock-tint);
+  border-right: 1px solid var(--dock-glass-border);
+  border-bottom: 1px solid var(--dock-glass-border);
+  border-bottom-right-radius: 3px;
+  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+}
 @keyframes dockMenuIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  from { opacity: 0; transform: translateY(6px) scale(0.92); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .dock-menu__item {
   appearance: none;
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 11px 14px;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   letter-spacing: var(--tracking-tight);
-  text-align: left;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 .dock-menu__item i { font-size: 18px; line-height: 1; }
 .dock-menu__item:hover {
   background: color-mix(in oklch, var(--accent) 12%, transparent);
   color: var(--text-primary);
 }
+.dock-menu__item:active { transform: scale(0.95); }
 .dock-menu__item.active {
   color: var(--accent);
   background: color-mix(in oklch, var(--accent) 14%, transparent);

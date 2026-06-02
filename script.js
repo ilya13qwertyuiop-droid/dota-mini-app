@@ -560,14 +560,23 @@
             }).join('');
             m.hidden = false;
             _dockMenuSection = section;
-            // Позиционируем над тапнутым табом: по центру таба, прижато к низу
-            // над доком, с зажимом в пределах экрана.
+            // Позиционируем пузырь над тапнутым табом: по центру таба, прижато
+            // к низу над доком, с зажимом в пределах экрана. Хвостик (--tail-x)
+            // ставим строго под центр таба — даже если сам пузырь сместился
+            // из-за зажима у края.
             var r = anchor.getBoundingClientRect();
-            var mr = m.getBoundingClientRect();
-            var left = r.left + r.width / 2 - mr.width / 2;
-            left = Math.max(10, Math.min(left, window.innerWidth - mr.width - 10));
+            // offsetWidth — layout-ширина без учёта transform (во время анимации
+            // scale getBoundingClientRect вернул бы уменьшенную).
+            var mw = m.offsetWidth;
+            var tabCenter = r.left + r.width / 2;
+            var left = tabCenter - mw / 2;
+            left = Math.max(10, Math.min(left, window.innerWidth - mw - 10));
             m.style.left = left + 'px';
-            m.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+            m.style.bottom = (window.innerHeight - r.top + 10) + 'px';
+            // Хвостик: смещение от левого края пузыря до центра таба, в пределах
+            // [16, ширина-16], чтобы не вылез за скруглённые углы.
+            var tailX = Math.max(16, Math.min(tabCenter - left, mw - 16));
+            m.style.setProperty('--tail-x', tailX + 'px');
         }
 
         // Тап по пункту меню → переход + закрытие.
