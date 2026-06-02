@@ -561,15 +561,17 @@
             }).join('');
             m.hidden = false;
             _dockMenuSection = section;
-            // Центрируем список над тапнутым табом, прижато к низу над доком,
-            // с зажимом в пределах экрана. offsetWidth — без учёта transform
-            // (во время анимации scale getBoundingClientRect занизил бы).
+            // По горизонтали — центр над тапнутым табом (с зажимом в экране).
+            // По вертикали — отступ от ВЕРХА всего дока (а не таба), чтобы был
+            // явный зазор над баром. offsetWidth — без учёта transform-анимации.
             var r = anchor.getBoundingClientRect();
+            var dock = document.querySelector('.dock');
+            var dockTop = dock ? dock.getBoundingClientRect().top : r.top;
             var mw = m.offsetWidth;
             var left = r.left + r.width / 2 - mw / 2;
             left = Math.max(10, Math.min(left, window.innerWidth - mw - 10));
             m.style.left = left + 'px';
-            m.style.bottom = (window.innerHeight - r.top + 10) + 'px';
+            m.style.bottom = (window.innerHeight - dockTop + 12) + 'px';
         }
 
         // Тап по пункту меню → переход + закрытие.
