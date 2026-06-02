@@ -515,6 +515,7 @@
             home: 'home',
             teammates: 'play',
             quiz: 'play',
+            'minigame-hl': 'play',
             'teammate-review': 'play',
             drafter: 'tools',
             database: 'tools',
@@ -628,6 +629,130 @@
             document.getElementById('hero-quiz-container').style.display = 'block';
             heroQuiz.init();
         }
+
+        // ── Мини-игра «Выше / Ниже» ──────────────────────────────────────
+        // Раунд: два случайных героя + случайная ось. Слева значение показано,
+        // справа скрыто — угадай, выше/ниже у правого. Верно → стрик++, новый
+        // раунд; неверно → конец. Данные из /minigames/hl/pool (кэш 12ч).
+        var _mghl = { pool: [], best: 0, streak: 0, axis: null, left: null, right: null, busy: false, loaded: false };
+        var _MGHL_AXES = [
+            { key: 'popularity',       label: 'чаще пикают',          fmt: function (v) { return _mghlNum(v) + ' матчей'; } },
+            { key: 'avg_duration_min', label: 'дольше длятся игры',   fmt: function (v) { return v.toFixed(1) + ' мин'; } },
+            { key: 'avg_rank_tier',    label: 'выше средний ранг',    fmt: function (v) { return _mghlRank(v); } },
+        ];
+        var _MGHL_MEDALS = ['—', 'Рекрут', 'Страж', 'Рыцарь', 'Герой', 'Легенда', 'Властелин', 'Божество', 'Титан'];
+        function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+        function _mghlRank(t) { var m = Math.round(t / 10); if (m < 1) m = 1; if (m > 8) m = 8; return _MGHL_MEDALS[m]; }
+        function _mghlName(id) {
+            if (typeof _ANALYSIS_HERO_NAMES_RU !== 'undefined' && _ANALYSIS_HERO_NAMES_RU[id]) {
+                return _ANALYSIS_HERO_NAMES_RU[id].split(',')[0].trim();
+            }
+            return (window.dotaHeroIdToName || {})[id] || ('Hero ' + id);
+        }
+        function _mghlImg(id) {
+            var en = (window.dotaHeroIdToName || {})[id];
+            return (en && window.getHeroIconUrlByName) ? window.getHeroIconUrlByName(en) : '';
+        }
+        function _mghlTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
+        function _mghlSetScore() {
+            var s = document.getElementById('mghl-streak'); if (s) s.textContent = _mghl.streak;
+            var b = document.getElementById('mghl-best');   if (b) b.textContent = _mghl.best;
+        }
+
+        window.goToMinigameHL = function () { switchPage('minigame-hl'); mghlStart(); };
+
+        window.mghlStart = async function () {
+            _mghl.streak = 0; _mghl.busy = false;
+            var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
+            var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
+            _mghlSetScore();
+            if (!_mghl.loaded) {
+                document.getElementById('mghl-axis').textContent = 'Загрузка…';
+                var tok = _mghlTok();
+                try {
+                    var pr = await apiFetch(window.API_BASE_URL + '/minigames/hl/pool?token=' + encodeURIComponent(tok));
+                    var pd = await pr.json();
+                    _mghl.pool = (pd && pd.heroes) || [];
+                    var br = await apiFetch(window.API_BASE_URL + '/minigames/best?token=' + encodeURIComponent(tok) + '&game=hl');
+                    var bd = await br.json();
+                    _mghl.best = (bd && bd.best) || 0;
+                    _mghl.loaded = true;
+                } catch (e) { console.warn('[mghl] load:', e); }
+            }
+            _mghlSetScore();
+            if (_mghl.pool.length < 4) {
+                document.getElementById('mghl-axis').textContent = 'Пока недостаточно данных для игры';
+                return;
+            }
+            _mghlNextRound();
+        };
+
+        function _mghlPick() { return _mghl.pool[Math.floor(Math.random() * _mghl.pool.length)]; }
+
+        function _mghlNextRound() {
+            _mghl.busy = false;
+            var axis = _MGHL_AXES[Math.floor(Math.random() * _MGHL_AXES.length)];
+            var a, b, tries = 0;
+            do { a = _mghlPick(); b = _mghlPick(); tries++; }
+            while ((a.id === b.id || a[axis.key] === b[axis.key]) && tries < 50);
+            _mghl.axis = axis; _mghl.left = a; _mghl.right = b;
+            document.getElementById('mghl-axis').textContent = 'У кого ' + axis.label + '?';
+            document.getElementById('mghl-left-img').src = _mghlImg(a.id);
+            document.getElementById('mghl-left-img').style.visibility = '';
+            document.getElementById('mghl-left-name').textContent = _mghlName(a.id);
+            document.getElementById('mghl-left-val').textContent = axis.fmt(a[axis.key]);
+            document.getElementById('mghl-right-img').src = _mghlImg(b.id);
+            document.getElementById('mghl-right-img').style.visibility = '';
+            document.getElementById('mghl-right-name').textContent = _mghlName(b.id);
+            var rv = document.getElementById('mghl-right-val');
+            rv.textContent = '?';
+            rv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
+            rv.classList.add('mghl-hero-val--hidden');
+            document.getElementById('mghl-guess').style.display = '';
+        }
+
+        window.mghlGuess = function (dir) {
+            if (_mghl.busy) return; _mghl.busy = true;
+            var axis = _mghl.axis, lv = _mghl.left[axis.key], rv = _mghl.right[axis.key];
+            var correct = (dir === 'higher' && rv > lv) || (dir === 'lower' && rv < lv);
+            var rvEl = document.getElementById('mghl-right-val');
+            rvEl.classList.remove('mghl-hero-val--hidden');
+            rvEl.textContent = axis.fmt(rv);
+            rvEl.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
+            document.getElementById('mghl-guess').style.display = 'none';
+            if (correct) {
+                _mghl.streak++; _mghlSetScore();
+                setTimeout(_mghlNextRound, 950);
+            } else {
+                setTimeout(_mghlGameOver, 1150);
+            }
+        };
+
+        function _mghlGameOver() {
+            document.getElementById('mghl-play').hidden = true;
+            var over = document.getElementById('mghl-over'); over.hidden = false;
+            document.getElementById('mghl-over-streak').textContent = _mghl.streak;
+            var isRecord = _mghl.streak > _mghl.best;
+            if (isRecord) _mghl.best = _mghl.streak;
+            document.getElementById('mghl-over-best').textContent =
+                isRecord ? '🔥 Новый рекорд!' : ('Твой рекорд: ' + _mghl.best);
+            var tok = _mghlTok();
+            if (tok) {
+                apiFetch(window.API_BASE_URL + '/minigames/score', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tok, game: 'hl', streak: _mghl.streak })
+                }).catch(function () {});
+            }
+        }
+
+        window.mghlShare = function () {
+            var text = 'Я набрал серию ' + _mghl.streak + ' в «Выше/Ниже» в D2Helper! Побей мой результат 🎯';
+            var shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent('https://t.me') +
+                '&text=' + encodeURIComponent(text);
+            var tg = window.Telegram && window.Telegram.WebApp;
+            if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(shareUrl);
+            else window.open(shareUrl, '_blank');
+        };
 
 
         function backToQuizList() {

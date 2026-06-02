@@ -1828,6 +1828,8 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     # Хабы из нового floating dock (см. styles.css `.dock-pill`).
     "page_hub_play",
     "page_hub_tools",
+    # Мини-игры.
+    "page_minigame_hl",
 })
 
 
@@ -1849,6 +1851,57 @@ async def api_analytics_event(data: AnalyticsEventBody):
     from backend.db import log_event as _log_event
     _log_event(data.event, user_id)
     return {"ok": True}
+
+
+# ========== Мини-игры ==========
+#
+# «Выше/Ниже»: пул героев с агрегатами (популярность/длительность/ранг) +
+# хранение личного рекорда стрика в user_profiles.settings.minigame_best.
+
+class MinigameScore(BaseModel):
+    token: str
+    game: str          # идентификатор игры, напр. "hl"
+    streak: int
+
+
+@app.get("/api/minigames/hl/pool")
+async def api_minigame_hl_pool(token: str):
+    """Пул героев для «Выше/Ниже». Пары/раунды собирает фронт из этого пула.
+    Тяжёлый пересчёт кэшируется на 12ч — гоняем в threadpool, чтобы не блокировать loop."""
+    if get_user_id_by_token(token) is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    from backend.stats_db import get_minigame_hl_pool
+    pool = await asyncio.to_thread(get_minigame_hl_pool)
+    return {"heroes": pool}
+
+
+@app.get("/api/minigames/best")
+async def api_minigame_best(token: str, game: str, db: Session = Depends(get_db)):
+    """Личный рекорд стрика по игре (из user_profiles.settings.minigame_best)."""
+    user_id = get_user_id_by_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    row = db.get(DBUserProfile, user_id)
+    best = ((row.settings if row else None) or {}).get("minigame_best") or {}
+    return {"best": int(best.get(game) or 0)}
+
+
+@app.post("/api/minigames/score")
+async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
+    """Сохраняет результат: обновляет личный рекорд, если стрик выше прошлого."""
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if not isinstance(data.streak, int) or data.streak < 0 or data.streak > 100000:
+        raise HTTPException(status_code=422, detail="invalid streak")
+
+    row = db.get(DBUserProfile, user_id)
+    best = dict(((row.settings if row else None) or {}).get("minigame_best") or {})
+    new_best = max(int(best.get(data.game) or 0), int(data.streak))
+    best[data.game] = new_best
+    from backend.db import upsert_user_profile_settings
+    upsert_user_profile_settings(user_id, {"minigame_best": best})
+    return {"ok": True, "best": new_best}
 
 
 # ========== Teammate finder ==========

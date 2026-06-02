@@ -1627,3 +1627,79 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
                 """),
                 {**p, "match_id": match_id},
             )
+
+
+# ---------------------------------------------------------------------------
+# Мини-игра «Выше/Ниже» — пул героев с агрегатами
+# (популярность из dota2protracker + длительность/ранг из наших матчей)
+# ---------------------------------------------------------------------------
+
+_MINIGAME_HL_KEY = "minigame_hl_pool_v1"
+_MINIGAME_HL_TTL_SEC = 12 * 3600
+_MINIGAME_HL_MIN_GAMES = 30   # порог по нашим матчам, чтобы дюр/ранг не шумели
+
+
+def get_minigame_hl_pool(force: bool = False) -> list[dict]:
+    """Пул героев для «Выше/Ниже». На героя три оси:
+       popularity (сумма num_matches по позициям dota2protracker),
+       avg_duration_min (наши матчи), avg_rank_tier (наши матчи).
+    Включаются только герои, у кого есть ВСЕ три оси с достаточной выборкой.
+    Кэшируется в app_cache на _MINIGAME_HL_TTL_SEC (тяжёлый скан — раз в 12ч)."""
+    if not force:
+        cached = get_app_cache_value(_MINIGAME_HL_KEY)
+        if isinstance(cached, dict) and cached.get("heroes"):
+            if (time.time() - float(cached.get("built_at") or 0)) < _MINIGAME_HL_TTL_SEC:
+                return cached["heroes"]
+
+    # 1) Популярность из dota2protracker (hero_builds_cache.build_data["dota_builds"]).
+    popularity: dict[int, int] = {}
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT hero_id, build_data FROM hero_builds_cache")).fetchall()
+    for hero_id, bd in rows:
+        try:
+            data = bd if isinstance(bd, dict) else json.loads(bd)
+            positions = (data or {}).get("dota_builds") or {}
+            total = sum(int((pos or {}).get("num_matches") or 0) for pos in positions.values())
+            if total > 0:
+                popularity[int(hero_id)] = total
+        except Exception:
+            continue
+
+    # 2) Средняя длительность и средний ранг из наших матчей (драфты — JSON).
+    agg: dict[int, dict] = {}
+    with engine.connect() as conn:
+        mrows = conn.execute(text(
+            "SELECT duration, avg_rank_tier, radiant_heroes, dire_heroes FROM matches"
+        )).fetchall()
+    for duration, rank, rh, dh in mrows:
+        try:
+            heroes = []
+            for blob in (rh, dh):
+                arr = blob if isinstance(blob, list) else json.loads(blob or "[]")
+                heroes.extend(int(h) for h in arr)
+        except Exception:
+            continue
+        for hid in heroes:
+            a = agg.setdefault(hid, {"dur_sum": 0, "dur_n": 0, "rank_sum": 0, "rank_n": 0, "games": 0})
+            a["games"] += 1
+            if duration:
+                a["dur_sum"] += int(duration); a["dur_n"] += 1
+            if rank:
+                a["rank_sum"] += int(rank); a["rank_n"] += 1
+
+    # 3) Сборка пула.
+    pool: list[dict] = []
+    for hid, pop in popularity.items():
+        a = agg.get(hid)
+        if not a or a["games"] < _MINIGAME_HL_MIN_GAMES or a["dur_n"] == 0 or a["rank_n"] == 0:
+            continue
+        pool.append({
+            "id": hid,
+            "popularity": pop,
+            "avg_duration_min": round(a["dur_sum"] / a["dur_n"] / 60.0, 1),
+            "avg_rank_tier": round(a["rank_sum"] / a["rank_n"], 1),
+        })
+
+    set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
+    logger.info("[stats_db] minigame_hl pool rebuilt: %d heroes", len(pool))
+    return pool

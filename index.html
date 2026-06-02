@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=185" />
+    <link rel="stylesheet" href="styles.css?v=186" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -261,8 +261,21 @@
         <div id="quiz-list">
           <div class="dashboard-header">
             <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Мини-игры</h1>
-            <p>Узнай больше о своём игровом стиле</p>
+            <p>Угадывай, проверяй чутьё, узнавай свой стиль</p>
           </div>
+
+          <!-- Раздел: Игры (на навык / угадайку) -->
+          <div class="mg-section-title">Игры</div>
+          <button type="button" class="mg-game-card" onclick="goToMinigameHL()">
+            <span class="mg-game-card__badge">NEW</span>
+            <span class="mg-game-card__icon"><i class="ph-fill ph-scales" aria-hidden="true"></i></span>
+            <span class="mg-game-card__title">Выше / Ниже</span>
+            <span class="mg-game-card__desc">Угадай, у какого героя показатель выше. Серия без права на ошибку — сколько продержишься?</span>
+            <span class="mg-game-card__cta">Играть <i class="ph ph-arrow-right" aria-hidden="true"></i></span>
+          </button>
+
+          <!-- Раздел: Квизы (самоопределение) -->
+          <div class="mg-section-title">Квизы</div>
 
           <!-- Квиз по позициям -->
           <div class="card">
@@ -515,6 +528,64 @@
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Мини-игра «Выше / Ниже» -->
+      <div id="page-minigame-hl" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="switchPage('quiz')" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Выше / Ниже</div>
+        </div>
+
+        <div id="mghl-play">
+          <div class="mghl-scorebar">
+            <div class="mghl-score">
+              <span class="mghl-score-val" id="mghl-streak">0</span>
+              <span class="mghl-score-label">серия</span>
+            </div>
+            <div class="mghl-score mghl-score--best">
+              <span class="mghl-score-val" id="mghl-best">0</span>
+              <span class="mghl-score-label">рекорд</span>
+            </div>
+          </div>
+
+          <div class="mghl-axis" id="mghl-axis">Загрузка…</div>
+
+          <div class="mghl-cards">
+            <div class="mghl-hero">
+              <div class="mghl-hero-img"><img id="mghl-left-img" alt="" onerror="this.style.visibility='hidden'"></div>
+              <div class="mghl-hero-name" id="mghl-left-name"></div>
+              <div class="mghl-hero-val" id="mghl-left-val"></div>
+            </div>
+
+            <div class="mghl-vs">VS</div>
+
+            <div class="mghl-hero">
+              <div class="mghl-hero-img"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
+              <div class="mghl-hero-name" id="mghl-right-name"></div>
+              <div class="mghl-hero-val mghl-hero-val--hidden" id="mghl-right-val">?</div>
+              <div class="mghl-guess" id="mghl-guess">
+                <button type="button" class="mghl-btn mghl-btn--up" onclick="mghlGuess('higher')">
+                  <i class="ph ph-caret-up" aria-hidden="true"></i> Выше
+                </button>
+                <button type="button" class="mghl-btn mghl-btn--down" onclick="mghlGuess('lower')">
+                  <i class="ph ph-caret-down" aria-hidden="true"></i> Ниже
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="mghl-over" class="mghl-over" hidden>
+          <div class="mghl-over-icon"><i class="ph-fill ph-flag-checkered" aria-hidden="true"></i></div>
+          <div class="mghl-over-streak" id="mghl-over-streak">0</div>
+          <div class="mghl-over-sub">в серии</div>
+          <div class="mghl-over-best" id="mghl-over-best"></div>
+          <button type="button" class="tm-primary-btn" onclick="mghlStart()">Ещё раз</button>
+          <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться результатом</button>
         </div>
       </div>
 
@@ -1448,6 +1519,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=223"></script>
+    <script defer src="script.js?v=224"></script>
   </body>
 </html>
