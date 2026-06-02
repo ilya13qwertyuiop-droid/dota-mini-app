@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=177" />
+    <link rel="stylesheet" href="styles.css?v=178" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -257,10 +257,6 @@
 
       <!-- Страница квизов -->
       <div id="page-quiz" class="page">
-        <div class="section-tabs" role="tablist" aria-label="Раздел Играть">
-          <button type="button" class="section-tab" role="tab" data-page="teammates" onclick="switchPage('teammates', event)">Пати</button>
-          <button type="button" class="section-tab" role="tab" data-page="quiz" onclick="switchPage('quiz', event)">Квизы</button>
-        </div>
         <!-- Список доступных квизов -->
         <div id="quiz-list">
           <div class="dashboard-header">
@@ -524,10 +520,6 @@
 
       <!-- Страница драфтера -->
       <div id="page-drafter" class="page">
-        <div class="section-tabs" role="tablist" aria-label="Раздел Инструменты">
-          <button type="button" class="section-tab" role="tab" data-page="drafter" onclick="switchPage('drafter', event)">Драфтер</button>
-          <button type="button" class="section-tab" role="tab" data-page="database" onclick="switchPage('database', event)">Герои</button>
-        </div>
 
         <!-- Экран драфта -->
         <div id="drafter-main">
@@ -745,10 +737,6 @@
 
       <!-- Страница матчапов -->
       <div id="page-database" class="page">
-        <div class="section-tabs" role="tablist" aria-label="Раздел Инструменты">
-          <button type="button" class="section-tab" role="tab" data-page="drafter" onclick="switchPage('drafter', event)">Драфтер</button>
-          <button type="button" class="section-tab" role="tab" data-page="database" onclick="switchPage('database', event)">Герои</button>
-        </div>
 
         <!-- Экран поиска героя -->
         <div id="matchup-search-screen">
@@ -949,10 +937,6 @@
 
       <!-- Страница поиска тиммейтов -->
       <div id="page-teammates" class="page">
-        <div class="section-tabs" role="tablist" aria-label="Раздел Играть">
-          <button type="button" class="section-tab" role="tab" data-page="teammates" onclick="switchPage('teammates', event)">Пати</button>
-          <button type="button" class="section-tab" role="tab" data-page="quiz" onclick="switchPage('quiz', event)">Квизы</button>
-        </div>
         <div class="tm-page-head">
           <button type="button" class="tm-back-btn" onclick="switchPage('home')" aria-label="Назад">
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
@@ -1379,10 +1363,9 @@
       </div>
 
       <!-- Нижняя навигация -->
-      <!-- Floating dock: один плавающий glass-бар с 4 прямыми разделами.
-           Главная · Играть · Инструменты · Профиль — каждый в 1 тап.
-           Внутри «Играть»/«Инструменты» переключение между фичами — через
-           секционные верхние табы (.section-tabs) на самих страницах. -->
+      <!-- Floating dock: один плавающий glass-бар с 4 разделами.
+           Главная/Профиль — прямой переход. Играть/Инструменты — открывают
+           всплывающее мини-меню (#dock-menu) над доком с двумя фичами. -->
       <nav class="dock" aria-label="Основная навигация">
         <button type="button" class="dock-tab active" data-section="home"
                 onclick="goSection('home', event)">
@@ -1408,6 +1391,12 @@
           <span class="dock-tab__label">Профиль</span>
         </button>
       </nav>
+
+      <!-- Всплывающее мини-меню над доком: открывается тапом по «Играть» /
+           «Инструменты», содержит 2 фичи раздела. Заполняется и позиционируется
+           в JS (_openDockMenu). Заменило верхние секц-табы (те стыковались с
+           собственными вкладками страниц). -->
+      <div id="dock-menu" class="dock-menu" role="menu" aria-hidden="true" hidden></div>
     </div>
 
     <!-- Инициализация Telegram WebApp -->
@@ -1459,6 +1448,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=217"></script>
+    <script defer src="script.js?v=218"></script>
   </body>
 </html>

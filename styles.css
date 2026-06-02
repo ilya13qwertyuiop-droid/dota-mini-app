@@ -1059,9 +1059,9 @@ transform: translateY(-1px);
 
 /* ── Floating dock ─────────────────────────────────────────────────────
    Один плавающий стеклянный бар, не прилипает к низу. 4 равных раздела:
-   Главная · Играть · Инструменты · Профиль — каждый в 1 тап. Внутри
-   «Играть»/«Инструменты» переключение между фичами — через .section-tabs
-   на самих страницах (приземление сразу в основную фичу).                 */
+   Главная · Играть · Инструменты · Профиль. Главная/Профиль — прямой переход.
+   Играть/Инструменты — открывают всплывающее мини-меню (.dock-menu) над доком
+   с двумя фичами раздела (Пати/Квизы, Драфтер/Герои).                       */
 
 :root {
   /* Чистое тёмное матовое стекло — как премиальные мини-аппы. ПРИНЦИП:
@@ -1154,46 +1154,65 @@ transform: translateY(-1px);
 }
 .dock-tab__badge[hidden] { display: none; }
 
-/* ── Секционные верхние табы (внутри «Играть» / «Инструменты») ─────────
-   Sticky-сегмент-контрол: переключение между двумя фичами раздела
-   (Пати↔Квизы, Драфтер↔Герои). Приземляешься сразу в основную фичу,
-   сосед — в один тап сверху. Залипает при скролле страницы. */
-.section-tabs {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
+/* ── Всплывающее мини-меню над доком (разделы «Играть» / «Инструменты») ──
+   Открывается тапом по табу-разделу, показывает 2 фичи. Та же стеклянная
+   поверхность, что и док. Позиционируется в JS над тапнутым табом. Заменило
+   верхние секц-табы — те стыковались с собственными вкладками страниц. */
+.dock-menu {
+  position: fixed;
+  z-index: calc(var(--z-nav) + 1);
   display: flex;
-  gap: 6px;
-  padding: 10px 16px;
-  background: color-mix(in oklch, var(--bg-base) 90%, transparent);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  flex-direction: column;
+  gap: 2px;
+  min-width: 184px;
+  padding: 6px;
+  border-radius: 18px;
+  background: var(--dock-tint);
+  border: 1px solid var(--dock-glass-border);
+  box-shadow: var(--dock-glass-shadow);
+  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  transform-origin: bottom center;
+  animation: dockMenuIn 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.section-tab {
+.dock-menu[hidden] { display: none; }
+@keyframes dockMenuIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.dock-menu__item {
   appearance: none;
-  flex: 1;
-  padding: 9px 12px;
-  border: 0.5px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   letter-spacing: var(--tracking-tight);
+  text-align: left;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
-.section-tab:hover { color: var(--text-primary); }
-.section-tab.active {
-  background: color-mix(in oklch, var(--accent) 16%, var(--bg-surface));
+.dock-menu__item i { font-size: 18px; line-height: 1; }
+.dock-menu__item:hover {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--text-primary);
+}
+.dock-menu__item.active {
   color: var(--accent);
-  border-color: color-mix(in oklch, var(--accent) 32%, var(--border-subtle));
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
 }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .dock-tab { transition: none; }
+  .dock-menu { animation: none; }
 }
 
 .placeholder {

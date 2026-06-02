@@ -528,11 +528,76 @@
             profile: 'profile',
         };
 
-        // Тап по табу дока: открываем основную фичу раздела в 1 тап.
-        window.goSection = function (section, event) {
-            var page = _SECTION_PRIMARY[section] || 'home';
-            switchPage(page, event);
+        // Содержимое popover-меню для разделов с двумя фичами.
+        var _DOCK_MENU = {
+            play: [
+                { label: 'Пати',  page: 'teammates', icon: 'ph-users-three' },
+                { label: 'Квизы', page: 'quiz',      icon: 'ph-puzzle-piece' },
+            ],
+            tools: [
+                { label: 'Драфтер', page: 'drafter',  icon: 'ph-strategy' },
+                { label: 'Герои',   page: 'database', icon: 'ph-shield' },
+            ],
         };
+        var _dockMenuSection = null;   // какой раздел сейчас открыт в popover, или null
+
+        function _closeDockMenu() {
+            var m = document.getElementById('dock-menu');
+            if (m) m.hidden = true;
+            _dockMenuSection = null;
+        }
+
+        function _openDockMenu(section, anchor) {
+            var m = document.getElementById('dock-menu');
+            if (!m) return;
+            var items = _DOCK_MENU[section] || [];
+            var currentId = (document.querySelector('.page.active') || {}).id || '';
+            m.innerHTML = items.map(function (it) {
+                var active = ('page-' + it.page) === currentId ? ' active' : '';
+                return '<button type="button" class="dock-menu__item' + active + '" role="menuitem" ' +
+                    'onclick="_dockMenuGo(\'' + it.page + '\')">' +
+                    '<i class="ph ' + it.icon + '" aria-hidden="true"></i>' + it.label + '</button>';
+            }).join('');
+            m.hidden = false;
+            _dockMenuSection = section;
+            // Позиционируем над тапнутым табом: по центру таба, прижато к низу
+            // над доком, с зажимом в пределах экрана.
+            var r = anchor.getBoundingClientRect();
+            var mr = m.getBoundingClientRect();
+            var left = r.left + r.width / 2 - mr.width / 2;
+            left = Math.max(10, Math.min(left, window.innerWidth - mr.width - 10));
+            m.style.left = left + 'px';
+            m.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+        }
+
+        // Тап по пункту меню → переход + закрытие.
+        window._dockMenuGo = function (page) {
+            _closeDockMenu();
+            switchPage(page);
+        };
+
+        // Тап по табу дока. Главная/Профиль — прямой переход. Играть/Инструменты —
+        // переключают popover-меню (toggle).
+        window.goSection = function (section, event) {
+            if (section === 'home' || section === 'profile') {
+                _closeDockMenu();
+                switchPage(_SECTION_PRIMARY[section] || section, event);
+                return;
+            }
+            if (_dockMenuSection === section) { _closeDockMenu(); return; }
+            var anchor = event && event.currentTarget;
+            if (anchor) _openDockMenu(section, anchor);
+        };
+
+        // Закрытие popover по тапу вне его (и не по табу дока) + при скролле.
+        document.addEventListener('click', function (e) {
+            if (!_dockMenuSection) return;
+            var m = document.getElementById('dock-menu');
+            if (m && !m.contains(e.target) && !e.target.closest('.dock-tab')) _closeDockMenu();
+        }, true);
+        window.addEventListener('scroll', function () {
+            if (_dockMenuSection) _closeDockMenu();
+        }, true);
 
         function _syncNavFromPage(pageName) {
             var section = _PAGE_TO_SECTION[pageName] || null;
@@ -540,11 +605,6 @@
             // служебных страницах вроде feedback/donate/news).
             document.querySelectorAll('.dock-tab').forEach(function (tab) {
                 tab.classList.toggle('active', tab.getAttribute('data-section') === section);
-            });
-            // Подсветка секционного таба во всех .section-tabs барах (они
-            // продублированы на страницах раздела; держим в синхроне по data-page).
-            document.querySelectorAll('.section-tab').forEach(function (t) {
-                t.classList.toggle('active', t.getAttribute('data-page') === pageName);
             });
         }
         // Экспорт для функций вне этого scope (feedback/donate/meta-клик и т.п.),
