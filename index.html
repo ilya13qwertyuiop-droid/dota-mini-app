@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=186" />
+    <link rel="stylesheet" href="styles.css?v=187" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -541,41 +541,38 @@
         </div>
 
         <div id="mghl-play">
-          <div class="mghl-scorebar">
-            <div class="mghl-score">
-              <span class="mghl-score-val" id="mghl-streak">0</span>
-              <span class="mghl-score-label">серия</span>
-            </div>
-            <div class="mghl-score mghl-score--best">
-              <span class="mghl-score-val" id="mghl-best">0</span>
-              <span class="mghl-score-label">рекорд</span>
-            </div>
+          <div class="mghl-bar">
+            <span class="mghl-bar-item">Серия <b id="mghl-streak">0</b></span>
+            <span class="mghl-bar-item mghl-bar-item--best">Рекорд <b id="mghl-best">0</b></span>
           </div>
 
-          <div class="mghl-axis" id="mghl-axis">Загрузка…</div>
+          <div class="mghl-q" id="mghl-axis">Загрузка…</div>
 
-          <div class="mghl-cards">
-            <div class="mghl-hero">
-              <div class="mghl-hero-img"><img id="mghl-left-img" alt="" onerror="this.style.visibility='hidden'"></div>
-              <div class="mghl-hero-name" id="mghl-left-name"></div>
-              <div class="mghl-hero-val" id="mghl-left-val"></div>
+          <!-- Эталон: значение показано -->
+          <div class="mghl-card">
+            <div class="mghl-card-hero">
+              <div class="mghl-portrait"><img id="mghl-left-img" alt="" onerror="this.style.visibility='hidden'"></div>
+              <div class="mghl-card-name" id="mghl-left-name"></div>
             </div>
+            <div class="mghl-card-val" id="mghl-left-val"></div>
+          </div>
 
-            <div class="mghl-vs">VS</div>
-
-            <div class="mghl-hero">
-              <div class="mghl-hero-img"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
-              <div class="mghl-hero-name" id="mghl-right-name"></div>
-              <div class="mghl-hero-val mghl-hero-val--hidden" id="mghl-right-val">?</div>
-              <div class="mghl-guess" id="mghl-guess">
-                <button type="button" class="mghl-btn mghl-btn--up" onclick="mghlGuess('higher')">
-                  <i class="ph ph-caret-up" aria-hidden="true"></i> Выше
-                </button>
-                <button type="button" class="mghl-btn mghl-btn--down" onclick="mghlGuess('lower')">
-                  <i class="ph ph-caret-down" aria-hidden="true"></i> Ниже
-                </button>
-              </div>
+          <!-- Претендент: значение скрыто, по нему угадываем -->
+          <div class="mghl-card mghl-card--challenger">
+            <div class="mghl-card-hero">
+              <div class="mghl-portrait"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
+              <div class="mghl-card-name" id="mghl-right-name"></div>
             </div>
+            <div class="mghl-card-val mghl-card-val--hidden" id="mghl-right-val">?</div>
+          </div>
+
+          <div class="mghl-guess" id="mghl-guess">
+            <button type="button" class="mghl-btn mghl-btn--up" onclick="mghlGuess('higher')">
+              <i class="ph ph-caret-up" aria-hidden="true"></i> Выше
+            </button>
+            <button type="button" class="mghl-btn mghl-btn--down" onclick="mghlGuess('lower')">
+              <i class="ph ph-caret-down" aria-hidden="true"></i> Ниже
+            </button>
           </div>
         </div>
 
@@ -1519,6 +1516,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=224"></script>
+    <script defer src="script.js?v=225"></script>
   </body>
 </html>

@@ -636,17 +636,15 @@
         // раунд; неверно → конец. Данные из /minigames/hl/pool (кэш 12ч).
         var _mghl = { pool: [], best: 0, streak: 0, axis: null, left: null, right: null, busy: false, loaded: false };
         var _MGHL_AXES = [
-            { key: 'popularity',       label: 'чаще пикают',          fmt: function (v) { return _mghlNum(v) + ' матчей'; } },
-            { key: 'avg_duration_min', label: 'дольше длятся игры',   fmt: function (v) { return v.toFixed(1) + ' мин'; } },
-            { key: 'avg_rank_tier',    label: 'выше средний ранг',    fmt: function (v) { return _mghlRank(v); } },
+            { key: 'popularity',       q: 'Кого чаще пикают?',        fmt: function (v) { return _mghlNum(v) + ' матчей'; } },
+            { key: 'avg_duration_min', q: 'У кого матчи дольше?',     fmt: function (v) { return v.toFixed(1) + ' мин'; } },
+            { key: 'avg_rank_tier',    q: 'У кого выше средний ранг?', fmt: function (v) { return _mghlRank(v); } },
         ];
         var _MGHL_MEDALS = ['—', 'Рекрут', 'Страж', 'Рыцарь', 'Герой', 'Легенда', 'Властелин', 'Божество', 'Титан'];
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
         function _mghlRank(t) { var m = Math.round(t / 10); if (m < 1) m = 1; if (m > 8) m = 8; return _MGHL_MEDALS[m]; }
         function _mghlName(id) {
-            if (typeof _ANALYSIS_HERO_NAMES_RU !== 'undefined' && _ANALYSIS_HERO_NAMES_RU[id]) {
-                return _ANALYSIS_HERO_NAMES_RU[id].split(',')[0].trim();
-            }
+            // Полное английское имя героя — как везде в аппе (не русские алиасы).
             return (window.dotaHeroIdToName || {})[id] || ('Hero ' + id);
         }
         function _mghlImg(id) {
@@ -696,7 +694,7 @@
             do { a = _mghlPick(); b = _mghlPick(); tries++; }
             while ((a.id === b.id || a[axis.key] === b[axis.key]) && tries < 50);
             _mghl.axis = axis; _mghl.left = a; _mghl.right = b;
-            document.getElementById('mghl-axis').textContent = 'У кого ' + axis.label + '?';
+            document.getElementById('mghl-axis').textContent = axis.q;
             document.getElementById('mghl-left-img').src = _mghlImg(a.id);
             document.getElementById('mghl-left-img').style.visibility = '';
             document.getElementById('mghl-left-name').textContent = _mghlName(a.id);
@@ -707,7 +705,7 @@
             var rv = document.getElementById('mghl-right-val');
             rv.textContent = '?';
             rv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
-            rv.classList.add('mghl-hero-val--hidden');
+            rv.classList.add('mghl-card-val--hidden');
             document.getElementById('mghl-guess').style.display = '';
         }
 
@@ -716,7 +714,7 @@
             var axis = _mghl.axis, lv = _mghl.left[axis.key], rv = _mghl.right[axis.key];
             var correct = (dir === 'higher' && rv > lv) || (dir === 'lower' && rv < lv);
             var rvEl = document.getElementById('mghl-right-val');
-            rvEl.classList.remove('mghl-hero-val--hidden');
+            rvEl.classList.remove('mghl-card-val--hidden');
             rvEl.textContent = axis.fmt(rv);
             rvEl.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
             document.getElementById('mghl-guess').style.display = 'none';
