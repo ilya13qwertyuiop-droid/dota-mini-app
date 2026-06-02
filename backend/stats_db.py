@@ -1634,17 +1634,16 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
 # (популярность из dota2protracker + длительность/ранг из наших матчей)
 # ---------------------------------------------------------------------------
 
-_MINIGAME_HL_KEY = "minigame_hl_pool_v2"   # v2: единственная метрика — число матчей
+_MINIGAME_HL_KEY = "minigame_hl_pool_v3"   # v3: популярность из dota_builds.json
 _MINIGAME_HL_TTL_SEC = 12 * 3600
 _MINIGAME_HL_FALLBACK_DAYS = 14            # окно для fallback по нашим матчам
 
 
 def get_minigame_hl_pool(force: bool = False) -> list[dict]:
-    """Пул героев для «Выше/Ниже». ЕДИНСТВЕННАЯ метрика — число матчей героя.
-    Источник (единый для всего пула, иначе единицы несопоставимы), по приоритету:
-      1) STRATZ        — sum(matchCount) по ALL.positions (свежее окно, лучшее);
-      2) dota2protracker — sum(num_matches) по позициям;
-      3) наши матчи    — число пиков за последние N дней (fallback).
+    """Пул героев для «Выше/Ниже». ЕДИНСТВЕННАЯ ось сравнения — популярность
+    (число матчей героя). Источник по приоритету:
+      1) dota_builds.json в корне проекта — sum(num_matches) по позициям героя;
+      2) наши матчи в БД — число пиков за последние N дней (fallback, если файла нет).
     Кэшируется на _MINIGAME_HL_TTL_SEC (раз в 12ч)."""
     if not force:
         cached = get_app_cache_value(_MINIGAME_HL_KEY)
@@ -1652,43 +1651,33 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
             if (time.time() - float(cached.get("built_at") or 0)) < _MINIGAME_HL_TTL_SEC:
                 return cached["heroes"]
 
-    stratz_pop: dict[int, int] = {}
-    d2pt_pop: dict[int, int] = {}
-    with engine.connect() as conn:
-        rows = conn.execute(text("SELECT hero_id, build_data FROM hero_builds_cache")).fetchall()
-    for hero_id, bd in rows:
-        try:
-            data = bd if isinstance(bd, dict) else json.loads(bd)
-        except Exception:
-            continue
-        hid = int(hero_id)
-        # STRATZ: build_data["stratz"]["ALL"]["positions"][].matchCount
-        try:
-            positions = (((data or {}).get("stratz") or {}).get("ALL") or {}).get("positions") or []
-            s = sum(int((p or {}).get("matchCount") or 0) for p in positions)
-            if s > 0:
-                stratz_pop[hid] = s
-        except Exception:
-            pass
-        # dota2protracker: build_data["dota_builds"][pos].num_matches
-        try:
-            dpos = (data or {}).get("dota_builds") or {}
-            t = sum(int((pos or {}).get("num_matches") or 0) for pos in dpos.values())
-            if t > 0:
-                d2pt_pop[hid] = t
-        except Exception:
-            pass
+    pop: dict[int, int] = {}
+    src = None
 
-    # Выбор источника.
-    if len(stratz_pop) >= 30:
-        src, pop, min_m = "stratz", stratz_pop, 200
-    elif len(d2pt_pop) >= 30:
-        src, pop, min_m = "d2pt", d2pt_pop, 200
-    else:
-        # Fallback: число пиков в наших матчах за последние N дней.
-        src, min_m = "matches", 20
-        cutoff = int(time.time()) - _MINIGAME_HL_FALLBACK_DAYS * 86400
+    # 1) dota_builds.json (читаем напрямую из корня проекта).
+    try:
+        from pathlib import Path
+        builds_path = Path(__file__).resolve().parent.parent / "dota_builds.json"
+        if builds_path.exists():
+            with open(builds_path, encoding="utf-8") as f:
+                builds = json.load(f)
+            for hid_str, positions in (builds or {}).items():
+                total = sum(
+                    int((pos or {}).get("num_matches") or 0)
+                    for pos in (positions or {}).values()
+                )
+                if total > 0:
+                    pop[int(hid_str)] = total
+            if pop:
+                src = "dota_builds.json"
+    except Exception as e:
+        logger.warning("[stats_db] minigame_hl: dota_builds.json read failed: %s", e)
         pop = {}
+
+    # 2) Fallback: число пиков в наших матчах за последние N дней (если файла нет).
+    if not pop:
+        src = "matches"
+        cutoff = int(time.time()) - _MINIGAME_HL_FALLBACK_DAYS * 86400
         with engine.connect() as conn:
             mrows = conn.execute(
                 text("SELECT radiant_heroes, dire_heroes FROM matches WHERE start_time >= :c"),
@@ -1703,12 +1692,10 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
             except Exception:
                 continue
 
+    min_m = 200 if src == "dota_builds.json" else 20
     pool = [{"id": hid, "matches": m} for hid, m in pop.items() if m >= min_m]
 
     if pool:
         set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
-    logger.info(
-        "[stats_db] minigame_hl pool rebuilt: %d heroes (src=%s, stratz=%d, d2pt=%d)",
-        len(pool), src, len(stratz_pop), len(d2pt_pop),
-    )
+    logger.info("[stats_db] minigame_hl pool rebuilt: %d heroes (src=%s)", len(pool), src)
     return pool

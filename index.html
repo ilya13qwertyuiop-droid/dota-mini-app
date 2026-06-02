@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=188" />
+    <link rel="stylesheet" href="styles.css?v=189" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -548,22 +548,19 @@
 
           <div class="mghl-q" id="mghl-q">Загрузка…</div>
 
-          <!-- Эталон (значение показано) -->
-          <div class="mghl-card" id="mghl-top">
-            <div class="mghl-card-hero">
-              <div class="mghl-portrait"><img id="mghl-top-img" alt="" onerror="this.style.visibility='hidden'"></div>
-              <div class="mghl-card-name" id="mghl-top-name"></div>
+          <div class="mghl-duel">
+            <!-- Слева — эталон (значение показано) -->
+            <div class="mghl-card" id="mghl-left">
+              <div class="mghl-portrait"><img id="mghl-left-img" alt="" onerror="this.style.visibility='hidden'"></div>
+              <div class="mghl-card-name" id="mghl-left-name"></div>
+              <div class="mghl-card-val" id="mghl-left-val"></div>
             </div>
-            <div class="mghl-card-val" id="mghl-top-val"></div>
-          </div>
-
-          <!-- Претендент (значение скрыто — по нему угадываем) -->
-          <div class="mghl-card mghl-card--challenger" id="mghl-bottom">
-            <div class="mghl-card-hero">
-              <div class="mghl-portrait"><img id="mghl-bot-img" alt="" onerror="this.style.visibility='hidden'"></div>
-              <div class="mghl-card-name" id="mghl-bot-name"></div>
+            <!-- Справа — претендент (скрыт, по нему угадываем) -->
+            <div class="mghl-card mghl-card--challenger" id="mghl-right">
+              <div class="mghl-portrait"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
+              <div class="mghl-card-name" id="mghl-right-name"></div>
+              <div class="mghl-card-val mghl-card-val--hidden" id="mghl-right-val">?</div>
             </div>
-            <div class="mghl-card-val mghl-card-val--hidden" id="mghl-bot-val">?</div>
           </div>
 
           <div class="mghl-guess" id="mghl-guess">
@@ -1516,6 +1513,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=226"></script>
+    <script defer src="script.js?v=227"></script>
   </body>
 </html>

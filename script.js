@@ -657,20 +657,20 @@
             do { h = _mghlPick(); tries++; } while (h.matches === matches && tries < 60);
             return h;
         }
-        function _mghlRenderTop(h) {
-            document.getElementById('mghl-top-img').src = _mghlImg(h.id);
-            document.getElementById('mghl-top-img').style.visibility = '';
-            document.getElementById('mghl-top-name').textContent = _mghlName(h.id);
-            document.getElementById('mghl-top-val').textContent = _mghlFmt(h.matches);
+        function _mghlRenderLeft(h) {
+            document.getElementById('mghl-left-img').src = _mghlImg(h.id);
+            document.getElementById('mghl-left-img').style.visibility = '';
+            document.getElementById('mghl-left-name').textContent = _mghlName(h.id);
+            document.getElementById('mghl-left-val').textContent = _mghlFmt(h.matches);
         }
-        function _mghlRenderBottom(h) {
-            document.getElementById('mghl-bot-img').src = _mghlImg(h.id);
-            document.getElementById('mghl-bot-img').style.visibility = '';
-            document.getElementById('mghl-bot-name').textContent = _mghlName(h.id);
-            var bv = document.getElementById('mghl-bot-val');
-            bv.textContent = '?';
-            bv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
-            bv.classList.add('mghl-card-val--hidden');
+        function _mghlRenderRight(h) {
+            document.getElementById('mghl-right-img').src = _mghlImg(h.id);
+            document.getElementById('mghl-right-img').style.visibility = '';
+            document.getElementById('mghl-right-name').textContent = _mghlName(h.id);
+            var rv = document.getElementById('mghl-right-val');
+            rv.textContent = '?';
+            rv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
+            rv.classList.add('mghl-card-val--hidden');
         }
 
         window.goToMinigameHL = function () { switchPage('minigame-hl'); mghlStart(); };
@@ -680,9 +680,9 @@
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
             var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
             // сброс возможных аним-состояний
-            var top = document.getElementById('mghl-top'), bot = document.getElementById('mghl-bottom');
-            if (top) { top.classList.remove('mghl-exit'); top.style.transform = ''; }
-            if (bot) { bot.classList.remove('mghl-enter'); bot.style.transform = ''; }
+            var lc = document.getElementById('mghl-left'), rc = document.getElementById('mghl-right');
+            if (lc) { lc.classList.remove('mghl-exit-left'); lc.style.transform = ''; }
+            if (rc) { rc.classList.remove('mghl-enter-right'); rc.style.transform = ''; }
             _mghlSetScore();
             if (!_mghl.loaded) {
                 var q = document.getElementById('mghl-q'); if (q) q.textContent = 'Загрузка…';
@@ -706,8 +706,8 @@
             if (qEl) qEl.textContent = 'У кого больше матчей?';
             _mghl.ref = _mghlPick();
             _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
-            _mghlRenderTop(_mghl.ref);
-            _mghlRenderBottom(_mghl.chal);
+            _mghlRenderLeft(_mghl.ref);
+            _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
         };
 
@@ -715,10 +715,10 @@
             if (_mghl.busy) return; _mghl.busy = true;
             var rm = _mghl.ref.matches, cm = _mghl.chal.matches;
             var correct = (dir === 'higher' && cm > rm) || (dir === 'lower' && cm < rm);
-            var bv = document.getElementById('mghl-bot-val');
-            bv.classList.remove('mghl-card-val--hidden');
-            bv.textContent = _mghlFmt(cm);
-            bv.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
+            var rv = document.getElementById('mghl-right-val');
+            rv.classList.remove('mghl-card-val--hidden');
+            rv.textContent = _mghlFmt(cm);
+            rv.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
             document.getElementById('mghl-guess').style.display = 'none';
             if (correct) {
                 _mghl.streak++; _mghlSetScore();
@@ -728,31 +728,30 @@
             }
         };
 
-        // Carry-forward: верхняя карточка уезжает вверх, нижняя (угаданная)
-        // встаёт на её место, снизу приезжает новый претендент.
+        // Carry-forward (горизонтально): левая карточка уезжает за экран влево,
+        // правая (угаданная) встаёт на её место слева, справа въезжает новый.
         function _mghlAdvance() {
-            var top = document.getElementById('mghl-top');
-            var bot = document.getElementById('mghl-bottom');
-            var tr = top.getBoundingClientRect(), brc = bot.getBoundingClientRect();
-            var dy = tr.top - brc.top;            // отрицательное: низ поднимается к верху
-            top.classList.add('mghl-exit');
-            bot.style.transform = 'translateY(' + dy + 'px)';
+            var lc = document.getElementById('mghl-left');
+            var rc = document.getElementById('mghl-right');
+            var lr = lc.getBoundingClientRect(), rr = rc.getBoundingClientRect();
+            var dx = lr.left - rr.left;           // отрицательное: правая едет влево к левой
+            lc.classList.add('mghl-exit-left');
+            rc.style.transform = 'translateX(' + dx + 'px)';
             setTimeout(function () {
-                // carry forward: претендент становится эталоном
+                // carry forward: претендент (правый) становится эталоном (левым)
                 _mghl.ref = _mghl.chal;
                 _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
-                // Сброс без анимации + старт-состояние нового претендента,
-                // затем включаем переход и убираем enter — чтобы низ въехал
-                // снизу, а не «уехал назад» и без вспышки.
-                top.style.transition = 'none'; bot.style.transition = 'none';
-                top.classList.remove('mghl-exit');
-                top.style.transform = ''; bot.style.transform = '';
-                _mghlRenderTop(_mghl.ref);
-                _mghlRenderBottom(_mghl.chal);
-                bot.classList.add('mghl-enter');  // старт: ниже + прозрачно
-                void top.offsetWidth;             // reflow фиксирует оба состояния
-                top.style.transition = ''; bot.style.transition = '';
-                requestAnimationFrame(function () { bot.classList.remove('mghl-enter'); });
+                // Сброс без анимации + старт-состояние нового претендента справа,
+                // затем включаем переход и убираем enter — чтобы он въехал справа.
+                lc.style.transition = 'none'; rc.style.transition = 'none';
+                lc.classList.remove('mghl-exit-left');
+                lc.style.transform = ''; rc.style.transform = '';
+                _mghlRenderLeft(_mghl.ref);
+                _mghlRenderRight(_mghl.chal);
+                rc.classList.add('mghl-enter-right');  // старт: правее + прозрачно
+                void lc.offsetWidth;                   // reflow фиксирует оба состояния
+                lc.style.transition = ''; rc.style.transition = '';
+                requestAnimationFrame(function () { rc.classList.remove('mghl-enter-right'); });
                 document.getElementById('mghl-guess').style.display = '';
                 _mghl.busy = false;
             }, 340);
