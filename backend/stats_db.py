@@ -1687,12 +1687,21 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
             if rank:
                 a["rank_sum"] += int(rank); a["rank_n"] += 1
 
-    # 3) Сборка пула.
+    # 3) Сборка пула. База — наши матчи (agg, есть всегда). Популярность:
+    #    dota2protracker, если он залит для достаточного числа героев; иначе
+    #    fallback — число пиков в НАШИХ матчах (a["games"]). Источник единый
+    #    для всего пула, иначе единицы несопоставимы (d2pt-счётчики огромные).
+    use_d2pt = len(popularity) >= 30
     pool: list[dict] = []
-    for hid, pop in popularity.items():
-        a = agg.get(hid)
-        if not a or a["games"] < _MINIGAME_HL_MIN_GAMES or a["dur_n"] == 0 or a["rank_n"] == 0:
+    for hid, a in agg.items():
+        if a["games"] < _MINIGAME_HL_MIN_GAMES or a["dur_n"] == 0 or a["rank_n"] == 0:
             continue
+        if use_d2pt:
+            pop = popularity.get(hid)
+            if not pop:
+                continue          # при d2pt-источнике берём только героев с этими данными
+        else:
+            pop = a["games"]      # fallback: популярность = число пиков в наших матчах
         pool.append({
             "id": hid,
             "popularity": pop,
@@ -1700,6 +1709,12 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
             "avg_rank_tier": round(a["rank_sum"] / a["rank_n"], 1),
         })
 
-    set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
-    logger.info("[stats_db] minigame_hl pool rebuilt: %d heroes", len(pool))
+    # Пустой пул НЕ кэшируем — иначе при временно недозалитых данных пустой
+    # результат залипнет на TTL. Логируем диагностику по источникам.
+    if pool:
+        set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
+    logger.info(
+        "[stats_db] minigame_hl pool rebuilt: %d heroes (pop_src=%s, d2pt_heroes=%d, match_agg=%d)",
+        len(pool), "d2pt" if use_d2pt else "matches", len(popularity), len(agg),
+    )
     return pool
