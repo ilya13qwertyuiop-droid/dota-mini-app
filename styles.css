@@ -1154,75 +1154,74 @@ transform: translateY(-1px);
 }
 .dock-tab__badge[hidden] { display: none; }
 
-/* ── Диагональные пузырьки над доком (разделы «Играть» / «Инструменты») ──
-   Тап по табу-разделу → две круглые glass-«капли» разлетаются по диагонали
-   вверх-влево и вверх-вправо от центра таба, со staggered-анимацией. Иконка
-   в круге + подпись снизу. Контейнер #dock-menu — нулевой якорь в центре таба
-   (позиция в JS _openDockMenu), пузырьки позиционируются от него. */
+/* ── Меню-список над доком (разделы «Развлечения» / «Инструменты») ───────
+   Тап по табу-разделу → матовый вертикальный список фич над тапнутым табом
+   (позиция в JS _openDockMenu). Растёт строками — масштабируемая «заготовка»
+   под будущие разделы. Матовая НЕпрозрачная подложка (не backdrop-filter):
+   материал стабилен на всех кадрах анимации и не теряется на пёстром фоне. */
 .dock-menu {
   position: fixed;
   z-index: calc(var(--z-nav) + 1);
-  width: 0;
-  height: 0;
-}
-.dock-menu[hidden] { display: none; }
-
-.dock-bubble {
-  position: absolute;
-  left: 0;
-  bottom: 0;
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 18px;
+  background:
+    radial-gradient(140% 90% at 50% 0%, rgba(255,255,255,0.05), transparent 55%),
+    rgb(26, 28, 36);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 14px 34px -8px rgba(0, 0, 0, 0.72),
+    0 2px 8px -2px  rgba(0, 0, 0, 0.5),
+    inset 0 0.6px 0 0 rgba(255, 255, 255, 0.10);
+  transform-origin: bottom center;
+  animation: dockMenuIn 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.dock-menu[hidden] { display: none; }
+@keyframes dockMenuIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.dock-menu__item {
+  appearance: none;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
   border: 0;
+  border-radius: 12px;
   background: transparent;
-  cursor: pointer;
-  --dx: 0px;                 /* горизонтальное смещение диагонали (задаётся модификатором) */
-  animation: bubbleIn 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards;
-}
-.dock-bubble--left  { --dx: -46px; animation-delay: 0.03s; }
-.dock-bubble--right { --dx: 46px; }
-@keyframes bubbleIn {
-  from { opacity: 0; transform: translate(-50%, 6px) scale(0.3); }
-  to   { opacity: 1; transform: translate(calc(-50% + var(--dx)), -16px) scale(1); }
-}
-.dock-bubble__circle {
-  width: 56px;
-  height: 56px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--dock-tint);
-  border: 1px solid var(--dock-glass-border);
-  box-shadow: var(--dock-glass-shadow);
-  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
-  -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
-  color: var(--text-primary);
-  transition: transform 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.dock-bubble__circle i { font-size: 24px; line-height: 1; }
-.dock-bubble:active .dock-bubble__circle { transform: scale(0.92); }
-.dock-bubble__label {
-  font-size: 11px;
-  font-weight: var(--font-medium);
   color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   letter-spacing: var(--tracking-tight);
-  line-height: 1;
+  text-align: left;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
-.dock-bubble.active .dock-bubble__circle {
-  color: var(--accent);
-  border-color: color-mix(in oklch, var(--accent) 40%, var(--dock-glass-border));
+.dock-menu__item i {
+  font-size: 19px;
+  line-height: 1;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
 }
-.dock-bubble.active .dock-bubble__label { color: var(--accent); }
+.dock-menu__item:hover {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--text-primary);
+}
+.dock-menu__item:active { background: color-mix(in oklch, var(--accent) 18%, transparent); }
+.dock-menu__item.active { color: var(--accent); }
 
-/* Reduced motion: без разлёта — пузырьки сразу на местах. */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .dock-tab { transition: none; }
-  .dock-bubble { animation-duration: 0.01s; }
+  .dock-menu { animation: none; }
 }
 
 .placeholder {

@@ -552,24 +552,24 @@
             if (!m) return;
             var items = _DOCK_MENU[section] || [];
             var currentId = (document.querySelector('.page.active') || {}).id || '';
-            // Первый пункт улетает влево, второй — вправо.
-            m.innerHTML = items.map(function (it, idx) {
-                var side = idx === 0 ? 'left' : 'right';
+            m.innerHTML = items.map(function (it) {
                 var active = ('page-' + it.page) === currentId ? ' active' : '';
-                return '<button type="button" class="dock-bubble dock-bubble--' + side + active + '" ' +
+                return '<button type="button" class="dock-menu__item' + active + '" ' +
                     'role="menuitem" onclick="_dockMenuGo(\'' + it.page + '\')">' +
-                    '<span class="dock-bubble__circle"><i class="ph ' + it.icon + '" aria-hidden="true"></i></span>' +
-                    '<span class="dock-bubble__label">' + it.label + '</span>' +
+                    '<i class="ph ' + it.icon + '" aria-hidden="true"></i>' + it.label +
                     '</button>';
             }).join('');
             m.hidden = false;
             _dockMenuSection = section;
-            // Якорь #dock-menu (нулевой размер) ставим в центр тапнутого таба,
-            // по его верхней кромке. Пузырьки разлетаются от этой точки по
-            // диагоналям (см. .dock-bubble в CSS).
+            // Центрируем список над тапнутым табом, прижато к низу над доком,
+            // с зажимом в пределах экрана. offsetWidth — без учёта transform
+            // (во время анимации scale getBoundingClientRect занизил бы).
             var r = anchor.getBoundingClientRect();
-            m.style.left = (r.left + r.width / 2) + 'px';
-            m.style.bottom = (window.innerHeight - r.top + 4) + 'px';
+            var mw = m.offsetWidth;
+            var left = r.left + r.width / 2 - mw / 2;
+            left = Math.max(10, Math.min(left, window.innerWidth - mw - 10));
+            m.style.left = left + 'px';
+            m.style.bottom = (window.innerHeight - r.top + 10) + 'px';
         }
 
         // Тап по пункту меню → переход + закрытие.
