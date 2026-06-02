@@ -9031,6 +9031,15 @@ margin-top: var(--space-4);
   border: 0.5px solid var(--border-subtle);
   background: var(--bg-surface);
   margin-bottom: var(--space-3);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease, border-color 0.15s ease;
+  will-change: transform, opacity;
+}
+/* Эталон уезжает вверх (carry-forward). */
+.mghl-exit { opacity: 0; transform: translateY(-14px) scale(0.97); }
+/* Старт-состояние нового претендента: чуть ниже и прозрачно. */
+.mghl-enter { opacity: 0; transform: translateY(16px); }
+@media (prefers-reduced-motion: reduce) {
+  .mghl-card { transition: none; }
 }
 .mghl-card--challenger { border-color: color-mix(in oklch, var(--accent) 30%, var(--border-subtle)); }
 .mghl-card-hero { display: flex; align-items: center; gap: var(--space-3); min-width: 0; flex: 1; }

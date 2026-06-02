@@ -631,20 +631,15 @@
         }
 
         // ── Мини-игра «Выше / Ниже» ──────────────────────────────────────
-        // Раунд: два случайных героя + случайная ось. Слева значение показано,
-        // справа скрыто — угадай, выше/ниже у правого. Верно → стрик++, новый
-        // раунд; неверно → конец. Данные из /minigames/hl/pool (кэш 12ч).
-        var _mghl = { pool: [], best: 0, streak: 0, axis: null, left: null, right: null, busy: false, loaded: false };
-        var _MGHL_AXES = [
-            { key: 'popularity',       q: 'Кого чаще пикают?',        fmt: function (v) { return _mghlNum(v) + ' матчей'; } },
-            { key: 'avg_duration_min', q: 'У кого матчи дольше?',     fmt: function (v) { return v.toFixed(1) + ' мин'; } },
-            { key: 'avg_rank_tier',    q: 'У кого выше средний ранг?', fmt: function (v) { return _mghlRank(v); } },
-        ];
-        var _MGHL_MEDALS = ['—', 'Рекрут', 'Страж', 'Рыцарь', 'Герой', 'Легенда', 'Властелин', 'Божество', 'Титан'];
+        // Единственная метрика — число матчей героя. Carry-forward: эталон
+        // сверху (значение показано), претендент снизу (скрыт). Угадал —
+        // претендент уезжает наверх (становится эталоном), снизу приезжает
+        // новый. Данные из /minigames/hl/pool (кэш 12ч).
+        var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false };
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-        function _mghlRank(t) { var m = Math.round(t / 10); if (m < 1) m = 1; if (m > 8) m = 8; return _MGHL_MEDALS[m]; }
+        function _mghlFmt(v) { return _mghlNum(v) + ' матчей'; }
         function _mghlName(id) {
-            // Полное английское имя героя — как везде в аппе (не русские алиасы).
+            // Полное английское имя героя — как везде в аппе.
             return (window.dotaHeroIdToName || {})[id] || ('Hero ' + id);
         }
         function _mghlImg(id) {
@@ -656,6 +651,27 @@
             var s = document.getElementById('mghl-streak'); if (s) s.textContent = _mghl.streak;
             var b = document.getElementById('mghl-best');   if (b) b.textContent = _mghl.best;
         }
+        function _mghlPick() { return _mghl.pool[Math.floor(Math.random() * _mghl.pool.length)]; }
+        function _mghlPickDistinct(matches) {
+            var h, tries = 0;
+            do { h = _mghlPick(); tries++; } while (h.matches === matches && tries < 60);
+            return h;
+        }
+        function _mghlRenderTop(h) {
+            document.getElementById('mghl-top-img').src = _mghlImg(h.id);
+            document.getElementById('mghl-top-img').style.visibility = '';
+            document.getElementById('mghl-top-name').textContent = _mghlName(h.id);
+            document.getElementById('mghl-top-val').textContent = _mghlFmt(h.matches);
+        }
+        function _mghlRenderBottom(h) {
+            document.getElementById('mghl-bot-img').src = _mghlImg(h.id);
+            document.getElementById('mghl-bot-img').style.visibility = '';
+            document.getElementById('mghl-bot-name').textContent = _mghlName(h.id);
+            var bv = document.getElementById('mghl-bot-val');
+            bv.textContent = '?';
+            bv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
+            bv.classList.add('mghl-card-val--hidden');
+        }
 
         window.goToMinigameHL = function () { switchPage('minigame-hl'); mghlStart(); };
 
@@ -663,9 +679,13 @@
             _mghl.streak = 0; _mghl.busy = false;
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
             var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
+            // сброс возможных аним-состояний
+            var top = document.getElementById('mghl-top'), bot = document.getElementById('mghl-bottom');
+            if (top) { top.classList.remove('mghl-exit'); top.style.transform = ''; }
+            if (bot) { bot.classList.remove('mghl-enter'); bot.style.transform = ''; }
             _mghlSetScore();
             if (!_mghl.loaded) {
-                document.getElementById('mghl-axis').textContent = 'Загрузка…';
+                var q = document.getElementById('mghl-q'); if (q) q.textContent = 'Загрузка…';
                 var tok = _mghlTok();
                 try {
                     var pr = await apiFetch(window.API_BASE_URL + '/minigames/hl/pool?token=' + encodeURIComponent(tok));
@@ -678,53 +698,65 @@
                 } catch (e) { console.warn('[mghl] load:', e); }
             }
             _mghlSetScore();
-            if (_mghl.pool.length < 4) {
-                document.getElementById('mghl-axis').textContent = 'Пока недостаточно данных для игры';
+            var qEl = document.getElementById('mghl-q');
+            if (_mghl.pool.length < 2) {
+                if (qEl) qEl.textContent = 'Пока недостаточно данных';
                 return;
             }
-            _mghlNextRound();
-        };
-
-        function _mghlPick() { return _mghl.pool[Math.floor(Math.random() * _mghl.pool.length)]; }
-
-        function _mghlNextRound() {
-            _mghl.busy = false;
-            var axis = _MGHL_AXES[Math.floor(Math.random() * _MGHL_AXES.length)];
-            var a, b, tries = 0;
-            do { a = _mghlPick(); b = _mghlPick(); tries++; }
-            while ((a.id === b.id || a[axis.key] === b[axis.key]) && tries < 50);
-            _mghl.axis = axis; _mghl.left = a; _mghl.right = b;
-            document.getElementById('mghl-axis').textContent = axis.q;
-            document.getElementById('mghl-left-img').src = _mghlImg(a.id);
-            document.getElementById('mghl-left-img').style.visibility = '';
-            document.getElementById('mghl-left-name').textContent = _mghlName(a.id);
-            document.getElementById('mghl-left-val').textContent = axis.fmt(a[axis.key]);
-            document.getElementById('mghl-right-img').src = _mghlImg(b.id);
-            document.getElementById('mghl-right-img').style.visibility = '';
-            document.getElementById('mghl-right-name').textContent = _mghlName(b.id);
-            var rv = document.getElementById('mghl-right-val');
-            rv.textContent = '?';
-            rv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
-            rv.classList.add('mghl-card-val--hidden');
+            if (qEl) qEl.textContent = 'У кого больше матчей?';
+            _mghl.ref = _mghlPick();
+            _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
+            _mghlRenderTop(_mghl.ref);
+            _mghlRenderBottom(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
-        }
+        };
 
         window.mghlGuess = function (dir) {
             if (_mghl.busy) return; _mghl.busy = true;
-            var axis = _mghl.axis, lv = _mghl.left[axis.key], rv = _mghl.right[axis.key];
-            var correct = (dir === 'higher' && rv > lv) || (dir === 'lower' && rv < lv);
-            var rvEl = document.getElementById('mghl-right-val');
-            rvEl.classList.remove('mghl-card-val--hidden');
-            rvEl.textContent = axis.fmt(rv);
-            rvEl.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
+            var rm = _mghl.ref.matches, cm = _mghl.chal.matches;
+            var correct = (dir === 'higher' && cm > rm) || (dir === 'lower' && cm < rm);
+            var bv = document.getElementById('mghl-bot-val');
+            bv.classList.remove('mghl-card-val--hidden');
+            bv.textContent = _mghlFmt(cm);
+            bv.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
             document.getElementById('mghl-guess').style.display = 'none';
             if (correct) {
                 _mghl.streak++; _mghlSetScore();
-                setTimeout(_mghlNextRound, 950);
+                setTimeout(_mghlAdvance, 750);
             } else {
                 setTimeout(_mghlGameOver, 1150);
             }
         };
+
+        // Carry-forward: верхняя карточка уезжает вверх, нижняя (угаданная)
+        // встаёт на её место, снизу приезжает новый претендент.
+        function _mghlAdvance() {
+            var top = document.getElementById('mghl-top');
+            var bot = document.getElementById('mghl-bottom');
+            var tr = top.getBoundingClientRect(), brc = bot.getBoundingClientRect();
+            var dy = tr.top - brc.top;            // отрицательное: низ поднимается к верху
+            top.classList.add('mghl-exit');
+            bot.style.transform = 'translateY(' + dy + 'px)';
+            setTimeout(function () {
+                // carry forward: претендент становится эталоном
+                _mghl.ref = _mghl.chal;
+                _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
+                // Сброс без анимации + старт-состояние нового претендента,
+                // затем включаем переход и убираем enter — чтобы низ въехал
+                // снизу, а не «уехал назад» и без вспышки.
+                top.style.transition = 'none'; bot.style.transition = 'none';
+                top.classList.remove('mghl-exit');
+                top.style.transform = ''; bot.style.transform = '';
+                _mghlRenderTop(_mghl.ref);
+                _mghlRenderBottom(_mghl.chal);
+                bot.classList.add('mghl-enter');  // старт: ниже + прозрачно
+                void top.offsetWidth;             // reflow фиксирует оба состояния
+                top.style.transition = ''; bot.style.transition = '';
+                requestAnimationFrame(function () { bot.classList.remove('mghl-enter'); });
+                document.getElementById('mghl-guess').style.display = '';
+                _mghl.busy = false;
+            }, 340);
+        }
 
         function _mghlGameOver() {
             document.getElementById('mghl-play').hidden = true;

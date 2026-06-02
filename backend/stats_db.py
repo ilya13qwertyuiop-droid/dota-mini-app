@@ -1634,87 +1634,81 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
 # (популярность из dota2protracker + длительность/ранг из наших матчей)
 # ---------------------------------------------------------------------------
 
-_MINIGAME_HL_KEY = "minigame_hl_pool_v1"
+_MINIGAME_HL_KEY = "minigame_hl_pool_v2"   # v2: единственная метрика — число матчей
 _MINIGAME_HL_TTL_SEC = 12 * 3600
-_MINIGAME_HL_MIN_GAMES = 30   # порог по нашим матчам, чтобы дюр/ранг не шумели
+_MINIGAME_HL_FALLBACK_DAYS = 14            # окно для fallback по нашим матчам
 
 
 def get_minigame_hl_pool(force: bool = False) -> list[dict]:
-    """Пул героев для «Выше/Ниже». На героя три оси:
-       popularity (сумма num_matches по позициям dota2protracker),
-       avg_duration_min (наши матчи), avg_rank_tier (наши матчи).
-    Включаются только герои, у кого есть ВСЕ три оси с достаточной выборкой.
-    Кэшируется в app_cache на _MINIGAME_HL_TTL_SEC (тяжёлый скан — раз в 12ч)."""
+    """Пул героев для «Выше/Ниже». ЕДИНСТВЕННАЯ метрика — число матчей героя.
+    Источник (единый для всего пула, иначе единицы несопоставимы), по приоритету:
+      1) STRATZ        — sum(matchCount) по ALL.positions (свежее окно, лучшее);
+      2) dota2protracker — sum(num_matches) по позициям;
+      3) наши матчи    — число пиков за последние N дней (fallback).
+    Кэшируется на _MINIGAME_HL_TTL_SEC (раз в 12ч)."""
     if not force:
         cached = get_app_cache_value(_MINIGAME_HL_KEY)
         if isinstance(cached, dict) and cached.get("heroes"):
             if (time.time() - float(cached.get("built_at") or 0)) < _MINIGAME_HL_TTL_SEC:
                 return cached["heroes"]
 
-    # 1) Популярность из dota2protracker (hero_builds_cache.build_data["dota_builds"]).
-    popularity: dict[int, int] = {}
+    stratz_pop: dict[int, int] = {}
+    d2pt_pop: dict[int, int] = {}
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT hero_id, build_data FROM hero_builds_cache")).fetchall()
     for hero_id, bd in rows:
         try:
             data = bd if isinstance(bd, dict) else json.loads(bd)
-            positions = (data or {}).get("dota_builds") or {}
-            total = sum(int((pos or {}).get("num_matches") or 0) for pos in positions.values())
-            if total > 0:
-                popularity[int(hero_id)] = total
         except Exception:
             continue
-
-    # 2) Средняя длительность и средний ранг из наших матчей (драфты — JSON).
-    agg: dict[int, dict] = {}
-    with engine.connect() as conn:
-        mrows = conn.execute(text(
-            "SELECT duration, avg_rank_tier, radiant_heroes, dire_heroes FROM matches"
-        )).fetchall()
-    for duration, rank, rh, dh in mrows:
+        hid = int(hero_id)
+        # STRATZ: build_data["stratz"]["ALL"]["positions"][].matchCount
         try:
-            heroes = []
-            for blob in (rh, dh):
-                arr = blob if isinstance(blob, list) else json.loads(blob or "[]")
-                heroes.extend(int(h) for h in arr)
+            positions = (((data or {}).get("stratz") or {}).get("ALL") or {}).get("positions") or []
+            s = sum(int((p or {}).get("matchCount") or 0) for p in positions)
+            if s > 0:
+                stratz_pop[hid] = s
         except Exception:
-            continue
-        for hid in heroes:
-            a = agg.setdefault(hid, {"dur_sum": 0, "dur_n": 0, "rank_sum": 0, "rank_n": 0, "games": 0})
-            a["games"] += 1
-            if duration:
-                a["dur_sum"] += int(duration); a["dur_n"] += 1
-            if rank:
-                a["rank_sum"] += int(rank); a["rank_n"] += 1
+            pass
+        # dota2protracker: build_data["dota_builds"][pos].num_matches
+        try:
+            dpos = (data or {}).get("dota_builds") or {}
+            t = sum(int((pos or {}).get("num_matches") or 0) for pos in dpos.values())
+            if t > 0:
+                d2pt_pop[hid] = t
+        except Exception:
+            pass
 
-    # 3) Сборка пула. База — наши матчи (agg, есть всегда). Популярность:
-    #    dota2protracker, если он залит для достаточного числа героев; иначе
-    #    fallback — число пиков в НАШИХ матчах (a["games"]). Источник единый
-    #    для всего пула, иначе единицы несопоставимы (d2pt-счётчики огромные).
-    use_d2pt = len(popularity) >= 30
-    pool: list[dict] = []
-    for hid, a in agg.items():
-        if a["games"] < _MINIGAME_HL_MIN_GAMES or a["dur_n"] == 0 or a["rank_n"] == 0:
-            continue
-        if use_d2pt:
-            pop = popularity.get(hid)
-            if not pop:
-                continue          # при d2pt-источнике берём только героев с этими данными
-        else:
-            pop = a["games"]      # fallback: популярность = число пиков в наших матчах
-        pool.append({
-            "id": hid,
-            "popularity": pop,
-            "avg_duration_min": round(a["dur_sum"] / a["dur_n"] / 60.0, 1),
-            "avg_rank_tier": round(a["rank_sum"] / a["rank_n"], 1),
-        })
+    # Выбор источника.
+    if len(stratz_pop) >= 30:
+        src, pop, min_m = "stratz", stratz_pop, 200
+    elif len(d2pt_pop) >= 30:
+        src, pop, min_m = "d2pt", d2pt_pop, 200
+    else:
+        # Fallback: число пиков в наших матчах за последние N дней.
+        src, min_m = "matches", 20
+        cutoff = int(time.time()) - _MINIGAME_HL_FALLBACK_DAYS * 86400
+        pop = {}
+        with engine.connect() as conn:
+            mrows = conn.execute(
+                text("SELECT radiant_heroes, dire_heroes FROM matches WHERE start_time >= :c"),
+                {"c": cutoff},
+            ).fetchall()
+        for rh, dh in mrows:
+            try:
+                for blob in (rh, dh):
+                    arr = blob if isinstance(blob, list) else json.loads(blob or "[]")
+                    for h in arr:
+                        pop[int(h)] = pop.get(int(h), 0) + 1
+            except Exception:
+                continue
 
-    # Пустой пул НЕ кэшируем — иначе при временно недозалитых данных пустой
-    # результат залипнет на TTL. Логируем диагностику по источникам.
+    pool = [{"id": hid, "matches": m} for hid, m in pop.items() if m >= min_m]
+
     if pool:
         set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
     logger.info(
-        "[stats_db] minigame_hl pool rebuilt: %d heroes (pop_src=%s, d2pt_heroes=%d, match_agg=%d)",
-        len(pool), "d2pt" if use_d2pt else "matches", len(popularity), len(agg),
+        "[stats_db] minigame_hl pool rebuilt: %d heroes (src=%s, stratz=%d, d2pt=%d)",
+        len(pool), src, len(stratz_pop), len(d2pt_pop),
     )
     return pool
