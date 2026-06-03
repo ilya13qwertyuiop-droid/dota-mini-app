@@ -1722,3 +1722,57 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
         set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
     logger.info("[stats_db] minigame_hl pool rebuilt: %d heroes (src=%s)", len(pool), src)
     return pool
+
+
+# ---------------------------------------------------------------------------
+# Лидерборд мини-игр (по рекордной серии из user_profiles.settings.minigame_best)
+# ---------------------------------------------------------------------------
+
+_MINIGAME_LB_TTL_SEC = 60
+
+
+def get_minigame_leaderboard(game: str, top_n: int = 20) -> dict:
+    """Агрегат лидерборда по рекордной серии в игре `game`.
+    Возвращает {top: [{user_id,name,photo_url,best}], total, scores: [best desc]}.
+    Кэшируется на 60с (скан всех профилей — раз в минуту, в threadpool)."""
+    key = "minigame_lb_" + game
+    cached = get_app_cache_value(key)
+    if isinstance(cached, dict) and cached.get("built_at"):
+        if (time.time() - float(cached["built_at"])) < _MINIGAME_LB_TTL_SEC:
+            return cached
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT user_id, settings FROM user_profiles")).fetchall()
+
+    bests = []                 # (user_id, best)
+    smap: dict[int, dict] = {}
+    for uid, st in rows:
+        try:
+            s = st if isinstance(st, dict) else json.loads(st or "{}")
+        except Exception:
+            continue
+        b = 0
+        try:
+            b = int(((s or {}).get("minigame_best") or {}).get(game) or 0)
+        except (TypeError, ValueError):
+            b = 0
+        if b > 0:
+            bests.append((int(uid), b)); smap[int(uid)] = s or {}
+
+    bests.sort(key=lambda x: x[1], reverse=True)
+    total = len(bests)
+
+    top = []
+    for uid, b in bests[:top_n]:
+        s = smap.get(uid) or {}
+        first = (s.get("first_name") or "").strip()
+        last = (s.get("last_name") or "").strip()
+        name = (first + " " + last).strip()
+        if not name:
+            name = ("@" + s["username"]) if s.get("username") else ("Игрок " + str(uid))
+        top.append({"user_id": uid, "name": name, "photo_url": s.get("photo_url"), "best": b})
+
+    out = {"built_at": time.time(), "top": top, "total": total,
+           "scores": [b for (_u, b) in bests]}
+    set_app_cache_value(key, out)
+    return out

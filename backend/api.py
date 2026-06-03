@@ -1886,6 +1886,38 @@ async def api_minigame_best(token: str, game: str, db: Session = Depends(get_db)
     return {"best": int(best.get(game) or 0)}
 
 
+@app.get("/api/minigames/leaderboard")
+async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = Depends(get_db)):
+    """Топ игроков по рекордной серии + ранг/перцентиль текущего юзера."""
+    user_id = get_user_id_by_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    from backend.stats_db import get_minigame_leaderboard
+    data = await asyncio.to_thread(get_minigame_leaderboard, game)
+
+    row = db.get(DBUserProfile, user_id)
+    ub = 0
+    try:
+        ub = int((((row.settings if row else None) or {}).get("minigame_best") or {}).get(game) or 0)
+    except (TypeError, ValueError):
+        ub = 0
+
+    scores = data.get("scores") or []
+    total = data.get("total") or 0
+    you = {"user_id": user_id, "best": ub, "rank": None, "percentile": None}
+    if ub > 0 and total > 0:
+        greater = 0
+        for s in scores:          # отсортировано по убыванию
+            if s > ub:
+                greater += 1
+            else:
+                break
+        rank = greater + 1
+        you["rank"] = rank
+        you["percentile"] = round(100 * (total - rank) / total) if total > 1 else 100
+    return {"top": data.get("top", []), "total": total, "you": you}
+
+
 @app.post("/api/minigames/score")
 async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
     """Сохраняет результат: обновляет личный рекорд, если стрик выше прошлого."""

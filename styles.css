@@ -9116,3 +9116,21 @@ margin-top: var(--space-4);
 .mghl-over-best { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-6); }
 .mghl-over-best--record { color: var(--accent); font-weight: var(--font-semibold); }
 .mghl-over .tm-primary-btn, .mghl-over .tm-ghost-btn { width: 100%; max-width: 320px; }
+
+/* Строка ранга/перцентиля на экране результата. */
+.mghl-rank { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--space-5); }
+.mghl-rank-main { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--accent); }
+.mghl-rank-sub { font-size: var(--text-2xs); color: var(--text-tertiary); font-family: var(--font-mono); }
+
+/* Таблица лидеров. */
+.mghl-lb { padding: var(--space-6) var(--space-4) calc(var(--nav-height) + 24px); }
+.mghl-lb-title { text-align: center; font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--text-primary); letter-spacing: var(--tracking-tight); margin-bottom: var(--space-4); }
+.mghl-lb-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-4); }
+.mghl-lb-row { display: flex; align-items: center; gap: var(--space-3); padding: 10px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-subtle); background: var(--bg-surface); }
+.mghl-lb-row--me { border-color: color-mix(in oklch, var(--accent) 45%, var(--border-subtle)); background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface)); }
+.mghl-lb-rank { width: 24px; text-align: center; font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-secondary); flex-shrink: 0; }
+.mghl-lb-av { width: 30px; height: 30px; border-radius: 999px; object-fit: cover; flex-shrink: 0; background: var(--bg-elevated); }
+.mghl-lb-av--ph { display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: var(--font-bold); color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+.mghl-lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--text-primary); }
+.mghl-lb-best { font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); flex-shrink: 0; }
+.mghl-lb .tm-ghost-btn { width: 100%; }

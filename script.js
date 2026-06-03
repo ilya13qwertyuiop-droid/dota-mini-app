@@ -647,6 +647,11 @@
             return (en && window.getHeroIconUrlByName) ? window.getHeroIconUrlByName(en) : '';
         }
         function _mghlTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
+        function _mghlEsc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+            });
+        }
         function _mghlSetScore() {
             var s = document.getElementById('mghl-streak'); if (s) s.textContent = _mghl.streak;
             var b = document.getElementById('mghl-best');   if (b) b.textContent = _mghl.best;
@@ -706,6 +711,8 @@
         window.mghlStart = async function () {
             _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
+            var lb = document.getElementById('mghl-lb'); if (lb) lb.hidden = true;
+            var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
             var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
             // сброс возможных аним-состояний
             var lc = document.getElementById('mghl-left'), rc = document.getElementById('mghl-right');
@@ -815,11 +822,19 @@
             var bestEl = document.getElementById('mghl-over-best');
             bestEl.textContent = isRecord ? 'Новый рекорд' : ('Рекорд: ' + _mghl.best);
             bestEl.classList.toggle('mghl-over-best--record', isRecord);
+            var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
+            // Сохраняем результат → подтягиваем лидерборд → показываем ранг/перцентиль.
             var tok = _mghlTok();
             if (tok) {
                 apiFetch(window.API_BASE_URL + '/minigames/score', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token: tok, game: 'hl', streak: _mghl.streak })
+                }).then(function () {
+                    return apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                        encodeURIComponent(tok) + '&game=hl');
+                }).then(function (r) { return r.json(); }).then(function (lb) {
+                    _mghl.lb = lb;
+                    _mghlRenderRank();
                 }).catch(function () {});
             }
         }
@@ -832,6 +847,69 @@
             if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(shareUrl);
             else window.open(shareUrl, '_blank');
         };
+
+        // Строка ранга/перцентиля на экране результата.
+        function _mghlRenderRank() {
+            var el = document.getElementById('mghl-rank');
+            if (!el) return;
+            var you = _mghl.lb && _mghl.lb.you;
+            if (!you || you.rank == null) { el.hidden = true; return; }
+            var total = (_mghl.lb && _mghl.lb.total) || 0;
+            var main = (you.rank === 1)
+                ? 'Лучший результат среди всех'
+                : ('Ты обошёл ' + you.percentile + '% игроков');
+            el.innerHTML = '<span class="mghl-rank-main">' + main + '</span>' +
+                '<span class="mghl-rank-sub">#' + you.rank + ' из ' + total + '</span>';
+            el.hidden = false;
+        }
+
+        function _mghlShowLb() {
+            document.getElementById('mghl-over').hidden = true;
+            document.getElementById('mghl-lb').hidden = false;
+        }
+        window.mghlCloseLeaderboard = function () {
+            document.getElementById('mghl-lb').hidden = true;
+            document.getElementById('mghl-over').hidden = false;
+        };
+        window.mghlOpenLeaderboard = function () {
+            if (_mghl.lb) { _mghlRenderLeaderboard(); _mghlShowLb(); return; }
+            var tok = _mghlTok();
+            apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                encodeURIComponent(tok) + '&game=hl')
+                .then(function (r) { return r.json(); })
+                .then(function (lb) { _mghl.lb = lb; _mghlRenderLeaderboard(); _mghlShowLb(); })
+                .catch(function () {});
+        };
+
+        function _mghlRenderLeaderboard() {
+            var lb = _mghl.lb; if (!lb) return;
+            var list = document.getElementById('mghl-lb-list'); if (!list) return;
+            var meId = lb.you && lb.you.user_id;
+            var top = lb.top || [];
+            var rows = top.map(function (e, i) {
+                var me = (e.user_id === meId) ? ' mghl-lb-row--me' : '';
+                var av = e.photo_url
+                    ? '<img class="mghl-lb-av" src="' + _mghlEsc(e.photo_url) + '" alt="" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'mghl-lb-av mghl-lb-av--ph\',textContent:\'·\'}))">'
+                    : '<span class="mghl-lb-av mghl-lb-av--ph">' + _mghlEsc((e.name || '?').charAt(0)) + '</span>';
+                return '<div class="mghl-lb-row' + me + '">' +
+                    '<span class="mghl-lb-rank">' + (i + 1) + '</span>' +
+                    av +
+                    '<span class="mghl-lb-name">' + _mghlEsc(e.name || '') + '</span>' +
+                    '<span class="mghl-lb-best">' + e.best + '</span>' +
+                '</div>';
+            }).join('');
+            // Если тебя нет в топе — пристёгиваем твою строку снизу.
+            var inTop = top.some(function (e) { return e.user_id === meId; });
+            if (lb.you && lb.you.rank && !inTop) {
+                rows += '<div class="mghl-lb-row mghl-lb-row--me">' +
+                    '<span class="mghl-lb-rank">' + lb.you.rank + '</span>' +
+                    '<span class="mghl-lb-av mghl-lb-av--ph">я</span>' +
+                    '<span class="mghl-lb-name">Ты</span>' +
+                    '<span class="mghl-lb-best">' + lb.you.best + '</span>' +
+                '</div>';
+            }
+            list.innerHTML = rows || '<div class="mghl-msg">Пока пусто — будь первым!</div>';
+        }
 
 
         function backToQuizList() {
