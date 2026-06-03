@@ -9012,8 +9012,11 @@ margin-top: var(--space-4);
   padding: var(--space-3) 0 var(--space-4);
   font-size: var(--text-sm); color: var(--text-secondary);
 }
-.mghl-bar-item b { font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); }
+.mghl-bar-item b { display: inline-block; font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); }
 .mghl-bar-item--best b { color: var(--warning); }
+.mghl-pop { animation: mghlPop 0.4s ease; }
+@keyframes mghlPop { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .mghl-pop { animation: none; } }
 
 /* Вопрос раунда — главный акцент. */
 .mghl-q {
@@ -9029,23 +9032,33 @@ margin-top: var(--space-4);
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);
   align-items: stretch; overflow: hidden;
 }
-/* Карточка-тайл героя — surface-card аппа, контент вертикальный. */
+/* Карточка-тайл героя — surface-card аппа, контент вертикальный.
+   Анимации — через @keyframes (не transition): чтобы при сбросе анимации
+   карта не «отъезжала назад» (это и давало визуальный глитч/«отражение»). */
 .mghl-card {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   padding: var(--space-4) var(--space-3);
   border-radius: var(--radius-lg);
   border: 0.5px solid var(--border-subtle);
   background: var(--bg-surface);
-  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease, border-color 0.15s ease;
-  will-change: transform, opacity;
+  transition: border-color 0.15s ease;
 }
 .mghl-card--challenger { border-color: color-mix(in oklch, var(--accent) 30%, var(--border-subtle)); }
-/* Эталон уезжает за экран влево (carry-forward). */
-.mghl-exit-left { opacity: 0; transform: translateX(-130%); }
-/* Старт-состояние нового претендента: за правым краем + прозрачно. */
-.mghl-enter-right { opacity: 0; transform: translateX(130%); }
+
+/* Carry-forward (горизонталь). */
+@keyframes mghlOutLeft  { to { transform: translateX(-130%); opacity: 0; } }
+@keyframes mghlOutRight { to { transform: translateX(130%);  opacity: 0; } }
+@keyframes mghlSlideLeft { to { transform: translateX(var(--mghl-dx, 0)); } }
+@keyframes mghlIn       { from { transform: translateX(130%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Отклик на ответ: верный — пульс, неверный — тряска. */
+.mghl-correct { animation: mghlCorrect 0.5s ease; }
+.mghl-wrong   { animation: mghlWrong 0.45s ease; }
+@keyframes mghlCorrect { 0% { transform: scale(1); } 35% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes mghlWrong { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+
 @media (prefers-reduced-motion: reduce) {
-  .mghl-card { transition: none; }
+  .mghl-card, .mghl-correct, .mghl-wrong { animation: none; }
 }
 .mghl-portrait {
   width: 84px; height: 84px; flex-shrink: 0;

@@ -651,6 +651,23 @@
             var s = document.getElementById('mghl-streak'); if (s) s.textContent = _mghl.streak;
             var b = document.getElementById('mghl-best');   if (b) b.textContent = _mghl.best;
         }
+        // Тактильный отклик Telegram — нативное «ощущение» игры на телефоне.
+        function _mghlHaptic(kind) {
+            try {
+                var h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
+                if (!h) return;
+                if (kind === 'ok')       h.notificationOccurred('success');
+                else if (kind === 'bad') h.notificationOccurred('error');
+                else if (kind === 'tap') h.impactOccurred('light');
+                else if (kind === 'milestone') h.notificationOccurred('warning');
+            } catch (e) { /* haptics optional */ }
+        }
+        // Пульс счётчика серии + усиленный отклик на вехах (5/10/25…).
+        function _mghlPulseStreak() {
+            var s = document.getElementById('mghl-streak');
+            if (s) { s.classList.remove('mghl-pop'); void s.offsetWidth; s.classList.add('mghl-pop'); }
+            if (_mghl.streak > 0 && _mghl.streak % 5 === 0) _mghlHaptic('milestone');
+        }
         function _mghlPick() { return _mghl.pool[Math.floor(Math.random() * _mghl.pool.length)]; }
         function _mghlPickDistinct(matches) {
             var h, tries = 0;
@@ -681,8 +698,12 @@
             var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
             // сброс возможных аним-состояний
             var lc = document.getElementById('mghl-left'), rc = document.getElementById('mghl-right');
-            if (lc) { lc.classList.remove('mghl-exit-left'); lc.style.transform = ''; }
-            if (rc) { rc.classList.remove('mghl-enter-right'); rc.style.transform = ''; }
+            if (lc) { lc.style.animation = 'none'; lc.style.transform = ''; }
+            if (rc) {
+                rc.style.animation = 'none'; rc.style.transform = '';
+                rc.style.removeProperty('--mghl-dx');
+                rc.classList.remove('mghl-correct', 'mghl-wrong');
+            }
             _mghlSetScore();
             if (!_mghl.loaded) {
                 var q = document.getElementById('mghl-q'); if (q) q.textContent = 'Загрузка…';
@@ -715,46 +736,57 @@
             if (_mghl.busy) return; _mghl.busy = true;
             var rm = _mghl.ref.matches, cm = _mghl.chal.matches;
             var correct = (dir === 'higher' && cm > rm) || (dir === 'lower' && cm < rm);
+            var rc = document.getElementById('mghl-right');
             var rv = document.getElementById('mghl-right-val');
             rv.classList.remove('mghl-card-val--hidden');
             rv.textContent = _mghlFmt(cm);
             rv.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
+            rc.classList.add(correct ? 'mghl-correct' : 'mghl-wrong');
             document.getElementById('mghl-guess').style.display = 'none';
+            _mghlHaptic(correct ? 'ok' : 'bad');
             if (correct) {
-                _mghl.streak++; _mghlSetScore();
-                setTimeout(_mghlAdvance, 750);
+                _mghl.streak++; _mghlSetScore(); _mghlPulseStreak();
+                setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, 820);
             } else {
-                setTimeout(_mghlGameOver, 1150);
+                setTimeout(_mghlGameOver, 1250);
             }
         };
 
-        // Carry-forward (горизонтально): левая карточка уезжает за экран влево,
-        // правая (угаданная) встаёт на её место слева, справа въезжает новый.
+        // Логика «чемпиона»: слева всегда герой с бОльшим числом матчей.
+        //  • претендент МЕНЬШЕ → он уезжает вправо, чемпион (слева) остаётся,
+        //    справа въезжает новый претендент;
+        //  • претендент БОЛЬШЕ → чемпион уезжает влево, претендент встаёт на его
+        //    место слева (новый чемпион), справа въезжает новый претендент.
         function _mghlAdvance() {
             var lc = document.getElementById('mghl-left');
             var rc = document.getElementById('mghl-right');
-            var lr = lc.getBoundingClientRect(), rr = rc.getBoundingClientRect();
-            var dx = lr.left - rr.left;           // отрицательное: правая едет влево к левой
-            lc.classList.add('mghl-exit-left');
-            rc.style.transform = 'translateX(' + dx + 'px)';
-            setTimeout(function () {
-                // carry forward: претендент (правый) становится эталоном (левым)
-                _mghl.ref = _mghl.chal;
+            var dethrone = _mghl.chal.matches > _mghl.ref.matches;
+
+            if (dethrone) {
+                var lr = lc.getBoundingClientRect(), rr = rc.getBoundingClientRect();
+                rc.style.setProperty('--mghl-dx', (lr.left - rr.left) + 'px');
+                lc.style.animation = 'mghlOutLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
+                rc.style.animation = 'mghlSlideLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
+            } else {
+                rc.style.animation = 'mghlOutRight 0.30s cubic-bezier(0.32,0.72,0,1) forwards';
+            }
+
+            var onEnd = function () {
+                rc.removeEventListener('animationend', onEnd);
+                if (dethrone) _mghl.ref = _mghl.chal;     // смена чемпиона
                 _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
-                // Сброс без анимации + старт-состояние нового претендента справа,
-                // затем включаем переход и убираем enter — чтобы он въехал справа.
-                lc.style.transition = 'none'; rc.style.transition = 'none';
-                lc.classList.remove('mghl-exit-left');
+                // Сброс анимаций/трансформаций, пересборка, въезд нового справа.
+                lc.style.animation = 'none'; rc.style.animation = 'none';
                 lc.style.transform = ''; rc.style.transform = '';
+                rc.style.removeProperty('--mghl-dx');
                 _mghlRenderLeft(_mghl.ref);
                 _mghlRenderRight(_mghl.chal);
-                rc.classList.add('mghl-enter-right');  // старт: правее + прозрачно
-                void lc.offsetWidth;                   // reflow фиксирует оба состояния
-                lc.style.transition = ''; rc.style.transition = '';
-                requestAnimationFrame(function () { rc.classList.remove('mghl-enter-right'); });
+                void rc.offsetWidth;                       // reflow перед новой анимацией
+                rc.style.animation = 'mghlIn 0.30s cubic-bezier(0.32,0.72,0,1)';
                 document.getElementById('mghl-guess').style.display = '';
                 _mghl.busy = false;
-            }, 340);
+            };
+            rc.addEventListener('animationend', onEnd, { once: true });
         }
 
         function _mghlGameOver() {
