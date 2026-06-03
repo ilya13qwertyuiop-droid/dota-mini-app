@@ -635,7 +635,7 @@
         // сверху (значение показано), претендент снизу (скрыт). Угадал —
         // претендент уезжает наверх (становится эталоном), снизу приезжает
         // новый. Данные из /minigames/hl/pool (кэш 12ч).
-        var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [] };
+        var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over' };
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
         function _mghlFmt(v) { return _mghlNum(v) + ' матчей'; }
         function _mghlName(id) {
@@ -706,7 +706,12 @@
             rv.classList.add('mghl-card-val--hidden');
         }
 
-        window.goToMinigameHL = function () { switchPage('minigame-hl'); mghlStart(); };
+        window.goToMinigameHL = function () {
+            switchPage('minigame-hl');
+            // Прогресс сохраняется при перемещении внутри аппа: если игра уже
+            // идёт — просто возвращаемся к ней, не сбрасывая серию.
+            if (!_mghl.inProgress) mghlStart();
+        };
 
         window.mghlStart = async function () {
             _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
@@ -747,6 +752,7 @@
             _mghlRenderLeft(_mghl.ref);
             _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
+            _mghl.inProgress = true;     // игра пошла — прогресс сохраняем при навигации
         };
 
         // Переключение «сообщение (загрузка/пусто) ↔ игровое поле».
@@ -814,6 +820,7 @@
         }
 
         function _mghlGameOver() {
+            _mghl.inProgress = false;    // серия окончена — больше не возобновляем
             document.getElementById('mghl-play').hidden = true;
             var over = document.getElementById('mghl-over'); over.hidden = false;
             document.getElementById('mghl-over-streak').textContent = _mghl.streak;
@@ -864,20 +871,34 @@
         }
 
         function _mghlShowLb() {
+            document.getElementById('mghl-play').hidden = true;
             document.getElementById('mghl-over').hidden = true;
             document.getElementById('mghl-lb').hidden = false;
         }
         window.mghlCloseLeaderboard = function () {
             document.getElementById('mghl-lb').hidden = true;
-            document.getElementById('mghl-over').hidden = false;
+            // Возврат туда, откуда открыли таблицу (в игру или на экран результата).
+            if (_mghl.lbReturn === 'play') document.getElementById('mghl-play').hidden = false;
+            else document.getElementById('mghl-over').hidden = false;
         };
         window.mghlOpenLeaderboard = function () {
-            if (_mghl.lb) { _mghlRenderLeaderboard(); _mghlShowLb(); return; }
+            // Откуда открыли — чтобы корректно вернуться (во время игры или с результата).
+            _mghl.lbReturn = (!document.getElementById('mghl-play').hidden) ? 'play' : 'over';
+            _mghlShowLb();
+            if (_mghl.lb) _mghlRenderLeaderboard();
+            else {
+                var list = document.getElementById('mghl-lb-list');
+                if (list) list.innerHTML = '<div class="mghl-msg">Загрузка…</div>';
+            }
+            // Всегда подтягиваем свежую таблицу (сервер кэширует 60с — дёшево).
             var tok = _mghlTok();
             apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
                 encodeURIComponent(tok) + '&game=hl')
                 .then(function (r) { return r.json(); })
-                .then(function (lb) { _mghl.lb = lb; _mghlRenderLeaderboard(); _mghlShowLb(); })
+                .then(function (lb) {
+                    _mghl.lb = lb;
+                    if (!document.getElementById('mghl-lb').hidden) _mghlRenderLeaderboard();
+                })
                 .catch(function () {});
         };
 

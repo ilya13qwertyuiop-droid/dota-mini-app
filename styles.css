@@ -9004,7 +9004,20 @@ margin-top: var(--space-4);
 }
 
 /* ── Игра «Выше / Ниже» (карточная вёрстка в стиле аппа) ────────────── */
-#page-minigame-hl { padding: 0 var(--space-4) calc(var(--nav-height) + 24px); }
+/* Верхний отступ как у обычных .page (был 0 → шапку обрезало сверху). */
+#page-minigame-hl { padding: var(--space-5) var(--space-4) calc(var(--nav-height) + 24px); }
+/* Кнопка лидерборда в шапке — прижата вправо, как tm-back-btn по стилю. */
+.mghl-head-lb {
+  appearance: none; margin-left: auto;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-surface); border: 1px solid var(--border-default);
+  color: var(--text-secondary); cursor: pointer; flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.mghl-head-lb i { font-size: 18px; }
+.mghl-head-lb:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.mghl-head-lb:active { transform: scale(0.94); }
 
 /* Компактная строка счёта — не перетягивает внимание на себя. */
 .mghl-bar {
