@@ -635,7 +635,7 @@
         // сверху (значение показано), претендент снизу (скрыт). Угадал —
         // претендент уезжает наверх (становится эталоном), снизу приезжает
         // новый. Данные из /minigames/hl/pool (кэш 12ч).
-        var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false };
+        var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [] };
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
         function _mghlFmt(v) { return _mghlNum(v) + ' матчей'; }
         function _mghlName(id) {
@@ -668,10 +668,21 @@
             if (s) { s.classList.remove('mghl-pop'); void s.offsetWidth; s.classList.add('mghl-pop'); }
             if (_mghl.streak > 0 && _mghl.streak % 5 === 0) _mghlHaptic('milestone');
         }
-        function _mghlPick() { return _mghl.pool[Math.floor(Math.random() * _mghl.pool.length)]; }
-        function _mghlPickDistinct(matches) {
-            var h, tries = 0;
-            do { h = _mghlPick(); tries++; } while (h.matches === matches && tries < 60);
+        // Запоминаем недавних героев, чтобы не повторялись в сессии.
+        function _mghlRemember(id) {
+            _mghl.recent.push(id);
+            var cap = Math.max(0, Math.min(_mghl.pool.length - 2, 40));
+            while (_mghl.recent.length > cap) _mghl.recent.shift();
+        }
+        // Выбор «свежего» героя: не из недавних и с другим значением (без ничьих).
+        function _mghlPickFresh(avoidMatches) {
+            var avail = _mghl.pool.filter(function (h) {
+                return _mghl.recent.indexOf(h.id) === -1 && h.matches !== avoidMatches;
+            });
+            if (!avail.length) avail = _mghl.pool.filter(function (h) { return h.matches !== avoidMatches; });
+            if (!avail.length) avail = _mghl.pool.slice();
+            var h = avail[Math.floor(Math.random() * avail.length)];
+            _mghlRemember(h.id);
             return h;
         }
         function _mghlRenderLeft(h) {
@@ -693,7 +704,7 @@
         window.goToMinigameHL = function () { switchPage('minigame-hl'); mghlStart(); };
 
         window.mghlStart = async function () {
-            _mghl.streak = 0; _mghl.busy = false;
+            _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
             var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
             // сброс возможных аним-состояний
@@ -724,8 +735,8 @@
             }
             _mghlShowMsg(null);          // прячем сообщение, показываем игру
             _mghlSetScore();
-            _mghl.ref = _mghlPick();
-            _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
+            _mghl.ref = _mghlPickFresh(null);
+            _mghl.chal = _mghlPickFresh(_mghl.ref.matches);
             _mghlRenderLeft(_mghl.ref);
             _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
@@ -765,36 +776,29 @@
             }
         };
 
-        // Логика «чемпиона»: слева всегда герой с бОльшим числом матчей.
-        //  • претендент МЕНЬШЕ → он уезжает вправо, чемпион (слева) остаётся,
-        //    справа въезжает новый претендент;
-        //  • претендент БОЛЬШЕ → чемпион уезжает влево, претендент встаёт на его
-        //    место слева (новый чемпион), справа въезжает новый претендент.
+        // Классический Higher/Lower: претендент ВСЕГДА становится новым эталоном
+        // (неважно, больше или меньше). Точка отсчёта постоянно «гуляет» — нельзя
+        // спамить одной кнопкой. Левая уезжает влево, правая встаёт на её место,
+        // справа въезжает новый претендент.
         function _mghlAdvance() {
             var lc = document.getElementById('mghl-left');
             var rc = document.getElementById('mghl-right');
-            var dethrone = _mghl.chal.matches > _mghl.ref.matches;
-
-            if (dethrone) {
-                var lr = lc.getBoundingClientRect(), rr = rc.getBoundingClientRect();
-                rc.style.setProperty('--mghl-dx', (lr.left - rr.left) + 'px');
-                lc.style.animation = 'mghlOutLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
-                rc.style.animation = 'mghlSlideLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
-            } else {
-                rc.style.animation = 'mghlOutRight 0.30s cubic-bezier(0.32,0.72,0,1) forwards';
-            }
+            var lr = lc.getBoundingClientRect(), rr = rc.getBoundingClientRect();
+            rc.style.setProperty('--mghl-dx', (lr.left - rr.left) + 'px');
+            lc.style.animation = 'mghlOutLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
+            rc.style.animation = 'mghlSlideLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
 
             var onEnd = function () {
                 rc.removeEventListener('animationend', onEnd);
-                if (dethrone) _mghl.ref = _mghl.chal;     // смена чемпиона
-                _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
+                _mghl.ref = _mghl.chal;                      // претендент → новый эталон
+                _mghl.chal = _mghlPickFresh(_mghl.ref.matches);
                 // Сброс анимаций/трансформаций, пересборка, въезд нового справа.
                 lc.style.animation = 'none'; rc.style.animation = 'none';
                 lc.style.transform = ''; rc.style.transform = '';
                 rc.style.removeProperty('--mghl-dx');
                 _mghlRenderLeft(_mghl.ref);
                 _mghlRenderRight(_mghl.chal);
-                void rc.offsetWidth;                       // reflow перед новой анимацией
+                void rc.offsetWidth;                         // reflow перед новой анимацией
                 rc.style.animation = 'mghlIn 0.30s cubic-bezier(0.32,0.72,0,1)';
                 document.getElementById('mghl-guess').style.display = '';
                 _mghl.busy = false;
