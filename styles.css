@@ -9083,8 +9083,11 @@ margin-top: var(--space-4);
   transition: color 0.2s ease;
 }
 .mghl-card-val--hidden { color: var(--text-tertiary); }
-.mghl-reveal-ok  { color: var(--positive); }
-.mghl-reveal-bad { color: var(--negative); }
+/* Момент раскрытия числа — главный хук жанра: число «впрыгивает». */
+.mghl-reveal-ok  { color: var(--positive); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
+.mghl-reveal-bad { color: var(--negative); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes mghlReveal { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mghl-reveal-ok, .mghl-reveal-bad { animation: none; } }
 
 /* Подсказка над кнопками — связывает кнопки с правым (претендентом). */
 .mghl-guess-hint {
@@ -9107,6 +9110,7 @@ margin-top: var(--space-4);
 
 /* Экран результата — сдержанный: число серии в фокусе, без иконок/эмодзи. */
 .mghl-over { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--space-8) var(--space-4) var(--space-5); }
+.mghl-over[hidden] { display: none; }   /* без этого display:flex перебивал атрибут hidden */
 .mghl-over-label { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3); }
 .mghl-over-streak { font-size: var(--text-4xl); font-weight: var(--font-bold); font-family: var(--font-mono); color: var(--text-primary); line-height: 1; }
 .mghl-over-best { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-6); }

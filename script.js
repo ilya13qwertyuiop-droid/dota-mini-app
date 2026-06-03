@@ -636,7 +636,7 @@
         // претендент уезжает наверх (становится эталоном), снизу приезжает
         // новый. Данные из /minigames/hl/pool (кэш 12ч).
         var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [] };
-        function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+        function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
         function _mghlFmt(v) { return _mghlNum(v) + ' матчей'; }
         function _mghlName(id) {
             // Полное английское имя героя — как везде в аппе.
