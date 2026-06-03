@@ -9023,7 +9023,18 @@ margin-top: var(--space-4);
   text-align: center;
   font-size: var(--text-xl); font-weight: var(--font-bold);
   color: var(--text-primary); letter-spacing: var(--tracking-tight);
-  line-height: 1.2; margin-bottom: var(--space-4);
+  line-height: 1.2; margin-bottom: 4px;
+}
+/* Подпись метрики — что именно сравниваем. */
+.mghl-metric {
+  text-align: center; font-size: var(--text-2xs);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-tertiary); margin-bottom: var(--space-4);
+}
+/* Состояние загрузки / нехватки данных. */
+.mghl-msg {
+  text-align: center; color: var(--text-secondary);
+  font-size: var(--text-base); padding: var(--space-8) var(--space-4);
 }
 
 /* Дуэль: два тайла в ряд (слева эталон, справа претендент). overflow:hidden —
@@ -9036,6 +9047,7 @@ margin-top: var(--space-4);
    Анимации — через @keyframes (не transition): чтобы при сбросе анимации
    карта не «отъезжала назад» (это и давало визуальный глитч/«отражение»). */
 .mghl-card {
+  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   padding: var(--space-4) var(--space-3);
   border-radius: var(--radius-lg);
@@ -9043,7 +9055,16 @@ margin-top: var(--space-4);
   background: var(--bg-surface);
   transition: border-color 0.15s ease;
 }
-.mghl-card--challenger { border-color: color-mix(in oklch, var(--accent) 30%, var(--border-subtle)); }
+/* Чемпион (слева) — выделен короной + лёгкой янтарной гранью. Претендент —
+   нейтрален: фокус и так на его «?», лишний акцент не нужен. */
+.mghl-card--champion { border-color: color-mix(in oklch, var(--warning) 35%, var(--border-subtle)); }
+.mghl-crown {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  width: 26px; height: 26px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated); border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  color: var(--warning); font-size: 13px; line-height: 1;
+}
 
 /* Carry-forward (горизонталь). */
 @keyframes mghlOutLeft  { to { transform: translateX(-130%); opacity: 0; } }
@@ -9082,8 +9103,13 @@ margin-top: var(--space-4);
 .mghl-reveal-ok  { color: var(--positive); }
 .mghl-reveal-bad { color: var(--negative); }
 
+/* Подсказка над кнопками — связывает кнопки с правым (претендентом). */
+.mghl-guess-hint {
+  text-align: center; font-size: var(--text-sm); color: var(--text-secondary);
+  margin-top: var(--space-5); margin-bottom: var(--space-2);
+}
 /* Кнопки выбора — две равные, semantic-цвет по смыслу. */
-.mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-4); }
+.mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .mghl-btn {
   appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 14px; border-radius: var(--radius-md); cursor: pointer; font-family: inherit;
@@ -9101,5 +9127,6 @@ margin-top: var(--space-4);
 .mghl-over-icon { font-size: 44px; color: var(--warning); margin-bottom: var(--space-2); }
 .mghl-over-streak { font-size: var(--text-4xl); font-weight: var(--font-bold); font-family: var(--font-mono); color: var(--text-primary); line-height: 1; }
 .mghl-over-sub { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; }
-.mghl-over-best { font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-5); }
+.mghl-over-tier { font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--text-primary); margin-top: var(--space-3); }
+.mghl-over-best { font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-1) 0 var(--space-5); }
 .mghl-over .tm-primary-btn, .mghl-over .tm-ghost-btn { width: 100%; max-width: 320px; }

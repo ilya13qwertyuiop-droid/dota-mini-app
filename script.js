@@ -706,7 +706,7 @@
             }
             _mghlSetScore();
             if (!_mghl.loaded) {
-                var q = document.getElementById('mghl-q'); if (q) q.textContent = 'Загрузка…';
+                _mghlShowMsg('Загрузка…');
                 var tok = _mghlTok();
                 try {
                     var pr = await apiFetch(window.API_BASE_URL + '/minigames/hl/pool?token=' + encodeURIComponent(tok));
@@ -718,19 +718,31 @@
                     _mghl.loaded = true;
                 } catch (e) { console.warn('[mghl] load:', e); }
             }
-            _mghlSetScore();
-            var qEl = document.getElementById('mghl-q');
             if (_mghl.pool.length < 2) {
-                if (qEl) qEl.textContent = 'Пока недостаточно данных';
+                _mghlShowMsg('Пока недостаточно данных. Загляни позже.');
                 return;
             }
-            if (qEl) qEl.textContent = 'У кого больше матчей?';
+            _mghlShowMsg(null);          // прячем сообщение, показываем игру
+            _mghlSetScore();
             _mghl.ref = _mghlPick();
             _mghl.chal = _mghlPickDistinct(_mghl.ref.matches);
             _mghlRenderLeft(_mghl.ref);
             _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
         };
+
+        // Переключение «сообщение (загрузка/пусто) ↔ игровое поле».
+        function _mghlShowMsg(text) {
+            var msg = document.getElementById('mghl-msg');
+            var game = document.getElementById('mghl-game');
+            if (text) {
+                if (msg) { msg.textContent = text; msg.hidden = false; }
+                if (game) game.style.display = 'none';
+            } else {
+                if (msg) msg.hidden = true;
+                if (game) game.style.display = '';
+            }
+        }
 
         window.mghlGuess = function (dir) {
             if (_mghl.busy) return; _mghl.busy = true;
@@ -746,9 +758,10 @@
             _mghlHaptic(correct ? 'ok' : 'bad');
             if (correct) {
                 _mghl.streak++; _mghlSetScore(); _mghlPulseStreak();
-                setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, 820);
+                // Дать раскрытому числу «продышаться» перед уездом.
+                setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, 1150);
             } else {
-                setTimeout(_mghlGameOver, 1250);
+                setTimeout(_mghlGameOver, 1450);
             }
         };
 
@@ -789,9 +802,19 @@
             rc.addEventListener('animationend', onEnd, { once: true });
         }
 
+        function _mghlTier(n) {
+            if (n >= 15) return { ic: 'ph-trophy',         msg: 'Машина! 🏆' };
+            if (n >= 7)  return { ic: 'ph-fire',           msg: 'Огонь! 🔥' };
+            if (n >= 3)  return { ic: 'ph-thumbs-up',      msg: 'Неплохо!' };
+            return            { ic: 'ph-flag-checkered',  msg: 'Бывает!' };
+        }
+
         function _mghlGameOver() {
             document.getElementById('mghl-play').hidden = true;
             var over = document.getElementById('mghl-over'); over.hidden = false;
+            var t = _mghlTier(_mghl.streak);
+            var ic = document.getElementById('mghl-over-ic'); if (ic) ic.className = 'ph-fill ' + t.ic;
+            var tierEl = document.getElementById('mghl-over-tier'); if (tierEl) tierEl.textContent = t.msg;
             document.getElementById('mghl-over-streak').textContent = _mghl.streak;
             var isRecord = _mghl.streak > _mghl.best;
             if (isRecord) _mghl.best = _mghl.streak;
