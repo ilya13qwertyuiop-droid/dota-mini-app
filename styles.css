@@ -9013,23 +9013,16 @@ margin-top: var(--space-4);
   font-size: var(--text-sm); color: var(--text-secondary);
 }
 .mghl-bar-item b { display: inline-block; font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); }
-.mghl-bar-item--best b { color: var(--warning); }
-.mghl-pop { animation: mghlPop 0.4s ease; }
-@keyframes mghlPop { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.mghl-pop { animation: mghlPop 0.35s ease; }
+@keyframes mghlPop { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .mghl-pop { animation: none; } }
 
-/* Вопрос раунда — главный акцент. */
+/* Вопрос раунда. */
 .mghl-q {
   text-align: center;
   font-size: var(--text-xl); font-weight: var(--font-bold);
   color: var(--text-primary); letter-spacing: var(--tracking-tight);
-  line-height: 1.2; margin-bottom: 4px;
-}
-/* Подпись метрики — что именно сравниваем. */
-.mghl-metric {
-  text-align: center; font-size: var(--text-2xs);
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--text-tertiary); margin-bottom: var(--space-4);
+  line-height: 1.2; margin-bottom: var(--space-5);
 }
 /* Состояние загрузки / нехватки данных. */
 .mghl-msg {
@@ -9046,24 +9039,14 @@ margin-top: var(--space-4);
 /* Карточка-тайл героя — surface-card аппа, контент вертикальный.
    Анимации — через @keyframes (не transition): чтобы при сбросе анимации
    карта не «отъезжала назад» (это и давало визуальный глитч/«отражение»). */
+/* Карточка-тайл героя — обычная surface-карточка аппа, обе нейтральные.
+   Различие читается само: слева число, справа «?». Никакого декора. */
 .mghl-card {
-  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   padding: var(--space-4) var(--space-3);
   border-radius: var(--radius-lg);
   border: 0.5px solid var(--border-subtle);
   background: var(--bg-surface);
-  transition: border-color 0.15s ease;
-}
-/* Чемпион (слева) — выделен короной + лёгкой янтарной гранью. Претендент —
-   нейтрален: фокус и так на его «?», лишний акцент не нужен. */
-.mghl-card--champion { border-color: color-mix(in oklch, var(--warning) 35%, var(--border-subtle)); }
-.mghl-crown {
-  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
-  width: 26px; height: 26px; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bg-elevated); border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
-  color: var(--warning); font-size: 13px; line-height: 1;
 }
 
 /* Carry-forward (горизонталь). */
@@ -9122,11 +9105,10 @@ margin-top: var(--space-4);
 .mghl-btn--up:hover    { background: color-mix(in oklch, var(--positive) 14%, transparent); border-color: color-mix(in oklch, var(--positive) 40%, transparent); color: var(--positive); }
 .mghl-btn--down:hover  { background: color-mix(in oklch, var(--negative) 14%, transparent); border-color: color-mix(in oklch, var(--negative) 40%, transparent); color: var(--negative); }
 
-/* Экран результата. */
-.mghl-over { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--space-8) var(--space-4) var(--space-5); gap: var(--space-2); }
-.mghl-over-icon { font-size: 44px; color: var(--warning); margin-bottom: var(--space-2); }
+/* Экран результата — сдержанный: число серии в фокусе, без иконок/эмодзи. */
+.mghl-over { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--space-8) var(--space-4) var(--space-5); }
+.mghl-over-label { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3); }
 .mghl-over-streak { font-size: var(--text-4xl); font-weight: var(--font-bold); font-family: var(--font-mono); color: var(--text-primary); line-height: 1; }
-.mghl-over-sub { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; }
-.mghl-over-tier { font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--text-primary); margin-top: var(--space-3); }
-.mghl-over-best { font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-1) 0 var(--space-5); }
+.mghl-over-best { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-6); }
+.mghl-over-best--record { color: var(--accent); font-weight: var(--font-semibold); }
 .mghl-over .tm-primary-btn, .mghl-over .tm-ghost-btn { width: 100%; max-width: 320px; }

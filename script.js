@@ -802,24 +802,15 @@
             rc.addEventListener('animationend', onEnd, { once: true });
         }
 
-        function _mghlTier(n) {
-            if (n >= 15) return { ic: 'ph-trophy',         msg: 'Машина! 🏆' };
-            if (n >= 7)  return { ic: 'ph-fire',           msg: 'Огонь! 🔥' };
-            if (n >= 3)  return { ic: 'ph-thumbs-up',      msg: 'Неплохо!' };
-            return            { ic: 'ph-flag-checkered',  msg: 'Бывает!' };
-        }
-
         function _mghlGameOver() {
             document.getElementById('mghl-play').hidden = true;
             var over = document.getElementById('mghl-over'); over.hidden = false;
-            var t = _mghlTier(_mghl.streak);
-            var ic = document.getElementById('mghl-over-ic'); if (ic) ic.className = 'ph-fill ' + t.ic;
-            var tierEl = document.getElementById('mghl-over-tier'); if (tierEl) tierEl.textContent = t.msg;
             document.getElementById('mghl-over-streak').textContent = _mghl.streak;
             var isRecord = _mghl.streak > _mghl.best;
             if (isRecord) _mghl.best = _mghl.streak;
-            document.getElementById('mghl-over-best').textContent =
-                isRecord ? '🔥 Новый рекорд!' : ('Твой рекорд: ' + _mghl.best);
+            var bestEl = document.getElementById('mghl-over-best');
+            bestEl.textContent = isRecord ? 'Новый рекорд' : ('Рекорд: ' + _mghl.best);
+            bestEl.classList.toggle('mghl-over-best--record', isRecord);
             var tok = _mghlTok();
             if (tok) {
                 apiFetch(window.API_BASE_URL + '/minigames/score', {

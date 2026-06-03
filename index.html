@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=191" />
+    <link rel="stylesheet" href="styles.css?v=192" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -547,29 +547,27 @@
           <div id="mghl-game">
             <div class="mghl-bar">
               <span class="mghl-bar-item">Серия <b id="mghl-streak">0</b></span>
-              <span class="mghl-bar-item mghl-bar-item--best">Рекорд <b id="mghl-best">0</b></span>
+              <span class="mghl-bar-item">Рекорд <b id="mghl-best">0</b></span>
             </div>
 
-            <div class="mghl-q" id="mghl-q">Кто популярнее в Dota 2?</div>
-            <div class="mghl-metric">сравниваем по числу матчей · Stratz</div>
+            <div class="mghl-q" id="mghl-q">Кого чаще пикают?</div>
 
             <div class="mghl-duel">
-              <!-- Слева — действующий «чемпион» (значение показано) -->
-              <div class="mghl-card mghl-card--champion" id="mghl-left">
-                <span class="mghl-crown" aria-hidden="true"><i class="ph-fill ph-crown-simple"></i></span>
+              <!-- Слева — известный герой (значение показано) -->
+              <div class="mghl-card" id="mghl-left">
                 <div class="mghl-portrait"><img id="mghl-left-img" alt="" onerror="this.style.visibility='hidden'"></div>
                 <div class="mghl-card-name" id="mghl-left-name"></div>
                 <div class="mghl-card-val" id="mghl-left-val"></div>
               </div>
               <!-- Справа — претендент (скрыт, по нему угадываем) -->
-              <div class="mghl-card mghl-card--challenger" id="mghl-right">
+              <div class="mghl-card" id="mghl-right">
                 <div class="mghl-portrait"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
                 <div class="mghl-card-name" id="mghl-right-name"></div>
                 <div class="mghl-card-val mghl-card-val--hidden" id="mghl-right-val">?</div>
               </div>
             </div>
 
-            <div class="mghl-guess-hint">У правого героя матчей:</div>
+            <div class="mghl-guess-hint">У правого героя матчей больше или меньше?</div>
             <div class="mghl-guess" id="mghl-guess">
               <button type="button" class="mghl-btn mghl-btn--up" onclick="mghlGuess('higher')">
                 <i class="ph ph-caret-up" aria-hidden="true"></i> Больше
@@ -582,13 +580,11 @@
         </div>
 
         <div id="mghl-over" class="mghl-over" hidden>
-          <div class="mghl-over-icon"><i id="mghl-over-ic" class="ph-fill ph-flag-checkered" aria-hidden="true"></i></div>
+          <div class="mghl-over-label">Серия окончена</div>
           <div class="mghl-over-streak" id="mghl-over-streak">0</div>
-          <div class="mghl-over-sub">в серии</div>
-          <div class="mghl-over-tier" id="mghl-over-tier"></div>
           <div class="mghl-over-best" id="mghl-over-best"></div>
           <button type="button" class="tm-primary-btn" onclick="mghlStart()">Ещё раз</button>
-          <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться результатом</button>
+          <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться</button>
         </div>
       </div>
 
@@ -1522,6 +1518,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=229"></script>
+    <script defer src="script.js?v=230"></script>
   </body>
 </html>
