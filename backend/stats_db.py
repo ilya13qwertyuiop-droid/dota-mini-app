@@ -1634,9 +1634,27 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
 # (популярность из dota2protracker + длительность/ранг из наших матчей)
 # ---------------------------------------------------------------------------
 
-_MINIGAME_HL_KEY = "minigame_hl_pool_v5"   # v5: + средние kills/deaths за игру (hero_detailed_stats.json)
+_MINIGAME_HL_KEY = "minigame_hl_pool_v6"   # v6: санити-фильтр битых kills/deaths + мем-исключение Tinker
 _MINIGAME_HL_TTL_SEC = 12 * 3600
 _MINIGAME_HL_FALLBACK_DAYS = 14            # окно для fallback по нашим матчам
+
+# Физически правдоподобный коридор «за игру». Значения вне него в источнике —
+# битые (напр. Chen с 20 смертями), такие метрики отбрасываем, чтобы игрок не
+# видел мусор. ИСКЛЮЧЕНИЕ — _MGHL_MEME_KEEP: намеренные мемы оставляем как есть.
+_MGHL_SANE_BOUNDS = {"kills": (1.0, 20.0), "deaths": (1.0, 15.0)}
+_MGHL_MEME_KEEP = {(34, "deaths")}         # Tinker: 46 смертей — дань мему, не режем
+
+
+def _mghl_sane(hid: int, metric: str, val):
+    """Отсекает физически невозможные значения метрики; мем-исключения пропускает."""
+    if val is None:
+        return None
+    if (hid, metric) in _MGHL_MEME_KEEP:
+        return val
+    lo, hi = _MGHL_SANE_BOUNDS[metric]
+    if val < lo or val > hi:
+        return None
+    return val
 
 
 def _mghl_per_game(val, matches: int | None):
@@ -1746,20 +1764,25 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
         if det_path.exists():
             with open(det_path, encoding="utf-8") as f:
                 drows = json.load(f)
+            dropped = []
             for r in (drows or []):
                 try:
                     hid = int(r.get("heroId"))
                 except (TypeError, ValueError):
                     continue
-                k = _mghl_per_game(r.get("kills"), pop.get(hid))
-                d = _mghl_per_game(r.get("deaths"), pop.get(hid))
                 m = {}
-                if k is not None:
-                    m["kills"] = k
-                if d is not None:
-                    m["deaths"] = d
+                for metric in ("kills", "deaths"):
+                    raw = _mghl_per_game(r.get(metric), pop.get(hid))
+                    val = _mghl_sane(hid, metric, raw)
+                    if val is not None:
+                        m[metric] = val
+                    elif raw is not None:
+                        dropped.append((hid, metric, raw))   # битое значение — выкинули
                 if m:
                     detail[hid] = m
+            if dropped:
+                logger.warning("[stats_db] minigame_hl: dropped %d anomalous metric(s): %s",
+                               len(dropped), dropped)
     except Exception as e:
         logger.warning("[stats_db] minigame_hl: hero_detailed_stats.json read failed: %s", e)
         detail = {}

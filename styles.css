@@ -9134,11 +9134,44 @@ margin-top: var(--space-4);
 .mghl-card-val--hidden { color: var(--text-tertiary); font-size: var(--text-2xl); font-weight: var(--font-bold); }
 /* Правая карточка — это «вопрос»: тонкая accent-грань направляет, по кому жмём. */
 .mghl-card--q { border-color: color-mix(in oklch, var(--accent) 28%, var(--border-subtle)); }
+/* Тонкая метка Тинкера (режим смертей) — намёк на мем. Маленький значок-череп
+   в углу портрета в негативном цвете; сдержанно, без перетягивания внимания. */
+.mghl-card--tinker .mghl-portrait { position: relative; }
+.mghl-card--tinker .mghl-portrait::after {
+  content: ""; position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--negative);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
 /* Момент раскрытия числа — главный хук жанра: число «впрыгивает». */
 .mghl-reveal-ok  { color: var(--positive); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
 .mghl-reveal-bad { color: var(--negative); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
 @keyframes mghlReveal { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .mghl-reveal-ok, .mghl-reveal-bad { animation: none; } }
+
+/* Мем-оверлей Тинкера: картинка выезжает снизу на весь экран, держится, уезжает.
+   Поверх всего (включая шапку и dock), на время триггера. */
+#mghl-meme {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in oklch, var(--bg-base) 78%, transparent);
+  pointer-events: none;
+}
+#mghl-meme[hidden] { display: none; }
+#mghl-meme-img {
+  max-width: 92vw; max-height: 80vh;
+  object-fit: contain; border-radius: var(--radius-lg);
+  transform: translateY(105%); opacity: 0;
+}
+.mghl-meme--in #mghl-meme-img  { animation: mghlMemeIn  0.34s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+.mghl-meme--out #mghl-meme-img { animation: mghlMemeOut 0.30s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+@keyframes mghlMemeIn  { from { transform: translateY(105%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes mghlMemeOut { from { transform: translateY(0); opacity: 1; } to { transform: translateY(105%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #mghl-meme-img { transform: none; }
+  .mghl-meme--in #mghl-meme-img  { animation: none; opacity: 1; }
+  .mghl-meme--out #mghl-meme-img { animation: none; opacity: 0; }
+}
 
 /* Кнопки выбора — две равные, semantic-цвет по смыслу. */
 .mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-5); }
@@ -9186,6 +9219,23 @@ margin-top: var(--space-4);
 /* Таблица лидеров. */
 .mghl-lb { padding: var(--space-6) var(--space-4) calc(var(--nav-height) + 24px); }
 .mghl-lb-title { text-align: center; font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--text-primary); letter-spacing: var(--tracking-tight); margin-bottom: var(--space-4); }
+/* Сегментированный переключатель режимов лидерборда. */
+.mghl-lb-tabs {
+  display: flex; gap: 2px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: 3px;
+  margin-bottom: var(--space-4);
+}
+.mghl-lb-tab {
+  flex: 1; padding: var(--space-2) 4px;
+  background: none; border: none; cursor: pointer;
+  font-size: var(--text-sm); font-weight: var(--font-medium);
+  color: var(--text-tertiary); border-radius: calc(var(--radius-md) - 3px);
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mghl-lb-tab:hover { color: var(--text-secondary); }
+.mghl-lb-tab--active { background: var(--bg-elevated); color: var(--text-primary); }
 .mghl-lb-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-4); }
 .mghl-lb-row { display: flex; align-items: center; gap: var(--space-3); padding: 10px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-subtle); background: var(--bg-surface); }
 .mghl-lb-row--me { border-color: color-mix(in oklch, var(--accent) 45%, var(--border-subtle)); background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface)); }

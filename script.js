@@ -643,8 +643,9 @@
             kills:  { metric: 'kills',   game: 'hl_kills',  q: 'Кто чаще убивает?', short: 'Убийства',     fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
             deaths: { metric: 'deaths',  game: 'hl_deaths', q: 'Кто чаще умирает?', short: 'Смерти',       fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
         };
-        var _mghl = { pool: [], workingPool: [], mode: null, metric: 'matches', game: 'hl_pop', best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over' };
+        var _mghl = { pool: [], workingPool: [], mode: null, modeKey: 'pop', metric: 'matches', game: 'hl_pop', best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over', lbMode: 'pop', lbCache: {} };
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+        var _MGHL_TINKER_ID = 34;     // мем рус-комьюнити: «все ненавидят Тинкера»
         function _mghlVal(h) { return h[_mghl.metric]; }
         function _mghlFmt(v) { return (_mghl.mode ? _mghl.mode.fmt : _MGHL_MODES.pop.fmt)(v); }
         function _mghlName(id) {
@@ -707,11 +708,19 @@
             _mghlRemember(h.id);
             return h;
         }
+        // Тонкая метка на карточке Тинкера — только в режиме смертей (там и мем).
+        function _mghlMarkTinker(cardId, h) {
+            var card = document.getElementById(cardId);
+            if (!card) return;
+            var meme = (h.id === _MGHL_TINKER_ID && _mghl.metric === 'deaths');
+            card.classList.toggle('mghl-card--tinker', meme);
+        }
         function _mghlRenderLeft(h) {
             document.getElementById('mghl-left-img').src = _mghlImg(h.id);
             document.getElementById('mghl-left-img').style.visibility = '';
             document.getElementById('mghl-left-name').textContent = _mghlName(h.id);
             document.getElementById('mghl-left-val').textContent = _mghlFmt(_mghlVal(h));
+            _mghlMarkTinker('mghl-left', h);
         }
         function _mghlRenderRight(h) {
             document.getElementById('mghl-right-img').src = _mghlImg(h.id);
@@ -721,6 +730,32 @@
             rv.textContent = '?';
             rv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
             rv.classList.add('mghl-card-val--hidden');
+            _mghlMarkTinker('mghl-right', h);
+        }
+
+        // Мем-оверлей: картинка выезжает на весь экран, держится и уезжает.
+        // Триггерится при раскрытии аномальных смертей Тинкера. Если картинки
+        // нет (onerror пометил data-broken) — тихо ничего не делаем.
+        var _mghlMemeTimers = [];
+        function _mghlMeme() {
+            var ov = document.getElementById('mghl-meme');
+            if (!ov || ov.dataset.broken === '1') return;
+            _mghlMemeTimers.forEach(clearTimeout); _mghlMemeTimers = [];
+            ov.hidden = false;
+            void ov.offsetWidth;                 // reflow перед анимацией входа
+            ov.classList.add('mghl-meme--in');
+            _mghlHaptic('milestone');
+            _mghlMemeTimers.push(setTimeout(function () {
+                ov.classList.remove('mghl-meme--in');
+                ov.classList.add('mghl-meme--out');
+            }, 1100));
+            _mghlMemeTimers.push(setTimeout(function () {
+                ov.classList.remove('mghl-meme--out');
+                ov.hidden = true;
+            }, 1500));
+        }
+        function _mghlIsTinkerMeme(h) {
+            return h && h.id === _MGHL_TINKER_ID && _mghl.metric === 'deaths';
         }
 
         window.goToMinigameHL = function () {
@@ -755,6 +790,7 @@
             var mode = _MGHL_MODES[key];
             if (!mode) return;
             _mghl.mode = mode;
+            _mghl.modeKey = key;
             _mghl.metric = mode.metric;
             _mghl.game = mode.game;
             _mghl.best = 0;              // рекорд per-mode — подтянем при старте
@@ -823,6 +859,8 @@
             document.getElementById('mghl-guess').style.display = '';
             _mghlApplyHeat();            // серия 0 → свечение сброшено
             _mghl.inProgress = true;     // игра пошла — прогресс сохраняем при навигации
+            // Тинкер сразу слева (его 46 видно с порога) — тоже отыгрываем мем.
+            if (_mghlIsTinkerMeme(_mghl.ref)) _mghlMeme();
         };
 
         // Переключение «сообщение (загрузка/пусто) ↔ игровое поле».
@@ -850,6 +888,8 @@
             rc.classList.add(correct ? 'mghl-correct' : 'mghl-wrong');
             document.getElementById('mghl-guess').style.display = 'none';
             _mghlHaptic(correct ? 'ok' : 'bad');
+            // Раскрылись аномальные 46 смертей Тинкера — выезжает мем.
+            if (_mghlIsTinkerMeme(_mghl.chal)) _mghlMeme();
             if (correct) {
                 _mghl.streak++; _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
                 // Дать раскрытому числу «продышаться» перед уездом.
@@ -928,6 +968,7 @@
                         encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
                 }).then(function (r) { return r.json(); }).then(function (lb) {
                     _mghl.lb = lb;
+                    _mghl.lbCache[_mghl.game] = lb;   // мгновенно для вкладки лидерборда
                     _mghlRenderRank();
                 }).catch(function () {});
             }
@@ -964,39 +1005,52 @@
         function _mghlShowLb() {
             document.getElementById('mghl-play').hidden = true;
             document.getElementById('mghl-over').hidden = true;
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
             document.getElementById('mghl-lb').hidden = false;
         }
         window.mghlCloseLeaderboard = function () {
             document.getElementById('mghl-lb').hidden = true;
-            // Возврат туда, откуда открыли таблицу (в игру или на экран результата).
+            // Возврат туда, откуда открыли таблицу (выбор режима / игра / результат).
             if (_mghl.lbReturn === 'play') document.getElementById('mghl-play').hidden = false;
+            else if (_mghl.lbReturn === 'modes') { var m = document.getElementById('mghl-modes'); if (m) m.hidden = false; }
             else document.getElementById('mghl-over').hidden = false;
         };
         window.mghlOpenLeaderboard = function () {
-            // Откуда открыли — чтобы корректно вернуться (во время игры или с результата).
-            _mghl.lbReturn = (!document.getElementById('mghl-play').hidden) ? 'play' : 'over';
-            var title = document.getElementById('mghl-lb-title');
-            if (title) title.textContent = _mghl.mode ? ('Лидеры · ' + _mghl.mode.short) : 'Таблица лидеров';
+            // Откуда открыли — чтобы корректно вернуться.
+            if (!document.getElementById('mghl-play').hidden) _mghl.lbReturn = 'play';
+            else if (!document.getElementById('mghl-over').hidden) _mghl.lbReturn = 'over';
+            else _mghl.lbReturn = 'modes';
             _mghlShowLb();
-            if (_mghl.lb) _mghlRenderLeaderboard();
-            else {
-                var list = document.getElementById('mghl-lb-list');
-                if (list) list.innerHTML = '<div class="mghl-msg">Загрузка…</div>';
-            }
+            // Активная вкладка — текущий режим (если был), иначе популярность.
+            mghlLbTab(_mghl.mode ? _mghl.modeKey : 'pop');
+        };
+
+        // Переключение вкладки лидерборда между режимами.
+        window.mghlLbTab = function (key) {
+            var mode = _MGHL_MODES[key]; if (!mode) return;
+            _mghl.lbMode = key;
+            // Подсветка активной вкладки.
+            var tabs = document.querySelectorAll('#mghl-lb-tabs .mghl-lb-tab');
+            tabs.forEach(function (t) { t.classList.toggle('mghl-lb-tab--active', t.getAttribute('data-mode') === key); });
+            var list = document.getElementById('mghl-lb-list');
+            var cached = _mghl.lbCache[mode.game];
+            if (cached) _mghlRenderLeaderboard(cached);
+            else if (list) list.innerHTML = '<div class="mghl-msg">Загрузка…</div>';
             // Всегда подтягиваем свежую таблицу (сервер кэширует 60с — дёшево).
             var tok = _mghlTok();
             apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
-                encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game))
+                encodeURIComponent(tok) + '&game=' + encodeURIComponent(mode.game))
                 .then(function (r) { return r.json(); })
                 .then(function (lb) {
-                    _mghl.lb = lb;
-                    if (!document.getElementById('mghl-lb').hidden) _mghlRenderLeaderboard();
+                    _mghl.lbCache[mode.game] = lb;
+                    // Рендерим только если пользователь всё ещё на этой вкладке.
+                    if (_mghl.lbMode === key && !document.getElementById('mghl-lb').hidden) _mghlRenderLeaderboard(lb);
                 })
                 .catch(function () {});
         };
 
-        function _mghlRenderLeaderboard() {
-            var lb = _mghl.lb; if (!lb) return;
+        function _mghlRenderLeaderboard(lb) {
+            if (!lb) return;
             var list = document.getElementById('mghl-lb-list'); if (!list) return;
             var meId = lb.you && lb.you.user_id;
             var top = lb.top || [];

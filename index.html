@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=201" />
+    <link rel="stylesheet" href="styles.css?v=203" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -534,6 +534,11 @@
       <div id="page-minigame-hl" class="page">
         <!-- Амбиентное свечение по краям: нарастает с серией (см. _mghlApplyHeat). -->
         <div id="mghl-heat" aria-hidden="true"></div>
+        <!-- Мем-оверлей: выезжает при раскрытии аномальных смертей Тинкера (дань
+             комьюнити-мему). Картинку положить в assets/tinker-meme.png. -->
+        <div id="mghl-meme" aria-hidden="true" hidden>
+          <img id="mghl-meme-img" src="assets/tinker-meme.jpg" alt="" onerror="this.closest('#mghl-meme').dataset.broken='1'">
+        </div>
         <div class="tm-page-head">
           <button type="button" class="tm-back-btn" onclick="mghlBack()" aria-label="Назад">
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
@@ -558,7 +563,7 @@
             <span class="mghl-mode-ic"><i class="ph ph-sword" aria-hidden="true"></i></span>
             <span class="mghl-mode-txt">
               <span class="mghl-mode-name">Кто чаще убивает</span>
-              <span class="mghl-mode-sub">Среднее убийств за игру</span>
+              <span class="mghl-mode-sub">Среднее кол-во убийств за игру</span>
             </span>
             <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
           </button>
@@ -566,7 +571,7 @@
             <span class="mghl-mode-ic"><i class="ph ph-skull" aria-hidden="true"></i></span>
             <span class="mghl-mode-txt">
               <span class="mghl-mode-name">Кто чаще умирает</span>
-              <span class="mghl-mode-sub">Среднее смертей за игру</span>
+              <span class="mghl-mode-sub">Среднее кол-во смертей за игру</span>
             </span>
             <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
           </button>
@@ -624,9 +629,14 @@
           </div>
         </div>
 
-        <!-- Таблица лидеров -->
+        <!-- Таблица лидеров: вкладки по режимам -->
         <div id="mghl-lb" class="mghl-lb" hidden>
           <div class="mghl-lb-title" id="mghl-lb-title">Таблица лидеров</div>
+          <div class="mghl-lb-tabs" id="mghl-lb-tabs">
+            <button type="button" class="mghl-lb-tab" data-mode="pop" onclick="mghlLbTab('pop')">Популярность</button>
+            <button type="button" class="mghl-lb-tab" data-mode="kills" onclick="mghlLbTab('kills')">Убийства</button>
+            <button type="button" class="mghl-lb-tab" data-mode="deaths" onclick="mghlLbTab('deaths')">Смерти</button>
+          </div>
           <div class="mghl-lb-list" id="mghl-lb-list"></div>
           <button type="button" class="tm-ghost-btn" onclick="mghlCloseLeaderboard()">Назад</button>
         </div>
@@ -1562,6 +1572,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=239"></script>
+    <script defer src="script.js?v=241"></script>
   </body>
 </html>
