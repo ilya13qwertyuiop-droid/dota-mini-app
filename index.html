@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=198" />
+    <link rel="stylesheet" href="styles.css?v=199" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -255,13 +255,20 @@
 
           <!-- Раздел: Игры (на навык / угадайку) -->
           <div class="mg-section-title">Игры</div>
-          <button type="button" class="mg-game-card" onclick="goToMinigameHL()">
-            <span class="mg-game-card__badge">NEW</span>
-            <span class="mg-game-card__icon"><i class="ph-fill ph-scales" aria-hidden="true"></i></span>
-            <span class="mg-game-card__title">Выше / Ниже</span>
-            <span class="mg-game-card__desc">Угадай, у какого героя показатель выше. Серия без права на ошибку — сколько продержишься?</span>
-            <span class="mg-game-card__cta">Играть <i class="ph ph-arrow-right" aria-hidden="true"></i></span>
-          </button>
+          <div class="card">
+            <div class="card-header">
+              <i class="card-icon ph ph-scales" aria-hidden="true"></i>
+              <span class="card-title">Выше / Ниже</span>
+              <span class="card-tag">NEW</span>
+            </div>
+            <div class="card-content">
+              Угадай, у какого героя больше матчей. Серия без права на ошибку —
+              сколько продержишься?
+            </div>
+            <button class="btn-small btn-small--full" onclick="goToMinigameHL()">
+              Играть →
+            </button>
+          </div>
 
           <!-- Раздел: Квизы (самоопределение) -->
           <div class="mg-section-title">Квизы</div>
@@ -525,7 +532,7 @@
         <!-- Амбиентное свечение по краям: нарастает с серией (см. _mghlApplyHeat). -->
         <div id="mghl-heat" aria-hidden="true"></div>
         <div class="tm-page-head">
-          <button type="button" class="tm-back-btn" onclick="switchPage('quiz')" aria-label="Назад">
+          <button type="button" class="tm-back-btn" onclick="mghlBack()" aria-label="Назад">
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
           </button>
           <div class="tm-page-title">Выше / Ниже</div>
@@ -1522,6 +1529,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=235"></script>
+    <script defer src="script.js?v=236"></script>
   </body>
 </html>

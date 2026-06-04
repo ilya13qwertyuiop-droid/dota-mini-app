@@ -721,6 +721,14 @@
             if (!_mghl.inProgress) mghlStart();
         };
 
+        // Контекстная кнопка «назад» в шапке: если открыта таблица лидеров —
+        // закрываем её (возврат туда, откуда открыли), иначе выходим в список игр.
+        window.mghlBack = function () {
+            var lb = document.getElementById('mghl-lb');
+            if (lb && !lb.hidden) { mghlCloseLeaderboard(); return; }
+            switchPage('quiz');
+        };
+
         window.mghlStart = async function () {
             _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;

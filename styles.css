@@ -8952,55 +8952,14 @@ margin-top: var(--space-4);
   color: var(--text-tertiary);
   margin: var(--space-5) 0 var(--space-3);
 }
-.mg-game-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  appearance: none;
-  cursor: pointer;
-  padding: 18px;
-  margin-bottom: var(--space-3);
-  border-radius: var(--radius-lg);
-  border: 0.5px solid var(--border-subtle);
-  background:
-    radial-gradient(120% 90% at 0% 0%, color-mix(in oklch, var(--accent) 16%, transparent), transparent 60%),
-    var(--bg-surface);
-  color: inherit;
-  font-family: inherit;
-  transition: transform 0.18s ease, border-color 0.18s ease;
-}
-.mg-game-card:active { transform: scale(0.98); }
-.mg-game-card:hover { border-color: var(--border-default); }
-.mg-game-card__badge {
-  position: absolute; top: 14px; right: 14px;
+/* Маленький NEW-тег в шапке карточки (для новой игры). */
+.card-tag {
+  margin-left: auto;
   font-size: var(--text-2xs); font-weight: var(--font-bold); letter-spacing: 0.06em;
   color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 16%, transparent);
-  border: 0.5px solid color-mix(in oklch, var(--accent) 35%, transparent);
-  padding: 2px 7px; border-radius: 999px;
-}
-.mg-game-card__icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 46px; height: 46px; border-radius: 13px;
-  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
   border: 0.5px solid color-mix(in oklch, var(--accent) 32%, transparent);
-  color: var(--accent);
-}
-.mg-game-card__icon i { font-size: 24px; }
-.mg-game-card__title {
-  font-size: var(--text-lg); font-weight: var(--font-bold);
-  color: var(--text-primary); letter-spacing: var(--tracking-tight);
-}
-.mg-game-card__desc {
-  font-size: var(--text-sm); color: var(--text-secondary); line-height: var(--leading-relaxed);
-}
-.mg-game-card__cta {
-  margin-top: 4px; display: inline-flex; align-items: center; gap: 5px;
-  font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--accent);
+  padding: 2px 7px; border-radius: 999px;
 }
 
 /* ── Игра «Выше / Ниже» (карточная вёрстка в стиле аппа) ────────────── */
@@ -9019,17 +8978,17 @@ margin-top: var(--space-4);
 #page-minigame-hl > *:not(#mghl-heat) { position: relative; z-index: 1; }
 #mghl-heat.mghl-heat--1 {
   opacity: 1;
-  box-shadow: inset 0 0 95px -10px color-mix(in oklch, var(--accent) 48%, transparent);
+  box-shadow: inset 0 0 48px -6px color-mix(in oklch, var(--accent) 42%, transparent);
   animation: mghlHeatPulse 3s ease-in-out infinite;
 }
 #mghl-heat.mghl-heat--2 {
   opacity: 1;
-  box-shadow: inset 0 0 125px -8px color-mix(in oklch, var(--accent) 64%, transparent);
+  box-shadow: inset 0 0 62px -6px color-mix(in oklch, var(--accent) 56%, transparent);
   animation: mghlHeatPulse 2.1s ease-in-out infinite;
 }
 #mghl-heat.mghl-heat--3 {
   opacity: 1;
-  box-shadow: inset 0 0 160px -6px color-mix(in oklch, var(--accent) 80%, transparent);
+  box-shadow: inset 0 0 80px -6px color-mix(in oklch, var(--accent) 70%, transparent);
   animation: mghlHeatPulse 1.4s ease-in-out infinite;
 }
 @keyframes mghlHeatPulse { 0%, 100% { opacity: 0.62; } 50% { opacity: 1; } }
