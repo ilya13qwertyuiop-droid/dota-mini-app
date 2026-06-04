@@ -9114,8 +9114,10 @@ margin-top: var(--space-4);
 @media (prefers-reduced-motion: reduce) {
   .mghl-card, .mghl-correct, .mghl-wrong { animation: none; }
 }
+/* Портрет — прямоугольный (родной формат CDN 256×144, 16:9) во всю ширину
+   карточки: герой виден целиком, без обрезки по краям как в квадратном тайле. */
 .mghl-portrait {
-  width: 84px; height: 84px; flex-shrink: 0;
+  width: 100%; aspect-ratio: 256 / 144; flex-shrink: 0;
   border-radius: var(--radius-md); overflow: hidden;
   background: var(--bg-elevated); border: 1px solid var(--border-subtle);
 }
