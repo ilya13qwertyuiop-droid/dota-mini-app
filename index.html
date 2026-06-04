@@ -37,11 +37,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <!-- API base URL — overridden by nginx sub_filter on staging -->
     <script>window.API_BASE_URL = "/api";</script>
-    <!-- Ссылка на мини-апп для шаринга (t.me deep-link, открывает бота).
-         Формат: https://t.me/<botusername>/<appname>?startapp=hl
-         (или https://t.me/<botusername>?startapp=hl). Пусто = шарим без ссылки.
-         Переопредели per-env тем же sub_filter, что и API_BASE_URL. -->
-    <script>window.MINIAPP_URL = "";</script>
+    <!-- Ссылка на бота для шаринга. Прод-значение по умолчанию; на staging
+         nginx подменяет его sub_filter'ом (см. конфиг) на D2HLPR_BOT. -->
+    <script>window.MINIAPP_URL = "https://t.me/DotaAssistant_bot";</script>
   </head>
   <body>
     <div class="app-container">
