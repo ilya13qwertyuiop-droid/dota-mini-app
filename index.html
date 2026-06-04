@@ -37,6 +37,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <!-- API base URL — overridden by nginx sub_filter on staging -->
     <script>window.API_BASE_URL = "/api";</script>
+    <!-- Ссылка на мини-апп для шаринга (t.me deep-link, открывает бота).
+         Формат: https://t.me/<botusername>/<appname>?startapp=hl
+         (или https://t.me/<botusername>?startapp=hl). Пусто = шарим без ссылки.
+         Переопредели per-env тем же sub_filter, что и API_BASE_URL. -->
+    <script>window.MINIAPP_URL = "";</script>
   </head>
   <body>
     <div class="app-container">
@@ -1530,6 +1535,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=237"></script>
+    <script defer src="script.js?v=238"></script>
   </body>
 </html>

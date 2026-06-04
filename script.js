@@ -881,10 +881,14 @@
         }
 
         window.mghlShare = function () {
-            var text = 'Я набрал серию ' + _mghl.streak + ' в «Выше/Ниже» в D2Helper! Побей мой результат 🎯';
-            var shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent('https://t.me') +
-                '&text=' + encodeURIComponent(text);
+            var text = 'Я набил серию ' + _mghl.streak + ' в «Выше / Ниже» в D2Helper. Сможешь больше? 🎯';
             var tg = window.Telegram && window.Telegram.WebApp;
+            var link = (window.MINIAPP_URL || '').trim();
+            // С реальной ссылкой на мини-апп — превью бота + тап открывает игру.
+            // Без неё (не настроена) шарим только текст, без битого «https://t.me».
+            var shareUrl = link
+                ? 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
+                : 'https://t.me/share/url?url=' + encodeURIComponent(text);
             if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(shareUrl);
             else window.open(shareUrl, '_blank');
         };
