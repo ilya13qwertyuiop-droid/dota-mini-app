@@ -828,12 +828,28 @@
             rc.addEventListener('animationend', onEnd, { once: true });
         }
 
+        // Сдержанная оценка серии: слово без эмодзи + цвет числа по тиру.
+        function _mghlTag(n) {
+            if (n >= 30) return 'нечеловеческая серия';
+            if (n >= 20) return 'ты в ударе';
+            if (n >= 10) return 'сильная серия';
+            if (n >= 5)  return 'достойно';
+            if (n >= 1)  return 'бывает';
+            return 'мимо';
+        }
+
         function _mghlGameOver() {
             _mghl.inProgress = false;    // серия окончена — больше не возобновляем
             var heat = document.getElementById('mghl-heat'); if (heat) heat.className = '';
             document.getElementById('mghl-play').hidden = true;
             var over = document.getElementById('mghl-over'); over.hidden = false;
-            document.getElementById('mghl-over-streak').textContent = _mghl.streak;
+            var streakEl = document.getElementById('mghl-over-streak');
+            streakEl.textContent = _mghl.streak;
+            // Цвет числа по тиру (slate-blue accent на 10+, ярче на 20+).
+            streakEl.classList.toggle('mghl-over-streak--t1', _mghl.streak >= 10 && _mghl.streak < 20);
+            streakEl.classList.toggle('mghl-over-streak--t2', _mghl.streak >= 20);
+            var tagEl = document.getElementById('mghl-over-tag');
+            if (tagEl) tagEl.textContent = _mghlTag(_mghl.streak);
             var isRecord = _mghl.streak > _mghl.best;
             if (isRecord) _mghl.best = _mghl.streak;
             var bestEl = document.getElementById('mghl-over-best');
