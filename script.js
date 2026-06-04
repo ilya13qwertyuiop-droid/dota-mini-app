@@ -884,8 +884,9 @@
             document.getElementById('mghl-guess').style.display = '';
             _mghlApplyHeat();            // серия 0 → свечение сброшено
             _mghl.inProgress = true;     // игра пошла — прогресс сохраняем при навигации
-            // Тинкер сразу слева (его 46 видно с порога) — тоже отыгрываем мем.
-            if (_mghlIsTinkerMeme(_mghl.ref)) _mghlMeme();
+            // Тинкер сразу слева (его 46 видно на карточке) — даём полю прорисоваться,
+            // потом мем. Число остаётся на карточке после ухода картинки.
+            if (_mghlIsTinkerMeme(_mghl.ref)) setTimeout(_mghlMeme, 650);
         };
 
         // Переключение «сообщение (загрузка/пусто) ↔ игровое поле».
@@ -913,14 +914,21 @@
             rc.classList.add(correct ? 'mghl-correct' : 'mghl-wrong');
             document.getElementById('mghl-guess').style.display = 'none';
             _mghlHaptic(correct ? 'ok' : 'bad');
-            // Раскрылись аномальные 46 смертей Тинкера — выезжает мем.
-            if (_mghlIsTinkerMeme(_mghl.chal)) _mghlMeme();
+            // Мем Тинкера: СНАЧАЛА даём прочитать раскрытые 46 смертей, ПОТОМ
+            // выезжает картинка, и только ПОСЛЕ её ухода — переход к раунду.
+            // Иначе мем перекрывал число и весь смысл (абсурдные смерти) терялся.
+            var tink = _mghlIsTinkerMeme(_mghl.chal);
+            var READ_MS = 950;                 // пауза «прочитать число» до мема
+            var MEME_MS = 2400;                // длительность оверлея (см. _mghlMeme)
+            if (tink) setTimeout(_mghlMeme, READ_MS);
+            var advanceDelay = tink ? (READ_MS + MEME_MS + 100) : 1150;
+            var overDelay    = tink ? (READ_MS + MEME_MS + 100) : 1450;
             if (correct) {
                 _mghl.streak++; _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
                 // Дать раскрытому числу «продышаться» перед уездом.
-                setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, 1150);
+                setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, advanceDelay);
             } else {
-                setTimeout(_mghlGameOver, 1450);
+                setTimeout(_mghlGameOver, overDelay);
             }
         };
 
