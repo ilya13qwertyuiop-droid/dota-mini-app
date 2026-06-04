@@ -9006,6 +9006,32 @@ margin-top: var(--space-4);
 /* ── Игра «Выше / Ниже» (карточная вёрстка в стиле аппа) ────────────── */
 /* Верхний отступ как у обычных .page (был 0 → шапку обрезало сверху). */
 #page-minigame-hl { padding: var(--space-5) var(--space-4) calc(var(--nav-height) + 24px); }
+
+/* Амбиентное свечение по краям — растёт с серией. Центр всегда прозрачный
+   (карточки не трогаем), цвет — accent (не красный/золото). pointer-events:none. */
+#mghl-heat {
+  position: fixed; inset: 0; z-index: 5; pointer-events: none;
+  opacity: 0; box-shadow: inset 0 0 0 0 transparent;
+  transition: opacity 0.5s ease, box-shadow 0.5s ease;
+}
+#mghl-heat.mghl-heat--1 {
+  opacity: 1;
+  box-shadow: inset 0 0 70px -14px color-mix(in oklch, var(--accent) 32%, transparent);
+}
+#mghl-heat.mghl-heat--2 {
+  opacity: 1;
+  box-shadow: inset 0 0 100px -12px color-mix(in oklch, var(--accent) 46%, transparent);
+  animation: mghlHeatPulse 2.4s ease-in-out infinite;
+}
+#mghl-heat.mghl-heat--3 {
+  opacity: 1;
+  box-shadow: inset 0 0 130px -10px color-mix(in oklch, var(--accent) 60%, transparent);
+  animation: mghlHeatPulse 1.5s ease-in-out infinite;
+}
+@keyframes mghlHeatPulse { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  #mghl-heat.mghl-heat--2, #mghl-heat.mghl-heat--3 { animation: none; }
+}
 /* Кнопка лидерборда в шапке — прижата вправо, как tm-back-btn по стилю. */
 .mghl-head-lb {
   appearance: none; margin-left: auto;

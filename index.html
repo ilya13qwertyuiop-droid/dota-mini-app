@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=196" />
+    <link rel="stylesheet" href="styles.css?v=197" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -96,17 +96,6 @@
               <div class="home-draft-placeholder">Сыграй свой первый драфт</div>
             </div>
             <div class="home-widget-cta" id="home-draft-cta">Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
-          </button>
-
-          <button class="home-card home-widget home-widget--wide home-widget--quiz" id="home-quiz-widget" onclick="switchPage('quiz')">
-            <div class="home-widget-head">
-              <span class="section-eyebrow">Мини-игры</span>
-            </div>
-            <div class="home-widget-body home-quiz-body">
-              <div class="home-quiz-title">Найти сигнатурку</div>
-              <div class="home-quiz-subtitle">Подбор позиции и сигнатурных героев под твой плейстайл</div>
-            </div>
-            <div class="home-widget-cta">Открыть <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
           </button>
         </div>
 
@@ -533,6 +522,8 @@
 
       <!-- Мини-игра «Выше / Ниже» -->
       <div id="page-minigame-hl" class="page">
+        <!-- Амбиентное свечение по краям: нарастает с серией (см. _mghlApplyHeat). -->
+        <div id="mghl-heat" aria-hidden="true"></div>
         <div class="tm-page-head">
           <button type="button" class="tm-back-btn" onclick="switchPage('quiz')" aria-label="Назад">
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
@@ -1530,6 +1521,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=233"></script>
+    <script defer src="script.js?v=234"></script>
   </body>
 </html>

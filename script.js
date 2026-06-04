@@ -673,6 +673,14 @@
             if (s) { s.classList.remove('mghl-pop'); void s.offsetWidth; s.classList.add('mghl-pop'); }
             if (_mghl.streak > 0 && _mghl.streak % 5 === 0) _mghlHaptic('milestone');
         }
+        // Амбиентное свечение по краям растёт тирами: 10 / 20 / 30+.
+        function _mghlApplyHeat() {
+            var h = document.getElementById('mghl-heat');
+            if (!h) return;
+            var s = _mghl.streak;
+            var lvl = s >= 30 ? 3 : s >= 20 ? 2 : s >= 10 ? 1 : 0;
+            h.className = lvl ? ('mghl-heat--' + lvl) : '';
+        }
         // Запоминаем недавних героев, чтобы не повторялись в сессии.
         function _mghlRemember(id) {
             _mghl.recent.push(id);
@@ -752,6 +760,7 @@
             _mghlRenderLeft(_mghl.ref);
             _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
+            _mghlApplyHeat();            // серия 0 → свечение сброшено
             _mghl.inProgress = true;     // игра пошла — прогресс сохраняем при навигации
         };
 
@@ -781,7 +790,7 @@
             document.getElementById('mghl-guess').style.display = 'none';
             _mghlHaptic(correct ? 'ok' : 'bad');
             if (correct) {
-                _mghl.streak++; _mghlSetScore(); _mghlPulseStreak();
+                _mghl.streak++; _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
                 // Дать раскрытому числу «продышаться» перед уездом.
                 setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, 1150);
             } else {
@@ -821,6 +830,7 @@
 
         function _mghlGameOver() {
             _mghl.inProgress = false;    // серия окончена — больше не возобновляем
+            var heat = document.getElementById('mghl-heat'); if (heat) heat.className = '';
             document.getElementById('mghl-play').hidden = true;
             var over = document.getElementById('mghl-over'); over.hidden = false;
             document.getElementById('mghl-over-streak').textContent = _mghl.streak;
