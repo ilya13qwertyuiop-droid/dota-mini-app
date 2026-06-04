@@ -1634,17 +1634,41 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
 # (популярность из dota2protracker + длительность/ранг из наших матчей)
 # ---------------------------------------------------------------------------
 
-_MINIGAME_HL_KEY = "minigame_hl_pool_v4"   # v4: популярность из hero_stats.json (Stratz)
+_MINIGAME_HL_KEY = "minigame_hl_pool_v5"   # v5: + средние kills/deaths за игру (hero_detailed_stats.json)
 _MINIGAME_HL_TTL_SEC = 12 * 3600
 _MINIGAME_HL_FALLBACK_DAYS = 14            # окно для fallback по нашим матчам
 
 
+def _mghl_per_game(val, matches: int | None):
+    """Приводит значение из hero_detailed_stats.json к «среднему за игру».
+
+    Файл может отдавать как уже усреднённые значения (Stratz обычно так),
+    так и суммарные. Эвристика: среднее число убийств/смертей за игру в Dota
+    лежит в правдоподобном диапазоне (единицы–десятки), поэтому значение < 60
+    считаем уже усреднённым; иначе делим на число матчей героя."""
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0:
+        return None
+    if v < 60:                       # уже среднее за игру
+        return round(v, 1)
+    if matches and matches > 0:      # суммарное → делим на число игр
+        return round(v / matches, 1)
+    return None
+
+
 def get_minigame_hl_pool(force: bool = False) -> list[dict]:
-    """Пул героев для «Выше/Ниже». ЕДИНСТВЕННАЯ ось сравнения — популярность
-    (число матчей героя). Источник по приоритету:
+    """Пул героев для «Выше/Ниже». Несколько осей сравнения:
+      • matches — популярность (число матчей героя);
+      • kills   — среднее число убийств за игру;
+      • deaths  — среднее число смертей за игру.
+    Популярность по приоритету:
       1) hero_stats.json (Stratz, без фильтра по рангу) — matchCount на героя;
       2) dota_builds.json — sum(num_matches) по позициям героя;
       3) наши матчи в БД — число пиков за последние N дней.
+    kills/deaths — из hero_detailed_stats.json (если есть; иначе ключи опущены).
     Кэшируется на _MINIGAME_HL_TTL_SEC (раз в 12ч)."""
     if not force:
         cached = get_app_cache_value(_MINIGAME_HL_KEY)
@@ -1715,8 +1739,39 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
             except Exception:
                 continue
 
+    # Доп.оси kills/deaths из hero_detailed_stats.json — средние за игру.
+    detail: dict[int, dict] = {}
+    try:
+        det_path = root / "hero_detailed_stats.json"
+        if det_path.exists():
+            with open(det_path, encoding="utf-8") as f:
+                drows = json.load(f)
+            for r in (drows or []):
+                try:
+                    hid = int(r.get("heroId"))
+                except (TypeError, ValueError):
+                    continue
+                k = _mghl_per_game(r.get("kills"), pop.get(hid))
+                d = _mghl_per_game(r.get("deaths"), pop.get(hid))
+                m = {}
+                if k is not None:
+                    m["kills"] = k
+                if d is not None:
+                    m["deaths"] = d
+                if m:
+                    detail[hid] = m
+    except Exception as e:
+        logger.warning("[stats_db] minigame_hl: hero_detailed_stats.json read failed: %s", e)
+        detail = {}
+
     min_m = 20 if src == "matches" else 200
-    pool = [{"id": hid, "matches": m} for hid, m in pop.items() if m >= min_m]
+    pool = []
+    for hid, m in pop.items():
+        if m < min_m:
+            continue
+        entry = {"id": hid, "matches": m}
+        entry.update(detail.get(hid, {}))
+        pool.append(entry)
 
     if pool:
         set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})

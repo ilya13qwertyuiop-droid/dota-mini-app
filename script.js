@@ -635,9 +635,18 @@
         // сверху (значение показано), претендент снизу (скрыт). Угадал —
         // претендент уезжает наверх (становится эталоном), снизу приезжает
         // новый. Данные из /minigames/hl/pool (кэш 12ч).
-        var _mghl = { pool: [], best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over' };
+        // Режимы сравнения. metric — поле в объекте героя; game — id для рекордов
+        // и лидерборда (per-mode); fmt — как показать значение на карточке.
+        function _mghlDec(v) { return (Math.round(v * 10) / 10).toFixed(1).replace('.', ','); }
+        var _MGHL_MODES = {
+            pop:    { metric: 'matches', game: 'hl_pop',    q: 'Кого чаще берут?',  short: 'Популярность', fmt: function (v) { return _mghlNum(v) + ' матчей'; } },
+            kills:  { metric: 'kills',   game: 'hl_kills',  q: 'Кто чаще убивает?', short: 'Убийства',     fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
+            deaths: { metric: 'deaths',  game: 'hl_deaths', q: 'Кто чаще умирает?', short: 'Смерти',       fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
+        };
+        var _mghl = { pool: [], workingPool: [], mode: null, metric: 'matches', game: 'hl_pop', best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over' };
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-        function _mghlFmt(v) { return _mghlNum(v) + ' матчей'; }
+        function _mghlVal(h) { return h[_mghl.metric]; }
+        function _mghlFmt(v) { return (_mghl.mode ? _mghl.mode.fmt : _MGHL_MODES.pop.fmt)(v); }
         function _mghlName(id) {
             // Полное английское имя героя — как везде в аппе.
             return (window.dotaHeroIdToName || {})[id] || ('Hero ' + id);
@@ -684,16 +693,16 @@
         // Запоминаем недавних героев, чтобы не повторялись в сессии.
         function _mghlRemember(id) {
             _mghl.recent.push(id);
-            var cap = Math.max(0, Math.min(_mghl.pool.length - 2, 40));
+            var cap = Math.max(0, Math.min(_mghl.workingPool.length - 2, 40));
             while (_mghl.recent.length > cap) _mghl.recent.shift();
         }
         // Выбор «свежего» героя: не из недавних и с другим значением (без ничьих).
-        function _mghlPickFresh(avoidMatches) {
-            var avail = _mghl.pool.filter(function (h) {
-                return _mghl.recent.indexOf(h.id) === -1 && h.matches !== avoidMatches;
+        function _mghlPickFresh(avoidVal) {
+            var avail = _mghl.workingPool.filter(function (h) {
+                return _mghl.recent.indexOf(h.id) === -1 && _mghlVal(h) !== avoidVal;
             });
-            if (!avail.length) avail = _mghl.pool.filter(function (h) { return h.matches !== avoidMatches; });
-            if (!avail.length) avail = _mghl.pool.slice();
+            if (!avail.length) avail = _mghl.workingPool.filter(function (h) { return _mghlVal(h) !== avoidVal; });
+            if (!avail.length) avail = _mghl.workingPool.slice();
             var h = avail[Math.floor(Math.random() * avail.length)];
             _mghlRemember(h.id);
             return h;
@@ -702,7 +711,7 @@
             document.getElementById('mghl-left-img').src = _mghlImg(h.id);
             document.getElementById('mghl-left-img').style.visibility = '';
             document.getElementById('mghl-left-name').textContent = _mghlName(h.id);
-            document.getElementById('mghl-left-val').textContent = _mghlFmt(h.matches);
+            document.getElementById('mghl-left-val').textContent = _mghlFmt(_mghlVal(h));
         }
         function _mghlRenderRight(h) {
             document.getElementById('mghl-right-img').src = _mghlImg(h.id);
@@ -716,21 +725,52 @@
 
         window.goToMinigameHL = function () {
             switchPage('minigame-hl');
-            // Прогресс сохраняется при перемещении внутри аппа: если игра уже
-            // идёт — просто возвращаемся к ней, не сбрасывая серию.
-            if (!_mghl.inProgress) mghlStart();
+            // Прогресс сохраняется при перемещении внутри аппа: если серия уже
+            // идёт — возвращаемся к ней, не сбрасывая. Иначе — выбор режима.
+            if (_mghl.inProgress) return;
+            mghlShowModes();
         };
 
-        // Контекстная кнопка «назад» в шапке: если открыта таблица лидеров —
-        // закрываем её (возврат туда, откуда открыли), иначе выходим в список игр.
+        // Контекстная кнопка «назад» в шапке. Таблица лидеров → закрыть.
+        // Игра/результат → вернуться к выбору режима. Выбор режима → список игр.
         window.mghlBack = function () {
             var lb = document.getElementById('mghl-lb');
             if (lb && !lb.hidden) { mghlCloseLeaderboard(); return; }
+            var modes = document.getElementById('mghl-modes');
+            if (modes && modes.hidden) { mghlShowModes(); return; }
             switchPage('quiz');
         };
 
+        // Экран выбора режима — три оси сравнения. Текущая серия сбрасывается.
+        window.mghlShowModes = function () {
+            _mghl.inProgress = false;
+            var ids = ['mghl-play', 'mghl-over', 'mghl-lb'];
+            ids.forEach(function (id) { var el = document.getElementById(id); if (el) el.hidden = true; });
+            var heat = document.getElementById('mghl-heat'); if (heat) heat.className = '';
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = false;
+        };
+
+        // Выбор режима → начинаем партию в этой оси.
+        window.mghlChooseMode = function (key) {
+            var mode = _MGHL_MODES[key];
+            if (!mode) return;
+            _mghl.mode = mode;
+            _mghl.metric = mode.metric;
+            _mghl.game = mode.game;
+            _mghl.best = 0;              // рекорд per-mode — подтянем при старте
+            _mghl.lb = null;             // лидерборд per-mode — сбрасываем кэш
+            _mghl.loaded_best = null;    // форсируем перезагрузку рекорда
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
+            var q = document.getElementById('mghl-q'); if (q) q.textContent = mode.q;
+            mghlStart();
+        };
+
+        // Перезапуск текущего режима (кнопка «Ещё раз»).
+        window.mghlReplay = function () { mghlStart(); };
+
         window.mghlStart = async function () {
             _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
             var lb = document.getElementById('mghl-lb'); if (lb) lb.hidden = true;
             var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
@@ -744,27 +784,40 @@
                 rc.classList.remove('mghl-correct', 'mghl-wrong');
             }
             _mghlSetScore();
+            var tok = _mghlTok();
+            // Пул героев общий для всех режимов — грузим один раз.
             if (!_mghl.loaded) {
                 _mghlShowMsg('Загрузка…');
-                var tok = _mghlTok();
                 try {
                     var pr = await apiFetch(window.API_BASE_URL + '/minigames/hl/pool?token=' + encodeURIComponent(tok));
                     var pd = await pr.json();
                     _mghl.pool = (pd && pd.heroes) || [];
-                    var br = await apiFetch(window.API_BASE_URL + '/minigames/best?token=' + encodeURIComponent(tok) + '&game=hl');
+                    _mghl.loaded = true;
+                } catch (e) { console.warn('[mghl] load pool:', e); }
+            }
+            // Рекорд — per-mode: подтягиваем при первом старте режима.
+            if (_mghl.loaded_best !== _mghl.game) {
+                _mghlShowMsg('Загрузка…');
+                try {
+                    var br = await apiFetch(window.API_BASE_URL + '/minigames/best?token=' + encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
                     var bd = await br.json();
                     _mghl.best = (bd && bd.best) || 0;
-                    _mghl.loaded = true;
-                } catch (e) { console.warn('[mghl] load:', e); }
+                    _mghl.loaded_best = _mghl.game;
+                } catch (e) { console.warn('[mghl] load best:', e); }
             }
-            if (_mghl.pool.length < 2) {
+            // Рабочий пул режима: только герои, у которых есть нужная метрика.
+            _mghl.workingPool = _mghl.pool.filter(function (h) {
+                var v = h[_mghl.metric];
+                return typeof v === 'number' && v > 0;
+            });
+            if (_mghl.workingPool.length < 2) {
                 _mghlShowMsg('Пока недостаточно данных. Загляни позже.');
                 return;
             }
             _mghlShowMsg(null);          // прячем сообщение, показываем игру
             _mghlSetScore();
             _mghl.ref = _mghlPickFresh(null);
-            _mghl.chal = _mghlPickFresh(_mghl.ref.matches);
+            _mghl.chal = _mghlPickFresh(_mghlVal(_mghl.ref));
             _mghlRenderLeft(_mghl.ref);
             _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
@@ -787,7 +840,7 @@
 
         window.mghlGuess = function (dir) {
             if (_mghl.busy) return; _mghl.busy = true;
-            var rm = _mghl.ref.matches, cm = _mghl.chal.matches;
+            var rm = _mghlVal(_mghl.ref), cm = _mghlVal(_mghl.chal);
             var correct = (dir === 'higher' && cm > rm) || (dir === 'lower' && cm < rm);
             var rc = document.getElementById('mghl-right');
             var rv = document.getElementById('mghl-right-val');
@@ -821,7 +874,7 @@
             var onEnd = function () {
                 rc.removeEventListener('animationend', onEnd);
                 _mghl.ref = _mghl.chal;                      // претендент → новый эталон
-                _mghl.chal = _mghlPickFresh(_mghl.ref.matches);
+                _mghl.chal = _mghlPickFresh(_mghlVal(_mghl.ref));
                 // Сброс анимаций/трансформаций, пересборка, въезд нового справа.
                 lc.style.animation = 'none'; rc.style.animation = 'none';
                 lc.style.transform = ''; rc.style.transform = '';
@@ -869,10 +922,10 @@
             if (tok) {
                 apiFetch(window.API_BASE_URL + '/minigames/score', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: tok, game: 'hl', streak: _mghl.streak })
+                    body: JSON.stringify({ token: tok, game: _mghl.game, streak: _mghl.streak })
                 }).then(function () {
                     return apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
-                        encodeURIComponent(tok) + '&game=hl');
+                        encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
                 }).then(function (r) { return r.json(); }).then(function (lb) {
                     _mghl.lb = lb;
                     _mghlRenderRank();
@@ -922,6 +975,8 @@
         window.mghlOpenLeaderboard = function () {
             // Откуда открыли — чтобы корректно вернуться (во время игры или с результата).
             _mghl.lbReturn = (!document.getElementById('mghl-play').hidden) ? 'play' : 'over';
+            var title = document.getElementById('mghl-lb-title');
+            if (title) title.textContent = _mghl.mode ? ('Лидеры · ' + _mghl.mode.short) : 'Таблица лидеров';
             _mghlShowLb();
             if (_mghl.lb) _mghlRenderLeaderboard();
             else {
@@ -931,7 +986,7 @@
             // Всегда подтягиваем свежую таблицу (сервер кэширует 60с — дёшево).
             var tok = _mghlTok();
             apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
-                encodeURIComponent(tok) + '&game=hl')
+                encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game))
                 .then(function (r) { return r.json(); })
                 .then(function (lb) {
                     _mghl.lb = lb;

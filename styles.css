@@ -9016,6 +9016,44 @@ margin-top: var(--space-4);
 }
 #mghl-play[hidden] { display: none; }   /* display:flex иначе перебил бы hidden */
 
+/* Экран выбора режима — три оси сравнения. Центрируем по вертикали,
+   как и игровое поле, чтобы не было пустоты снизу. */
+.mghl-modes {
+  min-height: calc(100dvh - 230px);
+  display: flex; flex-direction: column; justify-content: center;
+  gap: var(--space-3); padding: var(--space-4) 0;
+}
+.mghl-modes[hidden] { display: none; }
+.mghl-mode {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left;
+  padding: var(--space-4);
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.mghl-mode:hover { background: var(--bg-elevated); border-color: var(--border-default); }
+.mghl-mode:active { transform: scale(0.99); }
+.mghl-mode-ic {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-md);
+  background: var(--bg-elevated); color: var(--accent);
+}
+.mghl-mode-ic i { font-size: 20px; }
+.mghl-mode-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mghl-mode-name { font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary); }
+.mghl-mode-sub { font-size: var(--text-sm); color: var(--text-tertiary); }
+.mghl-mode-go { flex: 0 0 auto; font-size: 16px; color: var(--text-tertiary); }
+
+/* Кнопка «Сменить режим» на экране результата — тихая текстовая. */
+.mghl-over-modes {
+  background: none; border: none; cursor: pointer;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-tertiary);
+  transition: color 0.15s ease;
+}
+.mghl-over-modes:hover { color: var(--text-secondary); }
+
 /* Компактная строка счёта — не перетягивает внимание на себя. */
 .mghl-bar {
   display: flex; align-items: center; justify-content: center; gap: var(--space-4);
