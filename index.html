@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=199" />
+    <link rel="stylesheet" href="styles.css?v=200" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -551,7 +551,7 @@
               <span class="mghl-bar-item">Рекорд <b id="mghl-best">0</b></span>
             </div>
 
-            <div class="mghl-q" id="mghl-q">Кого чаще пикают?</div>
+            <div class="mghl-q" id="mghl-q">Больше или меньше матчей?</div>
 
             <div class="mghl-duel">
               <!-- Слева — известный герой (значение показано) -->
@@ -560,15 +560,14 @@
                 <div class="mghl-card-name" id="mghl-left-name"></div>
                 <div class="mghl-card-val" id="mghl-left-val"></div>
               </div>
-              <!-- Справа — претендент (скрыт, по нему угадываем) -->
-              <div class="mghl-card" id="mghl-right">
+              <!-- Справа — претендент (его и угадываем): помечен как «вопрос». -->
+              <div class="mghl-card mghl-card--q" id="mghl-right">
                 <div class="mghl-portrait"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
                 <div class="mghl-card-name" id="mghl-right-name"></div>
                 <div class="mghl-card-val mghl-card-val--hidden" id="mghl-right-val">?</div>
               </div>
             </div>
 
-            <div class="mghl-guess-hint">У правого героя матчей больше или меньше?</div>
             <div class="mghl-guess" id="mghl-guess">
               <button type="button" class="mghl-btn mghl-btn--up" onclick="mghlGuess('higher')">
                 <i class="ph ph-caret-up" aria-hidden="true"></i> Больше
@@ -587,8 +586,10 @@
           <div class="mghl-over-best" id="mghl-over-best"></div>
           <div class="mghl-rank" id="mghl-rank" hidden></div>
           <button type="button" class="tm-primary-btn" onclick="mghlStart()">Ещё раз</button>
-          <button type="button" class="tm-ghost-btn" onclick="mghlOpenLeaderboard()">Таблица лидеров</button>
-          <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться</button>
+          <div class="mghl-over-actions">
+            <button type="button" class="tm-ghost-btn" onclick="mghlOpenLeaderboard()">Рейтинг</button>
+            <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться</button>
+          </div>
         </div>
 
         <!-- Таблица лидеров -->
@@ -1529,6 +1530,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=236"></script>
+    <script defer src="script.js?v=237"></script>
   </body>
 </html>

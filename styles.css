@@ -9008,6 +9008,14 @@ margin-top: var(--space-4);
 .mghl-head-lb:hover { color: var(--text-primary); border-color: var(--border-strong); }
 .mghl-head-lb:active { transform: scale(0.94); }
 
+/* Игровой блок центрируем по вертикали в области под шапкой — чтобы не было
+   мёртвой пустоты снизу (контент больше не прижат к верху). */
+#mghl-play {
+  min-height: calc(100dvh - 230px);
+  display: flex; flex-direction: column; justify-content: center;
+}
+#mghl-play[hidden] { display: none; }   /* display:flex иначе перебил бы hidden */
+
 /* Компактная строка счёта — не перетягивает внимание на себя. */
 .mghl-bar {
   display: flex; align-items: center; justify-content: center; gap: var(--space-4);
@@ -9084,20 +9092,18 @@ margin-top: var(--space-4);
   color: var(--accent); text-align: center;
   transition: color 0.2s ease;
 }
-.mghl-card-val--hidden { color: var(--text-tertiary); }
+/* «?» у претендента — крупнее и читается как «загадка», не как пустое поле. */
+.mghl-card-val--hidden { color: var(--text-tertiary); font-size: var(--text-2xl); font-weight: var(--font-bold); }
+/* Правая карточка — это «вопрос»: тонкая accent-грань направляет, по кому жмём. */
+.mghl-card--q { border-color: color-mix(in oklch, var(--accent) 28%, var(--border-subtle)); }
 /* Момент раскрытия числа — главный хук жанра: число «впрыгивает». */
 .mghl-reveal-ok  { color: var(--positive); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
 .mghl-reveal-bad { color: var(--negative); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
 @keyframes mghlReveal { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .mghl-reveal-ok, .mghl-reveal-bad { animation: none; } }
 
-/* Подсказка над кнопками — связывает кнопки с правым (претендентом). */
-.mghl-guess-hint {
-  text-align: center; font-size: var(--text-sm); color: var(--text-secondary);
-  margin-top: var(--space-5); margin-bottom: var(--space-2);
-}
 /* Кнопки выбора — две равные, semantic-цвет по смыслу. */
-.mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-5); }
 .mghl-btn {
   appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 14px; border-radius: var(--radius-md); cursor: pointer; font-family: inherit;
@@ -9122,14 +9128,15 @@ margin-top: var(--space-4);
 .mghl-over-tag { font-size: var(--text-base); color: var(--text-secondary); margin-top: var(--space-2); letter-spacing: var(--tracking-tight); }
 .mghl-over-best { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-6); }
 .mghl-over-best--record { color: var(--accent); font-weight: var(--font-semibold); }
-.mghl-over .tm-primary-btn, .mghl-over .tm-ghost-btn { width: 100%; max-width: 320px; }
-/* Вторичные кнопки на экранах игры — с рамкой/фоном, чтобы читались как кнопки
-   (раньше были просто текстом на тёмном). */
+.mghl-over .tm-primary-btn { width: 100%; max-width: 320px; }
+/* Вторичные действия — строкой 2-в-ряд под главной кнопкой. */
+.mghl-over-actions { display: flex; gap: var(--space-2); width: 100%; max-width: 320px; margin-top: var(--space-2); }
+.mghl-over-actions .tm-ghost-btn { flex: 1; }
+/* Вторичные кнопки на экранах игры — с рамкой/фоном, чтобы читались как кнопки. */
 .mghl-over .tm-ghost-btn, .mghl-lb .tm-ghost-btn {
   border: 0.5px solid var(--border-default);
   background: var(--bg-surface);
   border-radius: var(--radius-md);
-  margin-top: var(--space-2);
 }
 .mghl-over .tm-ghost-btn:hover, .mghl-lb .tm-ghost-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
 
