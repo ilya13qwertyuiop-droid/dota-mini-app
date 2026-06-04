@@ -8975,7 +8975,9 @@ margin-top: var(--space-4);
   opacity: 0; box-shadow: inset 0 0 0 0 transparent;
   transition: opacity 0.5s ease, box-shadow 0.5s ease;
 }
-#page-minigame-hl > *:not(#mghl-heat) { position: relative; z-index: 1; }
+/* #mghl-meme исключён: это fixed-оверлей, правило с relative ниже не должно
+   возвращать его в поток (иначе картинка толкала бы контент вниз). */
+#page-minigame-hl > *:not(#mghl-heat):not(#mghl-meme) { position: relative; z-index: 1; }
 #mghl-heat.mghl-heat--1 {
   opacity: 1;
   box-shadow: inset 0 0 48px -6px color-mix(in oklch, var(--accent) 42%, transparent);
@@ -9154,23 +9156,31 @@ margin-top: var(--space-4);
 #mghl-meme {
   position: fixed; inset: 0; z-index: 9999;
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in oklch, var(--bg-base) 78%, transparent);
-  pointer-events: none;
+  background: color-mix(in oklch, var(--bg-base) 82%, transparent);
+  /* Перехватывает тапы, пока мем на экране — чтобы не угадать «вслепую». */
+  pointer-events: auto;
+  opacity: 0;
 }
 #mghl-meme[hidden] { display: none; }
+/* Плавное появление/уход фона-затемнения. */
+.mghl-meme--in  { animation: mghlMemeBgIn  0.40s ease forwards; }
+.mghl-meme--out { animation: mghlMemeBgOut 0.50s ease forwards; }
+@keyframes mghlMemeBgIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mghlMemeBgOut { from { opacity: 1; } to { opacity: 0; } }
 #mghl-meme-img {
   max-width: 92vw; max-height: 80vh;
   object-fit: contain; border-radius: var(--radius-lg);
-  transform: translateY(105%); opacity: 0;
+  transform: translateY(110%) scale(0.97); opacity: 0;
 }
-.mghl-meme--in #mghl-meme-img  { animation: mghlMemeIn  0.34s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
-.mghl-meme--out #mghl-meme-img { animation: mghlMemeOut 0.30s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
-@keyframes mghlMemeIn  { from { transform: translateY(105%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes mghlMemeOut { from { transform: translateY(0); opacity: 1; } to { transform: translateY(105%); opacity: 0; } }
+/* Вход — мягкое замедление (easeOutQuint), уход — плавный разгон вниз. */
+.mghl-meme--in #mghl-meme-img  { animation: mghlMemeIn  0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.mghl-meme--out #mghl-meme-img { animation: mghlMemeOut 0.5s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+@keyframes mghlMemeIn  { from { transform: translateY(110%) scale(0.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+@keyframes mghlMemeOut { from { transform: translateY(0) scale(1); opacity: 1; } to { transform: translateY(110%) scale(0.97); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   #mghl-meme-img { transform: none; }
-  .mghl-meme--in #mghl-meme-img  { animation: none; opacity: 1; }
-  .mghl-meme--out #mghl-meme-img { animation: none; opacity: 0; }
+  .mghl-meme--in,  .mghl-meme--in #mghl-meme-img  { animation: none; opacity: 1; }
+  .mghl-meme--out, .mghl-meme--out #mghl-meme-img { animation: none; opacity: 0; }
 }
 
 /* Кнопки выбора — две равные, semantic-цвет по смыслу. */

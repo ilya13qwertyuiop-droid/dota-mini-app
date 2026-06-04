@@ -741,18 +741,20 @@
             var ov = document.getElementById('mghl-meme');
             if (!ov || ov.dataset.broken === '1') return;
             _mghlMemeTimers.forEach(clearTimeout); _mghlMemeTimers = [];
+            ov.classList.remove('mghl-meme--in', 'mghl-meme--out');
             ov.hidden = false;
             void ov.offsetWidth;                 // reflow перед анимацией входа
             ov.classList.add('mghl-meme--in');
             _mghlHaptic('milestone');
+            // Держим картинку на экране дольше — мем должен «прочитаться».
             _mghlMemeTimers.push(setTimeout(function () {
                 ov.classList.remove('mghl-meme--in');
                 ov.classList.add('mghl-meme--out');
-            }, 1100));
+            }, 1900));
             _mghlMemeTimers.push(setTimeout(function () {
                 ov.classList.remove('mghl-meme--out');
                 ov.hidden = true;
-            }, 1500));
+            }, 2400));
         }
         function _mghlIsTinkerMeme(h) {
             return h && h.id === _MGHL_TINKER_ID && _mghl.metric === 'deaths';
