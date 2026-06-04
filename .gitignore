@@ -12,3 +12,4 @@ CLAUDE.md
 # Skill plugins (taste-skill via npx skills add)
 .agents/
 skills-lock.json
+hero_detailed_stats.json
