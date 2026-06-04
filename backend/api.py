@@ -1902,16 +1902,13 @@ async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = D
     except (TypeError, ValueError):
         ub = 0
 
-    scores = data.get("scores") or []
+    scores = data.get("scores") or []     # отсортировано по ВОЗРАСТАНИЮ (для bisect)
     total = data.get("total") or 0
     you = {"user_id": user_id, "best": ub, "rank": None, "percentile": None}
     if ub > 0 and total > 0:
-        greater = 0
-        for s in scores:          # отсортировано по убыванию
-            if s > ub:
-                greater += 1
-            else:
-                break
+        import bisect
+        le = bisect.bisect_right(scores, ub)   # сколько результатов <= твоего — O(log n)
+        greater = total - le                   # строго больше твоего
         rank = greater + 1
         you["rank"] = rank
         you["percentile"] = round(100 * (total - rank) / total) if total > 1 else 100

@@ -779,7 +779,30 @@
         };
 
         // Экран выбора режима — три оси сравнения. Текущая серия сбрасывается.
+        // Фиксируем текущую серию в рекорде при выходе из игры на середине.
+        // Без этого длинная серия без проигрыша (особенно в лёгком режиме
+        // «популярность») никогда не попадала бы в лидерборд — счёт пишется
+        // только на game-over. Шлём и при смене режима, и при сворачивании аппа.
+        function _mghlBankScore() {
+            if (!_mghl.inProgress || _mghl.streak <= 0) return;
+            var tok = _mghlTok(); if (!tok) return;
+            var game = _mghl.game, streak = _mghl.streak;
+            if (streak > _mghl.best) _mghl.best = streak;
+            apiFetch(window.API_BASE_URL + '/minigames/score', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: tok, game: game, streak: streak })
+            }).then(function () { _mghl.lbCache[game] = null; }).catch(function () {});
+        }
+        // Свернули/закрыли мини-апп с активной серией — успеваем зафиксировать.
+        if (!window._mghlVisBound) {
+            window._mghlVisBound = true;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') _mghlBankScore();
+            });
+        }
+
         window.mghlShowModes = function () {
+            _mghlBankScore();            // не теряем незавершённую серию
             _mghl.inProgress = false;
             var ids = ['mghl-play', 'mghl-over', 'mghl-lb'];
             ids.forEach(function (id) { var el = document.getElementById(id); if (el) el.hidden = true; });
