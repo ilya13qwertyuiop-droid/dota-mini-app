@@ -1968,9 +1968,9 @@ async def api_minigame_share_image(
 
     heroes = [(_slug(h1), _nm(n1)), (_slug(h2), _nm(n2))]
     from backend.share_card import render_share_card
-    png = await asyncio.to_thread(render_share_card, mode, streak, heroes)
+    jpg = await asyncio.to_thread(render_share_card, mode, streak, heroes)
     return Response(
-        content=png, media_type="image/png",
+        content=jpg, media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=86400"},
     )
 

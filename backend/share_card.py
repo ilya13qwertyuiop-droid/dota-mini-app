@@ -118,8 +118,10 @@ def _cache_key(mode: str, streak: int, heroes) -> str:
 
 def render_share_card(mode: str, streak: int, heroes: list[tuple[str, str]]) -> bytes:
     """Рендерит PNG-карточку результата. heroes = [(slug, display_name), …] (2 шт)."""
+    # JPEG, а не PNG: Telegram InlineQueryResultPhoto принимает только JPEG —
+    # PNG отдаётся браузеру нормально, но при отправке inline-фото отклоняется.
     key = _cache_key(mode, streak, heroes)
-    cached = _CACHE / f"{key}.png"
+    cached = _CACHE / f"{key}.jpg"
     if cached.exists():
         try:
             return cached.read_bytes()
@@ -192,20 +194,19 @@ def render_share_card(mode: str, streak: int, heroes: list[tuple[str, str]]) -> 
         gx += av_sz + 14
     d.text((gx, av_y + av_sz / 2), name, font=f_brand, fill=_TEXT, anchor="lm")
 
-    out = img
+    from io import BytesIO
+    buf = BytesIO()
+    img.save(buf, "JPEG", quality=90, optimize=True)
+    data = buf.getvalue()
     try:
         _CACHE.mkdir(parents=True, exist_ok=True)
-        out.save(cached, "PNG")
-        from io import BytesIO
-        buf = BytesIO(); out.save(buf, "PNG")
-        return buf.getvalue()
+        cached.write_bytes(data)
     except Exception:
-        from io import BytesIO
-        buf = BytesIO(); out.save(buf, "PNG")
-        return buf.getvalue()
+        pass
+    return data
 
 
 if __name__ == "__main__":
     data = render_share_card("kills", 23, [("pudge", "Pudge"), ("tinker", "Tinker")])
-    (_ROOT / "assets" / "_sample_card.png").write_bytes(data)
-    print("wrote assets/_sample_card.png", len(data), "bytes")
+    (_ROOT / "assets" / "_sample_card.jpg").write_bytes(data)
+    print("wrote assets/_sample_card.jpg", len(data), "bytes, magic:", data[:3])
