@@ -736,7 +736,18 @@
         // Мем-оверлей: картинка выезжает на весь экран, держится и уезжает.
         // Триггерится при раскрытии аномальных смертей Тинкера. Если картинки
         // нет (onerror пометил data-broken) — тихо ничего не делаем.
+        // Длительности — общие константы (используются и при планировании
+        // перехода к следующему раунду в mghlGuess), чтобы тайминги не разъезжались.
+        var _MGHL_MEME_MS = 2400;       // полная длительность оверлея от вызова
+        var _MGHL_MEME_OUT_MS = 500;    // длительность ухода (совпадает с CSS)
         var _mghlMemeTimers = [];
+        // Снять мем мгновенно (новый раунд/смена режима) — чтобы картинка не
+        // перетекала поверх свежего экрана.
+        function _mghlHideMeme() {
+            _mghlMemeTimers.forEach(clearTimeout); _mghlMemeTimers = [];
+            var ov = document.getElementById('mghl-meme');
+            if (ov) { ov.classList.remove('mghl-meme--in', 'mghl-meme--out'); ov.hidden = true; }
+        }
         function _mghlMeme() {
             var ov = document.getElementById('mghl-meme');
             if (!ov || ov.dataset.broken === '1') return;
@@ -746,15 +757,15 @@
             void ov.offsetWidth;                 // reflow перед анимацией входа
             ov.classList.add('mghl-meme--in');
             _mghlHaptic('milestone');
-            // Держим картинку на экране дольше — мем должен «прочитаться».
+            // Держим картинку на экране, потом уводим.
             _mghlMemeTimers.push(setTimeout(function () {
                 ov.classList.remove('mghl-meme--in');
                 ov.classList.add('mghl-meme--out');
-            }, 1900));
+            }, _MGHL_MEME_MS - _MGHL_MEME_OUT_MS));
             _mghlMemeTimers.push(setTimeout(function () {
                 ov.classList.remove('mghl-meme--out');
                 ov.hidden = true;
-            }, 2400));
+            }, _MGHL_MEME_MS));
         }
         function _mghlIsTinkerMeme(h) {
             return h && h.id === _MGHL_TINKER_ID && _mghl.metric === 'deaths';
@@ -763,9 +774,15 @@
         window.goToMinigameHL = function () {
             switchPage('minigame-hl');
             // Прогресс сохраняется при перемещении внутри аппа: если серия уже
-            // идёт — возвращаемся к ней, не сбрасывая. Иначе — выбор режима.
+            // идёт — возвращаемся к ней, не сбрасывая.
             if (_mghl.inProgress) return;
-            mghlShowModes();
+            // Снижаем трение для возвращающихся: сразу запускаем последний режим
+            // (меню режимов всегда под рукой — кнопка «назад» в игре и «Сменить
+            // режим» на экране результата). Новичку (режим не выбран) — выбор.
+            var last = null;
+            try { last = localStorage.getItem('mghl_last_mode'); } catch (e) { /* приватный режим */ }
+            if (last && _MGHL_MODES[last]) mghlChooseMode(last);
+            else mghlShowModes();
         };
 
         // Контекстная кнопка «назад» в шапке. Таблица лидеров → закрыть.
@@ -803,6 +820,7 @@
 
         window.mghlShowModes = function () {
             _mghlBankScore();            // не теряем незавершённую серию
+            _mghlHideMeme();             // снять мем, если завис от прошлого раунда
             _mghl.inProgress = false;
             var ids = ['mghl-play', 'mghl-over', 'mghl-lb'];
             ids.forEach(function (id) { var el = document.getElementById(id); if (el) el.hidden = true; });
@@ -816,6 +834,7 @@
             if (!mode) return;
             _mghl.mode = mode;
             _mghl.modeKey = key;
+            try { localStorage.setItem('mghl_last_mode', key); } catch (e) { /* приватный режим */ }
             _mghl.metric = mode.metric;
             _mghl.game = mode.game;
             _mghl.best = 0;              // рекорд per-mode — подтянем при старте
@@ -831,6 +850,7 @@
 
         window.mghlStart = async function () {
             _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
+            _mghlHideMeme();             // снять зависший мем перед новым раундом
             var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
             var lb = document.getElementById('mghl-lb'); if (lb) lb.hidden = true;
@@ -919,10 +939,9 @@
             // Иначе мем перекрывал число и весь смысл (абсурдные смерти) терялся.
             var tink = _mghlIsTinkerMeme(_mghl.chal);
             var READ_MS = 950;                 // пауза «прочитать число» до мема
-            var MEME_MS = 2400;                // длительность оверлея (см. _mghlMeme)
             if (tink) setTimeout(_mghlMeme, READ_MS);
-            var advanceDelay = tink ? (READ_MS + MEME_MS + 100) : 1150;
-            var overDelay    = tink ? (READ_MS + MEME_MS + 100) : 1450;
+            var advanceDelay = tink ? (READ_MS + _MGHL_MEME_MS + 100) : 1150;
+            var overDelay    = tink ? (READ_MS + _MGHL_MEME_MS + 100) : 1450;
             if (correct) {
                 _mghl.streak++; _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
                 // Дать раскрытому числу «продышаться» перед уездом.
