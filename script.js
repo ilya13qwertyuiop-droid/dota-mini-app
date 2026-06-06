@@ -991,23 +991,49 @@
             return 'мимо';
         }
 
+        // Счёт числа от 0 до target с ускорением (easeOutCubic) — даёт финалу «вес».
+        function _mghlCountUp(el, target) {
+            if (!el) return;
+            var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduce || target <= 0) { el.textContent = target; return; }
+            var dur = Math.min(950, 380 + target * 22), t0 = null;
+            function step(ts) {
+                if (t0 === null) t0 = ts;
+                var p = Math.min(1, (ts - t0) / dur);
+                el.textContent = Math.round((1 - Math.pow(1 - p, 3)) * target);
+                if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+            }
+            requestAnimationFrame(step);
+        }
+
         function _mghlGameOver() {
             _mghl.inProgress = false;    // серия окончена — больше не возобновляем
-            var heat = document.getElementById('mghl-heat'); if (heat) heat.className = '';
             document.getElementById('mghl-play').hidden = true;
             var over = document.getElementById('mghl-over'); over.hidden = false;
+            // Свечение НЕ гасим — оно завершает накопленную дугу (тир по финалу).
+            _mghlApplyHeat();
             var streakEl = document.getElementById('mghl-over-streak');
-            streakEl.textContent = _mghl.streak;
+            var t1 = _mghl.streak >= 10 && _mghl.streak < 20, t2 = _mghl.streak >= 20;
             // Цвет числа по тиру (slate-blue accent на 10+, ярче на 20+).
-            streakEl.classList.toggle('mghl-over-streak--t1', _mghl.streak >= 10 && _mghl.streak < 20);
-            streakEl.classList.toggle('mghl-over-streak--t2', _mghl.streak >= 20);
+            streakEl.classList.toggle('mghl-over-streak--t1', t1);
+            streakEl.classList.toggle('mghl-over-streak--t2', t2);
+            // Вход: масштаб + счёт от 0 — число «прилетает» как кульминация.
+            streakEl.classList.remove('mghl-result-pop'); void streakEl.offsetWidth;
+            streakEl.classList.add('mghl-result-pop');
+            _mghlCountUp(streakEl, _mghl.streak);
             var tagEl = document.getElementById('mghl-over-tag');
-            if (tagEl) tagEl.textContent = _mghlTag(_mghl.streak);
+            if (tagEl) {
+                tagEl.textContent = _mghlTag(_mghl.streak);
+                tagEl.classList.toggle('mghl-over-tag--t1', t1);
+                tagEl.classList.toggle('mghl-over-tag--t2', t2);
+            }
             var isRecord = _mghl.streak > _mghl.best;
             if (isRecord) _mghl.best = _mghl.streak;
             var bestEl = document.getElementById('mghl-over-best');
             bestEl.textContent = isRecord ? 'Новый рекорд' : ('Рекорд: ' + _mghl.best);
             bestEl.classList.toggle('mghl-over-best--record', isRecord);
+            // На рекорде с заметной серией — отклик успеха (а не только «провал»).
+            if (isRecord && _mghl.streak >= 5) _mghlHaptic('milestone');
             var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
             // Сохраняем результат → подтягиваем лидерборд → показываем ранг/перцентиль.
             var tok = _mghlTok();

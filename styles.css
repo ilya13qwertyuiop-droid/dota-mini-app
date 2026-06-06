@@ -9206,8 +9206,14 @@ margin-top: var(--space-4);
 /* Цвет числа по тиру серии: slate-blue accent на 10+, ярче на 20+ (без золота). */
 .mghl-over-streak--t1 { color: var(--accent); }
 .mghl-over-streak--t2 { color: color-mix(in oklch, var(--accent) 70%, var(--text-primary)); }
-/* Оценка серии — короткое слово, тихо. */
-.mghl-over-tag { font-size: var(--text-base); color: var(--text-secondary); margin-top: var(--space-2); letter-spacing: var(--tracking-tight); }
+/* Вход числа — «прилёт» с масштабом: завершает накопленную дугу. Без bounce. */
+.mghl-result-pop { animation: mghlResultIn 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes mghlResultIn { from { transform: scale(0.82); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mghl-result-pop { animation: none; } }
+/* Вердикт серии — крупно и в цвет тира (не мелким серым). */
+.mghl-over-tag { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--text-secondary); margin-top: var(--space-2); letter-spacing: var(--tracking-tight); transition: color 0.2s ease; }
+.mghl-over-tag--t1 { color: var(--accent); }
+.mghl-over-tag--t2 { color: color-mix(in oklch, var(--accent) 70%, var(--text-primary)); }
 .mghl-over-best { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-6); }
 .mghl-over-best--record { color: var(--accent); font-weight: var(--font-semibold); }
 .mghl-over .tm-primary-btn { width: 100%; max-width: 320px; }
