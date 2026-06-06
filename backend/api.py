@@ -1962,12 +1962,26 @@ def _normalize_mode(mode: str) -> str | None:
     return m if m in _MGHL_MODES_SET else None
 
 
-def _public_origin() -> str:
-    """scheme://host публичного мини-аппа (из MINI_APP_URL) — для абсолютного
-    photo_url, который Telegram должен скачать со стороны сервера."""
+def _public_base() -> str:
+    """Базовый публичный URL мини-аппа из MINI_APP_URL — С УЧЁТОМ пути-префикса.
+
+    Раньше брали только scheme://host и теряли префикс (на staging API живёт под
+    «/staging/api», а photo_url уходил на «/api» → 404, и Telegram не качал фото →
+    shareMessage callback=false). Теперь сохраняем путь:
+      "https://dotaquiz.blog/staging/"           → "https://dotaquiz.blog/staging"
+      "https://dotaquiz.blog/staging/index.html" → "https://dotaquiz.blog/staging"
+      "https://dotaquiz.blog/"                    → "https://dotaquiz.blog"
+    Возвращает без хвостового слэша; "" если URL невалиден.
+    """
     from urllib.parse import urlsplit
-    p = urlsplit(os.environ.get("MINI_APP_URL") or "")
-    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else ""
+    p = urlsplit((os.environ.get("MINI_APP_URL") or "").strip())
+    if not (p.scheme and p.netloc):
+        return ""
+    path = p.path or ""
+    # отбрасываем имя файла (последний сегмент с точкой, напр. index.html)
+    if path and "." in path.rsplit("/", 1)[-1]:
+        path = path.rsplit("/", 1)[0]
+    return f"{p.scheme}://{p.netloc}{path.rstrip('/')}"
 
 
 @app.get("/api/minigames/share-image")
@@ -2020,9 +2034,9 @@ async def api_minigame_share(data: MinigameShareReq):
     mode = _normalize_mode(data.mode)   # принимает и «deaths», и «hl_deaths»
     if mode is None:
         raise HTTPException(status_code=400, detail="bad mode")
-    origin = _public_origin()
-    if not origin:
-        logger.warning("[minigame_share] MINI_APP_URL не задаёт публичный origin")
+    base = _public_base()
+    if not base:
+        logger.warning("[minigame_share] MINI_APP_URL не задаёт публичный URL")
         raise HTTPException(status_code=503, detail="share unavailable")
 
     streak = max(0, min(int(data.streak), 100000))
@@ -2031,7 +2045,7 @@ async def api_minigame_share(data: MinigameShareReq):
         "mode": mode, "streak": streak,
         "h1": data.h1, "n1": data.n1, "h2": data.h2, "n2": data.n2,
     })
-    img_url = f"{origin}/api/minigames/share-image?{qs}"
+    img_url = f"{base}/api/minigames/share-image?{qs}"
 
     # ДИАГНОСТИКА: проверяем, что photo_url реально отдаёт картинку «снаружи»
     # (UA как у Telegram). Если статус не 200 / не image — Telegram тоже не
