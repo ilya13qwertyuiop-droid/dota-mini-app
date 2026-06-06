@@ -1013,20 +1013,13 @@
             // Свечение НЕ гасим — оно завершает накопленную дугу (тир по финалу).
             _mghlApplyHeat();
             var streakEl = document.getElementById('mghl-over-streak');
-            var t1 = _mghl.streak >= 10 && _mghl.streak < 20, t2 = _mghl.streak >= 20;
-            // Цвет числа по тиру (slate-blue accent на 10+, ярче на 20+).
-            streakEl.classList.toggle('mghl-over-streak--t1', t1);
-            streakEl.classList.toggle('mghl-over-streak--t2', t2);
             // Вход: масштаб + счёт от 0 — число «прилетает» как кульминация.
+            // Число — ЕДИНСТВЕННЫЙ accent на экране (остальное нейтральное).
             streakEl.classList.remove('mghl-result-pop'); void streakEl.offsetWidth;
             streakEl.classList.add('mghl-result-pop');
             _mghlCountUp(streakEl, _mghl.streak);
             var tagEl = document.getElementById('mghl-over-tag');
-            if (tagEl) {
-                tagEl.textContent = _mghlTag(_mghl.streak);
-                tagEl.classList.toggle('mghl-over-tag--t1', t1);
-                tagEl.classList.toggle('mghl-over-tag--t2', t2);
-            }
+            if (tagEl) tagEl.textContent = _mghlTag(_mghl.streak);
             var isRecord = _mghl.streak > _mghl.best;
             if (isRecord) _mghl.best = _mghl.streak;
             var bestEl = document.getElementById('mghl-over-best');

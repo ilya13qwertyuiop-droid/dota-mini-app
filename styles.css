@@ -9202,20 +9202,18 @@ margin-top: var(--space-4);
 .mghl-over { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--space-8) var(--space-4) var(--space-5); }
 .mghl-over[hidden] { display: none; }   /* без этого display:flex перебивал атрибут hidden */
 .mghl-over-label { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3); }
-.mghl-over-streak { font-size: var(--text-4xl); font-weight: var(--font-bold); font-family: var(--font-mono); color: var(--text-primary); line-height: 1; transition: color 0.2s ease; }
-/* Цвет числа по тиру серии: slate-blue accent на 10+, ярче на 20+ (без золота). */
-.mghl-over-streak--t1 { color: var(--accent); }
-.mghl-over-streak--t2 { color: color-mix(in oklch, var(--accent) 70%, var(--text-primary)); }
+/* Число — ЕДИНСТВЕННЫЙ accent на экране (правило 60-30-10): остальное —
+   нейтральная серая шкала, иерархия через размер/вес, не через цвет. */
+.mghl-over-streak { font-size: var(--text-4xl); font-weight: var(--font-bold); font-family: var(--font-mono); color: var(--accent); line-height: 1; }
 /* Вход числа — «прилёт» с масштабом: завершает накопленную дугу. Без bounce. */
 .mghl-result-pop { animation: mghlResultIn 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes mghlResultIn { from { transform: scale(0.82); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .mghl-result-pop { animation: none; } }
-/* Вердикт серии — крупно и в цвет тира (не мелким серым). */
-.mghl-over-tag { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--text-secondary); margin-top: var(--space-2); letter-spacing: var(--tracking-tight); transition: color 0.2s ease; }
-.mghl-over-tag--t1 { color: var(--accent); }
-.mghl-over-tag--t2 { color: color-mix(in oklch, var(--accent) 70%, var(--text-primary)); }
-.mghl-over-best { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-6); }
-.mghl-over-best--record { color: var(--accent); font-weight: var(--font-semibold); }
+/* Вердикт серии — нейтральный, подчинён числу (размер, не цвет). */
+.mghl-over-tag { font-size: var(--text-lg); font-weight: var(--font-medium); color: var(--text-secondary); margin-top: var(--space-2); letter-spacing: var(--tracking-tight); }
+/* Рекорд — тихо (tertiary); новый рекорд — ярче ВЕСОМ, не синим. */
+.mghl-over-best { font-size: var(--text-sm); color: var(--text-tertiary); margin: var(--space-3) 0 var(--space-6); }
+.mghl-over-best--record { color: var(--text-primary); font-weight: var(--font-semibold); }
 .mghl-over .tm-primary-btn { width: 100%; max-width: 320px; }
 /* Вторичные действия — строкой 2-в-ряд под главной кнопкой. */
 .mghl-over-actions { display: flex; gap: var(--space-2); width: 100%; max-width: 320px; margin-top: var(--space-2); }
@@ -9230,7 +9228,7 @@ margin-top: var(--space-4);
 
 /* Строка ранга/перцентиля на экране результата. */
 .mghl-rank { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--space-5); }
-.mghl-rank-main { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--accent); }
+.mghl-rank-main { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--text-secondary); }
 .mghl-rank-sub { font-size: var(--text-2xs); color: var(--text-tertiary); font-family: var(--font-mono); }
 
 /* Таблица лидеров. */
