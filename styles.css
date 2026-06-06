@@ -9047,14 +9047,13 @@ margin-top: var(--space-4);
 .mghl-mode-sub { font-size: var(--text-sm); color: var(--text-tertiary); }
 .mghl-mode-go { flex: 0 0 auto; font-size: 16px; color: var(--text-tertiary); }
 
-/* Кнопка «Сменить режим» на экране результата — тихая текстовая. */
-.mghl-over-modes {
-  background: none; border: none; cursor: pointer;
-  margin-top: var(--space-3);
-  font-size: var(--text-sm); color: var(--text-tertiary);
-  transition: color 0.15s ease;
+/* «Сменить режим» — ghost-кнопка во всю ширину под рядом действий: тот же
+   язык, что у «Рейтинг»/«Поделиться», читается как «выход к выбору режима». */
+.mghl-over-switch {
+  width: 100%; max-width: 320px; margin-top: var(--space-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
-.mghl-over-modes:hover { color: var(--text-secondary); }
+.mghl-over-switch i { font-size: 16px; }
 
 /* Компактная строка счёта — не перетягивает внимание на себя. */
 .mghl-bar {

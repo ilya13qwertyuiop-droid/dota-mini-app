@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=205" />
+    <link rel="stylesheet" href="styles.css?v=206" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -622,11 +622,13 @@
           <div class="mghl-over-best" id="mghl-over-best"></div>
           <div class="mghl-rank" id="mghl-rank" hidden></div>
           <button type="button" class="tm-primary-btn" onclick="mghlReplay()">Ещё раз</button>
-          <button type="button" class="mghl-over-modes" onclick="mghlShowModes()">Сменить режим</button>
           <div class="mghl-over-actions">
             <button type="button" class="tm-ghost-btn" onclick="mghlOpenLeaderboard()">Рейтинг</button>
             <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться</button>
           </div>
+          <button type="button" class="tm-ghost-btn mghl-over-switch" onclick="mghlShowModes()">
+            <i class="ph ph-arrows-left-right" aria-hidden="true"></i> Сменить режим
+          </button>
         </div>
 
         <!-- Таблица лидеров: вкладки по режимам -->
