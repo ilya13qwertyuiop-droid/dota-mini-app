@@ -1969,9 +1969,16 @@ async def api_minigame_share_image(
     heroes = [(_slug(h1), _nm(n1)), (_slug(h2), _nm(n2))]
     from backend.share_card import render_share_card
     jpg = await asyncio.to_thread(render_share_card, mode, streak, heroes)
+    # Content-Encoding: identity — исключаем JPEG из GZipMiddleware: фетчер
+    # Telegram при отправке inline-фото не разжимает gzip и сохраняет битые
+    # байты (чёрный квадрат, фото не доходит). Браузер gzip разжимал прозрачно,
+    # поэтому в браузере GET выглядел рабочим. identity не даёт сжать и nginx-у.
     return Response(
         content=jpg, media_type="image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Content-Encoding": "identity",
+        },
     )
 
 
