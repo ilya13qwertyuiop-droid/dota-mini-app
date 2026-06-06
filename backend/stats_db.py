@@ -1806,9 +1806,25 @@ def get_minigame_hl_pool(force: bool = False) -> list[dict]:
 # Лидерборд мини-игр (по рекордной серии из user_profiles.settings.minigame_best)
 # ---------------------------------------------------------------------------
 
+import threading
+
 _MINIGAME_LB_TTL_SEC = 240     # лидерборду минутная свежесть не нужна — режем частоту сканов
 # v2: scores теперь по возрастанию (bisect). Версия в ключе игнорирует старые блобы.
 _MINIGAME_LB_KEY_PREFIX = "minigame_lb_v2_"
+
+# In-process быстрый слой (как у драфтера): на попадании — ноль обращений к БД и
+# парса blob. Плюс single-flight лок: при наплыве только ОДИН поток воркера
+# пересобирает, остальные ждут и читают готовое (нет thundering herd сканов).
+_MINIGAME_LB_MEM: dict[str, dict] = {}
+_MINIGAME_LB_LOCK = threading.Lock()
+
+
+def _lb_fresh(o) -> bool:
+    return (
+        isinstance(o, dict)
+        and o.get("built_at")
+        and (time.time() - float(o["built_at"])) < _MINIGAME_LB_TTL_SEC
+    )
 
 
 def _rebuild_all_minigame_leaderboards(top_n: int = 20) -> dict:
@@ -1860,24 +1876,38 @@ def _rebuild_all_minigame_leaderboards(top_n: int = 20) -> dict:
             top.append({"user_id": uid, "name": name, "photo_url": s.get("photo_url"), "best": b})
         out = {"built_at": now, "top": top, "total": total,
                "scores": sorted(b for (_u, b) in bests)}   # ascending — для bisect
-        set_app_cache_value(_MINIGAME_LB_KEY_PREFIX + g, out)
+        set_app_cache_value(_MINIGAME_LB_KEY_PREFIX + g, out)   # межворкерный шеринг
+        _MINIGAME_LB_MEM[g] = out                                # быстрый in-process слой
         built[g] = out
     return built
 
 
 def get_minigame_leaderboard(game: str, top_n: int = 20) -> dict:
-    """Лидерборд по рекордной серии в игре `game`. Кэш в app_cache на TTL.
-    При промахе кэша пересобирает ВСЕ режимы одним сканом (см. _rebuild_*)."""
-    key = _MINIGAME_LB_KEY_PREFIX + game
-    cached = get_app_cache_value(key)
-    if isinstance(cached, dict) and cached.get("built_at"):
-        if (time.time() - float(cached["built_at"])) < _MINIGAME_LB_TTL_SEC:
-            return cached
+    """Лидерборд по рекордной серии в игре `game`.
 
-    built = _rebuild_all_minigame_leaderboards(top_n)
-    if game in built:
-        return built[game]
-    # У игры пока нет результатов — кэшируем пустой, чтобы не сканировать каждый запрос.
-    empty = {"built_at": time.time(), "top": [], "total": 0, "scores": []}
-    set_app_cache_value(key, empty)
-    return empty
+    Три слоя: (1) in-process кэш — мгновенно, без БД; (2) single-flight лок —
+    при наплыве пересобирает только один поток воркера, остальные ждут; внутри
+    лока (3) перепроверяем межворкерный app_cache, прежде чем сканировать —
+    вдруг другой воркер уже пересобрал. Полный скан профилей идёт максимум раз
+    в TTL на воркер, а не на каждый запрос."""
+    o = _MINIGAME_LB_MEM.get(game)
+    if _lb_fresh(o):
+        return o
+
+    with _MINIGAME_LB_LOCK:
+        o = _MINIGAME_LB_MEM.get(game)               # другой поток мог пересобрать, пока ждали
+        if _lb_fresh(o):
+            return o
+        shared = get_app_cache_value(_MINIGAME_LB_KEY_PREFIX + game)
+        if _lb_fresh(shared):                        # другой ВОРКЕР уже пересобрал
+            _MINIGAME_LB_MEM[game] = shared
+            return shared
+
+        built = _rebuild_all_minigame_leaderboards(top_n)
+        if game in built:
+            return built[game]
+        # У игры пока нет результатов — кэшируем пустой, чтобы не сканировать каждый запрос.
+        empty = {"built_at": time.time(), "top": [], "total": 0, "scores": []}
+        set_app_cache_value(_MINIGAME_LB_KEY_PREFIX + game, empty)
+        _MINIGAME_LB_MEM[game] = empty
+        return empty

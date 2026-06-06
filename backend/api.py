@@ -1984,6 +1984,26 @@ def _public_base() -> str:
     return f"{p.scheme}://{p.netloc}{path.rstrip('/')}"
 
 
+# Один инициализированный Bot на процесс для prepared-сообщений: иначе на КАЖДЫЙ
+# шер поднимался новый http-клиент и делался лишний get_me. Telegram-Bot можно
+# безопасно шарить между конкурентными запросами (свой пул соединений).
+_share_bot = None
+_share_bot_lock = asyncio.Lock()
+
+
+async def _get_share_bot():
+    global _share_bot
+    if _share_bot is not None:
+        return _share_bot
+    async with _share_bot_lock:
+        if _share_bot is None:
+            from telegram import Bot
+            b = Bot(BOT_TOKEN)
+            await b.initialize()              # заполняет username, поднимает request-клиент
+            _share_bot = b
+    return _share_bot
+
+
 @app.get("/api/minigames/share-image")
 async def api_minigame_share_image(
     mode: str, streak: int,
@@ -2066,36 +2086,34 @@ async def api_minigame_share(data: MinigameShareReq):
 
     import secrets
     from telegram import (
-        Bot, InlineQueryResultPhoto, InlineKeyboardMarkup, InlineKeyboardButton,
+        InlineQueryResultPhoto, InlineKeyboardMarkup, InlineKeyboardButton,
     )
-    bot = Bot(BOT_TOKEN)
     try:
-        async with bot:                       # initialize() заполняет bot.username
-            play_url = f"https://t.me/{bot.username}?start=hl_share"
-            result = InlineQueryResultPhoto(
-                id=secrets.token_hex(8),       # уникальный id на каждый шер
-                photo_url=img_url,
-                thumbnail_url=img_url,
-                photo_width=1200,
-                photo_height=630,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
-                ),
-            )
-            # Все типы чатов разрешены явно — иначе Telegram отклоняет отправку
-            # (callback=false) после выбора получателя для неразрешённого типа.
-            prepared = await bot.save_prepared_inline_message(
-                int(user_id), result,
-                allow_user_chats=True,
-                allow_bot_chats=True,
-                allow_group_chats=True,
-                allow_channel_chats=True,
-            )
-            bot_username = bot.username       # фиксируем внутри контекста бота
+        bot = await _get_share_bot()          # один инициализированный Bot на процесс
+        play_url = f"https://t.me/{bot.username}?start=hl_share"
+        result = InlineQueryResultPhoto(
+            id=secrets.token_hex(8),           # уникальный id на каждый шер
+            photo_url=img_url,
+            thumbnail_url=img_url,
+            photo_width=1200,
+            photo_height=630,
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
+            ),
+        )
+        # Все типы чатов разрешены явно — иначе Telegram отклоняет отправку
+        # (callback=false) после выбора получателя для неразрешённого типа.
+        prepared = await bot.save_prepared_inline_message(
+            int(user_id), result,
+            allow_user_chats=True,
+            allow_bot_chats=True,
+            allow_group_chats=True,
+            allow_channel_chats=True,
+        )
         logger.info(
             "[minigame_share] prepared id=%s for user=%s (bot=@%s)",
-            prepared.id, user_id, bot_username,
+            prepared.id, user_id, bot.username,
         )
         return {"id": prepared.id}
     except Exception as e:
