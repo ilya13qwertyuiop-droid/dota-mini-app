@@ -2068,11 +2068,14 @@ async def api_minigame_share(data: MinigameShareReq):
                 allow_group_chats=True,
                 allow_channel_chats=True,
             )
+            bot_username = bot.username       # фиксируем внутри контекста бота
         logger.info(
             "[minigame_share] prepared id=%s for user=%s (bot=@%s)",
-            prepared.id, user_id, bot.username,
+            prepared.id, user_id, bot_username,
         )
-        return {"id": prepared.id}
+        # bot — имя бота-владельца prepared-сообщения. Telegram примет shareMessage
+        # только если мини-апп открыт ЭТИМ же ботом. Отдаём на фронт для сверки.
+        return {"id": prepared.id, "bot": bot_username}
     except Exception as e:
         logger.warning("[minigame_share] prepared message failed: %s", e)
         raise HTTPException(status_code=502, detail="share failed")

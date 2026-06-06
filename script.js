@@ -1086,16 +1086,21 @@
                     return;
                 }
                 var answered = false;
+                var ownerBot = r2.d.bot ? ('@' + r2.d.bot) : '?';
+                // Точный id и бот-владелец prepared-сообщения — видно прямо в UI.
+                // Если ownerBot ≠ бот, открывший мини-апп, Telegram отклонит шер.
+                showToast('id=' + r2.d.id + ' · владелец ' + ownerBot, 'ok');
                 try {
-                    tg.shareMessage(r2.d.id, function (sent) {
+                    tg.shareMessage(String(r2.d.id), function (sent) {
                         answered = true;
                         if (sent) showToast('Отправлено ✓', 'ok');
-                        else showToast('shareMessage callback=false (отменено/не ушло)');
+                        else showToast('callback=false · владелец ' + ownerBot +
+                            ' · id ' + String(r2.d.id).slice(0, 8));
                     });
                     // «Вечная загрузка» — если callback так и не пришёл.
                     setTimeout(function () {
-                        if (!answered) showToast('shareMessage: нет ответа 6с (id ' +
-                            String(r2.d.id).slice(0, 10) + '…)');
+                        if (!answered) showToast('shareMessage: нет ответа 6с · владелец ' +
+                            ownerBot + ' · id ' + String(r2.d.id).slice(0, 8));
                     }, 6000);
                 } catch (e) {
                     showToast('shareMessage error: ' + (e && e.message ? e.message : e));
