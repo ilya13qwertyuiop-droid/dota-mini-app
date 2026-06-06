@@ -2047,17 +2047,19 @@ async def api_minigame_share(data: MinigameShareReq):
     bot = Bot(BOT_TOKEN)
     try:
         async with bot:                       # initialize() заполняет bot.username
-            play_url = f"https://t.me/{bot.username}?start=hl_share"
+            # ── ДИАГНОСТИКА callback=false ───────────────────────────────────
+            # Изолируем причину: убрали inline-кнопку (URL-кнопку t.me deep-link)
+            # и photo_width/height. Если без кнопки shareMessage СРАБОТАЕТ —
+            # значит Telegram отклонял именно URL-кнопку в этом контексте, и CTA
+            # «Играть» придётся нести иначе (ссылкой в подписи). Кнопку вернём
+            # после подтверждения. play_url пока не нужен.
             result = InlineQueryResultPhoto(
-                id=secrets.token_hex(8),       # уникальный id на каждый шер (без переиспользования)
+                id=secrets.token_hex(8),       # уникальный id на каждый шер
                 photo_url=img_url,
                 thumbnail_url=img_url,
-                photo_width=1200,
-                photo_height=630,
+                title="Выше / Ниже",
+                description=caption,
                 caption=caption,
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
-                ),
             )
             # Все типы чатов разрешены явно — иначе Telegram отклоняет отправку
             # (callback=false) после выбора получателя для неразрешённого типа.
