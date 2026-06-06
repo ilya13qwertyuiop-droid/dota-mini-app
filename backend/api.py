@@ -2033,6 +2033,20 @@ async def api_minigame_share(data: MinigameShareReq):
     })
     img_url = f"{origin}/api/minigames/share-image?{qs}"
 
+    # ДИАГНОСТИКА: проверяем, что photo_url реально отдаёт картинку «снаружи»
+    # (UA как у Telegram). Если статус не 200 / не image — Telegram тоже не
+    # скачает и shareMessage даст callback=false. Полный URL — в лог.
+    img_status = ""
+    try:
+        _ir = httpx.get(
+            img_url, timeout=8.0, follow_redirects=True,
+            headers={"User-Agent": "TelegramBot (like TwitterBot)"},
+        )
+        img_status = f"{_ir.status_code} {_ir.headers.get('content-type', '?')} {len(_ir.content)}b"
+    except Exception as _e:
+        img_status = "ERR " + str(_e)[:80]
+    logger.info("[minigame_share] img_url=%s self-fetch=%s", img_url, img_status)
+
     from backend.share_card import _MODE_LABEL
     mode_name = _MODE_LABEL.get(mode, "")
     caption = (
@@ -2076,8 +2090,9 @@ async def api_minigame_share(data: MinigameShareReq):
             prepared.id, user_id, bot_username,
         )
         # bot — имя бота-владельца prepared-сообщения. Telegram примет shareMessage
-        # только если мини-апп открыт ЭТИМ же ботом. Отдаём на фронт для сверки.
-        return {"id": prepared.id, "bot": bot_username}
+        # только если мини-апп открыт ЭТИМ же ботом. img_status — самопроверка
+        # доступности картинки (см. выше). Отдаём на фронт для сверки в тосте.
+        return {"id": prepared.id, "bot": bot_username, "img_status": img_status}
     except Exception as e:
         logger.warning("[minigame_share] prepared message failed: %s", e)
         raise HTTPException(status_code=502, detail="share failed")

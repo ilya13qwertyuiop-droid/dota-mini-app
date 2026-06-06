@@ -1087,9 +1087,10 @@
                 }
                 var answered = false;
                 var ownerBot = r2.d.bot ? ('@' + r2.d.bot) : '?';
-                // Точный id и бот-владелец prepared-сообщения — видно прямо в UI.
-                // Если ownerBot ≠ бот, открывший мини-апп, Telegram отклонит шер.
-                showToast('id=' + r2.d.id + ' · владелец ' + ownerBot, 'ok');
+                // Точный id, бот-владелец и самопроверка картинки — видно в UI.
+                // Если ownerBot ≠ бот мини-аппа ИЛИ картинка не 200/image —
+                // Telegram отклонит шер (callback=false).
+                showToast('бот ' + ownerBot + ' · фото: ' + (r2.d.img_status || '?'), 'ok');
                 try {
                     tg.shareMessage(String(r2.d.id), function (sent) {
                         answered = true;
