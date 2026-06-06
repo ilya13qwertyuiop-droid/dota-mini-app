@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -196,11 +198,20 @@ def render_share_card(mode: str, streak: int, heroes: list[tuple[str, str]]) -> 
 
     from io import BytesIO
     buf = BytesIO()
-    img.save(buf, "JPEG", quality=90, optimize=True)
+    # Гарантируем RGB (JPEG без альфы) — на случай, если режим где-то стал RGBA.
+    (img if img.mode == "RGB" else img.convert("RGB")).save(
+        buf, "JPEG", quality=90, optimize=True
+    )
     data = buf.getvalue()
     try:
         _CACHE.mkdir(parents=True, exist_ok=True)
-        cached.write_bytes(data)
+        # Атомарная запись: пишем во временный файл и переименовываем. Иначе
+        # параллельный запрос (или фетчер Telegram) мог прочитать НАПОЛОВИНУ
+        # записанный файл → обрезанный JPEG (нижняя половина серая на мобильном).
+        fd, tmp = tempfile.mkstemp(dir=str(_CACHE), suffix=".tmp")
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, cached)
     except Exception:
         pass
     return data

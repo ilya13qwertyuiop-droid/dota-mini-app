@@ -2047,20 +2047,6 @@ async def api_minigame_share(data: MinigameShareReq):
     })
     img_url = f"{base}/api/minigames/share-image?{qs}"
 
-    # ДИАГНОСТИКА: проверяем, что photo_url реально отдаёт картинку «снаружи»
-    # (UA как у Telegram). Если статус не 200 / не image — Telegram тоже не
-    # скачает и shareMessage даст callback=false. Полный URL — в лог.
-    img_status = ""
-    try:
-        _ir = httpx.get(
-            img_url, timeout=8.0, follow_redirects=True,
-            headers={"User-Agent": "TelegramBot (like TwitterBot)"},
-        )
-        img_status = f"{_ir.status_code} {_ir.headers.get('content-type', '?')} {len(_ir.content)}b"
-    except Exception as _e:
-        img_status = "ERR " + str(_e)[:80]
-    logger.info("[minigame_share] img_url=%s self-fetch=%s", img_url, img_status)
-
     from backend.share_card import _MODE_LABEL
     mode_name = _MODE_LABEL.get(mode, "")
     caption = (
@@ -2075,19 +2061,17 @@ async def api_minigame_share(data: MinigameShareReq):
     bot = Bot(BOT_TOKEN)
     try:
         async with bot:                       # initialize() заполняет bot.username
-            # ── ДИАГНОСТИКА callback=false ───────────────────────────────────
-            # Изолируем причину: убрали inline-кнопку (URL-кнопку t.me deep-link)
-            # и photo_width/height. Если без кнопки shareMessage СРАБОТАЕТ —
-            # значит Telegram отклонял именно URL-кнопку в этом контексте, и CTA
-            # «Играть» придётся нести иначе (ссылкой в подписи). Кнопку вернём
-            # после подтверждения. play_url пока не нужен.
+            play_url = f"https://t.me/{bot.username}?start=hl_share"
             result = InlineQueryResultPhoto(
                 id=secrets.token_hex(8),       # уникальный id на каждый шер
                 photo_url=img_url,
                 thumbnail_url=img_url,
-                title="Выше / Ниже",
-                description=caption,
+                photo_width=1200,
+                photo_height=630,
                 caption=caption,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
+                ),
             )
             # Все типы чатов разрешены явно — иначе Telegram отклоняет отправку
             # (callback=false) после выбора получателя для неразрешённого типа.
@@ -2103,10 +2087,7 @@ async def api_minigame_share(data: MinigameShareReq):
             "[minigame_share] prepared id=%s for user=%s (bot=@%s)",
             prepared.id, user_id, bot_username,
         )
-        # bot — имя бота-владельца prepared-сообщения. Telegram примет shareMessage
-        # только если мини-апп открыт ЭТИМ же ботом. img_status — самопроверка
-        # доступности картинки (см. выше). Отдаём на фронт для сверки в тосте.
-        return {"id": prepared.id, "bot": bot_username, "img_status": img_status}
+        return {"id": prepared.id}
     except Exception as e:
         logger.warning("[minigame_share] prepared message failed: %s", e)
         raise HTTPException(status_code=502, detail="share failed")

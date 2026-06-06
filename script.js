@@ -1070,45 +1070,24 @@
                 h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id),
                 h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id)
             };
-            showToast('Готовлю карточку…', 'ok');
             apiFetch(window.API_BASE_URL + '/minigames/share', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             }).then(function (res) {
                 return res.json().catch(function () { return null; }).then(function (d) {
-                    return { ok: res.ok, status: res.status, d: d };
+                    return { ok: res.ok, d: d };
                 });
             }).then(function (r2) {
-                if (!r2.ok || !r2.d || !r2.d.id) {
-                    showToast('share API ' + r2.status + ': ' +
-                        ((r2.d && r2.d.detail) || 'нет id') + ' → фоллбэк');
+                if (!r2.ok || !r2.d || !r2.d.id) {   // не удалось подготовить — текстовый фоллбэк
                     _mghlShareFallback();
                     return;
                 }
-                var answered = false;
-                var ownerBot = r2.d.bot ? ('@' + r2.d.bot) : '?';
-                // Точный id, бот-владелец и самопроверка картинки — видно в UI.
-                // Если ownerBot ≠ бот мини-аппа ИЛИ картинка не 200/image —
-                // Telegram отклонит шер (callback=false).
-                showToast('бот ' + ownerBot + ' · фото: ' + (r2.d.img_status || '?'), 'ok');
                 try {
-                    tg.shareMessage(String(r2.d.id), function (sent) {
-                        answered = true;
-                        if (sent) showToast('Отправлено ✓', 'ok');
-                        else showToast('callback=false · владелец ' + ownerBot +
-                            ' · id ' + String(r2.d.id).slice(0, 8));
-                    });
-                    // «Вечная загрузка» — если callback так и не пришёл.
-                    setTimeout(function () {
-                        if (!answered) showToast('shareMessage: нет ответа 6с · владелец ' +
-                            ownerBot + ' · id ' + String(r2.d.id).slice(0, 8));
-                    }, 6000);
+                    tg.shareMessage(String(r2.d.id));   // успех/отмена — нативный UX Telegram
                 } catch (e) {
-                    showToast('shareMessage error: ' + (e && e.message ? e.message : e));
                     _mghlShareFallback();
                 }
-            }).catch(function (e) {
-                showToast('share fetch error: ' + (e && e.message ? e.message : e));
+            }).catch(function () {
                 _mghlShareFallback();
             });
         };
