@@ -1987,9 +1987,10 @@ def _public_base() -> str:
 @app.get("/api/minigames/share-image")
 async def api_minigame_share_image(
     mode: str, streak: int,
-    h1: str = "", n1: str = "", h2: str = "", n2: str = "",
+    h1: str = "", n1: str = "", v1: str = "",
+    h2: str = "", n2: str = "", v2: str = "",
 ):
-    """PNG-карточка результата. Без токена — Telegram тянет её как photo_url.
+    """JPEG-карточка результата. Без токена — Telegram тянет её как photo_url.
     Контент детерминирован параметрами, поэтому агрессивно кэшируется."""
     mode = _normalize_mode(mode)
     if mode is None:
@@ -2002,7 +2003,13 @@ async def api_minigame_share_image(
     def _nm(s: str) -> str:
         return ((s or "").strip()[:24]) or "?"
 
-    heroes = [(_slug(h1), _nm(n1)), (_slug(h2), _nm(n2))]
+    def _val(s: str):
+        try:
+            return float(s)
+        except (TypeError, ValueError):
+            return None
+
+    heroes = [(_slug(h1), _nm(n1), _val(v1)), (_slug(h2), _nm(n2), _val(v2))]
     from backend.share_card import render_share_card
     jpg = await asyncio.to_thread(render_share_card, mode, streak, heroes)
     # GZip для image/* отключён глобально (см. DEFAULT_EXCLUDED_CONTENT_TYPES выше),
@@ -2020,8 +2027,10 @@ class MinigameShareReq(BaseModel):
     streak: int
     h1: str = ""
     n1: str = ""
+    v1: float | None = None
     h2: str = ""
     n2: str = ""
+    v2: float | None = None
 
 
 @app.post("/api/minigames/share")
@@ -2043,7 +2052,8 @@ async def api_minigame_share(data: MinigameShareReq):
     from urllib.parse import urlencode
     qs = urlencode({
         "mode": mode, "streak": streak,
-        "h1": data.h1, "n1": data.n1, "h2": data.h2, "n2": data.n2,
+        "h1": data.h1, "n1": data.n1, "v1": "" if data.v1 is None else data.v1,
+        "h2": data.h2, "n2": data.n2, "v2": "" if data.v2 is None else data.v2,
     })
     img_url = f"{base}/api/minigames/share-image?{qs}"
 

@@ -114,12 +114,28 @@ def _text_tracked(draw, xy, text, font, fill, tracking=0):
 
 
 def _cache_key(mode: str, streak: int, heroes) -> str:
-    raw = f"{mode}|{streak}|" + "|".join(f"{s}:{n}" for s, n in heroes)
+    raw = f"{mode}|{streak}|" + "|".join(f"{s}:{n}:{v}" for s, n, v in heroes)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def render_share_card(mode: str, streak: int, heroes: list[tuple[str, str]]) -> bytes:
-    """Рендерит PNG-карточку результата. heroes = [(slug, display_name), …] (2 шт)."""
+def _fmt_value(mode: str, v) -> tuple[str, str]:
+    """(значение, единица) под героем. pop → «142 350» «матчей»;
+    kills/deaths → «7,3» «за игру». Узкий пробел между тысячами."""
+    if v is None:
+        return ("—", "")
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return ("—", "")
+    if mode == "pop":
+        return (f"{int(round(v)):,}".replace(",", " "), "матчей")
+    return (f"{v:.1f}".replace(".", ","), "за игру")
+
+
+def render_share_card(mode: str, streak: int, heroes: list[tuple]) -> bytes:
+    """Рендерит JPEG-карточку результата.
+    heroes = [(slug, display_name, value), …] (2 шт), value — метрика героя
+    (число матчей / среднее за игру) для подписи под портретом."""
     # JPEG, а не PNG: Telegram InlineQueryResultPhoto принимает только JPEG —
     # PNG отдаётся браузеру нормально, но при отправке inline-фото отклоняется.
     key = _cache_key(mode, streak, heroes)
@@ -133,68 +149,73 @@ def render_share_card(mode: str, streak: int, heroes: list[tuple[str, str]]) -> 
     img = Image.new("RGB", (_W, _H), _BG)
     d = ImageDraw.Draw(img)
 
-    M = 80                                    # единое левое поле для всех блоков
-    f_num = _font("GeistMono-Bold.ttf", 116)
-    f_chip = _font("Geist-SemiBold.ttf", 30)
+    M = 64
+    f_brand = _font("Geist-SemiBold.ttf", 27)
+    f_chip = _font("Geist-SemiBold.ttf", 26)
     f_name = _font("Geist-Medium.ttf", 30)
-    f_vs = _font("GeistMono-Bold.ttf", 32)
-    f_label = _font("Geist-SemiBold.ttf", 22)
-    f_brand = _font("Geist-SemiBold.ttf", 28)
+    f_val = _font("GeistMono-Bold.ttf", 33)
+    f_unit = _font("Geist-Regular.ttf", 22)
+    f_vs = _font("GeistMono-Bold.ttf", 26)
+    f_slabel = _font("Geist-SemiBold.ttf", 22)
+    f_streak = _font("GeistMono-Bold.ttf", 88)
 
-    # ── Дуэль сверху: два портрета 16:9 лицом к лицу ──
-    pw, ph = 384, 216
-    gap = 120
+    # ── Шапка: бренд слева, режим-чип справа, разделитель ──
+    av_sz = 44
+    hx, hy = M, 40
+    av = _avatar(av_sz)
+    if av is not None:
+        img.paste(av, (hx, hy), av)
+        hx += av_sz + 12
+    d.text((hx, hy + av_sz / 2), "D2Helper", font=f_brand, fill=_TEXT, anchor="lm")
+
+    chip_txt = _MODE_LABEL.get(mode, "")
+    ctw = d.textlength(chip_txt, font=f_chip)
+    cpad, chh = 18, 44
+    cw = ctw + cpad * 2
+    cx1 = _W - M - cw
+    ccy = hy + av_sz / 2
+    d.rounded_rectangle([cx1, ccy - chh / 2, cx1 + cw, ccy + chh / 2], 12,
+                        fill=_CHIP_BG, outline=_CHIP_BORDER, width=1)
+    d.text((cx1 + cw / 2, ccy), chip_txt, font=f_chip, fill=_ACCENT, anchor="mm")
+
+    d.line([M, 108, _W - M, 108], fill=_BORDER, width=1)
+
+    # ── Дуэль с числами: портрет + имя + значение метрики у каждого героя ──
+    pw, ph = 372, 209                          # 16:9
+    gap = 150
     x0 = (_W - (pw * 2 + gap)) // 2
-    y0 = 52
+    y0 = 144
     xs = [x0, x0 + pw + gap]
-    for i, (slug, name) in enumerate(heroes[:2]):
+    for i, hero in enumerate(heroes[:2]):
+        slug, name, value = hero
         px = xs[i]
+        cx = px + pw / 2
         d.rounded_rectangle([px, y0, px + pw, y0 + ph], 16, fill=_SURFACE, outline=_BORDER, width=1)
         p = _portrait(slug)
         if p is not None:
             tile = _rounded(p.resize((pw, ph)), 16)
             img.paste(tile, (px, y0), tile)
-        # имя под портретом — якорь «сверху-по-центру» (ma)
-        d.text((px + pw / 2, y0 + ph + 16), name, font=f_name, fill=_TEXT, anchor="ma")
+        d.text((cx, y0 + ph + 16), name, font=f_name, fill=_TEXT, anchor="ma")
+        # значение метрики + единица на одной базовой линии, по центру тайла
+        val_s, unit = _fmt_value(mode, value)
+        unit_s = (" " + unit) if unit else ""
+        numw = d.textlength(val_s, font=f_val)
+        uw = d.textlength(unit_s, font=f_unit) if unit_s else 0
+        gxx = cx - (numw + uw) / 2
+        vbase = y0 + ph + 16 + 70
+        d.text((gxx, vbase), val_s, font=f_val, fill=_ACCENT, anchor="ls")
+        if unit_s:
+            d.text((gxx + numw, vbase), unit_s, font=f_unit, fill=_TEXT2, anchor="ls")
 
-    # «VS» — якорь «по центру» (mm), ровно между портретами по их центру
-    d.text((_W / 2, y0 + ph / 2), "VS", font=f_vs, fill=_ACCENT, anchor="mm")
+    # «VS» по центру между портретами — тихо (secondary), не конкурирует с числами
+    d.text((_W / 2, y0 + ph / 2), "VS", font=f_vs, fill=_TEXT2, anchor="mm")
 
-    # ── Разделитель ──
-    dy = 348
-    d.line([M, dy, _W - M, dy], fill=_BORDER, width=1)
-
-    # ── Серия: метка → крупное число + чип режима ──
-    _text_tracked(d, (M, dy + 26), "СЕРИЯ", f_label, _TEXT3, tracking=4)
-    base = dy + 152                           # базовая линия числа
-    num = str(streak)
-    d.text((M, base), num, font=f_num, fill=_ACCENT, anchor="ls")
-    num_w = d.textlength(num, font=f_num)
-    # Чип режима — accent-тинт, по оптическому центру числа (≈ base-42).
-    chip_txt = _MODE_LABEL.get(mode, "")
-    tw = d.textlength(chip_txt, font=f_chip)
-    pad_x, chip_h = 20, 56
-    chip_w = tw + pad_x * 2
-    chip_x = M + num_w + 28
-    chip_cy = base - 42
-    d.rounded_rectangle(
-        [chip_x, chip_cy - chip_h / 2, chip_x + chip_w, chip_cy + chip_h / 2],
-        14, fill=_CHIP_BG, outline=_CHIP_BORDER, width=1,
-    )
-    d.text((chip_x + chip_w / 2, chip_cy), chip_txt, font=f_chip, fill=_ACCENT, anchor="mm")
-
-    # ── Подвал: аватарка бота + название, ВНИЗУ-СПРАВА ──
-    av_sz = 52
-    av_y = _H - av_sz - 34
-    av = _avatar(av_sz)
-    name = "D2Helper"
-    name_w = d.textlength(name, font=f_brand)
-    group_w = (av_sz + 14 if av is not None else 0) + name_w
-    gx = _W - M - group_w
-    if av is not None:
-        img.paste(av, (int(gx), av_y), av)
-        gx += av_sz + 14
-    d.text((gx, av_y + av_sz / 2), name, font=f_brand, fill=_TEXT, anchor="lm")
+    # ── Итог: серия по центру снизу (кульминация) ──
+    label = "СЕРИЯ ПОДРЯД"
+    tr = 3
+    lw = sum(d.textlength(ch, font=f_slabel) + tr for ch in label) - tr
+    _text_tracked(d, (_W / 2 - lw / 2, 466), label, f_slabel, _TEXT3, tracking=tr)
+    d.text((_W / 2, 500), str(streak), font=f_streak, fill=_ACCENT, anchor="ma")
 
     from io import BytesIO
     buf = BytesIO()

@@ -1067,8 +1067,8 @@
             var r = _mghl.ref || {}, c = _mghl.chal || {};
             var body = {
                 token: tok, mode: _mghl.modeKey || 'pop', streak: _mghl.streak,
-                h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id),
-                h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id)
+                h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id), v1: r[_mghl.metric],
+                h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id), v2: c[_mghl.metric]
             };
             apiFetch(window.API_BASE_URL + '/minigames/share', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
