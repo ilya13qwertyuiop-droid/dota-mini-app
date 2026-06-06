@@ -241,6 +241,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GZip не должен трогать image-ответы: фетчер Telegram при отправке inline-фото
+# не разжимает gzip и сохраняет битые байты (чёрный квадрат, фото не доходит).
+# Starlette исключает типы из DEFAULT_EXCLUDED_CONTENT_TYPES (читается из модуля
+# в момент ответа) — расширяем его на image/*, чтобы картинки шли БЕЗ сжатия и
+# без нестандартного заголовка Content-Encoding.
+import starlette.middleware.gzip as _gzip_mod
+if "image/" not in _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES:
+    _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES = (
+        _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES + ("image/",)
+    )
+
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
@@ -1969,16 +1980,12 @@ async def api_minigame_share_image(
     heroes = [(_slug(h1), _nm(n1)), (_slug(h2), _nm(n2))]
     from backend.share_card import render_share_card
     jpg = await asyncio.to_thread(render_share_card, mode, streak, heroes)
-    # Content-Encoding: identity — исключаем JPEG из GZipMiddleware: фетчер
-    # Telegram при отправке inline-фото не разжимает gzip и сохраняет битые
-    # байты (чёрный квадрат, фото не доходит). Браузер gzip разжимал прозрачно,
-    # поэтому в браузере GET выглядел рабочим. identity не даёт сжать и nginx-у.
+    # GZip для image/* отключён глобально (см. DEFAULT_EXCLUDED_CONTENT_TYPES выше),
+    # поэтому JPEG уходит как есть — без сжатия и без Content-Encoding-заголовка,
+    # который строгий фетчер Telegram мог не разжать.
     return Response(
         content=jpg, media_type="image/jpeg",
-        headers={
-            "Cache-Control": "public, max-age=86400",
-            "Content-Encoding": "identity",
-        },
+        headers={"Cache-Control": "public, max-age=86400"},
     )
 
 

@@ -1056,7 +1056,11 @@
             var tok = _mghlTok();
             // Современный путь (Bot API 8.0+): карточка-фото + подпись + кнопка
             // «Играть» одним сообщением. Иначе — текстовый фоллбэк.
-            if (!(tg && typeof tg.shareMessage === 'function' && tok)) {
+            var hasShare = !!(tg && typeof tg.shareMessage === 'function');
+            var verOk = (tg && typeof tg.isVersionAtLeast === 'function') ? tg.isVersionAtLeast('8.0') : true;
+            if (!(hasShare && verOk && tok)) {
+                showToast('Шеринг: фоллбэк (shareMessage недоступен, v' +
+                    ((tg && tg.version) || '?') + ')');
                 _mghlShareFallback();
                 return;
             }
@@ -1066,13 +1070,41 @@
                 h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id),
                 h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id)
             };
+            showToast('Готовлю карточку…', 'ok');
             apiFetch(window.API_BASE_URL + '/minigames/share', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
-            }).then(function (res) { return res.json(); }).then(function (d) {
-                if (d && d.id) tg.shareMessage(d.id);
-                else _mghlShareFallback();
-            }).catch(function () { _mghlShareFallback(); });
+            }).then(function (res) {
+                return res.json().catch(function () { return null; }).then(function (d) {
+                    return { ok: res.ok, status: res.status, d: d };
+                });
+            }).then(function (r2) {
+                if (!r2.ok || !r2.d || !r2.d.id) {
+                    showToast('share API ' + r2.status + ': ' +
+                        ((r2.d && r2.d.detail) || 'нет id') + ' → фоллбэк');
+                    _mghlShareFallback();
+                    return;
+                }
+                var answered = false;
+                try {
+                    tg.shareMessage(r2.d.id, function (sent) {
+                        answered = true;
+                        if (sent) showToast('Отправлено ✓', 'ok');
+                        else showToast('shareMessage callback=false (отменено/не ушло)');
+                    });
+                    // «Вечная загрузка» — если callback так и не пришёл.
+                    setTimeout(function () {
+                        if (!answered) showToast('shareMessage: нет ответа 6с (id ' +
+                            String(r2.d.id).slice(0, 10) + '…)');
+                    }, 6000);
+                } catch (e) {
+                    showToast('shareMessage error: ' + (e && e.message ? e.message : e));
+                    _mghlShareFallback();
+                }
+            }).catch(function (e) {
+                showToast('share fetch error: ' + (e && e.message ? e.message : e));
+                _mghlShareFallback();
+            });
         };
 
         // Строка ранга/перцентиля на экране результата.
