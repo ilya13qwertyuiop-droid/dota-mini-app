@@ -2028,6 +2028,7 @@ async def api_minigame_share(data: MinigameShareReq):
         f"в мини-игре «Выше / Ниже». Побьёшь?"
     )
 
+    import secrets
     from telegram import (
         Bot, InlineQueryResultPhoto, InlineKeyboardMarkup, InlineKeyboardButton,
     )
@@ -2036,7 +2037,7 @@ async def api_minigame_share(data: MinigameShareReq):
         async with bot:                       # initialize() заполняет bot.username
             play_url = f"https://t.me/{bot.username}?start=hl_share"
             result = InlineQueryResultPhoto(
-                id="hl",
+                id=secrets.token_hex(8),       # уникальный id на каждый шер (без переиспользования)
                 photo_url=img_url,
                 thumbnail_url=img_url,
                 photo_width=1200,
@@ -2046,12 +2047,19 @@ async def api_minigame_share(data: MinigameShareReq):
                     [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
                 ),
             )
+            # Все типы чатов разрешены явно — иначе Telegram отклоняет отправку
+            # (callback=false) после выбора получателя для неразрешённого типа.
             prepared = await bot.save_prepared_inline_message(
-                user_id, result,
+                int(user_id), result,
                 allow_user_chats=True,
+                allow_bot_chats=True,
                 allow_group_chats=True,
                 allow_channel_chats=True,
             )
+        logger.info(
+            "[minigame_share] prepared id=%s for user=%s (bot=@%s)",
+            prepared.id, user_id, bot.username,
+        )
         return {"id": prepared.id}
     except Exception as e:
         logger.warning("[minigame_share] prepared message failed: %s", e)
