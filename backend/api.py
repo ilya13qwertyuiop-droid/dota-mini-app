@@ -1952,6 +1952,16 @@ async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db))
 _MGHL_MODES_SET = {"pop", "kills", "deaths"}
 
 
+def _normalize_mode(mode: str) -> str | None:
+    """Канонический ключ режима. Принимает и короткую форму («deaths»), и
+    game-id («hl_deaths») — фронт исторически слал то одно, то другое.
+    Возвращает «pop»/«kills»/«deaths» или None, если режим неизвестен."""
+    m = (mode or "").strip()
+    if m.startswith("hl_"):
+        m = m[3:]
+    return m if m in _MGHL_MODES_SET else None
+
+
 def _public_origin() -> str:
     """scheme://host публичного мини-аппа (из MINI_APP_URL) — для абсолютного
     photo_url, который Telegram должен скачать со стороны сервера."""
@@ -1967,7 +1977,8 @@ async def api_minigame_share_image(
 ):
     """PNG-карточка результата. Без токена — Telegram тянет её как photo_url.
     Контент детерминирован параметрами, поэтому агрессивно кэшируется."""
-    if mode not in _MGHL_MODES_SET:
+    mode = _normalize_mode(mode)
+    if mode is None:
         raise HTTPException(status_code=400, detail="bad mode")
     streak = max(0, min(int(streak), 100000))
 
@@ -2006,7 +2017,8 @@ async def api_minigame_share(data: MinigameShareReq):
     user_id = get_user_id_by_token(data.token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
-    if data.mode not in _MGHL_MODES_SET:
+    mode = _normalize_mode(data.mode)   # принимает и «deaths», и «hl_deaths»
+    if mode is None:
         raise HTTPException(status_code=400, detail="bad mode")
     origin = _public_origin()
     if not origin:
@@ -2016,13 +2028,13 @@ async def api_minigame_share(data: MinigameShareReq):
     streak = max(0, min(int(data.streak), 100000))
     from urllib.parse import urlencode
     qs = urlencode({
-        "mode": data.mode, "streak": streak,
+        "mode": mode, "streak": streak,
         "h1": data.h1, "n1": data.n1, "h2": data.h2, "n2": data.n2,
     })
     img_url = f"{origin}/api/minigames/share-image?{qs}"
 
     from backend.share_card import _MODE_LABEL
-    mode_name = _MODE_LABEL.get(data.mode, "")
+    mode_name = _MODE_LABEL.get(mode, "")
     caption = (
         f"Я выбил серию {streak} в режиме «{mode_name}» "
         f"в мини-игре «Выше / Ниже». Побьёшь?"
