@@ -17,5 +17,8 @@ sqlalchemy>=2.0,<3
 alembic>=1.13,<2
 psycopg2-binary>=2.9,<3
 
+# Image rendering (share_card.py — карточка-результат мини-игры)
+Pillow>=10.0,<13
+
 # Utilities
 python-dotenv>=1.0,<2

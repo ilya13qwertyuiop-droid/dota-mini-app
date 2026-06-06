@@ -225,6 +225,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
+    # Атрибуция источника перехода: payload из deep-link (t.me/<bot>?start=<payload>).
+    # Напр. "hl_share" — пришёл с шеринга мини-игры «Выше/Ниже».
+    _start_payload = (context.args[0] if getattr(context, "args", None) else None)
+    if _start_payload:
+        logger.info("[start] deep-link payload=%s user=%s", _start_payload, user_id)
+
     # Получаем фото профиля (два Telegram API вызова; ошибка не критична)
     photo_url = None
     try:

@@ -1026,17 +1026,53 @@
             }
         }
 
-        window.mghlShare = function () {
-            var text = 'Я набил серию ' + _mghl.streak + ' в «Выше / Ниже» в D2Helper. Сможешь больше? 🎯';
+        // Slug героя для CDN-портрета (вытаскиваем из URL иконки), + имя.
+        function _mghlHeroSlug(id) {
+            var en = (window.dotaHeroIdToName || {})[id];
+            if (!en || !window.getHeroIconUrlByName) return '';
+            var url = window.getHeroIconUrlByName(en) || '';
+            var m = url.match(/\/heroes\/([^/.]+)\.png/);
+            return m ? m[1] : '';
+        }
+
+        // Фоллбэк для старых клиентов (нет shareMessage): текст+ссылка на бота.
+        function _mghlShareFallback() {
+            var modeName = (_mghl.mode && _mghl.mode.short) || '';
+            var text = 'Я выбил серию ' + _mghl.streak +
+                (modeName ? (' в режиме «' + modeName + '»') : '') +
+                ' в «Выше / Ниже» (D2Helper). Побьёшь?';
             var tg = window.Telegram && window.Telegram.WebApp;
             var link = (window.MINIAPP_URL || '').trim();
-            // С реальной ссылкой на мини-апп — превью бота + тап открывает игру.
-            // Без неё (не настроена) шарим только текст, без битого «https://t.me».
+            if (link && link.indexOf('?') === -1) link += '?start=hl_share';
             var shareUrl = link
                 ? 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
                 : 'https://t.me/share/url?url=' + encodeURIComponent(text);
             if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(shareUrl);
             else window.open(shareUrl, '_blank');
+        }
+
+        window.mghlShare = function () {
+            var tg = window.Telegram && window.Telegram.WebApp;
+            var tok = _mghlTok();
+            // Современный путь (Bot API 8.0+): карточка-фото + подпись + кнопка
+            // «Играть» одним сообщением. Иначе — текстовый фоллбэк.
+            if (!(tg && typeof tg.shareMessage === 'function' && tok)) {
+                _mghlShareFallback();
+                return;
+            }
+            var r = _mghl.ref || {}, c = _mghl.chal || {};
+            var body = {
+                token: tok, mode: _mghl.modeKey || 'pop', streak: _mghl.streak,
+                h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id),
+                h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id)
+            };
+            apiFetch(window.API_BASE_URL + '/minigames/share', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (res) { return res.json(); }).then(function (d) {
+                if (d && d.id) tg.shareMessage(d.id);
+                else _mghlShareFallback();
+            }).catch(function () { _mghlShareFallback(); });
         };
 
         // Строка ранга/перцентиля на экране результата.

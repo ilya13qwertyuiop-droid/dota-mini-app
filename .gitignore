@@ -13,3 +13,8 @@ CLAUDE.md
 .agents/
 skills-lock.json
 hero_detailed_stats.json
+
+# Сгенерированное в рантайме (карточки-результаты мини-игры)
+assets/hero_portraits/
+assets/share_cache/
+assets/_sample_card.png

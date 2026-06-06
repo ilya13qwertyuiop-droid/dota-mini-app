@@ -1933,6 +1933,117 @@ async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db))
     return {"ok": True, "best": new_best}
 
 
+# ── Шеринг результата: карточка-картинка + prepared inline message ──
+# Картинку рисует Pillow (backend/share_card.py), доставку делает
+# save_prepared_inline_message (фото + подпись + url-кнопка «Играть» на бота —
+# кнопка ведёт в /start, чтобы НЕ обходить гейт подписки).
+
+_MGHL_MODES_SET = {"pop", "kills", "deaths"}
+
+
+def _public_origin() -> str:
+    """scheme://host публичного мини-аппа (из MINI_APP_URL) — для абсолютного
+    photo_url, который Telegram должен скачать со стороны сервера."""
+    from urllib.parse import urlsplit
+    p = urlsplit(os.environ.get("MINI_APP_URL") or "")
+    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else ""
+
+
+@app.get("/api/minigames/share-image")
+async def api_minigame_share_image(
+    mode: str, streak: int,
+    h1: str = "", n1: str = "", h2: str = "", n2: str = "",
+):
+    """PNG-карточка результата. Без токена — Telegram тянет её как photo_url.
+    Контент детерминирован параметрами, поэтому агрессивно кэшируется."""
+    if mode not in _MGHL_MODES_SET:
+        raise HTTPException(status_code=400, detail="bad mode")
+    streak = max(0, min(int(streak), 100000))
+
+    def _slug(s: str) -> str:
+        return "".join(c for c in (s or "") if c.isalnum() or c in "_-")[:40]
+
+    def _nm(s: str) -> str:
+        return ((s or "").strip()[:24]) or "?"
+
+    heroes = [(_slug(h1), _nm(n1)), (_slug(h2), _nm(n2))]
+    from backend.share_card import render_share_card
+    png = await asyncio.to_thread(render_share_card, mode, streak, heroes)
+    return Response(
+        content=png, media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+class MinigameShareReq(BaseModel):
+    token: str
+    mode: str
+    streak: int
+    h1: str = ""
+    n1: str = ""
+    h2: str = ""
+    n2: str = ""
+
+
+@app.post("/api/minigames/share")
+async def api_minigame_share(data: MinigameShareReq):
+    """Готовит inline-сообщение с карточкой и возвращает его id для
+    Telegram.WebApp.shareMessage(id) на фронте."""
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if data.mode not in _MGHL_MODES_SET:
+        raise HTTPException(status_code=400, detail="bad mode")
+    origin = _public_origin()
+    if not origin:
+        logger.warning("[minigame_share] MINI_APP_URL не задаёт публичный origin")
+        raise HTTPException(status_code=503, detail="share unavailable")
+
+    streak = max(0, min(int(data.streak), 100000))
+    from urllib.parse import urlencode
+    qs = urlencode({
+        "mode": data.mode, "streak": streak,
+        "h1": data.h1, "n1": data.n1, "h2": data.h2, "n2": data.n2,
+    })
+    img_url = f"{origin}/api/minigames/share-image?{qs}"
+
+    from backend.share_card import _MODE_LABEL
+    mode_name = _MODE_LABEL.get(data.mode, "")
+    caption = (
+        f"Я выбил серию {streak} в режиме «{mode_name}» "
+        f"в мини-игре «Выше / Ниже». Побьёшь?"
+    )
+
+    from telegram import (
+        Bot, InlineQueryResultPhoto, InlineKeyboardMarkup, InlineKeyboardButton,
+    )
+    bot = Bot(BOT_TOKEN)
+    try:
+        async with bot:                       # initialize() заполняет bot.username
+            play_url = f"https://t.me/{bot.username}?start=hl_share"
+            result = InlineQueryResultPhoto(
+                id="hl",
+                photo_url=img_url,
+                thumbnail_url=img_url,
+                photo_width=1200,
+                photo_height=630,
+                caption=caption,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
+                ),
+            )
+            prepared = await bot.save_prepared_inline_message(
+                user_id, result,
+                allow_user_chats=True,
+                allow_group_chats=True,
+                allow_channel_chats=True,
+            )
+        return {"id": prepared.id}
+    except Exception as e:
+        logger.warning("[minigame_share] prepared message failed: %s", e)
+        raise HTTPException(status_code=502, detail="share failed")
+
+
 # ========== Teammate finder ==========
 #
 # Профиль игрока для поиска тиммейтов + входящие/исходящие запросы + отзывы.
