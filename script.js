@@ -470,11 +470,20 @@
             // Скрыть undo-toast Анализа — он position:fixed и иначе виден на новой странице
             if (typeof _hideAnalysisUndoToast === 'function') _hideAnalysisUndoToast();
 
+            // Guard: если страницы нет в DOM (устаревший закэшированный index.html) —
+            // НЕ трогаем текущий экран и не падаем молча, а подсказываем обновиться.
+            var _pageEl = document.getElementById('page-' + pageName);
+            if (!_pageEl) {
+                console.warn('[switchPage] страница не найдена: page-' + pageName + ' — index.html устарел?');
+                if (typeof showToast === 'function') showToast('Обнови мини-апп: экран ещё не загружен');
+                return;
+            }
+
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
 
-            document.getElementById(`page-${pageName}`).classList.add('active');
+            _pageEl.classList.add('active');
             if (event && event.currentTarget) {
                 event.currentTarget.classList.add('active');
             }
