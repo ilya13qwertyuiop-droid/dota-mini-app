@@ -9729,6 +9729,12 @@ function _drafterCommentText(c) {
     // requestId — accepted-заявка (тот же гейт, что у отзыва); targetUserId — кого;
     // returnPage — куда вернуться по «назад» (ревью-экран или список Пати).
     window.tmOpenReport = function (requestId, targetUserId, returnPage) {
+        // История заявок живёт внутри profile-sheet (оверлей). Без закрытия шита
+        // switchPage сменит страницу ПОД ним — экран жалобы откроется, но будет
+        // спрятан за шитом (клик есть, экрана не видно). tmOpenReview делает так же.
+        if (typeof _tmIsProfileSheetOpen === 'function' && _tmIsProfileSheetOpen()) {
+            tmCloseProfileSheet();
+        }
         _tm.reportRequestId = parseInt(requestId, 10);
         _tm.reportTargetUserId = (targetUserId && targetUserId !== 'null') ? parseInt(targetUserId, 10) : null;
         _tm.reportReason = null;
