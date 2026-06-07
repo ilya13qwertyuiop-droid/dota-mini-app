@@ -7507,7 +7507,7 @@ function _drafterCommentText(c) {
     var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
     var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
     var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];   // больше не показываются (Вариант A)
-    var TM_REPORT_REASONS = ['Токсичность','Саботаж / фид','Оскорбления','Читы / бот','Другое'];
+    var TM_REPORT_REASONS = ['Токсичность','Саботаж / фид','Читы','Другое'];
 
     var _tm = {
         myProfile: null,
@@ -9512,10 +9512,8 @@ function _drafterCommentText(c) {
             ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>'
             : '<span></span>';
         // Жалоба доступна для любой записи истории (была accepted-игра).
-        // ДИАГНОСТИКА: оборачиваем в try/catch — если клик молчит из-за рантайм-
-        // ошибки (функция не определена / исключение), покажем её тостом в UI.
-        var reportHtml = '<button type="button" class="tm-history-report" onclick="try{tmOpenReport(' +
-            r.request_id + ', ' + otherId + ', \'teammates\')}catch(e){showToast(\'Жалоба: \'+(e&&e.message||e))}">Пожаловаться</button>';
+        var reportHtml = '<button type="button" class="tm-history-report" onclick="tmOpenReport(' +
+            r.request_id + ', ' + otherId + ', \'teammates\')">Пожаловаться</button>';
         var actions = '<span class="tm-history-foot-actions">' + actionHtml + reportHtml + '</span>';
         return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actions });
     }
