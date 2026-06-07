@@ -2135,6 +2135,7 @@ from backend.models import (  # noqa: E402
     TeammateRequest as DBTeammateRequest,
     TeammateReview as DBTeammateReview,
     TeammateTag as DBTeammateTag,
+    TeammateReport as DBTeammateReport,
     TeammateLobby as DBTeammateLobby,
     TeammateLobbySlot as DBTeammateLobbySlot,
 )
@@ -2148,6 +2149,10 @@ _TM_VALID_GAME_MODES = frozenset({"ranked", "normal", "turbo"})
 _TM_POSITIVE_TAGS = frozenset({"Бустер", "Душа компании", "Командный", "No tilted", "1x9"})
 _TM_NEGATIVE_TAGS = frozenset({"Токсик", "Фидер", "AFK", "Фотограф", "Агент Габена"})
 _TM_VALID_TAGS = _TM_POSITIVE_TAGS | _TM_NEGATIVE_TAGS
+# Жалобы: фиксированные причины (упрощают триаж на стороне админа).
+_TM_REPORT_REASONS = frozenset({
+    "Токсичность", "Саботаж / фид", "Оскорбления", "Читы / бот", "Другое",
+})
 
 # Статус видимости в ленте (заменил is_searching+TTL, миграция 0012).
 _TM_VALID_STATUSES = frozenset({
@@ -2353,12 +2358,17 @@ async def _tm_send_bot_message(
 
 
 def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[dict]]:
-    """Returns {user_id: [{tag, count, is_positive}, ...]} for the given ids."""
+    """Returns {user_id: [{tag, count, is_positive}, ...]} for the given ids.
+
+    Только ПОЛОЖИТЕЛЬНЫЕ теги (Вариант A): публичная репутация — эндорсменты.
+    Негативные метки субъективны и несправедливо «клеймят» — для плохого опыта
+    есть приватные блок/жалоба. Фильтр скрывает и старые негативные теги из БД."""
     if not user_ids:
         return {}
     rows = (
         db.query(DBTeammateTag)
         .filter(DBTeammateTag.user_id.in_(user_ids))
+        .filter(DBTeammateTag.is_positive.is_(True))
         .all()
     )
     out: dict[int, list[dict]] = {uid: [] for uid in user_ids}
@@ -3009,9 +3019,10 @@ async def api_teammates_review_submit(
                 detail="Оценить можно после игры — кнопка станет доступна чуть позже.",
             )
 
-    # Дедуп + валидация против заранее заданного словаря тегов.
+    # Дедуп + валидация. Принимаем ТОЛЬКО положительные теги (Вариант A):
+    # негативные метки больше не собираются (даже если UI их пришлёт).
     raw_tags = list(dict.fromkeys((t or "").strip() for t in (data.tags or [])))
-    valid_tags = [t for t in raw_tags if t in _TM_VALID_TAGS]
+    valid_tags = [t for t in raw_tags if t in _TM_POSITIVE_TAGS]
     if not valid_tags:
         raise HTTPException(status_code=422, detail="no valid tags provided")
 
@@ -3040,6 +3051,93 @@ async def api_teammates_review_submit(
             row.count = (row.count or 0) + 1
 
     db.commit()
+    return {"ok": True}
+
+
+# ── 9b. POST /api/teammates/report — пожаловаться на игрока ──────────────────
+
+class TeammateReportSubmit(BaseModel):
+    token: str
+    request_id: int
+    reason: str
+    text: str = ""
+
+
+async def _tm_notify_admins_report(reporter_id: int, reported_id: int,
+                                   reason: str, text: str, db: Session) -> None:
+    """Push жалобы админам в Telegram (best-effort, не валит запрос)."""
+    def _name(uid: int) -> str:
+        row = db.get(DBUserProfile, uid)
+        s = (row.settings if row else None) or {}
+        nm = ((s.get("first_name") or "") + " " + (s.get("last_name") or "")).strip()
+        if not nm:
+            nm = ("@" + s["username"]) if s.get("username") else ""
+        return nm
+    try:
+        msg = (
+            "🚩 Жалоба в Пати\n"
+            f"От: {_name(reporter_id)} (id {reporter_id})\n"
+            f"На: {_name(reported_id)} (id {reported_id})\n"
+            f"Причина: {reason}"
+        )
+        if text:
+            msg += f"\nКомментарий: {text}"
+        bot = await _get_share_bot()
+        for admin_id in _TM_ADMIN_IDS:
+            try:
+                await bot.send_message(chat_id=admin_id, text=msg)
+            except Exception as e:
+                logger.warning("[tm_report] notify admin %s failed: %s", admin_id, e)
+    except Exception as e:
+        logger.warning("[tm_report] notify build failed: %s", e)
+
+
+@app.post("/api/teammates/report")
+async def api_teammates_report_submit(
+    data: TeammateReportSubmit, db: Session = Depends(get_db),
+):
+    """Жалоба на участника accepted-заявки. Приватная (отмеченный не видит,
+    публичной метки нет). Сохраняется для разбора + push админам в Telegram.
+    Гейт «только после игры» — тот же, что у отзыва (через request_id)."""
+    user_id = _tm_authenticate(data.token, db)
+
+    reason = (data.reason or "").strip()
+    if reason not in _TM_REPORT_REASONS:
+        raise HTTPException(status_code=422, detail="invalid reason")
+    text = (data.text or "").strip()[:2000]
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.status != "accepted":
+        raise HTTPException(status_code=409, detail="request is not in accepted status")
+    if user_id != req.from_user_id and user_id != req.to_user_id:
+        raise HTTPException(status_code=403, detail="not a participant of this request")
+    target_user_id = req.to_user_id if user_id == req.from_user_id else req.from_user_id
+
+    # Один ОТКРЫТЫЙ репорт на пару (reporter→reported) — защита от спама.
+    already = (
+        db.query(DBTeammateReport)
+        .filter(DBTeammateReport.reporter_id == user_id)
+        .filter(DBTeammateReport.reported_user_id == target_user_id)
+        .filter(DBTeammateReport.status == "open")
+        .first()
+    )
+    if already is not None:
+        raise HTTPException(status_code=409, detail="Жалоба на этого игрока уже отправлена")
+
+    db.add(DBTeammateReport(
+        reporter_id=user_id,
+        reported_user_id=target_user_id,
+        request_id=data.request_id,
+        reason=reason,
+        text=text or None,
+        status="open",
+        created_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
+    await _tm_notify_admins_report(user_id, target_user_id, reason, text, db)
     return {"ok": True}
 
 

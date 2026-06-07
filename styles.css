@@ -7416,7 +7416,7 @@ margin-top: var(--space-4);
 .tm-rank-card {
   appearance: none;
   flex-shrink: 0;
-  width: 70px;
+  width: 76px;          /* вмещает самый длинный лейбл «Калибровка» без вылета за обводку */
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -7443,6 +7443,7 @@ margin-top: var(--space-4);
   letter-spacing: var(--tracking-tight);
   font-weight: var(--font-medium);
   line-height: 1.15;
+  width: 100%;            /* подпись не выходит за пределы карточки */
 }
 .tm-rank-card--active .tm-rank-card-label { color: var(--text-primary); }
 
@@ -7947,6 +7948,30 @@ margin-top: var(--space-4);
   color: var(--negative);
   border-color: rgba(229, 83, 75, 0.30);
 }
+/* Нейтральный selected — для чипов причин жалобы (не positive/negative). */
+.tm-review-tag--selected {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  border-color: var(--accent-border);
+}
+
+/* Жалоба: тихая ссылка-триггер на ревью-экране и в истории, сноска о приватности. */
+.tm-report-link {
+  display: block; width: 100%; text-align: center;
+  background: none; border: none; cursor: pointer;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-tertiary);
+  transition: color 0.15s ease;
+}
+.tm-report-link:hover { color: var(--negative); }
+.tm-report-note { text-align: center; color: var(--text-tertiary); font-size: var(--text-xs); margin-top: var(--space-3); }
+.tm-history-foot-actions { display: flex; gap: var(--space-3); align-items: center; }
+.tm-history-report {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-size: var(--text-xs); color: var(--text-tertiary);
+  transition: color 0.15s ease;
+}
+.tm-history-report:hover { color: var(--negative); }
 
 /* ── Refresh-кнопки на вкладках ленты и профиля ────────────────── */
 .tm-pane-head {

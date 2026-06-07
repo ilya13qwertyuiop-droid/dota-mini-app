@@ -7497,7 +7497,8 @@ function _drafterCommentText(c) {
     var TM_RANKS = ['Калибровка','Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
     var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
     var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
-    var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
+    var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];   // больше не показываются (Вариант A)
+    var TM_REPORT_REASONS = ['Токсичность','Саботаж / фид','Оскорбления','Читы / бот','Другое'];
 
     var _tm = {
         myProfile: null,
@@ -9501,7 +9502,11 @@ function _drafterCommentText(c) {
         var whenHtml = when
             ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>'
             : '<span></span>';
-        return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actionHtml });
+        // Жалоба доступна для любой записи истории (была accepted-игра).
+        var reportHtml = '<button type="button" class="tm-history-report" onclick="tmOpenReport(' +
+            r.request_id + ', ' + otherId + ', \'teammates\')">Пожаловаться</button>';
+        var actions = '<span class="tm-history-foot-actions">' + actionHtml + reportHtml + '</span>';
+        return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actions });
     }
 
     // Лобби-запись в истории — список @ников как tg://-ссылки. Никаких action-
@@ -9676,8 +9681,8 @@ function _drafterCommentText(c) {
         }
     };
 
-    function _tmRenderReviewTarget(p) {
-        var head = document.getElementById('tm-review-target');
+    function _tmRenderReviewTarget(p, elId) {
+        var head = document.getElementById(elId || 'tm-review-target');
         if (!head) return;
         var avatarHtml = _tmAvatarHtml(p);
         var displayName = _tmDisplayName(p);
@@ -9694,14 +9699,88 @@ function _drafterCommentText(c) {
     }
 
     function _tmRenderReviewTags() {
+        // Только положительные теги (Вариант A) — негативные отзывы убраны.
         var posWrap = document.getElementById('tm-review-tags-positive');
-        var negWrap = document.getElementById('tm-review-tags-negative');
         var render = function (tag, cls) {
             return '<button type="button" class="tm-review-tag ' + cls + '" data-tag="' + _tmEsc(tag) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(tag) + '\', this)">' + _tmEsc(tag) + '</button>';
         };
         if (posWrap) posWrap.innerHTML = TM_POSITIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--positive'); }).join('');
-        if (negWrap) negWrap.innerHTML = TM_NEGATIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--negative'); }).join('');
     }
+
+    // ── Жалоба на игрока (приватная, уходит админам) ─────────────────────────
+    function _tmRenderReportReasons() {
+        var wrap = document.getElementById('tm-report-reasons');
+        if (!wrap) return;
+        wrap.innerHTML = TM_REPORT_REASONS.map(function (r) {
+            return '<button type="button" class="tm-review-tag" data-reason="' + _tmEsc(r) +
+                '" onclick="tmSelectReportReason(\'' + _tmEsc(r) + '\', this)">' + _tmEsc(r) + '</button>';
+        }).join('');
+    }
+
+    // requestId — accepted-заявка (тот же гейт, что у отзыва); targetUserId — кого;
+    // returnPage — куда вернуться по «назад» (ревью-экран или список Пати).
+    window.tmOpenReport = function (requestId, targetUserId, returnPage) {
+        _tm.reportRequestId = parseInt(requestId, 10);
+        _tm.reportTargetUserId = (targetUserId && targetUserId !== 'null') ? parseInt(targetUserId, 10) : null;
+        _tm.reportReason = null;
+        _tm.reportReturnPage = returnPage || 'teammates';
+        var ta = document.getElementById('tm-report-text'); if (ta) ta.value = '';
+        _tmRenderReportReasons();
+        var head = document.getElementById('tm-report-target');
+        if (head) head.innerHTML = '<div class="tm-feed-empty">Игрок</div>';
+        if (_tm.reportTargetUserId) {
+            var tkn = _tmGetToken();
+            apiFetch(TM_API + '/teammates/profile/' + _tm.reportTargetUserId +
+                '?token=' + encodeURIComponent(tkn || ''))
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (p) { if (p) _tmRenderReviewTarget(p, 'tm-report-target'); })
+                .catch(function () {});
+        }
+        switchPage('teammate-report');
+    };
+
+    window.tmOpenReportFromReview = function () {
+        tmOpenReport(_tm.reviewRequestId, _tm.reviewTargetUserId, 'teammate-review');
+    };
+
+    window.tmCloseReport = function () { switchPage(_tm.reportReturnPage || 'teammates'); };
+
+    window.tmSelectReportReason = function (reason, btn) {
+        _tm.reportReason = reason;
+        var btns = document.querySelectorAll('#tm-report-reasons .tm-review-tag');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('tm-review-tag--selected', btns[i].getAttribute('data-reason') === reason);
+        }
+    };
+
+    window.tmSubmitReport = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (!_tm.reportReason) { showToast('Выбери причину'); return; }
+        if (!_tm.reportRequestId) { showToast('Нет контекста жалобы'); return; }
+        var ta = document.getElementById('tm-report-text');
+        var text = ((ta && ta.value) || '').trim().slice(0, 500);
+        var btn = document.getElementById('tm-report-submit');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/report', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token, request_id: _tm.reportRequestId,
+                    reason: _tm.reportReason, text: text
+                })
+            });
+            if (resp.ok) { showToast('Жалоба отправлена', 'ok'); tmCloseReport(); }
+            else {
+                var d = await resp.json().catch(function () { return null; });
+                showToast((d && d.detail) || 'Не удалось отправить жалобу');
+            }
+        } catch (e) {
+            showToast('Не удалось отправить жалобу');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
 
     window.tmToggleReviewTag = function (tag, btn) {
         var i = _tm.reviewSelectedTags.indexOf(tag);

@@ -487,6 +487,37 @@ class TeammateTag(Base):
     )
 
 
+class TeammateReport(Base):
+    """Жалоба одного игрока на другого (Пати). Приватная: отмеченный её не видит,
+    публичной метки нет. Админ разбирает и выносит вердикт (бан и т.п.).
+    Привязана к accepted-заявке — жаловаться можно только на того, с кем была игра."""
+    __tablename__ = "teammate_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    reporter_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False
+    )
+    reported_user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
+    )
+    request_id = Column(
+        Integer, ForeignKey("teammate_requests.id"), nullable=False
+    )
+    reason = Column(String(64), nullable=False)
+    text = Column(String(2000), nullable=True)
+    status = Column(String(16), nullable=False, default="open", server_default="open")
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_teammate_reports_reported_user_id", "reported_user_id"),
+        Index("ix_teammate_reports_status", "status"),
+    )
+
+
 # ─── Party-finder («Лобби») ───────────────────────────────────────────────
 
 

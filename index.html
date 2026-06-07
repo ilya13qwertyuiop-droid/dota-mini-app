@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=209" />
+    <link rel="stylesheet" href="styles.css?v=211" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -1350,20 +1350,39 @@
         <div class="tm-review-section">
           <div class="tm-review-section-title">Выбери теги</div>
           <div class="tm-review-tags-section">
-            <div class="tm-review-tags-group tm-review-tags-group--positive">
-              <div class="tm-review-tags-group-label">Положительные</div>
-              <div class="tm-review-tags" id="tm-review-tags-positive"></div>
-            </div>
-            <div class="tm-review-tags-group tm-review-tags-group--negative">
-              <div class="tm-review-tags-group-label">Отрицательные</div>
-              <div class="tm-review-tags" id="tm-review-tags-negative"></div>
-            </div>
+            <!-- Только положительные теги (Вариант A). Негативная группа убрана. -->
+            <div class="tm-review-tags" id="tm-review-tags-positive"></div>
           </div>
         </div>
         <button id="tm-review-submit" class="tm-primary-btn" onclick="tmSubmitReview()">Отправить отзыв</button>
         <!-- Мягкий выход для постоянки/не срочно: игра могла ещё не случиться.
              Закрывает экран без отзыва — оценить можно позже в «Пати» → История. -->
         <button type="button" class="tm-ghost-btn" onclick="tmReviewNotPlayedYet()">Мы ещё не играли</button>
+        <button type="button" class="tm-report-link" onclick="tmOpenReportFromReview()">Пожаловаться на игрока</button>
+      </div>
+
+      <!-- Жалоба на игрока (Вариант A): приватная, уходит админам, без публичной метки -->
+      <div id="page-teammate-report" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="tmCloseReport()" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Пожаловаться</div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Игрок</div>
+          <div class="tm-review-target" id="tm-report-target"><div class="tm-feed-empty">—</div></div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Причина</div>
+          <div class="tm-review-tags" id="tm-report-reasons"></div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Комментарий (необязательно)</div>
+          <textarea id="tm-report-text" class="tm-about-input" maxlength="500" rows="3" placeholder="Что произошло?"></textarea>
+        </div>
+        <button id="tm-report-submit" class="tm-primary-btn" onclick="tmSubmitReport()">Отправить жалобу</button>
+        <p class="tm-report-note">Жалоба приватная — игрок её не увидит. Мы разберём и примем меры.</p>
       </div>
 
       <!-- Help-страница раздела тиммейтов. Full-screen overlay, по виду —
@@ -1574,6 +1593,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=254"></script>
+    <script defer src="script.js?v=256"></script>
   </body>
 </html>
