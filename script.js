@@ -9512,8 +9512,10 @@ function _drafterCommentText(c) {
             ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>'
             : '<span></span>';
         // Жалоба доступна для любой записи истории (была accepted-игра).
-        var reportHtml = '<button type="button" class="tm-history-report" onclick="tmOpenReport(' +
-            r.request_id + ', ' + otherId + ', \'teammates\')">Пожаловаться</button>';
+        // ДИАГНОСТИКА: оборачиваем в try/catch — если клик молчит из-за рантайм-
+        // ошибки (функция не определена / исключение), покажем её тостом в UI.
+        var reportHtml = '<button type="button" class="tm-history-report" onclick="try{tmOpenReport(' +
+            r.request_id + ', ' + otherId + ', \'teammates\')}catch(e){showToast(\'Жалоба: \'+(e&&e.message||e))}">Пожаловаться</button>';
         var actions = '<span class="tm-history-foot-actions">' + actionHtml + reportHtml + '</span>';
         return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actions });
     }
