@@ -497,6 +497,9 @@ class TeammateReport(Base):
     reporter_id = Column(
         BigInteger, ForeignKey("user_profiles.user_id"), nullable=False
     )
+    # index=True сам создаёт ix_teammate_reports_reported_user_id. Дублировать его
+    # ещё и в __table_args__ нельзя — create_all создаёт индекс дважды и падает
+    # «already exists» при старте. Индекс объявляем РОВНО один раз (как в др. моделях).
     reported_user_id = Column(
         BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
     )
@@ -505,16 +508,13 @@ class TeammateReport(Base):
     )
     reason = Column(String(64), nullable=False)
     text = Column(String(2000), nullable=True)
-    status = Column(String(16), nullable=False, default="open", server_default="open")
+    status = Column(
+        String(16), nullable=False, default="open", server_default="open", index=True
+    )
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
-    )
-
-    __table_args__ = (
-        Index("ix_teammate_reports_reported_user_id", "reported_user_id"),
-        Index("ix_teammate_reports_status", "status"),
     )
 
 
