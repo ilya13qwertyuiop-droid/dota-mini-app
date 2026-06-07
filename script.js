@@ -7492,7 +7492,9 @@ function _drafterCommentText(c) {
 (function () {
     var TM_API = (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL) || '/api';
 
-    var TM_RANKS = ['Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
+    // «Калибровка» = тир 0 (без ранга, на калибровке) → medal_0.png. Остальные
+    // тиры 1..8. Порядок в массиве задаёт и тир для иконки, и сортировку/диапазоны.
+    var TM_RANKS = ['Калибровка','Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
     var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
     var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
     var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
@@ -7537,17 +7539,18 @@ function _drafterCommentText(c) {
 
     var _TM_POLL_INTERVAL_MS = 30000;  // 30 секунд между авто-обновлениями
 
-    // Tier 1-8: Рекрут=1 … Титан=8.
+    // Тир = индекс в TM_RANKS (0-based): Калибровка=0, Рекрут=1 … Титан=8.
+    // null — если ранг неизвестен/не задан.
     function _tmRankTier(rank) {
         var i = TM_RANKS.indexOf(rank);
-        return i >= 0 ? i + 1 : 0;
+        return i >= 0 ? i : null;
     }
 
-    // Реальные иконки рангов из проекта — /rank_icons/medal_N.png (N=1..8).
-    // Размер задаётся CSS-классом (.tm-rank-icon / --sm / --xs).
+    // Реальные иконки рангов из проекта — /rank_icons/medal_N.png (N=0..8,
+    // medal_0 = калибровка). Размер задаётся CSS-классом (.tm-rank-icon / --sm / --xs).
     function _tmRankIconImg(rank, modifier) {
         var tier = _tmRankTier(rank);
-        if (!tier) return '';
+        if (tier == null) return '';        // == null: тир 0 (калибровка) валиден
         var cls = 'tm-rank-icon' + (modifier ? ' ' + modifier : '');
         return '<img class="' + cls + '" src="/rank_icons/medal_' + tier + '.png" ' +
             'alt="' + _tmEsc(rank || ('Тир ' + tier)) + '" ' +
@@ -8496,7 +8499,7 @@ function _drafterCommentText(c) {
             var rankSet = {};
             for (var rIdx = 0; rIdx < _tm.filters.ranks.length; rIdx++) rankSet[_tm.filters.ranks[rIdx]] = true;
             rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
-                var tier = i + 1;
+                var tier = i;                 // 0-based: Калибровка=0 → medal_0
                 return _tmFchip({
                     variant: 'icon',
                     active: !!rankSet[r],
@@ -8569,8 +8572,8 @@ function _drafterCommentText(c) {
 
         // Ranks: один icon-тайл на каждый выбранный ранг — medal_N.png.
         _tm.filters.ranks.forEach(function (r) {
-            var tier = TM_RANKS.indexOf(r) + 1;
-            if (tier < 1) return;
+            var tier = TM_RANKS.indexOf(r);   // 0-based; Калибровка=0
+            if (tier < 0) return;
             chips.push({
                 kind: 'icon',
                 label: r,
@@ -9032,7 +9035,8 @@ function _drafterCommentText(c) {
         var hoursInput = document.getElementById('tm-hours-input');
         if (hoursInput) hoursInput.value = (p.hours != null) ? p.hours : '';
 
-        var posBtns = document.querySelectorAll('.tm-position-btn');
+        var pform = document.getElementById('tm-profile-form') || document;
+        var posBtns = pform.querySelectorAll('.tm-position-btn');
         var posSet = {};
         (p.positions || []).forEach(function (n) { posSet[n] = true; });
         for (var i = 0; i < posBtns.length; i++) {
@@ -9040,7 +9044,7 @@ function _drafterCommentText(c) {
             posBtns[i].classList.toggle('tm-position-btn--active', !!posSet[n]);
         }
 
-        var modeBtns = document.querySelectorAll('.tm-mode-btn');
+        var modeBtns = pform.querySelectorAll('.tm-mode-btn');
         var modeSet = {};
         (p.game_modes || []).forEach(function (m) { modeSet[m] = true; });
         for (var j = 0; j < modeBtns.length; j++) {
@@ -9168,7 +9172,12 @@ function _drafterCommentText(c) {
         var token = _tmGetToken();
         if (!token) { showToast('Нужна авторизация'); return; }
 
-        var rankActive = document.querySelector('.tm-rank-card--active');
+        // ВАЖНО: ограничиваем выборку формой профиля. Класс .tm-mode-btn есть и
+        // в создании лобби (размер/режим) — без скоупа querySelectorAll цеплял их,
+        // и в профиль попадали дубли режимов («Рейтинговый Турбо Рейтинговый Турбо»).
+        var pform = document.getElementById('tm-profile-form') || document;
+
+        var rankActive = pform.querySelector('.tm-rank-card--active');
         var rank = rankActive ? rankActive.getAttribute('data-rank') : '';
         if (!rank) { showToast('Выбери ранг'); return; }
 
@@ -9176,14 +9185,16 @@ function _drafterCommentText(c) {
         var hours = parseInt((hoursInput && hoursInput.value) || '0', 10);
         if (!(hours >= 0)) { showToast('Укажи часы корректно'); return; }
 
-        var posBtns = document.querySelectorAll('.tm-position-btn--active');
+        var posBtns = pform.querySelectorAll('.tm-position-btn--active');
         var positions = [];
         for (var i = 0; i < posBtns.length; i++) positions.push(parseInt(posBtns[i].getAttribute('data-pos'), 10));
+        positions = Array.from(new Set(positions));        // дедуп на всякий случай
         if (!positions.length) { showToast('Выбери хотя бы одну позицию'); return; }
 
-        var modeBtns = document.querySelectorAll('.tm-mode-btn--active');
+        var modeBtns = pform.querySelectorAll('.tm-mode-btn--active');
         var game_modes = [];
         for (var j = 0; j < modeBtns.length; j++) game_modes.push(modeBtns[j].getAttribute('data-mode'));
+        game_modes = Array.from(new Set(game_modes));      // дедуп на всякий случай
         if (!game_modes.length) { showToast('Выбери хотя бы один режим'); return; }
 
         var micT = document.getElementById('tm-mic-toggle');
@@ -10267,7 +10278,7 @@ function _drafterCommentText(c) {
                 var rfSet = {};
                 for (var ri = 0; ri < f.rank_filter.length; ri++) rfSet[f.rank_filter[ri]] = true;
                 rankChips.innerHTML = TM_RANKS.map(function (r, idx) {
-                    var tier = idx + 1;
+                    var tier = idx;           // 0-based: Калибровка=0 → medal_0
                     return _tmFchip({
                         variant: 'icon',
                         active: !!rfSet[r],

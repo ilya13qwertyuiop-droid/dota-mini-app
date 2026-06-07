@@ -7405,15 +7405,14 @@ margin-top: var(--space-4);
 }
 
 /* Rank scroller (form) */
+/* Перенос строк, а НЕ горизонтальный скролл: на ПК свайпа нет и скрытый
+   скроллбар не докрутить — ранги (теперь 9 с Калибровкой) не влезали в ширину
+   мини-аппа. Wrap показывает все в 2 ряда без скролла на любом устройстве. */
 .tm-rank-scroll {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
-.tm-rank-scroll::-webkit-scrollbar { display: none; }
 .tm-rank-card {
   appearance: none;
   flex-shrink: 0;

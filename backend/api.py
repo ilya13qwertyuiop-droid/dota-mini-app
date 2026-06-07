@@ -2141,6 +2141,7 @@ from backend.models import (  # noqa: E402
 
 
 _TM_VALID_RANKS = frozenset({
+    "Калибровка",  # тир 0 — игрок на калибровке / без ранга
     "Рекрут", "Страж", "Рыцарь", "Герой", "Легенда", "Властелин", "Божество", "Титан",
 })
 _TM_VALID_GAME_MODES = frozenset({"ranked", "normal", "turbo"})
