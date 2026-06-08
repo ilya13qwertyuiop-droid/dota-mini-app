@@ -101,7 +101,11 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    filters, ContextTypes,
+)
+from telegram.error import RetryAfter, Forbidden, TelegramError
 from db import (
     init_tokens_table,
     create_token_for_user,
@@ -115,6 +119,7 @@ from db import (
     get_top_drafters,
     upsert_user_profile_settings,
     toggle_notify_news,
+    get_all_bot_user_ids,
     ban_user,
     unban_user,
     find_user_id_by_username,
@@ -1861,6 +1866,178 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+# ---------------------------------------------------------------------------
+# /broadcast — рассылка поста из канала всем пользователям бота (только админ)
+#
+# Поток: админ ПЕРЕСЫЛАЕТ боту пост из своего канала → бот сохраняет ссылку на
+# это сообщение и показывает кнопки [проверить на себе / разослать всем / отмена].
+# Рассылка = forward_message того же сообщения каждому пользователю: картинка,
+# форматирование, кастом-эмодзи и плашка «Переслано из канала» (со ссылкой на
+# пост для реакций/комментов) сохраняются 1-в-1.
+# ---------------------------------------------------------------------------
+
+# admin_id -> {"chat_id", "message_id", "sending"}
+_BROADCAST_PENDING: dict[int, dict] = {}
+_BROADCAST_DELAY = 0.05  # ~20 пересылок/сек — в пределах лимита Telegram
+
+
+async def broadcast_receive(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+    """Админ переслал боту пост — предлагаем разослать."""
+    admin_id = update.effective_user.id
+    if admin_id not in ADMIN_IDS:
+        return
+    msg = update.effective_message
+    _BROADCAST_PENDING[admin_id] = {
+        "chat_id": update.effective_chat.id,
+        "message_id": msg.message_id,
+        "sending": False,
+    }
+    try:
+        n = len(await asyncio.to_thread(get_all_bot_user_ids))
+        n_str = str(n)
+    except Exception:
+        traceback.print_exc()
+        n_str = "?"
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🧪 Проверить на себе", callback_data="bc:test")],
+        [InlineKeyboardButton(f"📢 Разослать всем ({n_str})", callback_data="bc:send")],
+        [InlineKeyboardButton("❌ Отмена", callback_data="bc:cancel")],
+    ])
+    await msg.reply_text(
+        "📨 <b>Пост получен для рассылки.</b>\n\n"
+        f"Аудитория: <b>{n_str}</b> пользователей.\n"
+        "Перешлётся 1-в-1: картинка, форматирование, эмодзи и ссылка на канал "
+        "(плашка «Переслано из…»).\n\n"
+        "⚠️ Действие необратимо. Сначала проверь на себе.",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+async def _do_broadcast(context, src_chat_id: int, src_msg_id: int,
+                        user_ids: list[int], status_msg) -> None:
+    """Пересылает пост каждому пользователю с троттлингом и обработкой ошибок."""
+    bot = context.bot
+    total = len(user_ids)
+    ok = blocked = failed = 0
+
+    for i, uid in enumerate(user_ids, 1):
+        try:
+            await bot.forward_message(chat_id=uid, from_chat_id=src_chat_id,
+                                      message_id=src_msg_id)
+            ok += 1
+        except RetryAfter as e:
+            # Telegram просит подождать — пауза и одна повторная попытка
+            await asyncio.sleep(float(getattr(e, "retry_after", 5)) + 0.5)
+            try:
+                await bot.forward_message(chat_id=uid, from_chat_id=src_chat_id,
+                                          message_id=src_msg_id)
+                ok += 1
+            except Exception:
+                failed += 1
+        except Forbidden:
+            blocked += 1  # пользователь заблокировал бота / не стартовал
+        except TelegramError:
+            failed += 1
+        except Exception:
+            failed += 1
+
+        await asyncio.sleep(_BROADCAST_DELAY)
+
+        if i % 300 == 0:
+            try:
+                await status_msg.edit_text(
+                    f"⏳ Рассылка… {i}/{total}\n"
+                    f"✅ {ok} · 🚫 {blocked} · ⚠️ {failed}"
+                )
+            except Exception:
+                pass
+
+    try:
+        await status_msg.edit_text(
+            "✅ <b>Рассылка завершена</b>\n\n"
+            f"Всего: {total}\n"
+            f"Доставлено: <b>{ok}</b>\n"
+            f"Заблокировали бота: {blocked}\n"
+            f"Ошибки: {failed}",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+
+
+async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Кнопки подтверждения рассылки (bc:test / bc:send / bc:cancel)."""
+    q = update.callback_query
+    admin_id = q.from_user.id
+    if admin_id not in ADMIN_IDS:
+        await q.answer("Нет доступа", show_alert=True)
+        return
+
+    pending = _BROADCAST_PENDING.get(admin_id)
+    if not pending:
+        await q.answer("Пост устарел — перешли его боту заново.", show_alert=True)
+        try:
+            await q.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    action = (q.data or "bc:").split(":", 1)[1]
+
+    if action == "cancel":
+        _BROADCAST_PENDING.pop(admin_id, None)
+        await q.answer("Отменено")
+        try:
+            await q.edit_message_text("❌ Рассылка отменена.")
+        except Exception:
+            pass
+        return
+
+    if action == "test":
+        await q.answer("Отправляю тебе…")
+        try:
+            await context.bot.forward_message(
+                chat_id=admin_id,
+                from_chat_id=pending["chat_id"],
+                message_id=pending["message_id"],
+            )
+        except Exception as e:
+            await context.bot.send_message(admin_id, f"Не удалось переслать: {e}")
+        return
+
+    if action == "send":
+        if pending.get("sending"):
+            await q.answer("Рассылка уже идёт", show_alert=True)
+            return
+        pending["sending"] = True
+        await q.answer("Запускаю рассылку")
+        try:
+            user_ids = await asyncio.to_thread(get_all_bot_user_ids)
+        except Exception as e:
+            traceback.print_exc()
+            _BROADCAST_PENDING.pop(admin_id, None)
+            try:
+                await q.edit_message_text(f"Не удалось получить список пользователей: {e}")
+            except Exception:
+                pass
+            return
+
+        status_msg = q.message
+        try:
+            await status_msg.edit_text(
+                f"⏳ Рассылка запущена для {len(user_ids)} пользователей…"
+            )
+        except Exception:
+            pass
+
+        await _do_broadcast(context, pending["chat_id"], pending["message_id"],
+                            user_ids, status_msg)
+        _BROADCAST_PENDING.pop(admin_id, None)
+        return
+
+
 async def _set_commands(application: Application) -> None:
     """Registers the visible command menu shown when the user types / in Telegram."""
     await application.bot.set_my_commands([
@@ -1913,6 +2090,18 @@ def main():
     application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))
     application.add_handler(CommandHandler("ban",                 timed_handler("/ban")(ban_command)))
     application.add_handler(CommandHandler("unban",               timed_handler("/unban")(unban_command)))
+
+    # Рассылка: админ пересылает боту пост из канала → подтверждение → forward
+    # всем. Регистрируем ПЕРЕД admin-text и catch-all, чтобы пересланный пост
+    # (в т.ч. текстовый) ловился именно здесь.
+    application.add_handler(
+        MessageHandler(
+            filters.FORWARDED & filters.ChatType.PRIVATE
+            & filters.User(user_id=list(ADMIN_IDS)),
+            timed_handler("broadcast_receive")(broadcast_receive),
+        )
+    )
+    application.add_handler(CallbackQueryHandler(broadcast_callback, pattern=r"^bc:"))
 
     # Admin-команды редактирования текстов бота — ConversationHandler +
     # side-команды. Регистрируется ПЕРЕД общим MessageHandler ниже, чтобы
