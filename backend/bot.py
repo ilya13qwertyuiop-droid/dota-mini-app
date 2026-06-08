@@ -146,6 +146,14 @@ except ImportError as _od_import_err:
     logger.warning("[bot] OpenDota-сервисы не загружены: %s", _od_import_err)
     _OD_SERVICES_OK = False
 
+# Единый источник контрпиков/синергий с мини-апом (hero_matchups.json, Stratz).
+try:
+    from hero_pairs import get_hero_counters as _get_hero_counters, get_hero_synergy as _get_hero_synergy
+    _HERO_PAIRS_OK = True
+except ImportError as _hp_import_err:
+    logger.warning("[bot] hero_pairs не загружен: %s", _hp_import_err)
+    _HERO_PAIRS_OK = False
+
 
 # -------- загрузка переменных из .env --------
 def load_env():
@@ -863,28 +871,31 @@ def _render_two_section_card(
     sec2_content_h = n2 * ROW_H if n2 > 0 else EMPTY_H
     H = HEADER_H + SECTION_H + sec1_content_h + SECTION_H + sec2_content_h + BOT_PAD
 
-    C_BG      = (5,   5,   9)
-    C_CARD    = (15,  15,  20)
-    C_BORDER  = (35,  35,  46)
-    C_TEXT    = (245, 245, 247)
-    C_MUTED   = (155, 155, 161)
-    C_GOLD_B  = (255, 215,  90)
-    C_BAR_BG  = (30,  30,  40)
-    C_ICON_BG = (22,  25,  38)
+    # Токены нового аппа (styles.css :root). Без золота и градиент-фона.
+    C_BG      = (10,  10,  15)   # --bg-base
+    C_CARD    = (17,  17,  19)   # --bg-surface
+    C_BORDER  = (38,  38,  44)
+    C_TEXT    = (237, 237, 240)  # --text-primary
+    C_MUTED   = (139, 139, 149)  # --text-secondary
+    C_BAR_BG  = (25,  25,  30)
+    C_ICON_BG = (25,  25,  30)   # --bg-elevated
 
-    img  = Image.new("RGB", (W, H), C_BG)
+    img  = Image.new("RGB", (W, H), C_BG)   # плоский фон, без градиента
     draw = ImageDraw.Draw(img)
 
-    # фоновый градиент
-    for sy in range(H):
-        bv = int(9 + 7 * sy / H)
-        draw.line([(0, sy), (W, sy)], fill=(5, 5, bv))
-
-    f_title   = _load_font(26, bold=True)
-    f_sub     = _load_font(17)
-    f_section = _load_font(19, bold=True)
-    f_hero    = _load_font(19, bold=True)
-    f_pct     = _load_font(16)
+    # Шрифты Geist (как в шеринге); fallback на системный, если ассета нет.
+    from pathlib import Path as _FontPath
+    _fd = _FontPath(__file__).resolve().parent.parent / "assets" / "fonts"
+    def _gf(nm: str, sz: int):
+        try:
+            return ImageFont.truetype(str(_fd / nm), sz)
+        except Exception:
+            return _load_font(sz, bold=("Bold" in nm or "SemiBold" in nm))
+    f_title   = _gf("Geist-SemiBold.ttf", 26)
+    f_sub     = _gf("Geist-Regular.ttf", 17)
+    f_section = _gf("Geist-SemiBold.ttf", 19)
+    f_hero    = _gf("Geist-Medium.ttf", 19)
+    f_pct     = _gf("Geist-SemiBold.ttf", 17)
 
     # ── заголовок ──────────────────────────────────────────────────────────
     draw.text((OUTER_PAD, 26), main_title, font=f_title, fill=C_TEXT)
@@ -935,7 +946,7 @@ def _render_two_section_card(
             pct_w = bb[2] - bb[0]
         except AttributeError:
             pct_w = len(pct_str) * 10
-        draw.text((PCT_RIGHT - pct_w, name_y + 2), pct_str, font=f_pct, fill=C_GOLD_B)
+        draw.text((PCT_RIGHT - pct_w, name_y + 2), pct_str, font=f_pct, fill=bar_a)
 
         bar_y  = y + CARD_H - 14
         ratio  = min(max(wr_pct, 0.0), 100.0) / 100.0
@@ -946,12 +957,11 @@ def _render_two_section_card(
             draw.rectangle([BAR_X1, bar_y, BAR_X2, bar_y + BAR_H], fill=C_BAR_BG)
 
         if filled > 0:
-            for dx in range(filled):
-                t  = dx / max(filled - 1, 1)
-                r_ = int(bar_a[0] + (bar_b[0] - bar_a[0]) * t)
-                g_ = int(bar_a[1] + (bar_b[1] - bar_a[1]) * t)
-                b_ = int(bar_a[2] + (bar_b[2] - bar_a[2]) * t)
-                draw.line([(BAR_X1 + dx, bar_y), (BAR_X1 + dx, bar_y + BAR_H)], fill=(r_, g_, b_))
+            # Плоский бар в семантическом цвете секции (bar_a). Без градиента.
+            try:
+                draw.rounded_rectangle([BAR_X1, bar_y, BAR_X1 + filled, bar_y + BAR_H], radius=999, fill=bar_a)
+            except AttributeError:
+                draw.rectangle([BAR_X1, bar_y, BAR_X1 + filled, bar_y + BAR_H], fill=bar_a)
 
     cur_y = HEADER_H
 
@@ -1000,15 +1010,15 @@ def render_counters_card(
         sec1_title="Силён против:",
         sec1_heroes=strong_against,
         sec1_icons=icons_strong,
-        sec1_bar_a=(52, 194, 122),
-        sec1_bar_b=(35, 165,  90),
-        sec1_label_color=(52, 194, 122),
+        sec1_bar_a=(61, 184, 122),
+        sec1_bar_b=(61, 184, 122),
+        sec1_label_color=(61, 184, 122),
         sec2_title="Сложно против:",
         sec2_heroes=weak_against,
         sec2_icons=icons_weak,
-        sec2_bar_a=(220, 70, 70),
-        sec2_bar_b=(180, 40, 40),
-        sec2_label_color=(220, 70, 70),
+        sec2_bar_a=(229, 83, 75),
+        sec2_bar_b=(229, 83, 75),
+        sec2_label_color=(229, 83, 75),
     )
 
 
@@ -1026,15 +1036,15 @@ def render_synergy_card(
         sec1_title="Лучшие союзники:",
         sec1_heroes=best_allies,
         sec1_icons=icons_best,
-        sec1_bar_a=(52, 194, 122),
-        sec1_bar_b=(35, 165,  90),
-        sec1_label_color=(52, 194, 122),
+        sec1_bar_a=(61, 184, 122),
+        sec1_bar_b=(61, 184, 122),
+        sec1_label_color=(61, 184, 122),
         sec2_title="Худшие союзники:",
         sec2_heroes=worst_allies,
         sec2_icons=icons_worst,
-        sec2_bar_a=(220, 70, 70),
-        sec2_bar_b=(180, 40, 40),
-        sec2_label_color=(220, 70, 70),
+        sec2_bar_a=(229, 83, 75),
+        sec2_bar_b=(229, 83, 75),
+        sec2_label_color=(229, 83, 75),
     )
 
 
@@ -1138,58 +1148,21 @@ async def _handle_counters_hero(
     weak:   list[dict] = []
 
     try:
-        # ── 1. Локальные данные (stats_db) ────────────────────────────────
-        if _LOCAL_STATS_OK:
-            local_rows = await asyncio.to_thread(get_hero_matchup_rows, hero_id, min_games=50)
-            if local_rows:
-                base_wr = await asyncio.to_thread(get_hero_base_winrate_from_db, hero_id) or 0.5
-                enriched = [
-                    {**r, "adv": round(r["wr_vs"] - base_wr, 4)}
-                    for r in local_rows
-                    if r["games"] >= 50
-                ]
-                victims = sorted(
-                    [e for e in enriched if e["adv"] > 0],
-                    key=lambda x: x["adv"], reverse=True,
-                )[:5]
-                counters_list = sorted(
-                    [e for e in enriched if e["adv"] <= 0],
-                    key=lambda x: x["adv"],
-                )[:5]
-                strong = [
-                    {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
-                     "wr_pct": round(e["wr_vs"] * 100, 1)}
-                    for e in victims
-                ]
-                weak = [
-                    {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
-                     "wr_pct": round(e["wr_vs"] * 100, 1)}
-                    for e in counters_list
-                ]
-                logger.info("[counters] local DB: hero=%s strong=%d weak=%d", hero_name, len(strong), len(weak))
-
-        # ── 2. OpenDota (fallback, если локальных данных нет) ─────────────
-        if not strong and not weak and _OD_SERVICES_OK:
-            try:
-                od_matchups = await get_hero_matchups_cached(hero_id)
-                if od_matchups:
-                    od_base_wr = await _get_od_base_winrate(hero_id)
-                    groups = build_matchup_groups(od_matchups, od_base_wr)
-                    strong = [
-                        {"name": HERO_ID_TO_NAME.get(e["opponent_hero_id"],
-                                                       f"Hero #{e['opponent_hero_id']}"),
-                         "wr_pct": round(e["winrate"] * 100, 1)}
-                        for e in groups["strong_against"][:5]
-                    ]
-                    weak = [
-                        {"name": HERO_ID_TO_NAME.get(e["opponent_hero_id"],
-                                                       f"Hero #{e['opponent_hero_id']}"),
-                         "wr_pct": round(e["winrate"] * 100, 1)}
-                        for e in groups["weak_against"][:5]
-                    ]
-                    logger.info("[counters] OpenDota: hero=%s strong=%d weak=%d", hero_name, len(strong), len(weak))
-            except Exception as od_err:
-                logger.warning("[counters] OpenDota fallback error for %s: %s", hero_name, od_err)
+        # Единый источник с мини-апом — hero_pairs (hero_matchups.json/Stratz).
+        # victims = «Силён против», counters = «Сложно против». Числа 1-в-1 с аппом.
+        if _HERO_PAIRS_OK:
+            data = await asyncio.to_thread(_get_hero_counters, hero_id, 5, 50)
+            strong = [
+                {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
+                 "wr_pct": round(e["wr_vs"] * 100, 1)}
+                for e in (data.get("victims") or [])[:5]
+            ]
+            weak = [
+                {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
+                 "wr_pct": round(e["wr_vs"] * 100, 1)}
+                for e in (data.get("counters") or [])[:5]
+            ]
+            logger.info("[counters] hero=%s strong=%d weak=%d (hero_pairs)", hero_name, len(strong), len(weak))
 
         if not strong and not weak:
             await update.message.reply_text(
@@ -1266,32 +1239,20 @@ async def _handle_synergy_hero(
     worst: list[dict] = []
 
     try:
-        if _LOCAL_STATS_OK:
-            syn_rows = await asyncio.to_thread(get_hero_synergy_rows, hero_id, min_games=50)
-            if syn_rows:
-                base_wr = await asyncio.to_thread(get_hero_base_winrate_from_db, hero_id) or 0.5
-                enriched = [
-                    {**r, "delta": round(r["wr_vs"] - base_wr, 4)}
-                    for r in syn_rows
-                    if r["games"] >= 50
-                ]
-                best = [
-                    {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
-                     "wr_pct": round(e["wr_vs"] * 100, 1)}
-                    for e in sorted(
-                        [e for e in enriched if e["delta"] >= 0],
-                        key=lambda x: x["delta"], reverse=True,
-                    )[:5]
-                ]
-                worst = [
-                    {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
-                     "wr_pct": round(e["wr_vs"] * 100, 1)}
-                    for e in sorted(
-                        [e for e in enriched if e["delta"] < 0],
-                        key=lambda x: x["delta"],
-                    )[:5]
-                ]
-                logger.info("[synergy] local DB: hero=%s best=%d worst=%d", hero_name, len(best), len(worst))
+        # Единый источник с мини-апом — hero_pairs (hero_matchups.json, ключ "with").
+        if _HERO_PAIRS_OK:
+            data = await asyncio.to_thread(_get_hero_synergy, hero_id, 5, 50)
+            best = [
+                {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
+                 "wr_pct": round(e["wr_vs"] * 100, 1)}
+                for e in (data.get("best_allies") or [])[:5]
+            ]
+            worst = [
+                {"name": HERO_ID_TO_NAME.get(e["hero_id"], f"Hero #{e['hero_id']}"),
+                 "wr_pct": round(e["wr_vs"] * 100, 1)}
+                for e in (data.get("worst_allies") or [])[:5]
+            ]
+            logger.info("[synergy] hero=%s best=%d worst=%d (hero_pairs)", hero_name, len(best), len(worst))
 
         if not best and not worst:
             await update.message.reply_text(

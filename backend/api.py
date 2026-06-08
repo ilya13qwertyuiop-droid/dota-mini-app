@@ -717,65 +717,9 @@ async def api_hero_counters(
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
-
-    strict = get_stats_mode() == "strict"
-
-    base_wr = get_hero_base_winrate_from_db(hero_id, strict=strict)
-    if base_wr is None:
-        base_wr = 0.5
-        logger.warning("[counters] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
-
-    matchups_file = _load_hero_matchups_file() or {}
-    hero_entry = matchups_file.get(str(hero_id)) or {}
-    vs_map = hero_entry.get("vs") or {}
-
-    enriched = []
-    for opp_id_str, pair in vs_map.items():
-        match_count = int(pair.get("matchCount", 0))
-        if match_count < min_games:
-            continue
-        try:
-            opp_id = int(opp_id_str)
-        except (TypeError, ValueError):
-            continue
-        delta = float(pair.get("synergy", 0.0)) / 100.0
-        wr_vs = base_wr + delta
-        enriched.append({
-            "hero_id":       opp_id,
-            "games":         match_count,
-            "wr_vs":         round(wr_vs, 4),
-            "advantage":     round(delta, 4),
-            "raw_advantage": round(delta, 4),
-        })
-
-    # counters: delta <= -0.002 (they beat us), sorted worst-first
-    counters = sorted(
-        [e for e in enriched if e["advantage"] <= -0.002],
-        key=lambda x: x["advantage"],
-    )[:limit]
-
-    # victims: delta >= 0.002 (we beat them), sorted best-first
-    victims = sorted(
-        [e for e in enriched if e["advantage"] >= 0.002],
-        key=lambda x: x["advantage"],
-        reverse=True,
-    )[:limit]
-
-    data_games = sum(e["games"] for e in enriched)
-
-    logger.info(
-        "[counters] hero_id=%s base_wr=%.4f data_games=%d counters=%d victims=%d (strict=%s, source=file)",
-        hero_id, base_wr, data_games, len(counters), len(victims), strict,
-    )
-
-    return {
-        "hero_id": hero_id,
-        "base_winrate": base_wr,
-        "data_games": data_games,
-        "counters": counters,
-        "victims": victims,
-        "strict_mode": strict,
-    }
+    # Единый источник с ботом /counters — backend/hero_pairs.py (та же логика).
+    from backend.hero_pairs import get_hero_counters
+    return get_hero_counters(hero_id, limit=limit, min_games=min_games)
 
 
 # ========== Custom Stats: ally synergy from our own match data ==========
@@ -808,65 +752,9 @@ async def api_hero_synergy(
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
-
-    strict = get_stats_mode() == "strict"
-
-    base_wr = get_hero_base_winrate_from_db(hero_id, strict=strict)
-    if base_wr is None:
-        base_wr = 0.5
-        logger.warning("[synergy] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
-
-    matchups_file = _load_hero_matchups_file() or {}
-    hero_entry = matchups_file.get(str(hero_id)) or {}
-    with_map = hero_entry.get("with") or {}
-
-    enriched = []
-    for ally_id_str, pair in with_map.items():
-        match_count = int(pair.get("matchCount", 0))
-        if match_count < min_games:
-            continue
-        try:
-            ally_id = int(ally_id_str)
-        except (TypeError, ValueError):
-            continue
-        delta = float(pair.get("synergy", 0.0)) / 100.0
-        wr_vs = base_wr + delta
-        enriched.append({
-            "hero_id":   ally_id,
-            "games":     match_count,
-            "wins":      int(round(wr_vs * match_count)),
-            "wr_vs":     round(wr_vs, 4),
-            "delta":     round(delta, 4),
-            "advantage": round(delta, 4),
-            "raw_delta": round(delta, 4),
-        })
-
-    best_allies = sorted(
-        [e for e in enriched if e["delta"] >= 0],
-        key=lambda x: x["delta"],
-        reverse=True,
-    )[:limit]
-
-    worst_allies = sorted(
-        [e for e in enriched if e["delta"] <= 0],
-        key=lambda x: x["delta"],
-    )[:limit]
-
-    data_games = sum(e["games"] for e in enriched)
-
-    logger.info(
-        "[synergy] hero_id=%s base_wr=%.4f data_games=%d best=%d worst=%d (strict=%s, source=file)",
-        hero_id, base_wr, data_games, len(best_allies), len(worst_allies), strict,
-    )
-
-    return {
-        "hero_id": hero_id,
-        "base_winrate": base_wr,
-        "data_games": data_games,
-        "best_allies": best_allies,
-        "worst_allies": worst_allies,
-        "strict_mode": strict,
-    }
+    # Единый источник с ботом /synergy — backend/hero_pairs.py (та же логика).
+    from backend.hero_pairs import get_hero_synergy
+    return get_hero_synergy(hero_id, limit=limit, min_games=min_games)
 
 
 # ========== Hero Build ==========
