@@ -951,17 +951,11 @@ def _render_two_section_card(
         bar_y  = y + CARD_H - 14
         ratio  = min(max(wr_pct, 0.0), 100.0) / 100.0
         filled = int((BAR_X2 - BAR_X1) * ratio)
-        try:
-            draw.rounded_rectangle([BAR_X1, bar_y, BAR_X2, bar_y + BAR_H], radius=999, fill=C_BAR_BG)
-        except AttributeError:
-            draw.rectangle([BAR_X1, bar_y, BAR_X2, bar_y + BAR_H], fill=C_BAR_BG)
-
+        # Обычные прямоугольники — равномерная толщина. rounded_rectangle с
+        # большим radius на полосе 4px давал сужающиеся/«рваные» края.
+        draw.rectangle([BAR_X1, bar_y, BAR_X2, bar_y + BAR_H], fill=C_BAR_BG)
         if filled > 0:
-            # Плоский бар в семантическом цвете секции (bar_a). Без градиента.
-            try:
-                draw.rounded_rectangle([BAR_X1, bar_y, BAR_X1 + filled, bar_y + BAR_H], radius=999, fill=bar_a)
-            except AttributeError:
-                draw.rectangle([BAR_X1, bar_y, BAR_X1 + filled, bar_y + BAR_H], fill=bar_a)
+            draw.rectangle([BAR_X1, bar_y, BAR_X1 + filled, bar_y + BAR_H], fill=bar_a)
 
     cur_y = HEADER_H
 
