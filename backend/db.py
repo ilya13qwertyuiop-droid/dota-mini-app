@@ -385,6 +385,19 @@ def get_news_subscribers() -> list[int]:
         return [r.user_id for r in rows]
 
 
+def get_all_bot_user_ids() -> list[int]:
+    """All user_ids that have a profile (everyone who ever interacted with the
+    bot), excluding banned users. Audience for the admin /broadcast feature.
+    """
+    from sqlalchemy import text
+    with SessionLocal() as session:
+        rows = session.execute(text(
+            "SELECT user_id FROM user_profiles "
+            "WHERE user_id NOT IN (SELECT user_id FROM banned_users)"
+        )).fetchall()
+        return [r[0] for r in rows]
+
+
 def news_guid_exists(guid: str) -> bool:
     """Returns True if this RSS guid is already in dota_news."""
     with SessionLocal() as session:
