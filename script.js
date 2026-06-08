@@ -785,13 +785,9 @@
             // Прогресс сохраняется при перемещении внутри аппа: если серия уже
             // идёт — возвращаемся к ней, не сбрасывая.
             if (_mghl.inProgress) return;
-            // Снижаем трение для возвращающихся: сразу запускаем последний режим
-            // (меню режимов всегда под рукой — кнопка «назад» в игре и «Сменить
-            // режим» на экране результата). Новичку (режим не выбран) — выбор.
-            var last = null;
-            try { last = localStorage.getItem('mghl_last_mode'); } catch (e) { /* приватный режим */ }
-            if (last && _MGHL_MODES[last]) mghlChooseMode(last);
-            else mghlShowModes();
+            // ВСЕГДА показываем выбор режима — без авто-старта последнего.
+            // Игрок каждый раз выбирает режим сам.
+            mghlShowModes();
         };
 
         // Контекстная кнопка «назад» в шапке. Таблица лидеров → закрыть.
@@ -843,7 +839,6 @@
             if (!mode) return;
             _mghl.mode = mode;
             _mghl.modeKey = key;
-            try { localStorage.setItem('mghl_last_mode', key); } catch (e) { /* приватный режим */ }
             _mghl.metric = mode.metric;
             _mghl.game = mode.game;
             _mghl.best = 0;              // рекорд per-mode — подтянем при старте
@@ -1221,8 +1216,12 @@
         }
 
         function updateQuizPageResult() {
+            // Карточка «последний результат» убрана с экрана мини-игр —
+            // функция остаётся безопасным no-op (вызывается из switchPage/backToQuizList).
+            var el = document.getElementById('quizPageLastResult');
+            if (!el) return;
             if (lastPositionResult) {
-                document.getElementById('quizPageLastResult').style.display = 'block';
+                el.style.display = 'block';
                 document.getElementById('quizPagePosition').textContent = lastPositionResult.position;
                 document.getElementById('quizPageDate').textContent = `Пройден: ${lastPositionResult.date}`;
             }
