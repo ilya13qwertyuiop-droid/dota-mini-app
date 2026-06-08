@@ -1627,3 +1627,287 @@ def update_match_players_backfill(match_id: int, players: list[dict]) -> None:
                 """),
                 {**p, "match_id": match_id},
             )
+
+
+# ---------------------------------------------------------------------------
+# Мини-игра «Выше/Ниже» — пул героев с агрегатами
+# (популярность из dota2protracker + длительность/ранг из наших матчей)
+# ---------------------------------------------------------------------------
+
+_MINIGAME_HL_KEY = "minigame_hl_pool_v6"   # v6: санити-фильтр битых kills/deaths + мем-исключение Tinker
+_MINIGAME_HL_TTL_SEC = 12 * 3600
+_MINIGAME_HL_FALLBACK_DAYS = 14            # окно для fallback по нашим матчам
+
+# Физически правдоподобный коридор «за игру». Значения вне него в источнике —
+# битые (напр. Chen с 20 смертями), такие метрики отбрасываем, чтобы игрок не
+# видел мусор. ИСКЛЮЧЕНИЕ — _MGHL_MEME_KEEP: намеренные мемы оставляем как есть.
+_MGHL_SANE_BOUNDS = {"kills": (1.0, 20.0), "deaths": (1.0, 15.0)}
+_MGHL_MEME_KEEP = {(34, "deaths")}         # Tinker: 46 смертей — дань мему, не режем
+
+
+def _mghl_sane(hid: int, metric: str, val):
+    """Отсекает физически невозможные значения метрики; мем-исключения пропускает."""
+    if val is None:
+        return None
+    if (hid, metric) in _MGHL_MEME_KEEP:
+        return val
+    lo, hi = _MGHL_SANE_BOUNDS[metric]
+    if val < lo or val > hi:
+        return None
+    return val
+
+
+def _mghl_per_game(val, matches: int | None):
+    """Приводит значение из hero_detailed_stats.json к «среднему за игру».
+
+    Файл может отдавать как уже усреднённые значения (Stratz обычно так),
+    так и суммарные. Эвристика: среднее число убийств/смертей за игру в Dota
+    лежит в правдоподобном диапазоне (единицы–десятки), поэтому значение < 60
+    считаем уже усреднённым; иначе делим на число матчей героя."""
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0:
+        return None
+    if v < 60:                       # уже среднее за игру
+        return round(v, 1)
+    if matches and matches > 0:      # суммарное → делим на число игр
+        return round(v / matches, 1)
+    return None
+
+
+def get_minigame_hl_pool(force: bool = False) -> list[dict]:
+    """Пул героев для «Выше/Ниже». Несколько осей сравнения:
+      • matches — популярность (число матчей героя);
+      • kills   — среднее число убийств за игру;
+      • deaths  — среднее число смертей за игру.
+    Популярность по приоритету:
+      1) hero_stats.json (Stratz, без фильтра по рангу) — matchCount на героя;
+      2) dota_builds.json — sum(num_matches) по позициям героя;
+      3) наши матчи в БД — число пиков за последние N дней.
+    kills/deaths — из hero_detailed_stats.json (если есть; иначе ключи опущены).
+    Кэшируется на _MINIGAME_HL_TTL_SEC (раз в 12ч)."""
+    if not force:
+        cached = get_app_cache_value(_MINIGAME_HL_KEY)
+        if isinstance(cached, dict) and cached.get("heroes"):
+            if (time.time() - float(cached.get("built_at") or 0)) < _MINIGAME_HL_TTL_SEC:
+                return cached["heroes"]
+
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    pop: dict[int, int] = {}
+    src = None
+
+    # 1) hero_stats.json (Stratz) — массив [{heroId, matchCount, winCount}].
+    try:
+        hs_path = root / "hero_stats.json"
+        if hs_path.exists():
+            with open(hs_path, encoding="utf-8") as f:
+                rows = json.load(f)
+            for r in (rows or []):
+                try:
+                    hid = int(r.get("heroId"))
+                    mc = int(r.get("matchCount") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if mc > 0:
+                    pop[hid] = mc
+            if pop:
+                src = "hero_stats.json"
+    except Exception as e:
+        logger.warning("[stats_db] minigame_hl: hero_stats.json read failed: %s", e)
+        pop = {}
+
+    # 2) Fallback: dota_builds.json (sum num_matches по позициям).
+    if not pop:
+        try:
+            builds_path = root / "dota_builds.json"
+            if builds_path.exists():
+                with open(builds_path, encoding="utf-8") as f:
+                    builds = json.load(f)
+                for hid_str, positions in (builds or {}).items():
+                    total = sum(
+                        int((pos or {}).get("num_matches") or 0)
+                        for pos in (positions or {}).values()
+                    )
+                    if total > 0:
+                        pop[int(hid_str)] = total
+                if pop:
+                    src = "dota_builds.json"
+        except Exception as e:
+            logger.warning("[stats_db] minigame_hl: dota_builds.json read failed: %s", e)
+            pop = {}
+
+    # 3) Fallback: число пиков в наших матчах за последние N дней.
+    if not pop:
+        src = "matches"
+        cutoff = int(time.time()) - _MINIGAME_HL_FALLBACK_DAYS * 86400
+        with engine.connect() as conn:
+            mrows = conn.execute(
+                text("SELECT radiant_heroes, dire_heroes FROM matches WHERE start_time >= :c"),
+                {"c": cutoff},
+            ).fetchall()
+        for rh, dh in mrows:
+            try:
+                for blob in (rh, dh):
+                    arr = blob if isinstance(blob, list) else json.loads(blob or "[]")
+                    for h in arr:
+                        pop[int(h)] = pop.get(int(h), 0) + 1
+            except Exception:
+                continue
+
+    # Доп.оси kills/deaths из hero_detailed_stats.json — средние за игру.
+    detail: dict[int, dict] = {}
+    try:
+        det_path = root / "hero_detailed_stats.json"
+        if det_path.exists():
+            with open(det_path, encoding="utf-8") as f:
+                drows = json.load(f)
+            dropped = []
+            for r in (drows or []):
+                try:
+                    hid = int(r.get("heroId"))
+                except (TypeError, ValueError):
+                    continue
+                m = {}
+                for metric in ("kills", "deaths"):
+                    raw = _mghl_per_game(r.get(metric), pop.get(hid))
+                    val = _mghl_sane(hid, metric, raw)
+                    if val is not None:
+                        m[metric] = val
+                    elif raw is not None:
+                        dropped.append((hid, metric, raw))   # битое значение — выкинули
+                if m:
+                    detail[hid] = m
+            if dropped:
+                logger.warning("[stats_db] minigame_hl: dropped %d anomalous metric(s): %s",
+                               len(dropped), dropped)
+    except Exception as e:
+        logger.warning("[stats_db] minigame_hl: hero_detailed_stats.json read failed: %s", e)
+        detail = {}
+
+    min_m = 20 if src == "matches" else 200
+    pool = []
+    for hid, m in pop.items():
+        if m < min_m:
+            continue
+        entry = {"id": hid, "matches": m}
+        entry.update(detail.get(hid, {}))
+        pool.append(entry)
+
+    if pool:
+        set_app_cache_value(_MINIGAME_HL_KEY, {"built_at": time.time(), "heroes": pool})
+    logger.info("[stats_db] minigame_hl pool rebuilt: %d heroes (src=%s)", len(pool), src)
+    return pool
+
+
+# ---------------------------------------------------------------------------
+# Лидерборд мини-игр (по рекордной серии из user_profiles.settings.minigame_best)
+# ---------------------------------------------------------------------------
+
+import threading
+
+_MINIGAME_LB_TTL_SEC = 240     # лидерборду минутная свежесть не нужна — режем частоту сканов
+# v2: scores теперь по возрастанию (bisect). Версия в ключе игнорирует старые блобы.
+_MINIGAME_LB_KEY_PREFIX = "minigame_lb_v2_"
+
+# In-process быстрый слой (как у драфтера): на попадании — ноль обращений к БД и
+# парса blob. Плюс single-flight лок: при наплыве только ОДИН поток воркера
+# пересобирает, остальные ждут и читают готовое (нет thundering herd сканов).
+_MINIGAME_LB_MEM: dict[str, dict] = {}
+_MINIGAME_LB_LOCK = threading.Lock()
+
+
+def _lb_fresh(o) -> bool:
+    return (
+        isinstance(o, dict)
+        and o.get("built_at")
+        and (time.time() - float(o["built_at"])) < _MINIGAME_LB_TTL_SEC
+    )
+
+
+def _rebuild_all_minigame_leaderboards(top_n: int = 20) -> dict:
+    """ОДИН скан user_profiles → лидерборды по ВСЕМ встреченным играм.
+
+    Раньше каждый режим («hl_pop»/«hl_kills»/«hl_deaths») сканировал таблицу
+    отдельно — до 3× полных проходов в минуту. Теперь один проход строит и
+    кэширует все режимы сразу. `scores` хранится ОТСОРТИРОВАННЫМ ПО ВОЗРАСТАНИЮ
+    (для расчёта ранга через bisect на стороне API) и клиенту не отдаётся.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT user_id, settings FROM user_profiles")).fetchall()
+
+    per_game: dict[str, list[tuple[int, int]]] = {}   # game -> [(uid, best)]
+    smap: dict[int, dict] = {}
+    for uid, st in rows:
+        try:
+            s = st if isinstance(st, dict) else json.loads(st or "{}")
+        except Exception:
+            continue
+        mb = (s or {}).get("minigame_best") or {}
+        if not isinstance(mb, dict):
+            continue
+        kept = False
+        for g, v in mb.items():
+            try:
+                b = int(v or 0)
+            except (TypeError, ValueError):
+                b = 0
+            if b > 0:
+                per_game.setdefault(g, []).append((int(uid), b))
+                kept = True
+        if kept:
+            smap[int(uid)] = s or {}
+
+    now = time.time()
+    built: dict[str, dict] = {}
+    for g, bests in per_game.items():
+        bests.sort(key=lambda x: x[1], reverse=True)
+        total = len(bests)
+        top = []
+        for uid, b in bests[:top_n]:
+            s = smap.get(uid) or {}
+            first = (s.get("first_name") or "").strip()
+            last = (s.get("last_name") or "").strip()
+            name = (first + " " + last).strip()
+            if not name:
+                name = ("@" + s["username"]) if s.get("username") else ("Игрок " + str(uid))
+            top.append({"user_id": uid, "name": name, "photo_url": s.get("photo_url"), "best": b})
+        out = {"built_at": now, "top": top, "total": total,
+               "scores": sorted(b for (_u, b) in bests)}   # ascending — для bisect
+        set_app_cache_value(_MINIGAME_LB_KEY_PREFIX + g, out)   # межворкерный шеринг
+        _MINIGAME_LB_MEM[g] = out                                # быстрый in-process слой
+        built[g] = out
+    return built
+
+
+def get_minigame_leaderboard(game: str, top_n: int = 20) -> dict:
+    """Лидерборд по рекордной серии в игре `game`.
+
+    Три слоя: (1) in-process кэш — мгновенно, без БД; (2) single-flight лок —
+    при наплыве пересобирает только один поток воркера, остальные ждут; внутри
+    лока (3) перепроверяем межворкерный app_cache, прежде чем сканировать —
+    вдруг другой воркер уже пересобрал. Полный скан профилей идёт максимум раз
+    в TTL на воркер, а не на каждый запрос."""
+    o = _MINIGAME_LB_MEM.get(game)
+    if _lb_fresh(o):
+        return o
+
+    with _MINIGAME_LB_LOCK:
+        o = _MINIGAME_LB_MEM.get(game)               # другой поток мог пересобрать, пока ждали
+        if _lb_fresh(o):
+            return o
+        shared = get_app_cache_value(_MINIGAME_LB_KEY_PREFIX + game)
+        if _lb_fresh(shared):                        # другой ВОРКЕР уже пересобрал
+            _MINIGAME_LB_MEM[game] = shared
+            return shared
+
+        built = _rebuild_all_minigame_leaderboards(top_n)
+        if game in built:
+            return built[game]
+        # У игры пока нет результатов — кэшируем пустой, чтобы не сканировать каждый запрос.
+        empty = {"built_at": time.time(), "top": [], "total": 0, "scores": []}
+        set_app_cache_value(_MINIGAME_LB_KEY_PREFIX + game, empty)
+        _MINIGAME_LB_MEM[game] = empty
+        return empty

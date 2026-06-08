@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=172" />
+    <link rel="stylesheet" href="styles.css?v=212" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -37,6 +37,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <!-- API base URL — overridden by nginx sub_filter on staging -->
     <script>window.API_BASE_URL = "/api";</script>
+    <!-- Ссылка на бота для шаринга. Прод-значение по умолчанию; на staging
+         nginx подменяет его sub_filter'ом (см. конфиг) на D2HLPR_BOT. -->
+    <script>window.MINIAPP_URL = "https://t.me/DotaAssistant_bot";</script>
   </head>
   <body>
     <div class="app-container">
@@ -96,17 +99,6 @@
               <div class="home-draft-placeholder">Сыграй свой первый драфт</div>
             </div>
             <div class="home-widget-cta" id="home-draft-cta">Новый драфт <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
-          </button>
-
-          <button class="home-card home-widget home-widget--wide home-widget--quiz" id="home-quiz-widget" onclick="switchPage('quiz')">
-            <div class="home-widget-head">
-              <span class="section-eyebrow">Квизы</span>
-            </div>
-            <div class="home-widget-body home-quiz-body">
-              <div class="home-quiz-title">Найти сигнатурку</div>
-              <div class="home-quiz-subtitle">Подбор позиции и сигнатурных героев под твой плейстайл</div>
-            </div>
-            <div class="home-widget-cta">Открыть <i class="ph ph-arrow-right" aria-hidden="true"></i></div>
           </button>
         </div>
 
@@ -177,7 +169,7 @@
           </div>
           <div class="feedback-tags-row">
             <button class="feedback-tag-chip" data-tag="quiz" onclick="toggleTag('quiz')">
-              Квизы
+              Мини-игры
             </button>
             <button class="feedback-tag-chip" data-tag="matchups" onclick="toggleTag('matchups')">
               Матчапы
@@ -260,71 +252,40 @@
         <!-- Список доступных квизов -->
         <div id="quiz-list">
           <div class="dashboard-header">
-            <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Квизы</h1>
-            <p>Узнай больше о своём игровом стиле</p>
+            <h1><i class="h1-icon ph ph-target" aria-hidden="true"></i>Мини-игры</h1>
+            <p>Угадывай, проверяй чутьё, узнавай свой стиль</p>
           </div>
 
-          <!-- Квиз по позициям -->
-          <div class="card">
-            <div class="card-header">
-              <i class="card-icon ph ph-game-controller" aria-hidden="true"></i>
-              <span class="card-title">Какая твоя позиция?</span>
-            </div>
-            <div class="card-content">
-              Пройди тест за 2 минуты и узнай, на какой роли ты раскроешься
-              лучше всего
-            </div>
-            <button
-              class="btn-small btn-small--full"
-              onclick="startPositionQuiz()"
-            >
-              Начать тест →
+          <!-- Флагман: feature-карточка (вся тапабельна), единственный primary на экране -->
+          <button type="button" class="mg-feature" onclick="goToMinigameHL()">
+            <span class="mg-feature-head">
+              <span class="mg-feature-ic"><i class="ph ph-scales" aria-hidden="true"></i></span>
+              <span class="mg-feature-title">Выше / Ниже</span>
+              <span class="card-tag">NEW</span>
+            </span>
+            <span class="mg-feature-desc">Угадай, у кого из двух героев показатель выше — по матчам, убийствам или смертям. Серия без права на ошибку: сколько продержишься?</span>
+            <span class="mg-feature-cta">Играть →</span>
+          </button>
+
+          <!-- Квизы — вторичный компактный список (тот же язык, что mode-select игры) -->
+          <div class="mg-section-title">Квизы</div>
+          <div class="mg-quiz-list">
+            <button type="button" class="mghl-mode" onclick="startPositionQuiz()">
+              <span class="mghl-mode-ic"><i class="ph ph-game-controller" aria-hidden="true"></i></span>
+              <span class="mghl-mode-txt">
+                <span class="mghl-mode-name">Какая твоя позиция?</span>
+                <span class="mghl-mode-sub">Тест за 2 минуты</span>
+              </span>
+              <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
             </button>
-          </div>
-
-          <!-- Квиз по героям -->
-          <div class="card">
-            <div class="card-header">
-              <i class="card-icon ph ph-user-focus" aria-hidden="true"></i>
-              <span class="card-title">Подбор идеального героя</span>
-            </div>
-            <div class="card-content">
-              Ответь на вопросы и получи список героев, которые идеально
-              подходят под твой стиль игры
-            </div>
-            <button
-              class="btn-small btn-small--full"
-              onclick="startHeroQuiz()"
-            >
-              Подобрать героя →
+            <button type="button" class="mghl-mode" onclick="startHeroQuiz()">
+              <span class="mghl-mode-ic"><i class="ph ph-user-focus" aria-hidden="true"></i></span>
+              <span class="mghl-mode-txt">
+                <span class="mghl-mode-name">Подбор идеального героя</span>
+                <span class="mghl-mode-sub">Под твой стиль игры</span>
+              </span>
+              <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
             </button>
-          </div>
-
-          <!-- Последний результат (если есть) -->
-          <div class="card" id="quizPageLastResult" style="display: none;">
-            <div class="card-header">
-              <i class="card-icon ph ph-chart-bar" aria-hidden="true"></i>
-              <span class="card-title">Твой последний результат</span>
-            </div>
-            <div class="position-result">
-              <div>
-                <div
-                  class="position-result-text"
-                  id="quizPagePosition"
-                >
-                  Pos 4 — Роумер
-                </div>
-                <div
-                  class="position-result-date"
-                  id="quizPageDate"
-                >
-                  Пройден: сегодня
-                </div>
-              </div>
-              <button class="btn-small" onclick="startPositionQuiz()">
-                Пересдать
-              </button>
-            </div>
           </div>
         </div>
 
@@ -515,6 +476,120 @@
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Мини-игра «Выше / Ниже» -->
+      <div id="page-minigame-hl" class="page">
+        <!-- Амбиентное свечение по краям: нарастает с серией (см. _mghlApplyHeat). -->
+        <div id="mghl-heat" aria-hidden="true"></div>
+        <!-- Мем-оверлей: выезжает при раскрытии аномальных смертей Тинкера (дань
+             комьюнити-мему). Картинку положить в assets/tinker-meme.png. -->
+        <div id="mghl-meme" aria-hidden="true" hidden>
+          <img id="mghl-meme-img" src="assets/tinker-meme.jpg" alt="" onerror="this.closest('#mghl-meme').dataset.broken='1'">
+        </div>
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="mghlBack()" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Выше / Ниже</div>
+          <button type="button" class="mghl-head-lb" onclick="mghlOpenLeaderboard()" aria-label="Таблица лидеров">
+            <i class="ph ph-ranking" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <!-- Выбор режима: три оси сравнения -->
+        <div id="mghl-modes" class="mghl-modes" hidden>
+          <button type="button" class="mghl-mode" onclick="mghlChooseMode('pop')">
+            <span class="mghl-mode-ic"><i class="ph ph-chart-bar" aria-hidden="true"></i></span>
+            <span class="mghl-mode-txt">
+              <span class="mghl-mode-name">Кого чаще берут</span>
+              <span class="mghl-mode-sub">Число сыгранных матчей</span>
+            </span>
+            <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="mghl-mode" onclick="mghlChooseMode('kills')">
+            <span class="mghl-mode-ic"><i class="ph ph-sword" aria-hidden="true"></i></span>
+            <span class="mghl-mode-txt">
+              <span class="mghl-mode-name">Кто чаще убивает</span>
+              <span class="mghl-mode-sub">Среднее кол-во убийств за игру</span>
+            </span>
+            <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="mghl-mode" onclick="mghlChooseMode('deaths')">
+            <span class="mghl-mode-ic"><i class="ph ph-skull" aria-hidden="true"></i></span>
+            <span class="mghl-mode-txt">
+              <span class="mghl-mode-name">Кто чаще умирает</span>
+              <span class="mghl-mode-sub">Среднее кол-во смертей за игру</span>
+            </span>
+            <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div id="mghl-play" hidden>
+          <!-- Состояние загрузки / нехватки данных -->
+          <div id="mghl-msg" class="mghl-msg" hidden></div>
+
+          <div id="mghl-game">
+            <div class="mghl-bar">
+              <span class="mghl-bar-item">Серия <b id="mghl-streak">0</b></span>
+              <span class="mghl-bar-item">Рекорд <b id="mghl-best">0</b></span>
+            </div>
+
+            <div class="mghl-q" id="mghl-q">Кого чаще берут?</div>
+
+            <div class="mghl-duel">
+              <!-- Слева — известный герой (значение показано) -->
+              <div class="mghl-card" id="mghl-left">
+                <div class="mghl-portrait"><img id="mghl-left-img" alt="" onerror="this.style.visibility='hidden'"></div>
+                <div class="mghl-card-name" id="mghl-left-name"></div>
+                <div class="mghl-card-val" id="mghl-left-val"></div>
+              </div>
+              <!-- Справа — претендент (его и угадываем): помечен как «вопрос». -->
+              <div class="mghl-card mghl-card--q" id="mghl-right">
+                <div class="mghl-portrait"><img id="mghl-right-img" alt="" onerror="this.style.visibility='hidden'"></div>
+                <div class="mghl-card-name" id="mghl-right-name"></div>
+                <div class="mghl-card-val mghl-card-val--hidden" id="mghl-right-val">?</div>
+              </div>
+            </div>
+
+            <div class="mghl-guess" id="mghl-guess">
+              <button type="button" class="mghl-btn mghl-btn--up" onclick="mghlGuess('higher')">
+                <i class="ph ph-caret-up" aria-hidden="true"></i> Больше
+              </button>
+              <button type="button" class="mghl-btn mghl-btn--down" onclick="mghlGuess('lower')">
+                <i class="ph ph-caret-down" aria-hidden="true"></i> Меньше
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="mghl-over" class="mghl-over" hidden>
+          <div class="mghl-over-label">Серия</div>
+          <div class="mghl-over-streak" id="mghl-over-streak">0</div>
+          <div class="mghl-over-tag" id="mghl-over-tag"></div>
+          <div class="mghl-over-best" id="mghl-over-best"></div>
+          <div class="mghl-rank" id="mghl-rank" hidden></div>
+          <button type="button" class="tm-primary-btn" onclick="mghlReplay()">Ещё раз</button>
+          <div class="mghl-over-actions">
+            <button type="button" class="tm-ghost-btn" onclick="mghlOpenLeaderboard()">Рейтинг</button>
+            <button type="button" class="tm-ghost-btn" onclick="mghlShare()">Поделиться</button>
+          </div>
+          <button type="button" class="tm-ghost-btn mghl-over-switch" onclick="mghlShowModes()">
+            <i class="ph ph-arrows-left-right" aria-hidden="true"></i> Сменить режим
+          </button>
+        </div>
+
+        <!-- Таблица лидеров: вкладки по режимам -->
+        <div id="mghl-lb" class="mghl-lb" hidden>
+          <div class="mghl-lb-title" id="mghl-lb-title">Таблица лидеров</div>
+          <div class="mghl-lb-tabs" id="mghl-lb-tabs">
+            <button type="button" class="mghl-lb-tab" data-mode="pop" onclick="mghlLbTab('pop')">Популярность</button>
+            <button type="button" class="mghl-lb-tab" data-mode="kills" onclick="mghlLbTab('kills')">Убийства</button>
+            <button type="button" class="mghl-lb-tab" data-mode="deaths" onclick="mghlLbTab('deaths')">Смерти</button>
+          </div>
+          <div class="mghl-lb-list" id="mghl-lb-list"></div>
+          <button type="button" class="tm-ghost-btn" onclick="mghlCloseLeaderboard()">Назад</button>
         </div>
       </div>
 
@@ -1224,20 +1299,39 @@
         <div class="tm-review-section">
           <div class="tm-review-section-title">Выбери теги</div>
           <div class="tm-review-tags-section">
-            <div class="tm-review-tags-group tm-review-tags-group--positive">
-              <div class="tm-review-tags-group-label">Положительные</div>
-              <div class="tm-review-tags" id="tm-review-tags-positive"></div>
-            </div>
-            <div class="tm-review-tags-group tm-review-tags-group--negative">
-              <div class="tm-review-tags-group-label">Отрицательные</div>
-              <div class="tm-review-tags" id="tm-review-tags-negative"></div>
-            </div>
+            <!-- Только положительные теги (Вариант A). Негативная группа убрана. -->
+            <div class="tm-review-tags" id="tm-review-tags-positive"></div>
           </div>
         </div>
         <button id="tm-review-submit" class="tm-primary-btn" onclick="tmSubmitReview()">Отправить отзыв</button>
         <!-- Мягкий выход для постоянки/не срочно: игра могла ещё не случиться.
              Закрывает экран без отзыва — оценить можно позже в «Пати» → История. -->
         <button type="button" class="tm-ghost-btn" onclick="tmReviewNotPlayedYet()">Мы ещё не играли</button>
+        <button type="button" class="tm-report-link" onclick="tmOpenReportFromReview()">Пожаловаться на игрока</button>
+      </div>
+
+      <!-- Жалоба на игрока (Вариант A): приватная, уходит админам, без публичной метки -->
+      <div id="page-teammate-report" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="tmCloseReport()" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Пожаловаться</div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Игрок</div>
+          <div class="tm-review-target" id="tm-report-target"><div class="tm-feed-empty">—</div></div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Причина</div>
+          <div class="tm-review-tags" id="tm-report-reasons"></div>
+        </div>
+        <div class="tm-review-section">
+          <div class="tm-review-section-title">Комментарий (необязательно)</div>
+          <textarea id="tm-report-text" class="tm-textarea" maxlength="500" placeholder="Что произошло?"></textarea>
+        </div>
+        <button id="tm-report-submit" class="tm-primary-btn" onclick="tmSubmitReport()">Отправить жалобу</button>
+        <p class="tm-report-note">Жалоба приватная — игрок её не увидит. Мы разберём и примем меры.</p>
       </div>
 
       <!-- Help-страница раздела тиммейтов. Full-screen overlay, по виду —
@@ -1363,31 +1457,40 @@
       </div>
 
       <!-- Нижняя навигация -->
-      <nav class="bottom-nav" aria-label="Основная навигация">
-        <div class="nav-item active" onclick="switchPage('home', event)">
-          <i class="nav-icon ph ph-house" aria-hidden="true"></i>
-          <div class="nav-label">Главная</div>
-        </div>
-        <div class="nav-item nav-item--tm" onclick="switchPage('teammates', event)">
-          <span class="nav-icon-wrap">
-            <i class="nav-icon ph ph-users-three" aria-hidden="true"></i>
-            <span class="nav-badge" id="nav-tm-badge" hidden></span>
+      <!-- Floating dock: один плавающий glass-бар с 4 разделами.
+           Главная/Профиль — прямой переход. Играть/Инструменты — открывают
+           всплывающее мини-меню (#dock-menu) над доком с двумя фичами. -->
+      <nav class="dock" aria-label="Основная навигация">
+        <button type="button" class="dock-tab active" data-section="home"
+                onclick="goSection('home', event)">
+          <i class="ph ph-house-line dock-tab__icon" aria-hidden="true"></i>
+          <span class="dock-tab__label">Главная</span>
+        </button>
+        <button type="button" class="dock-tab" data-section="play"
+                onclick="goSection('play', event)">
+          <span class="dock-tab__icon-wrap">
+            <i class="ph ph-game-controller dock-tab__icon" aria-hidden="true"></i>
+            <span class="dock-tab__badge" id="nav-tm-badge" hidden></span>
           </span>
-          <div class="nav-label">Пати</div>
-        </div>
-        <div class="nav-item" onclick="switchPage('drafter', event)">
-          <i class="nav-icon ph ph-strategy" aria-hidden="true"></i>
-          <div class="nav-label">Драфтер</div>
-        </div>
-        <div class="nav-item" onclick="switchPage('database', event)">
-          <i class="nav-icon ph ph-shield" aria-hidden="true"></i>
-          <div class="nav-label">Герои</div>
-        </div>
-        <div class="nav-item" onclick="switchPage('profile', event)">
-          <i class="nav-icon ph ph-user" aria-hidden="true"></i>
-          <div class="nav-label">Профиль</div>
-        </div>
+          <span class="dock-tab__label">Развлечения</span>
+        </button>
+        <button type="button" class="dock-tab" data-section="tools"
+                onclick="goSection('tools', event)">
+          <i class="ph ph-strategy dock-tab__icon" aria-hidden="true"></i>
+          <span class="dock-tab__label">Инструменты</span>
+        </button>
+        <button type="button" class="dock-tab" data-section="profile"
+                onclick="goSection('profile', event)">
+          <i class="ph ph-user dock-tab__icon" aria-hidden="true"></i>
+          <span class="dock-tab__label">Профиль</span>
+        </button>
       </nav>
+
+      <!-- Всплывающее мини-меню над доком: открывается тапом по «Играть» /
+           «Инструменты», содержит 2 фичи раздела. Заполняется и позиционируется
+           в JS (_openDockMenu). Заменило верхние секц-табы (те стыковались с
+           собственными вкладками страниц). -->
+      <div id="dock-menu" class="dock-menu" role="menu" aria-hidden="true" hidden></div>
     </div>
 
     <!-- Инициализация Telegram WebApp -->
@@ -1439,6 +1542,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=212"></script>
+    <script defer src="script.js?v=262"></script>
   </body>
 </html>

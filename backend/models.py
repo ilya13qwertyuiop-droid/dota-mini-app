@@ -487,6 +487,37 @@ class TeammateTag(Base):
     )
 
 
+class TeammateReport(Base):
+    """Жалоба одного игрока на другого (Пати). Приватная: отмеченный её не видит,
+    публичной метки нет. Админ разбирает и выносит вердикт (бан и т.п.).
+    Привязана к accepted-заявке — жаловаться можно только на того, с кем была игра."""
+    __tablename__ = "teammate_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    reporter_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False
+    )
+    # index=True сам создаёт ix_teammate_reports_reported_user_id. Дублировать его
+    # ещё и в __table_args__ нельзя — create_all создаёт индекс дважды и падает
+    # «already exists» при старте. Индекс объявляем РОВНО один раз (как в др. моделях).
+    reported_user_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
+    )
+    request_id = Column(
+        Integer, ForeignKey("teammate_requests.id"), nullable=False
+    )
+    reason = Column(String(64), nullable=False)
+    text = Column(String(2000), nullable=True)
+    status = Column(
+        String(16), nullable=False, default="open", server_default="open", index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 # ─── Party-finder («Лобби») ───────────────────────────────────────────────
 
 
@@ -552,6 +583,9 @@ class TeammateLobbySlot(Base):
         Integer, ForeignKey("teammate_lobbies.id"), primary_key=True
     )
     position = Column(Integer, primary_key=True)
+    # index=True уже создаёт ix_teammate_lobby_slots_user_id. Дублировать его
+    # в __table_args__ нельзя — create_all пытается создать индекс дважды и
+    # падает «already exists» на рестарте (как было с teammate_reports).
     user_id = Column(
         BigInteger,
         ForeignKey("user_profiles.user_id"),
@@ -559,10 +593,6 @@ class TeammateLobbySlot(Base):
         index=True,
     )
     joined_at = Column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (
-        Index("ix_teammate_lobby_slots_user_id", "user_id"),
-    )
 
 
 # ─── Bot-editable text templates ──────────────────────────────────────────

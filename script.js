@@ -470,11 +470,20 @@
             // Скрыть undo-toast Анализа — он position:fixed и иначе виден на новой странице
             if (typeof _hideAnalysisUndoToast === 'function') _hideAnalysisUndoToast();
 
+            // Guard: если страницы нет в DOM (устаревший закэшированный index.html) —
+            // НЕ трогаем текущий экран и не падаем молча, а подсказываем обновиться.
+            var _pageEl = document.getElementById('page-' + pageName);
+            if (!_pageEl) {
+                console.warn('[switchPage] страница не найдена: page-' + pageName + ' — index.html устарел?');
+                if (typeof showToast === 'function') showToast('Обнови мини-апп: экран ещё не загружен');
+                return;
+            }
+
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
 
-            document.getElementById(`page-${pageName}`).classList.add('active');
+            _pageEl.classList.add('active');
             if (event && event.currentTarget) {
                 event.currentTarget.classList.add('active');
             }
@@ -500,10 +509,121 @@
                 if (typeof window._tmInitPage === 'function') window._tmInitPage();
             }
 
+            // Синхронизация навигации: активный таб дока (4 раздела) +
+            // активный секционный таб (Пати/Квизы, Драфтер/Герои).
+            _syncNavFromPage(pageName);
+
             // Аналитика: одно событие «страница открыта» (page_<name>).
             // Дефис → подчёркивание под имя в аллоулисте (page_teammate_review).
             _track('page_' + String(pageName || '').replace(/-/g, '_'));
         }
+
+        // ── Навигация: разделы дока + секционные табы ─────────────────────
+        // К какому разделу дока относится каждая страница (для подсветки таба).
+        var _PAGE_TO_SECTION = {
+            home: 'home',
+            teammates: 'play',
+            quiz: 'play',
+            'minigame-hl': 'play',
+            'teammate-review': 'play',
+            drafter: 'tools',
+            database: 'tools',
+            profile: 'profile',
+        };
+        // Основная (стартовая) фича каждого раздела — куда ведёт таб дока.
+        var _SECTION_PRIMARY = {
+            home: 'home',
+            play: 'teammates',
+            tools: 'drafter',
+            profile: 'profile',
+        };
+
+        // Содержимое popover-меню для разделов с двумя фичами.
+        var _DOCK_MENU = {
+            play: [
+                { label: 'Пати',  page: 'teammates', icon: 'ph-users-three' },
+                { label: 'Мини-игры', page: 'quiz',  icon: 'ph-puzzle-piece' },
+            ],
+            tools: [
+                { label: 'Драфтер', page: 'drafter',  icon: 'ph-strategy' },
+                { label: 'Герои',   page: 'database', icon: 'ph-shield' },
+            ],
+        };
+        var _dockMenuSection = null;   // какой раздел сейчас открыт в popover, или null
+
+        function _closeDockMenu() {
+            var m = document.getElementById('dock-menu');
+            if (m) m.hidden = true;
+            _dockMenuSection = null;
+        }
+
+        function _openDockMenu(section, anchor) {
+            var m = document.getElementById('dock-menu');
+            if (!m) return;
+            var items = _DOCK_MENU[section] || [];
+            var currentId = (document.querySelector('.page.active') || {}).id || '';
+            m.innerHTML = items.map(function (it) {
+                var active = ('page-' + it.page) === currentId ? ' active' : '';
+                return '<button type="button" class="dock-menu__item' + active + '" ' +
+                    'role="menuitem" onclick="_dockMenuGo(\'' + it.page + '\')">' +
+                    '<i class="ph ' + it.icon + '" aria-hidden="true"></i>' + it.label +
+                    '</button>';
+            }).join('');
+            m.hidden = false;
+            _dockMenuSection = section;
+            // По горизонтали — центр над тапнутым табом (с зажимом в экране).
+            // По вертикали — отступ от ВЕРХА всего дока (а не таба), чтобы был
+            // явный зазор над баром. offsetWidth — без учёта transform-анимации.
+            var r = anchor.getBoundingClientRect();
+            var dock = document.querySelector('.dock');
+            var dockTop = dock ? dock.getBoundingClientRect().top : r.top;
+            var mw = m.offsetWidth;
+            var left = r.left + r.width / 2 - mw / 2;
+            left = Math.max(10, Math.min(left, window.innerWidth - mw - 10));
+            m.style.left = left + 'px';
+            m.style.bottom = (window.innerHeight - dockTop + 12) + 'px';
+        }
+
+        // Тап по пункту меню → переход + закрытие.
+        window._dockMenuGo = function (page) {
+            _closeDockMenu();
+            switchPage(page);
+        };
+
+        // Тап по табу дока. Главная/Профиль — прямой переход. Играть/Инструменты —
+        // переключают popover-меню (toggle).
+        window.goSection = function (section, event) {
+            if (section === 'home' || section === 'profile') {
+                _closeDockMenu();
+                switchPage(_SECTION_PRIMARY[section] || section, event);
+                return;
+            }
+            if (_dockMenuSection === section) { _closeDockMenu(); return; }
+            var anchor = event && event.currentTarget;
+            if (anchor) _openDockMenu(section, anchor);
+        };
+
+        // Закрытие popover по тапу вне его (и не по табу дока) + при скролле.
+        document.addEventListener('click', function (e) {
+            if (!_dockMenuSection) return;
+            var m = document.getElementById('dock-menu');
+            if (m && !m.contains(e.target) && !e.target.closest('.dock-tab')) _closeDockMenu();
+        }, true);
+        window.addEventListener('scroll', function () {
+            if (_dockMenuSection) _closeDockMenu();
+        }, true);
+
+        function _syncNavFromPage(pageName) {
+            var section = _PAGE_TO_SECTION[pageName] || null;
+            // Подсветка таба дока — ровно один активный (или ни одного на
+            // служебных страницах вроде feedback/donate/news).
+            document.querySelectorAll('.dock-tab').forEach(function (tab) {
+                tab.classList.toggle('active', tab.getAttribute('data-section') === section);
+            });
+        }
+        // Экспорт для функций вне этого scope (feedback/donate/meta-клик и т.п.),
+        // которые показывают страницу вручную, минуя switchPage.
+        window._dockActivateByPage = _syncNavFromPage;
 
         function startPositionQuiz() {
             document.getElementById('quiz-list').style.display = 'none';
@@ -519,6 +639,574 @@
             heroQuiz.init();
         }
 
+        // ── Мини-игра «Выше / Ниже» ──────────────────────────────────────
+        // Единственная метрика — число матчей героя. Carry-forward: эталон
+        // сверху (значение показано), претендент снизу (скрыт). Угадал —
+        // претендент уезжает наверх (становится эталоном), снизу приезжает
+        // новый. Данные из /minigames/hl/pool (кэш 12ч).
+        // Режимы сравнения. metric — поле в объекте героя; game — id для рекордов
+        // и лидерборда (per-mode); fmt — как показать значение на карточке.
+        function _mghlDec(v) { return (Math.round(v * 10) / 10).toFixed(1).replace('.', ','); }
+        var _MGHL_MODES = {
+            pop:    { metric: 'matches', game: 'hl_pop',    q: 'Кого чаще берут?',  short: 'Популярность', fmt: function (v) { return _mghlNum(v) + ' матчей'; } },
+            kills:  { metric: 'kills',   game: 'hl_kills',  q: 'Кто чаще убивает?', short: 'Убийства',     fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
+            deaths: { metric: 'deaths',  game: 'hl_deaths', q: 'Кто чаще умирает?', short: 'Смерти',       fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
+        };
+        var _mghl = { pool: [], workingPool: [], mode: null, modeKey: 'pop', metric: 'matches', game: 'hl_pop', best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over', lbMode: 'pop', lbCache: {} };
+        function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+        var _MGHL_TINKER_ID = 34;     // мем рус-комьюнити: «все ненавидят Тинкера»
+        function _mghlVal(h) { return h[_mghl.metric]; }
+        function _mghlFmt(v) { return (_mghl.mode ? _mghl.mode.fmt : _MGHL_MODES.pop.fmt)(v); }
+        function _mghlName(id) {
+            // Полное английское имя героя — как везде в аппе.
+            return (window.dotaHeroIdToName || {})[id] || ('Hero ' + id);
+        }
+        function _mghlImg(id) {
+            var en = (window.dotaHeroIdToName || {})[id];
+            return (en && window.getHeroIconUrlByName) ? window.getHeroIconUrlByName(en) : '';
+        }
+        function _mghlTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
+        function _mghlEsc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+            });
+        }
+        function _mghlSetScore() {
+            var s = document.getElementById('mghl-streak'); if (s) s.textContent = _mghl.streak;
+            var b = document.getElementById('mghl-best');   if (b) b.textContent = _mghl.best;
+        }
+        // Тактильный отклик Telegram — нативное «ощущение» игры на телефоне.
+        function _mghlHaptic(kind) {
+            try {
+                var h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
+                if (!h) return;
+                if (kind === 'ok')       h.notificationOccurred('success');
+                else if (kind === 'bad') h.notificationOccurred('error');
+                else if (kind === 'tap') h.impactOccurred('light');
+                else if (kind === 'milestone') h.notificationOccurred('warning');
+            } catch (e) { /* haptics optional */ }
+        }
+        // Пульс счётчика серии + усиленный отклик на вехах (5/10/25…).
+        function _mghlPulseStreak() {
+            var s = document.getElementById('mghl-streak');
+            if (s) { s.classList.remove('mghl-pop'); void s.offsetWidth; s.classList.add('mghl-pop'); }
+            if (_mghl.streak > 0 && _mghl.streak % 5 === 0) _mghlHaptic('milestone');
+        }
+        // Амбиентное свечение по краям растёт тирами: 10 / 20 / 30+.
+        function _mghlApplyHeat() {
+            var h = document.getElementById('mghl-heat');
+            if (!h) return;
+            var s = _mghl.streak;
+            var lvl = s >= 30 ? 3 : s >= 20 ? 2 : s >= 10 ? 1 : 0;
+            h.className = lvl ? ('mghl-heat--' + lvl) : '';
+        }
+        // Запоминаем недавних героев, чтобы не повторялись в сессии.
+        function _mghlRemember(id) {
+            _mghl.recent.push(id);
+            var cap = Math.max(0, Math.min(_mghl.workingPool.length - 2, 40));
+            while (_mghl.recent.length > cap) _mghl.recent.shift();
+        }
+        // Выбор «свежего» героя: не из недавних и с другим значением (без ничьих).
+        function _mghlPickFresh(avoidVal) {
+            var avail = _mghl.workingPool.filter(function (h) {
+                return _mghl.recent.indexOf(h.id) === -1 && _mghlVal(h) !== avoidVal;
+            });
+            if (!avail.length) avail = _mghl.workingPool.filter(function (h) { return _mghlVal(h) !== avoidVal; });
+            if (!avail.length) avail = _mghl.workingPool.slice();
+            var h = avail[Math.floor(Math.random() * avail.length)];
+            _mghlRemember(h.id);
+            return h;
+        }
+        // Тонкая метка на карточке Тинкера — только в режиме смертей (там и мем).
+        function _mghlMarkTinker(cardId, h) {
+            var card = document.getElementById(cardId);
+            if (!card) return;
+            var meme = (h.id === _MGHL_TINKER_ID && _mghl.metric === 'deaths');
+            card.classList.toggle('mghl-card--tinker', meme);
+        }
+        function _mghlRenderLeft(h) {
+            document.getElementById('mghl-left-img').src = _mghlImg(h.id);
+            document.getElementById('mghl-left-img').style.visibility = '';
+            document.getElementById('mghl-left-name').textContent = _mghlName(h.id);
+            document.getElementById('mghl-left-val').textContent = _mghlFmt(_mghlVal(h));
+            _mghlMarkTinker('mghl-left', h);
+        }
+        function _mghlRenderRight(h) {
+            document.getElementById('mghl-right-img').src = _mghlImg(h.id);
+            document.getElementById('mghl-right-img').style.visibility = '';
+            document.getElementById('mghl-right-name').textContent = _mghlName(h.id);
+            var rv = document.getElementById('mghl-right-val');
+            rv.textContent = '?';
+            rv.classList.remove('mghl-reveal-ok', 'mghl-reveal-bad');
+            rv.classList.add('mghl-card-val--hidden');
+            _mghlMarkTinker('mghl-right', h);
+        }
+
+        // Мем-оверлей: картинка выезжает на весь экран, держится и уезжает.
+        // Триггерится при раскрытии аномальных смертей Тинкера. Если картинки
+        // нет (onerror пометил data-broken) — тихо ничего не делаем.
+        // Длительности — общие константы (используются и при планировании
+        // перехода к следующему раунду в mghlGuess), чтобы тайминги не разъезжались.
+        var _MGHL_MEME_MS = 2400;       // полная длительность оверлея от вызова
+        var _MGHL_MEME_OUT_MS = 500;    // длительность ухода (совпадает с CSS)
+        var _mghlMemeTimers = [];
+        // Снять мем мгновенно (новый раунд/смена режима) — чтобы картинка не
+        // перетекала поверх свежего экрана.
+        function _mghlHideMeme() {
+            _mghlMemeTimers.forEach(clearTimeout); _mghlMemeTimers = [];
+            var ov = document.getElementById('mghl-meme');
+            if (ov) { ov.classList.remove('mghl-meme--in', 'mghl-meme--out'); ov.hidden = true; }
+        }
+        function _mghlMeme() {
+            var ov = document.getElementById('mghl-meme');
+            if (!ov || ov.dataset.broken === '1') return;
+            _mghlMemeTimers.forEach(clearTimeout); _mghlMemeTimers = [];
+            ov.classList.remove('mghl-meme--in', 'mghl-meme--out');
+            ov.hidden = false;
+            void ov.offsetWidth;                 // reflow перед анимацией входа
+            ov.classList.add('mghl-meme--in');
+            _mghlHaptic('milestone');
+            // Держим картинку на экране, потом уводим.
+            _mghlMemeTimers.push(setTimeout(function () {
+                ov.classList.remove('mghl-meme--in');
+                ov.classList.add('mghl-meme--out');
+            }, _MGHL_MEME_MS - _MGHL_MEME_OUT_MS));
+            _mghlMemeTimers.push(setTimeout(function () {
+                ov.classList.remove('mghl-meme--out');
+                ov.hidden = true;
+            }, _MGHL_MEME_MS));
+        }
+        function _mghlIsTinkerMeme(h) {
+            return h && h.id === _MGHL_TINKER_ID && _mghl.metric === 'deaths';
+        }
+
+        window.goToMinigameHL = function () {
+            switchPage('minigame-hl');
+            // Прогресс сохраняется при перемещении внутри аппа: если серия уже
+            // идёт — возвращаемся к ней, не сбрасывая.
+            if (_mghl.inProgress) return;
+            // ВСЕГДА показываем выбор режима — без авто-старта последнего.
+            // Игрок каждый раз выбирает режим сам.
+            mghlShowModes();
+        };
+
+        // Контекстная кнопка «назад» в шапке. Таблица лидеров → закрыть.
+        // Игра/результат → вернуться к выбору режима. Выбор режима → список игр.
+        window.mghlBack = function () {
+            var lb = document.getElementById('mghl-lb');
+            if (lb && !lb.hidden) { mghlCloseLeaderboard(); return; }
+            var modes = document.getElementById('mghl-modes');
+            if (modes && modes.hidden) { mghlShowModes(); return; }
+            switchPage('quiz');
+        };
+
+        // Экран выбора режима — три оси сравнения. Текущая серия сбрасывается.
+        // Фиксируем текущую серию в рекорде при выходе из игры на середине.
+        // Без этого длинная серия без проигрыша (особенно в лёгком режиме
+        // «популярность») никогда не попадала бы в лидерборд — счёт пишется
+        // только на game-over. Шлём и при смене режима, и при сворачивании аппа.
+        function _mghlBankScore() {
+            if (!_mghl.inProgress || _mghl.streak <= 0) return;
+            var tok = _mghlTok(); if (!tok) return;
+            var game = _mghl.game, streak = _mghl.streak;
+            if (streak > _mghl.best) _mghl.best = streak;
+            apiFetch(window.API_BASE_URL + '/minigames/score', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: tok, game: game, streak: streak })
+            }).then(function () { _mghl.lbCache[game] = null; }).catch(function () {});
+        }
+        // Свернули/закрыли мини-апп с активной серией — успеваем зафиксировать.
+        if (!window._mghlVisBound) {
+            window._mghlVisBound = true;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') _mghlBankScore();
+            });
+        }
+
+        window.mghlShowModes = function () {
+            _mghlBankScore();            // не теряем незавершённую серию
+            _mghlHideMeme();             // снять мем, если завис от прошлого раунда
+            _mghl.inProgress = false;
+            var ids = ['mghl-play', 'mghl-over', 'mghl-lb'];
+            ids.forEach(function (id) { var el = document.getElementById(id); if (el) el.hidden = true; });
+            var heat = document.getElementById('mghl-heat'); if (heat) heat.className = '';
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = false;
+        };
+
+        // Выбор режима → начинаем партию в этой оси.
+        window.mghlChooseMode = function (key) {
+            var mode = _MGHL_MODES[key];
+            if (!mode) return;
+            _mghl.mode = mode;
+            _mghl.modeKey = key;
+            _mghl.metric = mode.metric;
+            _mghl.game = mode.game;
+            _mghl.best = 0;              // рекорд per-mode — подтянем при старте
+            _mghl.lb = null;             // лидерборд per-mode — сбрасываем кэш
+            _mghl.loaded_best = null;    // форсируем перезагрузку рекорда
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
+            var q = document.getElementById('mghl-q'); if (q) q.textContent = mode.q;
+            mghlStart();
+        };
+
+        // Перезапуск текущего режима (кнопка «Ещё раз»).
+        window.mghlReplay = function () { mghlStart(); };
+
+        window.mghlStart = async function () {
+            _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
+            _mghlHideMeme();             // снять зависший мем перед новым раундом
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
+            var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
+            var lb = document.getElementById('mghl-lb'); if (lb) lb.hidden = true;
+            var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
+            var play = document.getElementById('mghl-play'); if (play) play.hidden = false;
+            // сброс возможных аним-состояний
+            var lc = document.getElementById('mghl-left'), rc = document.getElementById('mghl-right');
+            if (lc) { lc.style.animation = 'none'; lc.style.transform = ''; }
+            if (rc) {
+                rc.style.animation = 'none'; rc.style.transform = '';
+                rc.style.removeProperty('--mghl-dx');
+                rc.classList.remove('mghl-correct', 'mghl-wrong');
+            }
+            _mghlSetScore();
+            var tok = _mghlTok();
+            // Пул героев общий для всех режимов — грузим один раз.
+            if (!_mghl.loaded) {
+                _mghlShowMsg('Загрузка…');
+                try {
+                    var pr = await apiFetch(window.API_BASE_URL + '/minigames/hl/pool?token=' + encodeURIComponent(tok));
+                    var pd = await pr.json();
+                    _mghl.pool = (pd && pd.heroes) || [];
+                    _mghl.loaded = true;
+                } catch (e) { console.warn('[mghl] load pool:', e); }
+            }
+            // Рекорд — per-mode: подтягиваем при первом старте режима.
+            if (_mghl.loaded_best !== _mghl.game) {
+                _mghlShowMsg('Загрузка…');
+                try {
+                    var br = await apiFetch(window.API_BASE_URL + '/minigames/best?token=' + encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
+                    var bd = await br.json();
+                    _mghl.best = (bd && bd.best) || 0;
+                    _mghl.loaded_best = _mghl.game;
+                } catch (e) { console.warn('[mghl] load best:', e); }
+            }
+            // Рабочий пул режима: только герои, у которых есть нужная метрика.
+            _mghl.workingPool = _mghl.pool.filter(function (h) {
+                var v = h[_mghl.metric];
+                return typeof v === 'number' && v > 0;
+            });
+            if (_mghl.workingPool.length < 2) {
+                _mghlShowMsg('Пока недостаточно данных. Загляни позже.');
+                return;
+            }
+            _mghlShowMsg(null);          // прячем сообщение, показываем игру
+            _mghlSetScore();
+            _mghl.ref = _mghlPickFresh(null);
+            _mghl.chal = _mghlPickFresh(_mghlVal(_mghl.ref));
+            _mghlRenderLeft(_mghl.ref);
+            _mghlRenderRight(_mghl.chal);
+            document.getElementById('mghl-guess').style.display = '';
+            _mghlApplyHeat();            // серия 0 → свечение сброшено
+            _mghl.inProgress = true;     // игра пошла — прогресс сохраняем при навигации
+            // Тинкер сразу слева (его 46 видно на карточке) — даём полю прорисоваться,
+            // потом мем. Число остаётся на карточке после ухода картинки.
+            if (_mghlIsTinkerMeme(_mghl.ref)) setTimeout(_mghlMeme, 650);
+        };
+
+        // Переключение «сообщение (загрузка/пусто) ↔ игровое поле».
+        function _mghlShowMsg(text) {
+            var msg = document.getElementById('mghl-msg');
+            var game = document.getElementById('mghl-game');
+            if (text) {
+                if (msg) { msg.textContent = text; msg.hidden = false; }
+                if (game) game.style.display = 'none';
+            } else {
+                if (msg) msg.hidden = true;
+                if (game) game.style.display = '';
+            }
+        }
+
+        window.mghlGuess = function (dir) {
+            if (_mghl.busy) return; _mghl.busy = true;
+            var rm = _mghlVal(_mghl.ref), cm = _mghlVal(_mghl.chal);
+            var correct = (dir === 'higher' && cm > rm) || (dir === 'lower' && cm < rm);
+            var rc = document.getElementById('mghl-right');
+            var rv = document.getElementById('mghl-right-val');
+            rv.classList.remove('mghl-card-val--hidden');
+            rv.textContent = _mghlFmt(cm);
+            rv.classList.add(correct ? 'mghl-reveal-ok' : 'mghl-reveal-bad');
+            rc.classList.add(correct ? 'mghl-correct' : 'mghl-wrong');
+            document.getElementById('mghl-guess').style.display = 'none';
+            _mghlHaptic(correct ? 'ok' : 'bad');
+            // Мем Тинкера: СНАЧАЛА даём прочитать раскрытые 46 смертей, ПОТОМ
+            // выезжает картинка, и только ПОСЛЕ её ухода — переход к раунду.
+            // Иначе мем перекрывал число и весь смысл (абсурдные смерти) терялся.
+            var tink = _mghlIsTinkerMeme(_mghl.chal);
+            var READ_MS = 950;                 // пауза «прочитать число» до мема
+            if (tink) setTimeout(_mghlMeme, READ_MS);
+            var advanceDelay = tink ? (READ_MS + _MGHL_MEME_MS + 100) : 1150;
+            var overDelay    = tink ? (READ_MS + _MGHL_MEME_MS + 100) : 1450;
+            if (correct) {
+                _mghl.streak++; _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
+                // Дать раскрытому числу «продышаться» перед уездом.
+                setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, advanceDelay);
+            } else {
+                setTimeout(_mghlGameOver, overDelay);
+            }
+        };
+
+        // Классический Higher/Lower: претендент ВСЕГДА становится новым эталоном
+        // (неважно, больше или меньше). Точка отсчёта постоянно «гуляет» — нельзя
+        // спамить одной кнопкой. Левая уезжает влево, правая встаёт на её место,
+        // справа въезжает новый претендент.
+        function _mghlAdvance() {
+            var lc = document.getElementById('mghl-left');
+            var rc = document.getElementById('mghl-right');
+            var lr = lc.getBoundingClientRect(), rr = rc.getBoundingClientRect();
+            rc.style.setProperty('--mghl-dx', (lr.left - rr.left) + 'px');
+            lc.style.animation = 'mghlOutLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
+            rc.style.animation = 'mghlSlideLeft 0.32s cubic-bezier(0.32,0.72,0,1) forwards';
+
+            var onEnd = function () {
+                rc.removeEventListener('animationend', onEnd);
+                _mghl.ref = _mghl.chal;                      // претендент → новый эталон
+                _mghl.chal = _mghlPickFresh(_mghlVal(_mghl.ref));
+                // Сброс анимаций/трансформаций, пересборка, въезд нового справа.
+                lc.style.animation = 'none'; rc.style.animation = 'none';
+                lc.style.transform = ''; rc.style.transform = '';
+                rc.style.removeProperty('--mghl-dx');
+                _mghlRenderLeft(_mghl.ref);
+                _mghlRenderRight(_mghl.chal);
+                void rc.offsetWidth;                         // reflow перед новой анимацией
+                rc.style.animation = 'mghlIn 0.30s cubic-bezier(0.32,0.72,0,1)';
+                document.getElementById('mghl-guess').style.display = '';
+                _mghl.busy = false;
+            };
+            rc.addEventListener('animationend', onEnd, { once: true });
+        }
+
+        // Сдержанная оценка серии: слово без эмодзи + цвет числа по тиру.
+        function _mghlTag(n) {
+            if (n >= 30) return 'нечеловеческая серия';
+            if (n >= 20) return 'ты в ударе';
+            if (n >= 10) return 'сильная серия';
+            if (n >= 5)  return 'достойно';
+            if (n >= 1)  return 'бывает';
+            return 'мимо';
+        }
+
+        // Счёт числа от 0 до target с ускорением (easeOutCubic) — даёт финалу «вес».
+        function _mghlCountUp(el, target) {
+            if (!el) return;
+            var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduce || target <= 0) { el.textContent = target; return; }
+            var dur = Math.min(950, 380 + target * 22), t0 = null;
+            function step(ts) {
+                if (t0 === null) t0 = ts;
+                var p = Math.min(1, (ts - t0) / dur);
+                el.textContent = Math.round((1 - Math.pow(1 - p, 3)) * target);
+                if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+            }
+            requestAnimationFrame(step);
+        }
+
+        function _mghlGameOver() {
+            _mghl.inProgress = false;    // серия окончена — больше не возобновляем
+            document.getElementById('mghl-play').hidden = true;
+            var over = document.getElementById('mghl-over'); over.hidden = false;
+            // Свечение НЕ гасим — оно завершает накопленную дугу (тир по финалу).
+            _mghlApplyHeat();
+            var streakEl = document.getElementById('mghl-over-streak');
+            // Вход: масштаб + счёт от 0 — число «прилетает» как кульминация.
+            // Число — ЕДИНСТВЕННЫЙ accent на экране (остальное нейтральное).
+            streakEl.classList.remove('mghl-result-pop'); void streakEl.offsetWidth;
+            streakEl.classList.add('mghl-result-pop');
+            _mghlCountUp(streakEl, _mghl.streak);
+            var tagEl = document.getElementById('mghl-over-tag');
+            if (tagEl) tagEl.textContent = _mghlTag(_mghl.streak);
+            var isRecord = _mghl.streak > _mghl.best;
+            if (isRecord) _mghl.best = _mghl.streak;
+            var bestEl = document.getElementById('mghl-over-best');
+            bestEl.textContent = isRecord ? 'Новый рекорд' : ('Рекорд: ' + _mghl.best);
+            bestEl.classList.toggle('mghl-over-best--record', isRecord);
+            // На рекорде с заметной серией — отклик успеха (а не только «провал»).
+            if (isRecord && _mghl.streak >= 5) _mghlHaptic('milestone');
+            var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
+            // Сохраняем результат → подтягиваем лидерборд → показываем ранг/перцентиль.
+            var tok = _mghlTok();
+            if (tok) {
+                apiFetch(window.API_BASE_URL + '/minigames/score', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tok, game: _mghl.game, streak: _mghl.streak })
+                }).then(function () {
+                    return apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                        encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
+                }).then(function (r) { return r.json(); }).then(function (lb) {
+                    _mghl.lb = lb;
+                    _mghl.lbCache[_mghl.game] = lb;   // мгновенно для вкладки лидерборда
+                    _mghlRenderRank();
+                }).catch(function () {});
+            }
+        }
+
+        // Slug героя для CDN-портрета (вытаскиваем из URL иконки), + имя.
+        function _mghlHeroSlug(id) {
+            var en = (window.dotaHeroIdToName || {})[id];
+            if (!en || !window.getHeroIconUrlByName) return '';
+            var url = window.getHeroIconUrlByName(en) || '';
+            var m = url.match(/\/heroes\/([^/.]+)\.png/);
+            return m ? m[1] : '';
+        }
+
+        // Фоллбэк для старых клиентов (нет shareMessage): текст+ссылка на бота.
+        function _mghlShareFallback() {
+            var modeName = (_mghl.mode && _mghl.mode.short) || '';
+            var text = 'Я выбил серию ' + _mghl.streak +
+                (modeName ? (' в режиме «' + modeName + '»') : '') +
+                ' в «Выше / Ниже» (D2Helper). Побьёшь?';
+            var tg = window.Telegram && window.Telegram.WebApp;
+            var link = (window.MINIAPP_URL || '').trim();
+            if (link && link.indexOf('?') === -1) link += '?start=hl_share';
+            var shareUrl = link
+                ? 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
+                : 'https://t.me/share/url?url=' + encodeURIComponent(text);
+            if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(shareUrl);
+            else window.open(shareUrl, '_blank');
+        }
+
+        window.mghlShare = function () {
+            var tg = window.Telegram && window.Telegram.WebApp;
+            var tok = _mghlTok();
+            // Современный путь (Bot API 8.0+): карточка-фото + подпись + кнопка
+            // «Играть» одним сообщением. Иначе — текстовый фоллбэк.
+            var hasShare = !!(tg && typeof tg.shareMessage === 'function');
+            var verOk = (tg && typeof tg.isVersionAtLeast === 'function') ? tg.isVersionAtLeast('8.0') : true;
+            if (!(hasShare && verOk && tok)) {
+                showToast('Шеринг: фоллбэк (shareMessage недоступен, v' +
+                    ((tg && tg.version) || '?') + ')');
+                _mghlShareFallback();
+                return;
+            }
+            var r = _mghl.ref || {}, c = _mghl.chal || {};
+            var body = {
+                token: tok, mode: _mghl.modeKey || 'pop', streak: _mghl.streak,
+                h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id), v1: r[_mghl.metric],
+                h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id), v2: c[_mghl.metric]
+            };
+            apiFetch(window.API_BASE_URL + '/minigames/share', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (res) {
+                return res.json().catch(function () { return null; }).then(function (d) {
+                    return { ok: res.ok, d: d };
+                });
+            }).then(function (r2) {
+                if (!r2.ok || !r2.d || !r2.d.id) {   // не удалось подготовить — текстовый фоллбэк
+                    _mghlShareFallback();
+                    return;
+                }
+                try {
+                    tg.shareMessage(String(r2.d.id));   // успех/отмена — нативный UX Telegram
+                } catch (e) {
+                    _mghlShareFallback();
+                }
+            }).catch(function () {
+                _mghlShareFallback();
+            });
+        };
+
+        // Строка ранга/перцентиля на экране результата.
+        function _mghlRenderRank() {
+            var el = document.getElementById('mghl-rank');
+            if (!el) return;
+            var you = _mghl.lb && _mghl.lb.you;
+            if (!you || you.rank == null) { el.hidden = true; return; }
+            var total = (_mghl.lb && _mghl.lb.total) || 0;
+            var main = (you.rank === 1)
+                ? 'Лучший результат среди всех'
+                : ('Ты обошёл ' + you.percentile + '% игроков');
+            el.innerHTML = '<span class="mghl-rank-main">' + main + '</span>' +
+                '<span class="mghl-rank-sub">#' + you.rank + ' из ' + total + '</span>';
+            el.hidden = false;
+        }
+
+        function _mghlShowLb() {
+            document.getElementById('mghl-play').hidden = true;
+            document.getElementById('mghl-over').hidden = true;
+            var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
+            document.getElementById('mghl-lb').hidden = false;
+        }
+        window.mghlCloseLeaderboard = function () {
+            document.getElementById('mghl-lb').hidden = true;
+            // Возврат туда, откуда открыли таблицу (выбор режима / игра / результат).
+            if (_mghl.lbReturn === 'play') document.getElementById('mghl-play').hidden = false;
+            else if (_mghl.lbReturn === 'modes') { var m = document.getElementById('mghl-modes'); if (m) m.hidden = false; }
+            else document.getElementById('mghl-over').hidden = false;
+        };
+        window.mghlOpenLeaderboard = function () {
+            // Откуда открыли — чтобы корректно вернуться.
+            if (!document.getElementById('mghl-play').hidden) _mghl.lbReturn = 'play';
+            else if (!document.getElementById('mghl-over').hidden) _mghl.lbReturn = 'over';
+            else _mghl.lbReturn = 'modes';
+            _mghlShowLb();
+            // Активная вкладка — текущий режим (если был), иначе популярность.
+            mghlLbTab(_mghl.mode ? _mghl.modeKey : 'pop');
+        };
+
+        // Переключение вкладки лидерборда между режимами.
+        window.mghlLbTab = function (key) {
+            var mode = _MGHL_MODES[key]; if (!mode) return;
+            _mghl.lbMode = key;
+            // Подсветка активной вкладки.
+            var tabs = document.querySelectorAll('#mghl-lb-tabs .mghl-lb-tab');
+            tabs.forEach(function (t) { t.classList.toggle('mghl-lb-tab--active', t.getAttribute('data-mode') === key); });
+            var list = document.getElementById('mghl-lb-list');
+            var cached = _mghl.lbCache[mode.game];
+            if (cached) _mghlRenderLeaderboard(cached);
+            else if (list) list.innerHTML = '<div class="mghl-msg">Загрузка…</div>';
+            // Всегда подтягиваем свежую таблицу (сервер кэширует 60с — дёшево).
+            var tok = _mghlTok();
+            apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                encodeURIComponent(tok) + '&game=' + encodeURIComponent(mode.game))
+                .then(function (r) { return r.json(); })
+                .then(function (lb) {
+                    _mghl.lbCache[mode.game] = lb;
+                    // Рендерим только если пользователь всё ещё на этой вкладке.
+                    if (_mghl.lbMode === key && !document.getElementById('mghl-lb').hidden) _mghlRenderLeaderboard(lb);
+                })
+                .catch(function () {});
+        };
+
+        function _mghlRenderLeaderboard(lb) {
+            if (!lb) return;
+            var list = document.getElementById('mghl-lb-list'); if (!list) return;
+            var meId = lb.you && lb.you.user_id;
+            var top = lb.top || [];
+            var rows = top.map(function (e, i) {
+                var me = (e.user_id === meId) ? ' mghl-lb-row--me' : '';
+                var av = e.photo_url
+                    ? '<img class="mghl-lb-av" src="' + _mghlEsc(e.photo_url) + '" alt="" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'mghl-lb-av mghl-lb-av--ph\',textContent:\'·\'}))">'
+                    : '<span class="mghl-lb-av mghl-lb-av--ph">' + _mghlEsc((e.name || '?').charAt(0)) + '</span>';
+                return '<div class="mghl-lb-row' + me + '">' +
+                    '<span class="mghl-lb-rank">' + (i + 1) + '</span>' +
+                    av +
+                    '<span class="mghl-lb-name">' + _mghlEsc(e.name || '') + '</span>' +
+                    '<span class="mghl-lb-best">' + e.best + '</span>' +
+                '</div>';
+            }).join('');
+            // Если тебя нет в топе — пристёгиваем твою строку снизу.
+            var inTop = top.some(function (e) { return e.user_id === meId; });
+            if (lb.you && lb.you.rank && !inTop) {
+                rows += '<div class="mghl-lb-row mghl-lb-row--me">' +
+                    '<span class="mghl-lb-rank">' + lb.you.rank + '</span>' +
+                    '<span class="mghl-lb-av mghl-lb-av--ph">я</span>' +
+                    '<span class="mghl-lb-name">Ты</span>' +
+                    '<span class="mghl-lb-best">' + lb.you.best + '</span>' +
+                '</div>';
+            }
+            list.innerHTML = rows || '<div class="mghl-msg">Пока пусто — будь первым!</div>';
+        }
+
 
         function backToQuizList() {
             document.getElementById('quiz-list').style.display = 'block';
@@ -528,8 +1216,12 @@
         }
 
         function updateQuizPageResult() {
+            // Карточка «последний результат» убрана с экрана мини-игр —
+            // функция остаётся безопасным no-op (вызывается из switchPage/backToQuizList).
+            var el = document.getElementById('quizPageLastResult');
+            if (!el) return;
             if (lastPositionResult) {
-                document.getElementById('quizPageLastResult').style.display = 'block';
+                el.style.display = 'block';
                 document.getElementById('quizPagePosition').textContent = lastPositionResult.position;
                 document.getElementById('quizPageDate').textContent = `Пройден: ${lastPositionResult.date}`;
             }
@@ -549,9 +1241,8 @@
         }
 
         function goToMatchups() {
+            // switchPage сам подсветит раздел «Инструменты» и таб «Герои».
             switchPage('database');
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.querySelectorAll('.nav-item')[3].classList.add('active');
         }
 
         function initQuiz() {
@@ -2886,8 +3577,8 @@ function goToFeedback() {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-feedback').classList.add('active');
 
-    // Убираем активную метку с нав-элементов
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    // Feedback — не раздел дока: снимаем подсветку со всех табов.
+    if (window._dockActivateByPage) window._dockActivateByPage(null);
 
     // Сбрасываем форму
     _resetFeedbackForm();
@@ -2899,16 +3590,9 @@ function goBackFromFeedback() {
                  document.getElementById('page-home');
     target.classList.add('active');
 
-    // Восстанавливаем нав-элемент. Квизы больше не в bottom-nav — после
-    // возврата с feedback с quiz-страницы ни один nav-item не подсвечивается
-    // (страница доступна через виджет главной).
-    var navMap = { home: 0, teammates: 1, drafter: 2, database: 3, profile: 4 };
-    var navIdx = navMap[_prevPageBeforeFeedback];
-    if (navIdx !== undefined) {
-        var navItems = document.querySelectorAll('.nav-item');
-        if (navItems[navIdx]) navItems[navIdx].classList.add('active');
-    } else {
-        document.querySelectorAll('.nav-item')[0].classList.add('active');
+    // Подсветка таба дока по разделу страницы, на которую вернулись.
+    if (window._dockActivateByPage) {
+        window._dockActivateByPage(_prevPageBeforeFeedback || 'home');
     }
 }
 
@@ -3041,13 +3725,14 @@ async function submitFeedback() {
 function goToDonate() {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-donate').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    // Donate — не раздел дока: снимаем подсветку.
+    if (window._dockActivateByPage) window._dockActivateByPage(null);
 }
 
 function goBackFromDonate() {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-home').classList.add('active');
-    document.querySelectorAll('.nav-item')[0].classList.add('active');
+    if (window._dockActivateByPage) window._dockActivateByPage('home');
 }
 
 function openDonationAlerts() {
@@ -3085,9 +3770,7 @@ var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', '
 function _metaHeroClick(heroName) {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-database').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
-    var navItems = document.querySelectorAll('.nav-item');
-    if (navItems[3]) navItems[3].classList.add('active');
+    if (window._dockActivateByPage) window._dockActivateByPage('database');
     _heroPageActiveTab = 'build';
     matchupPage.selectHero(heroName);
 }
@@ -6817,10 +7500,13 @@ function _drafterCommentText(c) {
 (function () {
     var TM_API = (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL) || '/api';
 
-    var TM_RANKS = ['Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
+    // «Калибровка» = тир 0 (без ранга, на калибровке) → medal_0.png. Остальные
+    // тиры 1..8. Порядок в массиве задаёт и тир для иконки, и сортировку/диапазоны.
+    var TM_RANKS = ['Калибровка','Рекрут','Страж','Рыцарь','Герой','Легенда','Властелин','Божество','Титан'];
     var TM_MODE_LABELS = { ranked: 'Рейтинговая', normal: 'Обычная', turbo: 'Турбо' };
     var TM_POSITIVE_TAGS = ['Бустер','Душа компании','Командный','No tilted','1x9'];
-    var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];
+    var TM_NEGATIVE_TAGS = ['Токсик','Фидер','AFK','Фотограф','Агент Габена'];   // больше не показываются (Вариант A)
+    var TM_REPORT_REASONS = ['Токсичность','Саботаж / фид','Читы','Другое'];
 
     var _tm = {
         myProfile: null,
@@ -6862,17 +7548,18 @@ function _drafterCommentText(c) {
 
     var _TM_POLL_INTERVAL_MS = 30000;  // 30 секунд между авто-обновлениями
 
-    // Tier 1-8: Рекрут=1 … Титан=8.
+    // Тир = индекс в TM_RANKS (0-based): Калибровка=0, Рекрут=1 … Титан=8.
+    // null — если ранг неизвестен/не задан.
     function _tmRankTier(rank) {
         var i = TM_RANKS.indexOf(rank);
-        return i >= 0 ? i + 1 : 0;
+        return i >= 0 ? i : null;
     }
 
-    // Реальные иконки рангов из проекта — /rank_icons/medal_N.png (N=1..8).
-    // Размер задаётся CSS-классом (.tm-rank-icon / --sm / --xs).
+    // Реальные иконки рангов из проекта — /rank_icons/medal_N.png (N=0..8,
+    // medal_0 = калибровка). Размер задаётся CSS-классом (.tm-rank-icon / --sm / --xs).
     function _tmRankIconImg(rank, modifier) {
         var tier = _tmRankTier(rank);
-        if (!tier) return '';
+        if (tier == null) return '';        // == null: тир 0 (калибровка) валиден
         var cls = 'tm-rank-icon' + (modifier ? ' ' + modifier : '');
         return '<img class="' + cls + '" src="/rank_icons/medal_' + tier + '.png" ' +
             'alt="' + _tmEsc(rank || ('Тир ' + tier)) + '" ' +
@@ -6936,9 +7623,8 @@ function _drafterCommentText(c) {
     // вызывается из switchPage('teammates') — здесь только подсвечиваем
     // nav-item, потому что event у нас нет.
     window.goToTeammates = function () {
+        // switchPage сам подсветит раздел «Играть» и таб «Пати».
         switchPage('teammates');
-        var navItems = document.querySelectorAll('.nav-item');
-        if (navItems[1]) navItems[1].classList.add('active');
     };
 
     function initTeammatesPage() {
@@ -7822,7 +8508,7 @@ function _drafterCommentText(c) {
             var rankSet = {};
             for (var rIdx = 0; rIdx < _tm.filters.ranks.length; rIdx++) rankSet[_tm.filters.ranks[rIdx]] = true;
             rankWrap.innerHTML = TM_RANKS.map(function (r, i) {
-                var tier = i + 1;
+                var tier = i;                 // 0-based: Калибровка=0 → medal_0
                 return _tmFchip({
                     variant: 'icon',
                     active: !!rankSet[r],
@@ -7895,8 +8581,8 @@ function _drafterCommentText(c) {
 
         // Ranks: один icon-тайл на каждый выбранный ранг — medal_N.png.
         _tm.filters.ranks.forEach(function (r) {
-            var tier = TM_RANKS.indexOf(r) + 1;
-            if (tier < 1) return;
+            var tier = TM_RANKS.indexOf(r);   // 0-based; Калибровка=0
+            if (tier < 0) return;
             chips.push({
                 kind: 'icon',
                 label: r,
@@ -8358,7 +9044,8 @@ function _drafterCommentText(c) {
         var hoursInput = document.getElementById('tm-hours-input');
         if (hoursInput) hoursInput.value = (p.hours != null) ? p.hours : '';
 
-        var posBtns = document.querySelectorAll('.tm-position-btn');
+        var pform = document.getElementById('tm-profile-form') || document;
+        var posBtns = pform.querySelectorAll('.tm-position-btn');
         var posSet = {};
         (p.positions || []).forEach(function (n) { posSet[n] = true; });
         for (var i = 0; i < posBtns.length; i++) {
@@ -8366,7 +9053,7 @@ function _drafterCommentText(c) {
             posBtns[i].classList.toggle('tm-position-btn--active', !!posSet[n]);
         }
 
-        var modeBtns = document.querySelectorAll('.tm-mode-btn');
+        var modeBtns = pform.querySelectorAll('.tm-mode-btn');
         var modeSet = {};
         (p.game_modes || []).forEach(function (m) { modeSet[m] = true; });
         for (var j = 0; j < modeBtns.length; j++) {
@@ -8494,7 +9181,12 @@ function _drafterCommentText(c) {
         var token = _tmGetToken();
         if (!token) { showToast('Нужна авторизация'); return; }
 
-        var rankActive = document.querySelector('.tm-rank-card--active');
+        // ВАЖНО: ограничиваем выборку формой профиля. Класс .tm-mode-btn есть и
+        // в создании лобби (размер/режим) — без скоупа querySelectorAll цеплял их,
+        // и в профиль попадали дубли режимов («Рейтинговый Турбо Рейтинговый Турбо»).
+        var pform = document.getElementById('tm-profile-form') || document;
+
+        var rankActive = pform.querySelector('.tm-rank-card--active');
         var rank = rankActive ? rankActive.getAttribute('data-rank') : '';
         if (!rank) { showToast('Выбери ранг'); return; }
 
@@ -8502,14 +9194,16 @@ function _drafterCommentText(c) {
         var hours = parseInt((hoursInput && hoursInput.value) || '0', 10);
         if (!(hours >= 0)) { showToast('Укажи часы корректно'); return; }
 
-        var posBtns = document.querySelectorAll('.tm-position-btn--active');
+        var posBtns = pform.querySelectorAll('.tm-position-btn--active');
         var positions = [];
         for (var i = 0; i < posBtns.length; i++) positions.push(parseInt(posBtns[i].getAttribute('data-pos'), 10));
+        positions = Array.from(new Set(positions));        // дедуп на всякий случай
         if (!positions.length) { showToast('Выбери хотя бы одну позицию'); return; }
 
-        var modeBtns = document.querySelectorAll('.tm-mode-btn--active');
+        var modeBtns = pform.querySelectorAll('.tm-mode-btn--active');
         var game_modes = [];
         for (var j = 0; j < modeBtns.length; j++) game_modes.push(modeBtns[j].getAttribute('data-mode'));
+        game_modes = Array.from(new Set(game_modes));      // дедуп на всякий случай
         if (!game_modes.length) { showToast('Выбери хотя бы один режим'); return; }
 
         var micT = document.getElementById('tm-mic-toggle');
@@ -8816,7 +9510,11 @@ function _drafterCommentText(c) {
         var whenHtml = when
             ? '<span class="tm-history-when">' + _tmEsc(when) + '</span>'
             : '<span></span>';
-        return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actionHtml });
+        // Жалоба доступна для любой записи истории (была accepted-игра).
+        var reportHtml = '<button type="button" class="tm-history-report" onclick="tmOpenReport(' +
+            r.request_id + ', ' + otherId + ', \'teammates\')">Пожаловаться</button>';
+        var actions = '<span class="tm-history-foot-actions">' + actionHtml + reportHtml + '</span>';
+        return _renderPlayerCard(p, { noCta: true, footer: whenHtml + actions });
     }
 
     // Лобби-запись в истории — список @ников как tg://-ссылки. Никаких action-
@@ -8991,8 +9689,8 @@ function _drafterCommentText(c) {
         }
     };
 
-    function _tmRenderReviewTarget(p) {
-        var head = document.getElementById('tm-review-target');
+    function _tmRenderReviewTarget(p, elId) {
+        var head = document.getElementById(elId || 'tm-review-target');
         if (!head) return;
         var avatarHtml = _tmAvatarHtml(p);
         var displayName = _tmDisplayName(p);
@@ -9009,14 +9707,94 @@ function _drafterCommentText(c) {
     }
 
     function _tmRenderReviewTags() {
+        // Только положительные теги (Вариант A) — негативные отзывы убраны.
         var posWrap = document.getElementById('tm-review-tags-positive');
-        var negWrap = document.getElementById('tm-review-tags-negative');
         var render = function (tag, cls) {
             return '<button type="button" class="tm-review-tag ' + cls + '" data-tag="' + _tmEsc(tag) + '" onclick="tmToggleReviewTag(\'' + _tmEsc(tag) + '\', this)">' + _tmEsc(tag) + '</button>';
         };
         if (posWrap) posWrap.innerHTML = TM_POSITIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--positive'); }).join('');
-        if (negWrap) negWrap.innerHTML = TM_NEGATIVE_TAGS.map(function (t) { return render(t, 'tm-review-tag--negative'); }).join('');
     }
+
+    // ── Жалоба на игрока (приватная, уходит админам) ─────────────────────────
+    function _tmRenderReportReasons() {
+        var wrap = document.getElementById('tm-report-reasons');
+        if (!wrap) return;
+        wrap.innerHTML = TM_REPORT_REASONS.map(function (r) {
+            return '<button type="button" class="tm-review-tag" data-reason="' + _tmEsc(r) +
+                '" onclick="tmSelectReportReason(\'' + _tmEsc(r) + '\', this)">' + _tmEsc(r) + '</button>';
+        }).join('');
+    }
+
+    // requestId — accepted-заявка (тот же гейт, что у отзыва); targetUserId — кого;
+    // returnPage — куда вернуться по «назад» (ревью-экран или список Пати).
+    window.tmOpenReport = function (requestId, targetUserId, returnPage) {
+        // История заявок живёт внутри profile-sheet (оверлей). Без закрытия шита
+        // switchPage сменит страницу ПОД ним — экран жалобы откроется, но будет
+        // спрятан за шитом (клик есть, экрана не видно). tmOpenReview делает так же.
+        if (typeof _tmIsProfileSheetOpen === 'function' && _tmIsProfileSheetOpen()) {
+            tmCloseProfileSheet();
+        }
+        _tm.reportRequestId = parseInt(requestId, 10);
+        _tm.reportTargetUserId = (targetUserId && targetUserId !== 'null') ? parseInt(targetUserId, 10) : null;
+        _tm.reportReason = null;
+        _tm.reportReturnPage = returnPage || 'teammates';
+        var ta = document.getElementById('tm-report-text'); if (ta) ta.value = '';
+        _tmRenderReportReasons();
+        var head = document.getElementById('tm-report-target');
+        if (head) head.innerHTML = '<div class="tm-feed-empty">Игрок</div>';
+        if (_tm.reportTargetUserId) {
+            var tkn = _tmGetToken();
+            apiFetch(TM_API + '/teammates/profile/' + _tm.reportTargetUserId +
+                '?token=' + encodeURIComponent(tkn || ''))
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (p) { if (p) _tmRenderReviewTarget(p, 'tm-report-target'); })
+                .catch(function () {});
+        }
+        switchPage('teammate-report');
+    };
+
+    window.tmOpenReportFromReview = function () {
+        tmOpenReport(_tm.reviewRequestId, _tm.reviewTargetUserId, 'teammate-review');
+    };
+
+    window.tmCloseReport = function () { switchPage(_tm.reportReturnPage || 'teammates'); };
+
+    window.tmSelectReportReason = function (reason, btn) {
+        _tm.reportReason = reason;
+        var btns = document.querySelectorAll('#tm-report-reasons .tm-review-tag');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('tm-review-tag--selected', btns[i].getAttribute('data-reason') === reason);
+        }
+    };
+
+    window.tmSubmitReport = async function () {
+        var token = _tmGetToken();
+        if (!token) { showToast('Нужна авторизация'); return; }
+        if (!_tm.reportReason) { showToast('Выбери причину'); return; }
+        if (!_tm.reportRequestId) { showToast('Нет контекста жалобы'); return; }
+        var ta = document.getElementById('tm-report-text');
+        var text = ((ta && ta.value) || '').trim().slice(0, 500);
+        var btn = document.getElementById('tm-report-submit');
+        if (btn) btn.disabled = true;
+        try {
+            var resp = await apiFetch(TM_API + '/teammates/report', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token, request_id: _tm.reportRequestId,
+                    reason: _tm.reportReason, text: text
+                })
+            });
+            if (resp.ok) { showToast('Жалоба отправлена', 'ok'); tmCloseReport(); }
+            else {
+                var d = await resp.json().catch(function () { return null; });
+                showToast((d && d.detail) || 'Не удалось отправить жалобу');
+            }
+        } catch (e) {
+            showToast('Не удалось отправить жалобу');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
 
     window.tmToggleReviewTag = function (tag, btn) {
         var i = _tm.reviewSelectedTags.indexOf(tag);
@@ -9593,7 +10371,7 @@ function _drafterCommentText(c) {
                 var rfSet = {};
                 for (var ri = 0; ri < f.rank_filter.length; ri++) rfSet[f.rank_filter[ri]] = true;
                 rankChips.innerHTML = TM_RANKS.map(function (r, idx) {
-                    var tier = idx + 1;
+                    var tier = idx;           // 0-based: Калибровка=0 → medal_0
                     return _tmFchip({
                         variant: 'icon',
                         active: !!rfSet[r],

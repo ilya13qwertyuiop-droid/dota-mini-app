@@ -241,6 +241,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GZip не должен трогать image-ответы: фетчер Telegram при отправке inline-фото
+# не разжимает gzip и сохраняет битые байты (чёрный квадрат, фото не доходит).
+# Starlette исключает типы из DEFAULT_EXCLUDED_CONTENT_TYPES (читается из модуля
+# в момент ответа) — расширяем его на image/*, чтобы картинки шли БЕЗ сжатия и
+# без нестандартного заголовка Content-Encoding.
+import starlette.middleware.gzip as _gzip_mod
+if "image/" not in _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES:
+    _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES = (
+        _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES + ("image/",)
+    )
+
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
@@ -706,65 +717,9 @@ async def api_hero_counters(
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
-
-    strict = get_stats_mode() == "strict"
-
-    base_wr = get_hero_base_winrate_from_db(hero_id, strict=strict)
-    if base_wr is None:
-        base_wr = 0.5
-        logger.warning("[counters] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
-
-    matchups_file = _load_hero_matchups_file() or {}
-    hero_entry = matchups_file.get(str(hero_id)) or {}
-    vs_map = hero_entry.get("vs") or {}
-
-    enriched = []
-    for opp_id_str, pair in vs_map.items():
-        match_count = int(pair.get("matchCount", 0))
-        if match_count < min_games:
-            continue
-        try:
-            opp_id = int(opp_id_str)
-        except (TypeError, ValueError):
-            continue
-        delta = float(pair.get("synergy", 0.0)) / 100.0
-        wr_vs = base_wr + delta
-        enriched.append({
-            "hero_id":       opp_id,
-            "games":         match_count,
-            "wr_vs":         round(wr_vs, 4),
-            "advantage":     round(delta, 4),
-            "raw_advantage": round(delta, 4),
-        })
-
-    # counters: delta <= -0.002 (they beat us), sorted worst-first
-    counters = sorted(
-        [e for e in enriched if e["advantage"] <= -0.002],
-        key=lambda x: x["advantage"],
-    )[:limit]
-
-    # victims: delta >= 0.002 (we beat them), sorted best-first
-    victims = sorted(
-        [e for e in enriched if e["advantage"] >= 0.002],
-        key=lambda x: x["advantage"],
-        reverse=True,
-    )[:limit]
-
-    data_games = sum(e["games"] for e in enriched)
-
-    logger.info(
-        "[counters] hero_id=%s base_wr=%.4f data_games=%d counters=%d victims=%d (strict=%s, source=file)",
-        hero_id, base_wr, data_games, len(counters), len(victims), strict,
-    )
-
-    return {
-        "hero_id": hero_id,
-        "base_winrate": base_wr,
-        "data_games": data_games,
-        "counters": counters,
-        "victims": victims,
-        "strict_mode": strict,
-    }
+    # Единый источник с ботом /counters — backend/hero_pairs.py (та же логика).
+    from backend.hero_pairs import get_hero_counters
+    return get_hero_counters(hero_id, limit=limit, min_games=min_games)
 
 
 # ========== Custom Stats: ally synergy from our own match data ==========
@@ -797,65 +752,9 @@ async def api_hero_synergy(
     """
     if hero_id <= 0:
         raise HTTPException(status_code=400, detail="hero_id must be a positive integer")
-
-    strict = get_stats_mode() == "strict"
-
-    base_wr = get_hero_base_winrate_from_db(hero_id, strict=strict)
-    if base_wr is None:
-        base_wr = 0.5
-        logger.warning("[synergy] No hero_stats entry for hero_id=%s, using base_wr=0.5", hero_id)
-
-    matchups_file = _load_hero_matchups_file() or {}
-    hero_entry = matchups_file.get(str(hero_id)) or {}
-    with_map = hero_entry.get("with") or {}
-
-    enriched = []
-    for ally_id_str, pair in with_map.items():
-        match_count = int(pair.get("matchCount", 0))
-        if match_count < min_games:
-            continue
-        try:
-            ally_id = int(ally_id_str)
-        except (TypeError, ValueError):
-            continue
-        delta = float(pair.get("synergy", 0.0)) / 100.0
-        wr_vs = base_wr + delta
-        enriched.append({
-            "hero_id":   ally_id,
-            "games":     match_count,
-            "wins":      int(round(wr_vs * match_count)),
-            "wr_vs":     round(wr_vs, 4),
-            "delta":     round(delta, 4),
-            "advantage": round(delta, 4),
-            "raw_delta": round(delta, 4),
-        })
-
-    best_allies = sorted(
-        [e for e in enriched if e["delta"] >= 0],
-        key=lambda x: x["delta"],
-        reverse=True,
-    )[:limit]
-
-    worst_allies = sorted(
-        [e for e in enriched if e["delta"] <= 0],
-        key=lambda x: x["delta"],
-    )[:limit]
-
-    data_games = sum(e["games"] for e in enriched)
-
-    logger.info(
-        "[synergy] hero_id=%s base_wr=%.4f data_games=%d best=%d worst=%d (strict=%s, source=file)",
-        hero_id, base_wr, data_games, len(best_allies), len(worst_allies), strict,
-    )
-
-    return {
-        "hero_id": hero_id,
-        "base_winrate": base_wr,
-        "data_games": data_games,
-        "best_allies": best_allies,
-        "worst_allies": worst_allies,
-        "strict_mode": strict,
-    }
+    # Единый источник с ботом /synergy — backend/hero_pairs.py (та же логика).
+    from backend.hero_pairs import get_hero_synergy
+    return get_hero_synergy(hero_id, limit=limit, min_games=min_games)
 
 
 # ========== Hero Build ==========
@@ -1825,6 +1724,11 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_donate",
     "page_feedback",
     "page_news",
+    # Хабы из нового floating dock (см. styles.css `.dock-pill`).
+    "page_hub_play",
+    "page_hub_tools",
+    # Мини-игры.
+    "page_minigame_hl",
 })
 
 
@@ -1848,6 +1752,263 @@ async def api_analytics_event(data: AnalyticsEventBody):
     return {"ok": True}
 
 
+# ========== Мини-игры ==========
+#
+# «Выше/Ниже»: пул героев с агрегатами (популярность/длительность/ранг) +
+# хранение личного рекорда стрика в user_profiles.settings.minigame_best.
+
+class MinigameScore(BaseModel):
+    token: str
+    game: str          # идентификатор игры, напр. "hl"
+    streak: int
+
+
+@app.get("/api/minigames/hl/pool")
+async def api_minigame_hl_pool(token: str):
+    """Пул героев для «Выше/Ниже». Пары/раунды собирает фронт из этого пула.
+    Тяжёлый пересчёт кэшируется на 12ч — гоняем в threadpool, чтобы не блокировать loop."""
+    if get_user_id_by_token(token) is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    from backend.stats_db import get_minigame_hl_pool
+    pool = await asyncio.to_thread(get_minigame_hl_pool)
+    return {"heroes": pool}
+
+
+@app.get("/api/minigames/best")
+async def api_minigame_best(token: str, game: str, db: Session = Depends(get_db)):
+    """Личный рекорд стрика по игре (из user_profiles.settings.minigame_best)."""
+    user_id = get_user_id_by_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    row = db.get(DBUserProfile, user_id)
+    best = ((row.settings if row else None) or {}).get("minigame_best") or {}
+    return {"best": int(best.get(game) or 0)}
+
+
+@app.get("/api/minigames/leaderboard")
+async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = Depends(get_db)):
+    """Топ игроков по рекордной серии + ранг/перцентиль текущего юзера."""
+    user_id = get_user_id_by_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    from backend.stats_db import get_minigame_leaderboard
+    data = await asyncio.to_thread(get_minigame_leaderboard, game)
+
+    row = db.get(DBUserProfile, user_id)
+    ub = 0
+    try:
+        ub = int((((row.settings if row else None) or {}).get("minigame_best") or {}).get(game) or 0)
+    except (TypeError, ValueError):
+        ub = 0
+
+    scores = data.get("scores") or []     # отсортировано по ВОЗРАСТАНИЮ (для bisect)
+    total = data.get("total") or 0
+    you = {"user_id": user_id, "best": ub, "rank": None, "percentile": None}
+    if ub > 0 and total > 0:
+        import bisect
+        le = bisect.bisect_right(scores, ub)   # сколько результатов <= твоего — O(log n)
+        greater = total - le                   # строго больше твоего
+        rank = greater + 1
+        you["rank"] = rank
+        you["percentile"] = round(100 * (total - rank) / total) if total > 1 else 100
+    return {"top": data.get("top", []), "total": total, "you": you}
+
+
+@app.post("/api/minigames/score")
+async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
+    """Сохраняет результат: обновляет личный рекорд, если стрик выше прошлого."""
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if not isinstance(data.streak, int) or data.streak < 0 or data.streak > 100000:
+        raise HTTPException(status_code=422, detail="invalid streak")
+
+    row = db.get(DBUserProfile, user_id)
+    best = dict(((row.settings if row else None) or {}).get("minigame_best") or {})
+    new_best = max(int(best.get(data.game) or 0), int(data.streak))
+    best[data.game] = new_best
+    from backend.db import upsert_user_profile_settings
+    upsert_user_profile_settings(user_id, {"minigame_best": best})
+    return {"ok": True, "best": new_best}
+
+
+# ── Шеринг результата: карточка-картинка + prepared inline message ──
+# Картинку рисует Pillow (backend/share_card.py), доставку делает
+# save_prepared_inline_message (фото + подпись + url-кнопка «Играть» на бота —
+# кнопка ведёт в /start, чтобы НЕ обходить гейт подписки).
+
+_MGHL_MODES_SET = {"pop", "kills", "deaths"}
+
+
+def _normalize_mode(mode: str) -> str | None:
+    """Канонический ключ режима. Принимает и короткую форму («deaths»), и
+    game-id («hl_deaths») — фронт исторически слал то одно, то другое.
+    Возвращает «pop»/«kills»/«deaths» или None, если режим неизвестен."""
+    m = (mode or "").strip()
+    if m.startswith("hl_"):
+        m = m[3:]
+    return m if m in _MGHL_MODES_SET else None
+
+
+def _public_base() -> str:
+    """Базовый публичный URL мини-аппа из MINI_APP_URL — С УЧЁТОМ пути-префикса.
+
+    Раньше брали только scheme://host и теряли префикс (на staging API живёт под
+    «/staging/api», а photo_url уходил на «/api» → 404, и Telegram не качал фото →
+    shareMessage callback=false). Теперь сохраняем путь:
+      "https://dotaquiz.blog/staging/"           → "https://dotaquiz.blog/staging"
+      "https://dotaquiz.blog/staging/index.html" → "https://dotaquiz.blog/staging"
+      "https://dotaquiz.blog/"                    → "https://dotaquiz.blog"
+    Возвращает без хвостового слэша; "" если URL невалиден.
+    """
+    from urllib.parse import urlsplit
+    p = urlsplit((os.environ.get("MINI_APP_URL") or "").strip())
+    if not (p.scheme and p.netloc):
+        return ""
+    path = p.path or ""
+    # отбрасываем имя файла (последний сегмент с точкой, напр. index.html)
+    if path and "." in path.rsplit("/", 1)[-1]:
+        path = path.rsplit("/", 1)[0]
+    return f"{p.scheme}://{p.netloc}{path.rstrip('/')}"
+
+
+# Один инициализированный Bot на процесс для prepared-сообщений: иначе на КАЖДЫЙ
+# шер поднимался новый http-клиент и делался лишний get_me. Telegram-Bot можно
+# безопасно шарить между конкурентными запросами (свой пул соединений).
+_share_bot = None
+_share_bot_lock = asyncio.Lock()
+
+
+async def _get_share_bot():
+    global _share_bot
+    if _share_bot is not None:
+        return _share_bot
+    async with _share_bot_lock:
+        if _share_bot is None:
+            from telegram import Bot
+            b = Bot(BOT_TOKEN)
+            await b.initialize()              # заполняет username, поднимает request-клиент
+            _share_bot = b
+    return _share_bot
+
+
+@app.get("/api/minigames/share-image")
+async def api_minigame_share_image(
+    mode: str, streak: int,
+    h1: str = "", n1: str = "", v1: str = "",
+    h2: str = "", n2: str = "", v2: str = "",
+):
+    """JPEG-карточка результата. Без токена — Telegram тянет её как photo_url.
+    Контент детерминирован параметрами, поэтому агрессивно кэшируется."""
+    mode = _normalize_mode(mode)
+    if mode is None:
+        raise HTTPException(status_code=400, detail="bad mode")
+    streak = max(0, min(int(streak), 100000))
+
+    def _slug(s: str) -> str:
+        return "".join(c for c in (s or "") if c.isalnum() or c in "_-")[:40]
+
+    def _nm(s: str) -> str:
+        return ((s or "").strip()[:24]) or "?"
+
+    def _val(s: str):
+        try:
+            return float(s)
+        except (TypeError, ValueError):
+            return None
+
+    heroes = [(_slug(h1), _nm(n1), _val(v1)), (_slug(h2), _nm(n2), _val(v2))]
+    from backend.share_card import render_share_card
+    jpg = await asyncio.to_thread(render_share_card, mode, streak, heroes)
+    # GZip для image/* отключён глобально (см. DEFAULT_EXCLUDED_CONTENT_TYPES выше),
+    # поэтому JPEG уходит как есть — без сжатия и без Content-Encoding-заголовка,
+    # который строгий фетчер Telegram мог не разжать.
+    return Response(
+        content=jpg, media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+class MinigameShareReq(BaseModel):
+    token: str
+    mode: str
+    streak: int
+    h1: str = ""
+    n1: str = ""
+    v1: float | None = None
+    h2: str = ""
+    n2: str = ""
+    v2: float | None = None
+
+
+@app.post("/api/minigames/share")
+async def api_minigame_share(data: MinigameShareReq):
+    """Готовит inline-сообщение с карточкой и возвращает его id для
+    Telegram.WebApp.shareMessage(id) на фронте."""
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    mode = _normalize_mode(data.mode)   # принимает и «deaths», и «hl_deaths»
+    if mode is None:
+        raise HTTPException(status_code=400, detail="bad mode")
+    base = _public_base()
+    if not base:
+        logger.warning("[minigame_share] MINI_APP_URL не задаёт публичный URL")
+        raise HTTPException(status_code=503, detail="share unavailable")
+
+    streak = max(0, min(int(data.streak), 100000))
+    from urllib.parse import urlencode
+    qs = urlencode({
+        "mode": mode, "streak": streak,
+        "h1": data.h1, "n1": data.n1, "v1": "" if data.v1 is None else data.v1,
+        "h2": data.h2, "n2": data.n2, "v2": "" if data.v2 is None else data.v2,
+    })
+    img_url = f"{base}/api/minigames/share-image?{qs}"
+
+    from backend.share_card import _MODE_LABEL
+    mode_name = _MODE_LABEL.get(mode, "")
+    caption = (
+        f"Я выбил серию {streak} в режиме «{mode_name}» "
+        f"в мини-игре «Выше / Ниже». Побьёшь?"
+    )
+
+    import secrets
+    from telegram import (
+        InlineQueryResultPhoto, InlineKeyboardMarkup, InlineKeyboardButton,
+    )
+    try:
+        bot = await _get_share_bot()          # один инициализированный Bot на процесс
+        play_url = f"https://t.me/{bot.username}?start=hl_share"
+        result = InlineQueryResultPhoto(
+            id=secrets.token_hex(8),           # уникальный id на каждый шер
+            photo_url=img_url,
+            thumbnail_url=img_url,
+            photo_width=1200,
+            photo_height=630,
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🎮 Играть", url=play_url)]]
+            ),
+        )
+        # Все типы чатов разрешены явно — иначе Telegram отклоняет отправку
+        # (callback=false) после выбора получателя для неразрешённого типа.
+        prepared = await bot.save_prepared_inline_message(
+            int(user_id), result,
+            allow_user_chats=True,
+            allow_bot_chats=True,
+            allow_group_chats=True,
+            allow_channel_chats=True,
+        )
+        logger.info(
+            "[minigame_share] prepared id=%s for user=%s (bot=@%s)",
+            prepared.id, user_id, bot.username,
+        )
+        return {"id": prepared.id}
+    except Exception as e:
+        logger.warning("[minigame_share] prepared message failed: %s", e)
+        raise HTTPException(status_code=502, detail="share failed")
+
+
 # ========== Teammate finder ==========
 #
 # Профиль игрока для поиска тиммейтов + входящие/исходящие запросы + отзывы.
@@ -1862,18 +2023,24 @@ from backend.models import (  # noqa: E402
     TeammateRequest as DBTeammateRequest,
     TeammateReview as DBTeammateReview,
     TeammateTag as DBTeammateTag,
+    TeammateReport as DBTeammateReport,
     TeammateLobby as DBTeammateLobby,
     TeammateLobbySlot as DBTeammateLobbySlot,
 )
 
 
 _TM_VALID_RANKS = frozenset({
+    "Калибровка",  # тир 0 — игрок на калибровке / без ранга
     "Рекрут", "Страж", "Рыцарь", "Герой", "Легенда", "Властелин", "Божество", "Титан",
 })
 _TM_VALID_GAME_MODES = frozenset({"ranked", "normal", "turbo"})
 _TM_POSITIVE_TAGS = frozenset({"Бустер", "Душа компании", "Командный", "No tilted", "1x9"})
 _TM_NEGATIVE_TAGS = frozenset({"Токсик", "Фидер", "AFK", "Фотограф", "Агент Габена"})
 _TM_VALID_TAGS = _TM_POSITIVE_TAGS | _TM_NEGATIVE_TAGS
+# Жалобы: фиксированные причины (упрощают триаж на стороне админа).
+_TM_REPORT_REASONS = frozenset({
+    "Токсичность", "Саботаж / фид", "Читы", "Другое",
+})
 
 # Статус видимости в ленте (заменил is_searching+TTL, миграция 0012).
 _TM_VALID_STATUSES = frozenset({
@@ -2079,12 +2246,17 @@ async def _tm_send_bot_message(
 
 
 def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[dict]]:
-    """Returns {user_id: [{tag, count, is_positive}, ...]} for the given ids."""
+    """Returns {user_id: [{tag, count, is_positive}, ...]} for the given ids.
+
+    Только ПОЛОЖИТЕЛЬНЫЕ теги (Вариант A): публичная репутация — эндорсменты.
+    Негативные метки субъективны и несправедливо «клеймят» — для плохого опыта
+    есть приватные блок/жалоба. Фильтр скрывает и старые негативные теги из БД."""
     if not user_ids:
         return {}
     rows = (
         db.query(DBTeammateTag)
         .filter(DBTeammateTag.user_id.in_(user_ids))
+        .filter(DBTeammateTag.is_positive.is_(True))
         .all()
     )
     out: dict[int, list[dict]] = {uid: [] for uid in user_ids}
@@ -2735,9 +2907,10 @@ async def api_teammates_review_submit(
                 detail="Оценить можно после игры — кнопка станет доступна чуть позже.",
             )
 
-    # Дедуп + валидация против заранее заданного словаря тегов.
+    # Дедуп + валидация. Принимаем ТОЛЬКО положительные теги (Вариант A):
+    # негативные метки больше не собираются (даже если UI их пришлёт).
     raw_tags = list(dict.fromkeys((t or "").strip() for t in (data.tags or [])))
-    valid_tags = [t for t in raw_tags if t in _TM_VALID_TAGS]
+    valid_tags = [t for t in raw_tags if t in _TM_POSITIVE_TAGS]
     if not valid_tags:
         raise HTTPException(status_code=422, detail="no valid tags provided")
 
@@ -2766,6 +2939,93 @@ async def api_teammates_review_submit(
             row.count = (row.count or 0) + 1
 
     db.commit()
+    return {"ok": True}
+
+
+# ── 9b. POST /api/teammates/report — пожаловаться на игрока ──────────────────
+
+class TeammateReportSubmit(BaseModel):
+    token: str
+    request_id: int
+    reason: str
+    text: str = ""
+
+
+async def _tm_notify_admins_report(reporter_id: int, reported_id: int,
+                                   reason: str, text: str, db: Session) -> None:
+    """Push жалобы админам в Telegram (best-effort, не валит запрос)."""
+    def _name(uid: int) -> str:
+        row = db.get(DBUserProfile, uid)
+        s = (row.settings if row else None) or {}
+        nm = ((s.get("first_name") or "") + " " + (s.get("last_name") or "")).strip()
+        if not nm:
+            nm = ("@" + s["username"]) if s.get("username") else ""
+        return nm
+    try:
+        msg = (
+            "🚩 Жалоба в Пати\n"
+            f"От: {_name(reporter_id)} (id {reporter_id})\n"
+            f"На: {_name(reported_id)} (id {reported_id})\n"
+            f"Причина: {reason}"
+        )
+        if text:
+            msg += f"\nКомментарий: {text}"
+        bot = await _get_share_bot()
+        for admin_id in _TM_ADMIN_IDS:
+            try:
+                await bot.send_message(chat_id=admin_id, text=msg)
+            except Exception as e:
+                logger.warning("[tm_report] notify admin %s failed: %s", admin_id, e)
+    except Exception as e:
+        logger.warning("[tm_report] notify build failed: %s", e)
+
+
+@app.post("/api/teammates/report")
+async def api_teammates_report_submit(
+    data: TeammateReportSubmit, db: Session = Depends(get_db),
+):
+    """Жалоба на участника accepted-заявки. Приватная (отмеченный не видит,
+    публичной метки нет). Сохраняется для разбора + push админам в Telegram.
+    Гейт «только после игры» — тот же, что у отзыва (через request_id)."""
+    user_id = _tm_authenticate(data.token, db)
+
+    reason = (data.reason or "").strip()
+    if reason not in _TM_REPORT_REASONS:
+        raise HTTPException(status_code=422, detail="invalid reason")
+    text = (data.text or "").strip()[:2000]
+
+    req = db.get(DBTeammateRequest, data.request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="request not found")
+    if req.status != "accepted":
+        raise HTTPException(status_code=409, detail="request is not in accepted status")
+    if user_id != req.from_user_id and user_id != req.to_user_id:
+        raise HTTPException(status_code=403, detail="not a participant of this request")
+    target_user_id = req.to_user_id if user_id == req.from_user_id else req.from_user_id
+
+    # Один ОТКРЫТЫЙ репорт на пару (reporter→reported) — защита от спама.
+    already = (
+        db.query(DBTeammateReport)
+        .filter(DBTeammateReport.reporter_id == user_id)
+        .filter(DBTeammateReport.reported_user_id == target_user_id)
+        .filter(DBTeammateReport.status == "open")
+        .first()
+    )
+    if already is not None:
+        raise HTTPException(status_code=409, detail="Жалоба на этого игрока уже отправлена")
+
+    db.add(DBTeammateReport(
+        reporter_id=user_id,
+        reported_user_id=target_user_id,
+        request_id=data.request_id,
+        reason=reason,
+        text=text or None,
+        status="open",
+        created_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
+    await _tm_notify_admins_report(user_id, target_user_id, reason, text, db)
     return {"ok": True}
 
 

@@ -171,7 +171,8 @@ font-feature-settings: 'cv11', 'ss01', 'ss03';
 text-rendering: optimizeLegibility;
 min-height: 100dvh;
 color: var(--text-main);
-padding-bottom: var(--nav-height);
+/* Учитываем плавающий dock: высоту nav + safe-area нижнего края iPhone. */
+padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
 }
 
 /* Заголовки — плотный leading, чуть подтянутый tracking */
@@ -1056,55 +1057,174 @@ border-color: var(--accent-border);
 transform: translateY(-1px);
 }
 
-.bottom-nav {
-position: fixed;
-bottom: 0;
-left: 0;
-right: 0;
-height: var(--nav-height);
-background: var(--bg-base);
-border-top: 1px solid var(--border-subtle);
-display: flex;
-justify-content: space-between;
-align-items: center;
-padding: 0 var(--space-1);
-z-index: 1000;
+/* ── Floating dock ─────────────────────────────────────────────────────
+   Один плавающий стеклянный бар, не прилипает к низу. 4 равных раздела:
+   Главная · Играть · Инструменты · Профиль. Главная/Профиль — прямой переход.
+   Играть/Инструменты — открывают всплывающее мини-меню (.dock-menu) над доком
+   с двумя фичами раздела (Пати/Квизы, Драфтер/Герои).                       */
+
+:root {
+  /* Чистое тёмное матовое стекло — как премиальные мини-аппы. ПРИНЦИП:
+     минимализм. Один блюр + одна тонкая граница + одна мягкая тень. Никаких
+     specular-бликов, accent-колец, многослойных inset'ов — именно нагромождение
+     «стеклянных эффектов» читается как ИИ-слоп. Блюр делает всю работу сам. */
+  --dock-tint: rgba(20, 22, 28, 0.52);
+  --dock-glass-border: rgba(255, 255, 255, 0.08);
+  --dock-glass-shadow:
+    0 10px 34px -8px rgba(0, 0, 0, 0.58),
+    0 2px 6px -2px  rgba(0, 0, 0, 0.40);
+  --dock-blur: 20px;
+  --dock-sat: 1.8;
 }
 
-.nav-item {
-display: flex;
-flex-direction: column;
-align-items: center;
-gap: var(--space-1);
-padding: var(--space-2) var(--space-1);
-cursor: pointer;
-transition: color 0.15s ease;
-color: var(--text-tertiary);
-flex: 1;
+.dock {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 4px));
+  z-index: var(--z-nav);
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 24px;
+  background: var(--dock-tint);
+  border: 1px solid var(--dock-glass-border);
+  box-shadow: var(--dock-glass-shadow);
+  backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
+  -webkit-backdrop-filter: blur(var(--dock-blur)) saturate(var(--dock-sat));
 }
 
-.nav-item:hover {
-color: var(--text-secondary);
+/* — Таб дока: иконка + подпись, равная доля ширины (4 раздела) — */
+.dock-tab {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 2px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  transition: color 0.18s ease, background-color 0.2s ease, transform 0.15s ease;
+}
+.dock-tab__icon-wrap { position: relative; display: inline-flex; line-height: 1; }
+.dock-tab__icon { font-size: 21px; line-height: 1; }
+.dock-tab__label {
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: var(--font-medium);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dock-tab:hover { color: var(--text-secondary); }
+.dock-tab:active { transform: scale(0.94); }
+
+/* Active = «вы здесь»: accent-цвет + лёгкая accent-подложка. Чисто, без колец. */
+.dock-tab.active {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 15%, transparent);
 }
 
-.nav-item.active {
-color: var(--text-primary);
+/* Бейдж входящих запросов «Пати» — на иконке таба «Играть». */
+.dock-tab__badge {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: var(--font-bold);
+  font-family: var(--font-mono);
+  line-height: 15px;
+  text-align: center;
 }
+.dock-tab__badge[hidden] { display: none; }
 
-.nav-icon {
-font-size: var(--text-lg);
-opacity: 0.85;
-transition: opacity 0.15s ease;
+/* ── Меню-список над доком (разделы «Развлечения» / «Инструменты») ───────
+   Тап по табу-разделу → матовый вертикальный список фич над тапнутым табом
+   (позиция в JS _openDockMenu). Растёт строками — масштабируемая «заготовка»
+   под будущие разделы. Матовая НЕпрозрачная подложка (не backdrop-filter):
+   материал стабилен на всех кадрах анимации и не теряется на пёстром фоне. */
+.dock-menu {
+  position: fixed;
+  z-index: calc(var(--z-nav) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Ширина строго по контенту (иконка + самое длинное название), не распирать.
+     min-width скромный — только чтобы строки не были совсем узкими. */
+  width: max-content;
+  min-width: 150px;
+  max-width: 220px;
+  padding: 5px;
+  border-radius: 16px;
+  /* Тон близко к surface-слою (не светлее фона) + тонкая граница — отделяет
+     от контента, но не «кричит». Тень мягкая, без тяжёлого ореола. */
+  background: rgb(21, 23, 29);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 8px 22px -8px rgba(0, 0, 0, 0.6),
+    0 1px 4px -1px  rgba(0, 0, 0, 0.4);
+  transform-origin: bottom center;
+  animation: dockMenuIn 0.18s cubic-bezier(0.32, 0.72, 0, 1);
 }
-
-.nav-item.active .nav-icon {
-opacity: 1;
+.dock-menu[hidden] { display: none; }
+@keyframes dockMenuIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+.dock-menu__item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-tight);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.dock-menu__item i {
+  font-size: 19px;
+  line-height: 1;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.dock-menu__item:hover {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--text-primary);
+}
+.dock-menu__item:active { background: color-mix(in oklch, var(--accent) 18%, transparent); }
+.dock-menu__item.active { color: var(--accent); }
 
-.nav-label {
-font-size: var(--text-2xs);
-font-weight: var(--font-medium);
-letter-spacing: var(--tracking-normal);
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .dock-tab { transition: none; }
+  .dock-menu { animation: none; }
 }
 
 .placeholder {
@@ -7285,19 +7405,18 @@ margin-top: var(--space-4);
 }
 
 /* Rank scroller (form) */
+/* Перенос строк, а НЕ горизонтальный скролл: на ПК свайпа нет и скрытый
+   скроллбар не докрутить — ранги (теперь 9 с Калибровкой) не влезали в ширину
+   мини-аппа. Wrap показывает все в 2 ряда без скролла на любом устройстве. */
 .tm-rank-scroll {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
-.tm-rank-scroll::-webkit-scrollbar { display: none; }
 .tm-rank-card {
   appearance: none;
   flex-shrink: 0;
-  width: 70px;
+  width: 76px;          /* вмещает самый длинный лейбл «Калибровка» без вылета за обводку */
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -7324,6 +7443,7 @@ margin-top: var(--space-4);
   letter-spacing: var(--tracking-tight);
   font-weight: var(--font-medium);
   line-height: 1.15;
+  width: 100%;            /* подпись не выходит за пределы карточки */
 }
 .tm-rank-card--active .tm-rank-card-label { color: var(--text-primary); }
 
@@ -7828,6 +7948,30 @@ margin-top: var(--space-4);
   color: var(--negative);
   border-color: rgba(229, 83, 75, 0.30);
 }
+/* Нейтральный selected — для чипов причин жалобы (не positive/negative). */
+.tm-review-tag--selected {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  border-color: var(--accent-border);
+}
+
+/* Жалоба: тихая ссылка-триггер на ревью-экране и в истории, сноска о приватности. */
+.tm-report-link {
+  display: block; width: 100%; text-align: center;
+  background: none; border: none; cursor: pointer;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-tertiary);
+  transition: color 0.15s ease;
+}
+.tm-report-link:hover { color: var(--negative); }
+.tm-report-note { text-align: center; color: var(--text-tertiary); font-size: var(--text-xs); margin-top: var(--space-3); }
+.tm-history-foot-actions { display: flex; gap: var(--space-3); align-items: center; }
+.tm-history-report {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-size: var(--text-xs); color: var(--text-tertiary);
+  transition: color 0.15s ease;
+}
+.tm-history-report:hover { color: var(--negative); }
 
 /* ── Refresh-кнопки на вкладках ленты и профиля ────────────────── */
 .tm-pane-head {
@@ -8823,3 +8967,359 @@ margin-top: var(--space-4);
 .tm-history-lobby-member:hover {
   border-bottom-color: var(--accent-border);
 }
+/* ── Мини-игры: разделы списка + карточка игры ──────────────────────── */
+.mg-section-title {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: var(--space-5) 0 var(--space-3);
+}
+/* Маленький NEW-тег в шапке карточки (для новой игры). */
+.card-tag {
+  margin-left: auto;
+  font-size: var(--text-2xs); font-weight: var(--font-bold); letter-spacing: 0.06em;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border: 0.5px solid color-mix(in oklch, var(--accent) 32%, transparent);
+  padding: 2px 7px; border-radius: 999px;
+}
+
+/* ── Экран выбора мини-игр: флагман-карточка + вторичный список квизов ──
+   Иерархия размером и единственным accent-CTA (а не «три синие кнопки»).
+   Квизы — на языке mode-select игры (.mghl-mode), один диалект со входом. */
+.mg-feature {
+  appearance: none; width: 100%; text-align: left; cursor: pointer;
+  font-family: inherit;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid color-mix(in oklch, var(--accent) 26%, var(--border-subtle));
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.mg-feature:hover {
+  background: var(--bg-elevated);
+  border-color: color-mix(in oklch, var(--accent) 42%, var(--border-subtle));
+}
+.mg-feature:active { transform: scale(0.99); }
+.mg-feature-head { display: flex; align-items: center; gap: var(--space-3); }
+.mg-feature-ic {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: var(--radius-md);
+  background: var(--bg-elevated); color: var(--accent);
+}
+.mg-feature-ic i { font-size: 22px; }
+.mg-feature-title {
+  font-size: var(--text-lg); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.mg-feature-desc { font-size: var(--text-sm); color: var(--text-secondary); line-height: var(--leading-normal); }
+/* Единственный primary на экране — визуальный pill (тап ловит вся карточка). */
+.mg-feature-cta {
+  align-self: flex-start; margin-top: var(--space-1);
+  padding: 10px var(--space-4);
+  background: var(--accent); color: var(--text-primary);
+  border-radius: 999px; font-size: var(--text-sm); font-weight: var(--font-semibold);
+}
+.mg-quiz-list { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* ── Игра «Выше / Ниже» (карточная вёрстка в стиле аппа) ────────────── */
+/* Верхний отступ как у обычных .page (был 0 → шапку обрезало сверху). */
+#page-minigame-hl { padding: var(--space-5) var(--space-4) calc(var(--nav-height) + 24px); }
+
+/* Амбиентное свечение по краям — растёт с серией. Лежит ПОЗАДИ контента
+   (z-index:0, а контент страницы — z-index:1), центр прозрачный, цвет accent
+   (не красный/золото), pointer-events:none. Лёгкий пульс есть уже с 10+,
+   чтобы движение цепляло взгляд. */
+#mghl-heat {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0; box-shadow: inset 0 0 0 0 transparent;
+  transition: opacity 0.5s ease, box-shadow 0.5s ease;
+}
+/* #mghl-meme исключён: это fixed-оверлей, правило с relative ниже не должно
+   возвращать его в поток (иначе картинка толкала бы контент вниз). */
+#page-minigame-hl > *:not(#mghl-heat):not(#mghl-meme) { position: relative; z-index: 1; }
+#mghl-heat.mghl-heat--1 {
+  opacity: 1;
+  box-shadow: inset 0 0 48px -6px color-mix(in oklch, var(--accent) 42%, transparent);
+  animation: mghlHeatPulse 3s ease-in-out infinite;
+}
+#mghl-heat.mghl-heat--2 {
+  opacity: 1;
+  box-shadow: inset 0 0 62px -6px color-mix(in oklch, var(--accent) 56%, transparent);
+  animation: mghlHeatPulse 2.1s ease-in-out infinite;
+}
+#mghl-heat.mghl-heat--3 {
+  opacity: 1;
+  box-shadow: inset 0 0 80px -6px color-mix(in oklch, var(--accent) 70%, transparent);
+  animation: mghlHeatPulse 1.4s ease-in-out infinite;
+}
+@keyframes mghlHeatPulse { 0%, 100% { opacity: 0.62; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  #mghl-heat.mghl-heat--1, #mghl-heat.mghl-heat--2, #mghl-heat.mghl-heat--3 { animation: none; }
+}
+/* Кнопка лидерборда в шапке — прижата вправо, как tm-back-btn по стилю. */
+.mghl-head-lb {
+  appearance: none; margin-left: auto;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-surface); border: 1px solid var(--border-default);
+  color: var(--text-secondary); cursor: pointer; flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.mghl-head-lb i { font-size: 18px; }
+.mghl-head-lb:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.mghl-head-lb:active { transform: scale(0.94); }
+
+/* Игровой блок центрируем по вертикали в области под шапкой — чтобы не было
+   мёртвой пустоты снизу (контент больше не прижат к верху). */
+#mghl-play {
+  min-height: calc(100dvh - 230px);
+  display: flex; flex-direction: column; justify-content: center;
+}
+#mghl-play[hidden] { display: none; }   /* display:flex иначе перебил бы hidden */
+
+/* Экран выбора режима — три оси сравнения. Центрируем по вертикали,
+   как и игровое поле, чтобы не было пустоты снизу. */
+.mghl-modes {
+  min-height: calc(100dvh - 230px);
+  display: flex; flex-direction: column; justify-content: center;
+  gap: var(--space-3); padding: var(--space-4) 0;
+}
+.mghl-modes[hidden] { display: none; }
+.mghl-mode {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left;
+  padding: var(--space-4);
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.mghl-mode:hover { background: var(--bg-elevated); border-color: var(--border-default); }
+.mghl-mode:active { transform: scale(0.99); }
+.mghl-mode-ic {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-md);
+  background: var(--bg-elevated); color: var(--accent);
+}
+.mghl-mode-ic i { font-size: 20px; }
+.mghl-mode-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mghl-mode-name { font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary); }
+.mghl-mode-sub { font-size: var(--text-sm); color: var(--text-tertiary); }
+.mghl-mode-go { flex: 0 0 auto; font-size: 16px; color: var(--text-tertiary); }
+
+/* «Сменить режим» — ghost-кнопка во всю ширину под рядом действий: тот же
+   язык, что у «Рейтинг»/«Поделиться», читается как «выход к выбору режима». */
+.mghl-over-switch {
+  width: 100%; max-width: 320px; margin-top: var(--space-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.mghl-over-switch i { font-size: 16px; }
+
+/* Компактная строка счёта — не перетягивает внимание на себя. */
+.mghl-bar {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-4);
+  padding: var(--space-3) 0 var(--space-4);
+  font-size: var(--text-sm); color: var(--text-secondary);
+}
+.mghl-bar-item b { display: inline-block; font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); }
+.mghl-pop { animation: mghlPop 0.35s ease; }
+@keyframes mghlPop { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .mghl-pop { animation: none; } }
+
+/* Вопрос раунда. */
+.mghl-q {
+  text-align: center;
+  font-size: var(--text-xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+  line-height: 1.2; margin-bottom: var(--space-5);
+}
+/* Состояние загрузки / нехватки данных. */
+.mghl-msg {
+  text-align: center; color: var(--text-secondary);
+  font-size: var(--text-base); padding: var(--space-8) var(--space-4);
+}
+
+/* Дуэль: два тайла в ряд (слева эталон, справа претендент). overflow:hidden —
+   чтобы карточки чисто «уезжали» за края ряда при carry-forward. */
+.mghl-duel {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);
+  align-items: stretch; overflow: hidden;
+}
+/* Карточка-тайл героя — surface-card аппа, контент вертикальный.
+   Анимации — через @keyframes (не transition): чтобы при сбросе анимации
+   карта не «отъезжала назад» (это и давало визуальный глитч/«отражение»). */
+/* Карточка-тайл героя — обычная surface-карточка аппа, обе нейтральные.
+   Различие читается само: слева число, справа «?». Никакого декора. */
+.mghl-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: var(--space-4) var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 0.5px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+/* Carry-forward (горизонталь). */
+@keyframes mghlOutLeft  { to { transform: translateX(-130%); opacity: 0; } }
+@keyframes mghlOutRight { to { transform: translateX(130%);  opacity: 0; } }
+@keyframes mghlSlideLeft { to { transform: translateX(var(--mghl-dx, 0)); } }
+@keyframes mghlIn       { from { transform: translateX(130%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Отклик на ответ: верный — пульс, неверный — тряска. */
+.mghl-correct { animation: mghlCorrect 0.5s ease; }
+.mghl-wrong   { animation: mghlWrong 0.45s ease; }
+@keyframes mghlCorrect { 0% { transform: scale(1); } 35% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes mghlWrong { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mghl-card, .mghl-correct, .mghl-wrong { animation: none; }
+}
+/* Портрет — прямоугольный (родной формат CDN 256×144, 16:9) во всю ширину
+   карточки: герой виден целиком, без обрезки по краям как в квадратном тайле. */
+.mghl-portrait {
+  width: 100%; aspect-ratio: 256 / 144; flex-shrink: 0;
+  border-radius: var(--radius-md); overflow: hidden;
+  background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+}
+.mghl-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mghl-card-name {
+  max-width: 100%;
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight); text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mghl-card-val {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg); font-weight: var(--font-bold);
+  color: var(--accent); text-align: center;
+  transition: color 0.2s ease;
+}
+/* «?» у претендента — крупнее и читается как «загадка», не как пустое поле. */
+.mghl-card-val--hidden { color: var(--text-tertiary); font-size: var(--text-2xl); font-weight: var(--font-bold); }
+/* Правая карточка — это «вопрос»: тонкая accent-грань направляет, по кому жмём. */
+.mghl-card--q { border-color: color-mix(in oklch, var(--accent) 28%, var(--border-subtle)); }
+/* Тонкая метка Тинкера (режим смертей) — намёк на мем. Маленький значок-череп
+   в углу портрета в негативном цвете; сдержанно, без перетягивания внимания. */
+.mghl-card--tinker .mghl-portrait { position: relative; }
+.mghl-card--tinker .mghl-portrait::after {
+  content: ""; position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--negative);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+/* Момент раскрытия числа — главный хук жанра: число «впрыгивает». */
+.mghl-reveal-ok  { color: var(--positive); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
+.mghl-reveal-bad { color: var(--negative); animation: mghlReveal 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes mghlReveal { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mghl-reveal-ok, .mghl-reveal-bad { animation: none; } }
+
+/* Мем-оверлей Тинкера: картинка выезжает снизу на весь экран, держится, уезжает.
+   Поверх всего (включая шапку и dock), на время триггера. */
+#mghl-meme {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in oklch, var(--bg-base) 82%, transparent);
+  /* Перехватывает тапы, пока мем на экране — чтобы не угадать «вслепую». */
+  pointer-events: auto;
+  opacity: 0;
+}
+#mghl-meme[hidden] { display: none; }
+/* Плавное появление/уход фона-затемнения. */
+.mghl-meme--in  { animation: mghlMemeBgIn  0.40s ease forwards; }
+.mghl-meme--out { animation: mghlMemeBgOut 0.50s ease forwards; }
+@keyframes mghlMemeBgIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mghlMemeBgOut { from { opacity: 1; } to { opacity: 0; } }
+#mghl-meme-img {
+  max-width: 92vw; max-height: 80vh;
+  object-fit: contain; border-radius: var(--radius-lg);
+  transform: translateY(110%) scale(0.97); opacity: 0;
+}
+/* Вход — мягкое замедление (easeOutQuint), уход — плавный разгон вниз. */
+.mghl-meme--in #mghl-meme-img  { animation: mghlMemeIn  0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.mghl-meme--out #mghl-meme-img { animation: mghlMemeOut 0.5s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+@keyframes mghlMemeIn  { from { transform: translateY(110%) scale(0.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+@keyframes mghlMemeOut { from { transform: translateY(0) scale(1); opacity: 1; } to { transform: translateY(110%) scale(0.97); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #mghl-meme-img { transform: none; }
+  .mghl-meme--in,  .mghl-meme--in #mghl-meme-img  { animation: none; opacity: 1; }
+  .mghl-meme--out, .mghl-meme--out #mghl-meme-img { animation: none; opacity: 0; }
+}
+
+/* Кнопки выбора — две равные, semantic-цвет по смыслу. */
+.mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-5); }
+.mghl-btn {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 14px; border-radius: var(--radius-md); cursor: pointer; font-family: inherit;
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  border: 0.5px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.mghl-btn i { font-size: 18px; }
+.mghl-btn:active { transform: scale(0.97); }
+.mghl-btn--up:hover    { background: color-mix(in oklch, var(--positive) 14%, transparent); border-color: color-mix(in oklch, var(--positive) 40%, transparent); color: var(--positive); }
+.mghl-btn--down:hover  { background: color-mix(in oklch, var(--negative) 14%, transparent); border-color: color-mix(in oklch, var(--negative) 40%, transparent); color: var(--negative); }
+
+/* Экран результата — сдержанный: число серии в фокусе, без иконок/эмодзи. */
+.mghl-over { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--space-8) var(--space-4) var(--space-5); }
+.mghl-over[hidden] { display: none; }   /* без этого display:flex перебивал атрибут hidden */
+.mghl-over-label { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3); }
+/* Число — ЕДИНСТВЕННЫЙ accent на экране (правило 60-30-10): остальное —
+   нейтральная серая шкала, иерархия через размер/вес, не через цвет. */
+.mghl-over-streak { font-size: var(--text-4xl); font-weight: var(--font-bold); font-family: var(--font-mono); color: var(--accent); line-height: 1; }
+/* Вход числа — «прилёт» с масштабом: завершает накопленную дугу. Без bounce. */
+.mghl-result-pop { animation: mghlResultIn 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes mghlResultIn { from { transform: scale(0.82); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mghl-result-pop { animation: none; } }
+/* Вердикт серии — нейтральный, подчинён числу (размер, не цвет). */
+.mghl-over-tag { font-size: var(--text-lg); font-weight: var(--font-medium); color: var(--text-secondary); margin-top: var(--space-2); letter-spacing: var(--tracking-tight); }
+/* Рекорд — тихо (tertiary); новый рекорд — ярче ВЕСОМ, не синим. */
+.mghl-over-best { font-size: var(--text-sm); color: var(--text-tertiary); margin: var(--space-3) 0 var(--space-6); }
+.mghl-over-best--record { color: var(--text-primary); font-weight: var(--font-semibold); }
+.mghl-over .tm-primary-btn { width: 100%; max-width: 320px; }
+/* Вторичные действия — строкой 2-в-ряд под главной кнопкой. */
+.mghl-over-actions { display: flex; gap: var(--space-2); width: 100%; max-width: 320px; margin-top: var(--space-2); }
+.mghl-over-actions .tm-ghost-btn { flex: 1; }
+/* Вторичные кнопки на экранах игры — с рамкой/фоном, чтобы читались как кнопки. */
+.mghl-over .tm-ghost-btn, .mghl-lb .tm-ghost-btn {
+  border: 0.5px solid var(--border-default);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+}
+.mghl-over .tm-ghost-btn:hover, .mghl-lb .tm-ghost-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+/* Строка ранга/перцентиля на экране результата. */
+.mghl-rank { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--space-5); }
+.mghl-rank-main { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--text-secondary); }
+.mghl-rank-sub { font-size: var(--text-2xs); color: var(--text-tertiary); font-family: var(--font-mono); }
+
+/* Таблица лидеров. */
+.mghl-lb { padding: var(--space-6) var(--space-4) calc(var(--nav-height) + 24px); }
+.mghl-lb-title { text-align: center; font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--text-primary); letter-spacing: var(--tracking-tight); margin-bottom: var(--space-4); }
+/* Сегментированный переключатель режимов лидерборда. */
+.mghl-lb-tabs {
+  display: flex; gap: 2px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: 3px;
+  margin-bottom: var(--space-4);
+}
+.mghl-lb-tab {
+  flex: 1; padding: var(--space-2) 4px;
+  background: none; border: none; cursor: pointer;
+  font-size: var(--text-sm); font-weight: var(--font-medium);
+  color: var(--text-tertiary); border-radius: calc(var(--radius-md) - 3px);
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mghl-lb-tab:hover { color: var(--text-secondary); }
+.mghl-lb-tab--active { background: var(--bg-elevated); color: var(--text-primary); }
+.mghl-lb-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-4); }
+.mghl-lb-row { display: flex; align-items: center; gap: var(--space-3); padding: 10px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-subtle); background: var(--bg-surface); }
+.mghl-lb-row--me { border-color: color-mix(in oklch, var(--accent) 45%, var(--border-subtle)); background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface)); }
+.mghl-lb-rank { width: 24px; text-align: center; font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-secondary); flex-shrink: 0; }
+.mghl-lb-av { width: 30px; height: 30px; border-radius: 999px; object-fit: cover; flex-shrink: 0; background: var(--bg-elevated); }
+.mghl-lb-av--ph { display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: var(--font-bold); color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+.mghl-lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--text-primary); }
+.mghl-lb-best { font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); flex-shrink: 0; }
+.mghl-lb .tm-ghost-btn { width: 100%; }
