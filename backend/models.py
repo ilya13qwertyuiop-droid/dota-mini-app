@@ -583,6 +583,9 @@ class TeammateLobbySlot(Base):
         Integer, ForeignKey("teammate_lobbies.id"), primary_key=True
     )
     position = Column(Integer, primary_key=True)
+    # index=True уже создаёт ix_teammate_lobby_slots_user_id. Дублировать его
+    # в __table_args__ нельзя — create_all пытается создать индекс дважды и
+    # падает «already exists» на рестарте (как было с teammate_reports).
     user_id = Column(
         BigInteger,
         ForeignKey("user_profiles.user_id"),
@@ -590,10 +593,6 @@ class TeammateLobbySlot(Base):
         index=True,
     )
     joined_at = Column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (
-        Index("ix_teammate_lobby_slots_user_id", "user_id"),
-    )
 
 
 # ─── Bot-editable text templates ──────────────────────────────────────────
