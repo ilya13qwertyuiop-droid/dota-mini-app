@@ -8986,6 +8986,45 @@ margin-top: var(--space-4);
   padding: 2px 7px; border-radius: 999px;
 }
 
+/* ── Экран выбора мини-игр: флагман-карточка + вторичный список квизов ──
+   Иерархия размером и единственным accent-CTA (а не «три синие кнопки»).
+   Квизы — на языке mode-select игры (.mghl-mode), один диалект со входом. */
+.mg-feature {
+  appearance: none; width: 100%; text-align: left; cursor: pointer;
+  font-family: inherit;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid color-mix(in oklch, var(--accent) 26%, var(--border-subtle));
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.mg-feature:hover {
+  background: var(--bg-elevated);
+  border-color: color-mix(in oklch, var(--accent) 42%, var(--border-subtle));
+}
+.mg-feature:active { transform: scale(0.99); }
+.mg-feature-head { display: flex; align-items: center; gap: var(--space-3); }
+.mg-feature-ic {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: var(--radius-md);
+  background: var(--bg-elevated); color: var(--accent);
+}
+.mg-feature-ic i { font-size: 22px; }
+.mg-feature-title {
+  font-size: var(--text-lg); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.mg-feature-desc { font-size: var(--text-sm); color: var(--text-secondary); line-height: var(--leading-normal); }
+/* Единственный primary на экране — визуальный pill (тап ловит вся карточка). */
+.mg-feature-cta {
+  align-self: flex-start; margin-top: var(--space-1);
+  padding: 10px var(--space-4);
+  background: var(--accent); color: var(--text-primary);
+  border-radius: 999px; font-size: var(--text-sm); font-weight: var(--font-semibold);
+}
+.mg-quiz-list { display: flex; flex-direction: column; gap: var(--space-3); }
+
 /* ── Игра «Выше / Ниже» (карточная вёрстка в стиле аппа) ────────────── */
 /* Верхний отступ как у обычных .page (был 0 → шапку обрезало сверху). */
 #page-minigame-hl { padding: var(--space-5) var(--space-4) calc(var(--nav-height) + 24px); }

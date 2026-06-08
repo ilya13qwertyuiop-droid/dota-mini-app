@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=211" />
+    <link rel="stylesheet" href="styles.css?v=212" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -256,59 +256,35 @@
             <p>Угадывай, проверяй чутьё, узнавай свой стиль</p>
           </div>
 
-          <!-- Раздел: Игры (на навык / угадайку) -->
-          <div class="mg-section-title">Игры</div>
-          <div class="card">
-            <div class="card-header">
-              <i class="card-icon ph ph-scales" aria-hidden="true"></i>
-              <span class="card-title">Выше / Ниже</span>
+          <!-- Флагман: feature-карточка (вся тапабельна), единственный primary на экране -->
+          <button type="button" class="mg-feature" onclick="goToMinigameHL()">
+            <span class="mg-feature-head">
+              <span class="mg-feature-ic"><i class="ph ph-scales" aria-hidden="true"></i></span>
+              <span class="mg-feature-title">Выше / Ниже</span>
               <span class="card-tag">NEW</span>
-            </div>
-            <div class="card-content">
-              Угадай, у какого героя больше матчей. Серия без права на ошибку —
-              сколько продержишься?
-            </div>
-            <button class="btn-small btn-small--full" onclick="goToMinigameHL()">
-              Играть →
-            </button>
-          </div>
+            </span>
+            <span class="mg-feature-desc">Угадай, у кого из двух героев показатель выше — по матчам, убийствам или смертям. Серия без права на ошибку: сколько продержишься?</span>
+            <span class="mg-feature-cta">Играть →</span>
+          </button>
 
-          <!-- Раздел: Квизы (самоопределение) -->
+          <!-- Квизы — вторичный компактный список (тот же язык, что mode-select игры) -->
           <div class="mg-section-title">Квизы</div>
-
-          <!-- Квиз по позициям -->
-          <div class="card">
-            <div class="card-header">
-              <i class="card-icon ph ph-game-controller" aria-hidden="true"></i>
-              <span class="card-title">Какая твоя позиция?</span>
-            </div>
-            <div class="card-content">
-              Пройди тест за 2 минуты и узнай, на какой роли ты раскроешься
-              лучше всего
-            </div>
-            <button
-              class="btn-small btn-small--full"
-              onclick="startPositionQuiz()"
-            >
-              Начать тест →
+          <div class="mg-quiz-list">
+            <button type="button" class="mghl-mode" onclick="startPositionQuiz()">
+              <span class="mghl-mode-ic"><i class="ph ph-game-controller" aria-hidden="true"></i></span>
+              <span class="mghl-mode-txt">
+                <span class="mghl-mode-name">Какая твоя позиция?</span>
+                <span class="mghl-mode-sub">Тест за 2 минуты</span>
+              </span>
+              <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
             </button>
-          </div>
-
-          <!-- Квиз по героям -->
-          <div class="card">
-            <div class="card-header">
-              <i class="card-icon ph ph-user-focus" aria-hidden="true"></i>
-              <span class="card-title">Подбор идеального героя</span>
-            </div>
-            <div class="card-content">
-              Ответь на вопросы и получи список героев, которые идеально
-              подходят под твой стиль игры
-            </div>
-            <button
-              class="btn-small btn-small--full"
-              onclick="startHeroQuiz()"
-            >
-              Подобрать героя →
+            <button type="button" class="mghl-mode" onclick="startHeroQuiz()">
+              <span class="mghl-mode-ic"><i class="ph ph-user-focus" aria-hidden="true"></i></span>
+              <span class="mghl-mode-txt">
+                <span class="mghl-mode-name">Подбор идеального героя</span>
+                <span class="mghl-mode-sub">Под твой стиль игры</span>
+              </span>
+              <i class="ph ph-caret-right mghl-mode-go" aria-hidden="true"></i>
             </button>
           </div>
 
