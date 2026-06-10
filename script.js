@@ -4242,7 +4242,7 @@ var _metaDragActive = false;
 var _metaDragDX = 0;
 
 // PATCH VERSION — обновлять вручную при выходе нового патча
-const CURRENT_PATCH = '7.41c';
+const CURRENT_PATCH = '7.41d';
 
 function _resolveMetaPatch(data) {
     return CURRENT_PATCH;

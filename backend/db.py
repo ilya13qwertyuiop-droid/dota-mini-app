@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import AnalyticsEvent, BannedUser, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
+from backend.models import AnalyticsEvent, BannedUser, BroadcastJob, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -387,15 +387,78 @@ def get_news_subscribers() -> list[int]:
 
 def get_all_bot_user_ids() -> list[int]:
     """All user_ids that have a profile (everyone who ever interacted with the
-    bot), excluding banned users. Audience for the admin /broadcast feature.
+    bot), excluding banned users, ORDERED by user_id. The stable ordering lets
+    a broadcast resume from a `cursor` offset after a restart.
     """
     from sqlalchemy import text
     with SessionLocal() as session:
         rows = session.execute(text(
             "SELECT user_id FROM user_profiles "
-            "WHERE user_id NOT IN (SELECT user_id FROM banned_users)"
+            "WHERE user_id NOT IN (SELECT user_id FROM banned_users) "
+            "ORDER BY user_id"
         )).fetchall()
         return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Broadcast jobs (admin forward-to-all, resumable across restarts)
+# ---------------------------------------------------------------------------
+
+def create_broadcast_job(admin_id: int, src_chat_id: int, src_message_id: int,
+                         total: int) -> int:
+    """Marks any previous running jobs as cancelled, inserts a fresh running
+    job and returns its id.
+    """
+    with SessionLocal() as session:
+        session.query(BroadcastJob).filter(
+            BroadcastJob.status == "running"
+        ).update({"status": "cancelled"})
+        job = BroadcastJob(
+            admin_id=admin_id, src_chat_id=src_chat_id,
+            src_message_id=src_message_id, total=total,
+        )
+        session.add(job)
+        session.commit()
+        return job.id
+
+
+def update_broadcast_job(job_id: int, *, cursor: int, sent: int,
+                         blocked: int, failed: int,
+                         status: "str | None" = None,
+                         status_chat_id: "int | None" = None,
+                         status_message_id: "int | None" = None) -> None:
+    """Persists progress (and optionally status / status-message coordinates)."""
+    fields = {"cursor": cursor, "sent": sent, "blocked": blocked, "failed": failed}
+    if status is not None:
+        fields["status"] = status
+    if status_chat_id is not None:
+        fields["status_chat_id"] = status_chat_id
+    if status_message_id is not None:
+        fields["status_message_id"] = status_message_id
+    with SessionLocal() as session:
+        session.query(BroadcastJob).filter(BroadcastJob.id == job_id).update(fields)
+        session.commit()
+
+
+def get_active_broadcast_job() -> "dict | None":
+    """Returns the most recent running job as a plain dict, or None."""
+    with SessionLocal() as session:
+        job = (
+            session.query(BroadcastJob)
+            .filter(BroadcastJob.status == "running")
+            .order_by(BroadcastJob.id.desc())
+            .first()
+        )
+        if job is None:
+            return None
+        return {
+            "id": job.id, "admin_id": job.admin_id,
+            "src_chat_id": job.src_chat_id, "src_message_id": job.src_message_id,
+            "total": job.total, "cursor": job.cursor,
+            "sent": job.sent, "blocked": job.blocked, "failed": job.failed,
+            "status_chat_id": job.status_chat_id,
+            "status_message_id": job.status_message_id,
+        }
 
 
 def news_guid_exists(guid: str) -> bool:
