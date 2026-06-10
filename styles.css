@@ -9248,7 +9248,10 @@ margin-top: var(--space-4);
 }
 
 /* Кнопки выбора — две равные, semantic-цвет по смыслу. */
-.mghl-guess { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-5); }
+/* Кнопки СТЕКОМ на всю ширину (Больше сверху / Меньше снизу), одним блоком под
+   обеими картами — НЕ двумя колонками под героями. Это снимает иллюзию
+   «левая кнопка = левый герой» и даёт верную метафору «больше↑ / меньше↓». */
+.mghl-guess { display: grid; grid-template-columns: 1fr; gap: var(--space-2); margin-top: var(--space-5); }
 .mghl-btn {
   appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 14px; border-radius: var(--radius-md); cursor: pointer; font-family: inherit;
