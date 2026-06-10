@@ -1969,7 +1969,7 @@ async def api_minigame_share(data: MinigameShareReq):
     mode_name = _MODE_LABEL.get(mode, "")
     caption = (
         f"Я выбил серию {streak} в режиме «{mode_name}» "
-        f"в мини-игре «Выше / Ниже». Побьёшь?"
+        f"в мини-игре «Больше / Меньше». Побьёшь?"
     )
 
     import secrets

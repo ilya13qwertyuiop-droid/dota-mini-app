@@ -1063,7 +1063,7 @@
             var modeName = (_mghl.mode && _mghl.mode.short) || '';
             var text = 'Я выбил серию ' + _mghl.streak +
                 (modeName ? (' в режиме «' + modeName + '»') : '') +
-                ' в «Выше / Ниже» (D2Helper). Побьёшь?';
+                ' в «Больше / Меньше» (D2Helper). Побьёшь?';
             var tg = window.Telegram && window.Telegram.WebApp;
             var link = (window.MINIAPP_URL || '').trim();
             if (link && link.indexOf('?') === -1) link += '?start=hl_share';
