@@ -346,6 +346,44 @@ class AnalyticsEvent(Base):
 
 
 # ---------------------------------------------------------------------------
+# Admin broadcast
+# ---------------------------------------------------------------------------
+
+class BroadcastJob(Base):
+    """State of an admin broadcast (forward-to-all). Persisted so a broadcast
+    survives a bot restart and can resume from `cursor` instead of starting
+    over. Audience is the user_profiles list ordered by user_id (stable prefix),
+    so `cursor` = how many users were already processed.
+    """
+    __tablename__ = "broadcast_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    admin_id = Column(BigInteger, nullable=False)
+    # Source of the post (chat it was forwarded to the bot from + message id)
+    src_chat_id = Column(BigInteger, nullable=False)
+    src_message_id = Column(BigInteger, nullable=False)
+    # running / done / cancelled
+    status = Column(String(16), nullable=False, default="running", server_default="running")
+    total = Column(Integer, nullable=False, default=0, server_default="0")
+    cursor = Column(Integer, nullable=False, default=0, server_default="0")
+    sent = Column(Integer, nullable=False, default=0, server_default="0")
+    blocked = Column(Integer, nullable=False, default=0, server_default="0")
+    failed = Column(Integer, nullable=False, default=0, server_default="0")
+    # Where the live progress message lives (for edits / resume)
+    status_chat_id = Column(BigInteger, nullable=True)
+    status_message_id = Column(BigInteger, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Teammate finder
 # ---------------------------------------------------------------------------
 

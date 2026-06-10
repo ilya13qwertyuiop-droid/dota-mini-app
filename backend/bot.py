@@ -120,6 +120,9 @@ from db import (
     upsert_user_profile_settings,
     toggle_notify_news,
     get_all_bot_user_ids,
+    create_broadcast_job,
+    update_broadcast_job,
+    get_active_broadcast_job,
     ban_user,
     unban_user,
     find_user_id_by_username,
@@ -1878,7 +1881,146 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 # admin_id -> {"chat_id", "message_id", "sending"}
 _BROADCAST_PENDING: dict[int, dict] = {}
-_BROADCAST_DELAY = 0.05  # ~20 пересылок/сек — в пределах лимита Telegram
+
+# Скорость: шлём ПАРАЛЛЕЛЬНО (перекрываем сетевую задержку), но глобально не
+# выше _BROADCAST_RATE сообщений/сек — потолок Telegram ~30/сек, держимся под ним.
+# Всё через env, чтобы крутить на проде без правки кода.
+_BROADCAST_RATE = float(os.getenv("BROADCAST_RATE", "25"))          # сообщений/сек
+_BROADCAST_CONCURRENCY = int(os.getenv("BROADCAST_CONCURRENCY", "25"))  # одновременных
+_BROADCAST_CHUNK = int(os.getenv("BROADCAST_CHUNK", "500"))         # чекпоинт каждые N
+# Сколько ждать максимум на одной flood-паузе (страховка от гигантского retry_after)
+_BROADCAST_MAX_WAIT = float(os.getenv("BROADCAST_MAX_WAIT", "120"))
+# Не зацикливаемся на одном юзере вечно: ограничиваем число flood-повторов
+_BROADCAST_MAX_RETRIES = 5
+
+
+async def _broadcast_send_one(bot, uid: int, src_chat_id: int, src_msg_id: int,
+                              pacer, counters: dict) -> None:
+    """Одна пересылка: пейсинг → forward → учёт ошибок и flood-повторов."""
+    for attempt in range(_BROADCAST_MAX_RETRIES + 1):
+        await pacer()  # глобальный лимитер скорости
+        try:
+            await bot.forward_message(chat_id=uid, from_chat_id=src_chat_id,
+                                      message_id=src_msg_id)
+            counters["ok"] += 1
+            return
+        except RetryAfter as e:
+            wait = float(getattr(e, "retry_after", 5))
+            # Логируем — раньше flood-паузы были невидимы (отсюда «двое суток»)
+            logger.warning("[broadcast] RetryAfter %.1fs (uid=%s, attempt=%d)",
+                           wait, uid, attempt + 1)
+            counters["flood_waits"] += 1
+            counters["flood_secs"] += wait
+            if attempt >= _BROADCAST_MAX_RETRIES:
+                counters["failed"] += 1
+                return
+            await asyncio.sleep(min(wait, _BROADCAST_MAX_WAIT) + 0.5)
+            # повторяем
+        except Forbidden:
+            counters["blocked"] += 1  # заблокировал бота / не стартовал
+            return
+        except TelegramError:
+            counters["failed"] += 1
+            return
+        except Exception:
+            counters["failed"] += 1
+            return
+
+
+async def _do_broadcast(context, job_id: int, src_chat_id: int, src_msg_id: int,
+                        user_ids: list[int], start_cursor: int, status_msg,
+                        base_ok: int = 0, base_blocked: int = 0,
+                        base_failed: int = 0) -> None:
+    """Параллельно (с глобальным лимитером ~_BROADCAST_RATE/сек) пересылает пост
+    всем user_ids начиная с start_cursor; чекпоинтит прогресс в БД каждый чанк.
+    base_* — уже накопленные счётчики из прерванного прогона (для resume).
+    """
+    bot = context.bot
+    total = len(user_ids)
+    counters = {"ok": 0, "blocked": 0, "failed": 0, "flood_waits": 0, "flood_secs": 0.0}
+
+    # --- глобальный token-bucket: не более _BROADCAST_RATE отправок/сек ---
+    interval = 1.0 / _BROADCAST_RATE if _BROADCAST_RATE > 0 else 0.0
+    next_slot = [time.monotonic()]
+    pace_lock = asyncio.Lock()
+
+    async def pacer():
+        async with pace_lock:
+            now = time.monotonic()
+            t = next_slot[0] if next_slot[0] > now else now
+            next_slot[0] = t + interval
+        delay = t - time.monotonic()
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+    sem = asyncio.Semaphore(_BROADCAST_CONCURRENCY)
+
+    async def worker(uid: int):
+        async with sem:
+            await _broadcast_send_one(bot, uid, src_chat_id, src_msg_id, pacer, counters)
+
+    start_time = time.monotonic()
+
+    async def render(done_count: int, final: bool = False):
+        ok = counters["ok"] + base_ok
+        bl = counters["blocked"] + base_blocked
+        fl = counters["failed"] + base_failed
+        elapsed = time.monotonic() - start_time
+        processed_now = counters["ok"] + counters["blocked"] + counters["failed"]
+        rate = processed_now / elapsed if elapsed > 0 else 0.0
+        if final:
+            txt = (
+                "✅ <b>Рассылка завершена</b>\n\n"
+                f"Всего: {total}\n"
+                f"Доставлено: <b>{ok}</b>\n"
+                f"Заблокировали бота: {bl}\n"
+                f"Ошибки: {fl}\n"
+                f"Скорость: {rate:.1f}/сек · flood-пауз: {counters['flood_waits']}"
+            )
+        else:
+            eta = (total - done_count) / rate if rate > 0 else 0
+            txt = (
+                f"⏳ Рассылка… {done_count}/{total}\n"
+                f"✅ {ok} · 🚫 {bl} · ⚠️ {fl}\n"
+                f"~{rate:.1f}/сек · осталось ~{int(eta // 60)} мин"
+            )
+        try:
+            await status_msg.edit_text(txt, parse_mode="HTML" if final else None)
+        except Exception:
+            pass
+
+    # Идём чанками: внутри чанка — параллельно; после чанка — чекпоинт в БД.
+    cursor = start_cursor
+    for chunk_start in range(start_cursor, total, _BROADCAST_CHUNK):
+        batch = user_ids[chunk_start:chunk_start + _BROADCAST_CHUNK]
+        await asyncio.gather(*(worker(uid) for uid in batch))
+        cursor = chunk_start + len(batch)
+        try:
+            await asyncio.to_thread(
+                update_broadcast_job, job_id,
+                cursor=cursor,
+                sent=base_ok + counters["ok"],
+                blocked=base_blocked + counters["blocked"],
+                failed=base_failed + counters["failed"],
+            )
+        except Exception:
+            traceback.print_exc()
+        await render(cursor)
+
+    try:
+        await asyncio.to_thread(
+            update_broadcast_job, job_id,
+            cursor=cursor, sent=base_ok + counters["ok"],
+            blocked=base_blocked + counters["blocked"],
+            failed=base_failed + counters["failed"],
+            status="done",
+        )
+    except Exception:
+        traceback.print_exc()
+    await render(cursor, final=True)
+    logger.info("[broadcast] done job=%s ok=%d blocked=%d failed=%d flood=%d/%.0fs",
+                job_id, counters["ok"], counters["blocked"], counters["failed"],
+                counters["flood_waits"], counters["flood_secs"])
 
 
 async def broadcast_receive(update: Update, _context: ContextTypes.DEFAULT_TYPE):
@@ -1913,58 +2055,6 @@ async def broadcast_receive(update: Update, _context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML",
         reply_markup=kb,
     )
-
-
-async def _do_broadcast(context, src_chat_id: int, src_msg_id: int,
-                        user_ids: list[int], status_msg) -> None:
-    """Пересылает пост каждому пользователю с троттлингом и обработкой ошибок."""
-    bot = context.bot
-    total = len(user_ids)
-    ok = blocked = failed = 0
-
-    for i, uid in enumerate(user_ids, 1):
-        try:
-            await bot.forward_message(chat_id=uid, from_chat_id=src_chat_id,
-                                      message_id=src_msg_id)
-            ok += 1
-        except RetryAfter as e:
-            # Telegram просит подождать — пауза и одна повторная попытка
-            await asyncio.sleep(float(getattr(e, "retry_after", 5)) + 0.5)
-            try:
-                await bot.forward_message(chat_id=uid, from_chat_id=src_chat_id,
-                                          message_id=src_msg_id)
-                ok += 1
-            except Exception:
-                failed += 1
-        except Forbidden:
-            blocked += 1  # пользователь заблокировал бота / не стартовал
-        except TelegramError:
-            failed += 1
-        except Exception:
-            failed += 1
-
-        await asyncio.sleep(_BROADCAST_DELAY)
-
-        if i % 300 == 0:
-            try:
-                await status_msg.edit_text(
-                    f"⏳ Рассылка… {i}/{total}\n"
-                    f"✅ {ok} · 🚫 {blocked} · ⚠️ {failed}"
-                )
-            except Exception:
-                pass
-
-    try:
-        await status_msg.edit_text(
-            "✅ <b>Рассылка завершена</b>\n\n"
-            f"Всего: {total}\n"
-            f"Доставлено: <b>{ok}</b>\n"
-            f"Заблокировали бота: {blocked}\n"
-            f"Ошибки: {failed}",
-            parse_mode="HTML",
-        )
-    except Exception:
-        pass
 
 
 async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2024,18 +2114,114 @@ async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
             return
 
+        # Создаём запись job (для чекпоинта/resume) и фиксируем координаты
+        # сообщения с прогрессом, чтобы /broadcast_resume мог его редактировать.
         status_msg = q.message
         try:
+            job_id = await asyncio.to_thread(
+                create_broadcast_job, admin_id,
+                pending["chat_id"], pending["message_id"], len(user_ids),
+            )
+            await asyncio.to_thread(
+                update_broadcast_job, job_id, cursor=0, sent=0, blocked=0, failed=0,
+                status_chat_id=status_msg.chat_id, status_message_id=status_msg.message_id,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            await q.edit_message_text(f"Не удалось создать задачу рассылки: {e}")
+            _BROADCAST_PENDING.pop(admin_id, None)
+            return
+
+        try:
             await status_msg.edit_text(
-                f"⏳ Рассылка запущена для {len(user_ids)} пользователей…"
+                f"⏳ Рассылка запущена для {len(user_ids)} пользователей…\n"
+                f"~{_BROADCAST_RATE:.0f}/сек · ETA ~{int(len(user_ids) / max(_BROADCAST_RATE,1) // 60)} мин"
             )
         except Exception:
             pass
 
-        await _do_broadcast(context, pending["chat_id"], pending["message_id"],
-                            user_ids, status_msg)
         _BROADCAST_PENDING.pop(admin_id, None)
+        await _do_broadcast(context, job_id, pending["chat_id"], pending["message_id"],
+                            user_ids, 0, status_msg)
         return
+
+
+async def broadcast_resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возобновляет прерванную рассылку с места чекпоинта (только админ)."""
+    admin_id = update.effective_user.id
+    if admin_id not in ADMIN_IDS:
+        return
+
+    job = await asyncio.to_thread(get_active_broadcast_job)
+    if not job:
+        await update.message.reply_text("Нет прерванной рассылки для возобновления.")
+        return
+
+    try:
+        user_ids = await asyncio.to_thread(get_all_bot_user_ids)
+    except Exception as e:
+        traceback.print_exc()
+        await update.message.reply_text(f"Не удалось получить список пользователей: {e}")
+        return
+
+    start_cursor = min(max(job["cursor"], 0), len(user_ids))
+    remaining = len(user_ids) - start_cursor
+    if remaining <= 0:
+        await asyncio.to_thread(update_broadcast_job, job["id"],
+                                cursor=start_cursor, sent=job["sent"],
+                                blocked=job["blocked"], failed=job["failed"],
+                                status="done")
+        await update.message.reply_text("Рассылка уже была завершена.")
+        return
+
+    status_msg = await update.message.reply_text(
+        f"▶️ Возобновляю: обработано {start_cursor}/{len(user_ids)}, "
+        f"осталось {remaining}…"
+    )
+    try:
+        await asyncio.to_thread(
+            update_broadcast_job, job["id"], cursor=start_cursor,
+            sent=job["sent"], blocked=job["blocked"], failed=job["failed"],
+            status="running", status_chat_id=status_msg.chat_id,
+            status_message_id=status_msg.message_id,
+        )
+    except Exception:
+        traceback.print_exc()
+
+    await _do_broadcast(
+        context, job["id"], job["src_chat_id"], job["src_message_id"],
+        user_ids, start_cursor, status_msg,
+        base_ok=job["sent"], base_blocked=job["blocked"], base_failed=job["failed"],
+    )
+
+
+async def _notify_interrupted_broadcast(application: Application) -> None:
+    """При старте: если осталась незавершённая рассылка — пингуем админов."""
+    try:
+        job = await asyncio.to_thread(get_active_broadcast_job)
+    except Exception:
+        return
+    if not job:
+        return
+    done = job["cursor"]
+    total = job["total"] or 0
+    msg = (
+        "⚠️ <b>Найдена прерванная рассылка</b>\n\n"
+        f"Обработано: {done}/{total}\n"
+        f"✅ {job['sent']} · 🚫 {job['blocked']} · ⚠️ {job['failed']}\n\n"
+        "Отправь /broadcast_resume чтобы продолжить с этого места."
+    )
+    for aid in ADMIN_IDS:
+        try:
+            await application.bot.send_message(chat_id=aid, text=msg, parse_mode="HTML")
+        except Exception:
+            pass
+
+
+async def _on_startup(application: Application) -> None:
+    """post_init: меню команд + пинг админам, если осталась прерванная рассылка."""
+    await _set_commands(application)
+    await _notify_interrupted_broadcast(application)
 
 
 async def _set_commands(application: Application) -> None:
@@ -2068,7 +2254,7 @@ def main():
         Application.builder()
         .token(BOT_TOKEN)
         .concurrent_updates(True)
-        .post_init(_set_commands)
+        .post_init(_on_startup)
         .build()
     )
 
@@ -2090,6 +2276,7 @@ def main():
     application.add_handler(CommandHandler("topdraft",            timed_handler("/topdraft")(topdraft_command)))
     application.add_handler(CommandHandler("ban",                 timed_handler("/ban")(ban_command)))
     application.add_handler(CommandHandler("unban",               timed_handler("/unban")(unban_command)))
+    application.add_handler(CommandHandler("broadcast_resume",    timed_handler("/broadcast_resume")(broadcast_resume_command)))
 
     # Рассылка: админ пересылает боту пост из канала → подтверждение → forward
     # всем. Регистрируем ПЕРЕД admin-text и catch-all, чтобы пересланный пост
