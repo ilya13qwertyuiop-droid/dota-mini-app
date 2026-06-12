@@ -9004,6 +9004,9 @@ margin-top: var(--space-4);
   border-color: color-mix(in oklch, var(--accent) 42%, var(--border-subtle));
 }
 .mg-feature:active { transform: scale(0.99); }
+/* Карточек-флагманов теперь больше одной — между ними обязателен отступ
+   (раньше ритм держался только на margin заголовка «Квизы» ниже). */
+.mg-feature + .mg-feature { margin-top: var(--space-3); }
 .mg-feature-head { display: flex; align-items: center; gap: var(--space-3); }
 .mg-feature-ic {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
