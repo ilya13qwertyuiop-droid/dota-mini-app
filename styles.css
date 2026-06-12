@@ -9602,3 +9602,169 @@ margin-top: var(--space-4);
   transition: width 0.2s linear;
 }
 .bt-timer-fill--reserve { background: var(--warning, #d29922); }
+
+/* ── «Битва драфтов»: итерация UX №2 (меню, справка, грид, позиции) ── */
+
+/* Блок «Игра с другом»: создать комнату + вход по коду — одна карточка */
+.bt-friend-card {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.bt-friend-title {
+  font-size: var(--text-xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+.bt-friend-create { width: 100%; }
+.bt-friend-divider {
+  display: flex; align-items: center; gap: var(--space-3);
+  color: var(--text-tertiary); font-size: var(--text-2xs);
+}
+.bt-friend-divider::before, .bt-friend-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border-subtle);
+}
+.bt-join-row { display: flex; gap: var(--space-2); align-items: stretch; }
+.bt-join-row .bt-join-input {
+  flex: 1 1 auto; width: 100%; min-width: 0; height: 44px;
+  text-align: center;
+}
+.bt-join-row .bt-join-btn { flex: 0 0 auto; padding: 0 var(--space-5); }
+
+/* Справка о режиме */
+#bt-help {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+.bt-help-title {
+  font-size: var(--text-xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-help-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.bt-help-body p {
+  margin: 0; font-size: var(--text-sm); color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+.bt-help-body b { color: var(--text-primary); }
+#bt-help .tm-ghost-btn { margin-top: auto; }
+
+/* Поиск + кнопка каталога */
+.bt-search-row { display: flex; gap: var(--space-2); margin: var(--space-2) 0; }
+.bt-search-row .bt-search { flex: 1; min-width: 0; margin: 0; }
+.bt-catalog-btn {
+  flex: 0 0 auto; width: 42px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated); color: var(--text-secondary);
+  cursor: pointer; font-size: 18px;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-catalog-btn:active { color: var(--text-primary); border-color: var(--border-strong); }
+
+/* Чипы позиций */
+.bt-pos-row {
+  display: flex; gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.bt-pos-row::-webkit-scrollbar { display: none; }
+.bt-pos-btn {
+  flex: 0 0 auto; padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-size: var(--text-xs); font-weight: var(--font-medium);
+  cursor: pointer; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-pos-btn--active {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--bg-surface));
+  color: var(--text-primary);
+}
+
+/* Компактный грид: 5 колонок, плотнее, имена мельче */
+.bt-grid { grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.bt-cell span { font-size: 8px; }
+
+/* Confirm-плашка: над нижним доком, с запасом и safe-area */
+.bt-confirm {
+  bottom: calc(var(--nav-height, 70px) + env(safe-area-inset-bottom, 0px) + 14px);
+  z-index: 55; /* ниже дока и его popover-меню, выше контента */
+}
+
+/* ── «Битва драфтов»: стадия расстановки позиций ── */
+#bt-assign {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+.bt-assign-head { display: flex; align-items: center; justify-content: space-between; }
+.bt-assign-title {
+  font-size: var(--text-lg); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-assign-timer {
+  font-family: var(--font-mono); font-size: var(--text-2xl);
+  font-weight: var(--font-bold); color: var(--accent);
+}
+.bt-assign-timer--low { color: var(--negative); }
+.bt-assign-sub { font-size: var(--text-xs); color: var(--text-tertiary); line-height: var(--leading-normal); }
+.bt-assign-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-assign-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  cursor: pointer; text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.bt-assign-row--sel {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface));
+}
+.bt-assign-pos {
+  flex: 0 0 52px;
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  font-weight: var(--font-bold); color: var(--text-tertiary);
+}
+.bt-assign-row img {
+  width: 64px; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: var(--radius-sm); background: var(--bg-elevated);
+}
+.bt-assign-name {
+  flex: 1; min-width: 0;
+  font-size: var(--text-sm); font-weight: var(--font-medium);
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-assign-wait {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  align-items: center; text-align: center;
+  font-size: var(--text-sm); color: var(--text-secondary);
+  padding-top: var(--space-2);
+}
+#bt-assign .tm-primary-btn { margin-top: var(--space-2); }
+
+/* Результат: раскладка героев с позициями */
+.bt-result-picks { display: flex; gap: 3px; justify-content: center; margin: var(--space-1) 0; }
+.bt-result-hero { position: relative; flex: 0 0 auto; }
+.bt-result-hero img {
+  width: 34px; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: 3px; background: var(--bg-elevated); display: block;
+}
+.bt-result-hero i {
+  position: absolute; right: 1px; bottom: 1px;
+  font-style: normal; font-family: var(--font-mono);
+  font-size: 8px; font-weight: var(--font-bold); line-height: 1;
+  color: #fff; background: rgba(0, 0, 0, 0.7);
+  padding: 1px 3px; border-radius: 2px;
+}
+.bt-result-pen { color: var(--negative); }

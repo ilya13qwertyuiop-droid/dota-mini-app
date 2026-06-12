@@ -1230,12 +1230,13 @@
 
         function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
         function _btShow(screen) {
-            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-result', 'bt-found'].forEach(function (id) {
+            if (screen !== 'bt-help') _bt.screen = screen;   // для возврата из справки
+            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.hidden = (id !== screen);
             });
             var leave = document.getElementById('bt-leave-btn');
-            if (leave) leave.hidden = (screen !== 'bt-draft');
+            if (leave) leave.hidden = !(screen === 'bt-draft' || screen === 'bt-assign');
             // Каждая смена состояния — с чистого листа: иначе переход
             // «нашли соперника → драфт» происходит ниже линии прокрутки
             // и выглядит так, будто ничего не случилось.
@@ -1271,9 +1272,22 @@
         };
 
         window.btBack = function () {
+            // Из справки «назад» возвращает на прежний экран битвы.
+            var help = document.getElementById('bt-help');
+            if (help && !help.hidden) { btHelpClose(); return; }
             // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
             // просто уводит на список игр — вернуться можно тем же входом.
             switchPage('quiz');
+        };
+
+        // ── Справка о режиме (кнопка «?» в шапке) ──────────────────────────
+        window.btHelpOpen = function () {
+            var current = _bt.screen || 'bt-menu';
+            _bt.helpReturn = current;
+            _btShow('bt-help');
+        };
+        window.btHelpClose = function () {
+            _btShow(_bt.helpReturn || 'bt-menu');
         };
 
         async function btInit() {
@@ -1390,6 +1404,8 @@
         function _btEnter(code) {
             _bt.code = code;
             _bt.state = null;
+            _bt.assignOrder = null;   // раскладка прошлой битвы не наследуется
+            _bt.selHero = null;
             _btStartPolling();
         }
 
@@ -1471,12 +1487,18 @@
                     var nowActor = st.current && st.current.actor;
                     if (nowActor === _btMyRole() && prevActor !== nowActor) _mghlHaptic('tap');
                 }
+            } else if (st.status === 'assigning') {
+                _btStopTimer();
+                _btRenderAssign(st);
+                _btShow('bt-assign');
+                if (prevStatus === 'drafting') _mghlHaptic('milestone');
             } else if (st.status === 'finished') {
                 _btStopTimer();
+                _btStopAssignTimer();
                 _btStopPolling();
                 _btRenderResult(st);
                 _btShow('bt-result');
-                if (prevStatus === 'drafting') {
+                if (prevStatus === 'drafting' || prevStatus === 'assigning') {
                     _mghlHaptic(st.winner === _btMyRole() ? 'ok' : 'bad');
                 }
             } else { // abandoned
@@ -1653,16 +1675,81 @@
             // обновление придёт поллингом.
         }
 
+        // ── Позиционные фильтры грида ──────────────────────────────────────
+        // Источник — /api/draft/popularity (тот же, что у Анализа драфтера):
+        // герой попадает в Pos N, если играет там >= 15% своих матчей
+        // (порог как у _hero_valid_pos_nums на бэке).
+        function _btLoadPosSets() {
+            if (_bt.posSets || _bt.posLoading) return;
+            _bt.posLoading = true;
+            apiFetch(window.API_BASE_URL + '/draft/popularity')
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (pop) {
+                    if (!pop) return;
+                    var sets = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+                    Object.keys(pop).forEach(function (hidStr) {
+                        var h = pop[hidStr] || {};
+                        var total = h.total || 0;
+                        if (!total) return;
+                        var positions = h.positions || {};
+                        for (var p = 1; p <= 5; p++) {
+                            var pd = positions[String(p)];
+                            if (pd && (pd.matches || 0) / total >= 0.15) {
+                                sets[p][parseInt(hidStr, 10)] = true;
+                            }
+                        }
+                    });
+                    _bt.posSets = sets;
+                    btRenderGrid();
+                })
+                .catch(function () { _bt.posLoading = false; /* фильтры просто не активируются */ });
+        }
+
+        // Делегированный клик по чипам позиций.
+        if (!window._btPosBound) {
+            window._btPosBound = true;
+            document.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.bt-pos-btn');
+                if (!btn) return;
+                _bt.posFilter = parseInt(btn.getAttribute('data-pos'), 10) || 0;
+                document.querySelectorAll('#bt-pos-row .bt-pos-btn').forEach(function (b) {
+                    b.classList.toggle('bt-pos-btn--active',
+                        (parseInt(b.getAttribute('data-pos'), 10) || 0) === _bt.posFilter);
+                });
+                btRenderGrid();
+            });
+        }
+
+        // ── Полный каталог героев (общий компонент аппа) ───────────────────
+        window.btOpenCatalog = function () {
+            _catalogContext = 'battle';
+            openHeroesCatalog();
+        };
+        // Колбэк выбора из каталога (зовёт обработчик тайлов в renderHeroesCatalog).
+        window._btCatalogPick = function (hid) {
+            var st = _bt.state;
+            var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
+            if (!myTurn) { if (typeof showToast === 'function') showToast('Сейчас не твой ход'); return; }
+            var taken = {};
+            if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            if (taken[hid]) { if (typeof showToast === 'function') showToast('Этот герой уже занят'); return; }
+            _bt.selHero = hid;
+            _btRenderConfirm();
+            btRenderGrid();
+        };
+
         // ── Грид героев ────────────────────────────────────────────────────
         window.btRenderGrid = function () {
             var grid = document.getElementById('bt-grid');
             if (!grid || !window.dotaHeroIds) return;
+            _btLoadPosSets();
             var st = _bt.state;
             var taken = {};
             if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
             var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
             var q = (document.getElementById('bt-search') || {}).value || '';
             q = q.trim().toLowerCase();
+            var posSet = (_bt.posFilter && _bt.posSets) ? _bt.posSets[_bt.posFilter] : null;
 
             var names = Object.keys(window.dotaHeroIds).sort();
             var html = '';
@@ -1670,6 +1757,7 @@
                 var name = names[i];
                 if (q && name.toLowerCase().indexOf(q) === -1) continue;
                 var hid = window.dotaHeroIds[name];
+                if (posSet && !posSet[hid]) continue;
                 var isTaken = !!taken[hid];
                 var sel = (_bt.selHero === hid);
                 html += '<button type="button" class="bt-cell' +
@@ -1679,7 +1767,7 @@
                     'alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
                     '<span>' + _mghlEsc(name) + '</span></button>';
             }
-            grid.innerHTML = html;
+            grid.innerHTML = html || '<div class="mghl-msg">Никого не нашлось</div>';
             grid.classList.toggle('bt-grid--waiting', !myTurn);
         };
 
@@ -1726,6 +1814,129 @@
             }
         };
 
+        // ── Стадия расстановки позиций ─────────────────────────────────────
+        // Раскладка локальная (assignOrder[i] = hero_id на позиции i+1),
+        // тап по двум героям меняет их местами. «Готово» шлёт на сервер;
+        // менять можно, пока стадия не закрыта.
+        function _btMyPickIds(st) {
+            var me = _btMyRole();
+            return (st.actions || [])
+                .filter(function (a) { return a.kind === 'pick' && a.actor === me; })
+                .map(function (a) { return a.hero_id; });
+        }
+
+        function _btRenderAssign(st) {
+            var a = st.assign || {};
+            // Инициализация раскладки: своя отправленная или порядок пика.
+            var picks = _btMyPickIds(st);
+            if (!_bt.assignOrder || _bt.assignOrder.length !== picks.length) {
+                var fromServer = a.your_positions;
+                if (fromServer) {
+                    var arr = new Array(picks.length);
+                    picks.forEach(function (hid) {
+                        var p = parseInt(fromServer[String(hid)], 10);
+                        if (p >= 1 && p <= picks.length) arr[p - 1] = hid;
+                    });
+                    _bt.assignOrder = arr.every(Boolean) ? arr : picks.slice();
+                } else {
+                    _bt.assignOrder = picks.slice();
+                }
+            }
+            _bt.assignSel = null;
+            _btDrawAssignList();
+
+            var submitted = !!a.you_submitted;
+            var btn = document.getElementById('bt-assign-submit');
+            if (btn) btn.hidden = submitted;
+            var wait = document.getElementById('bt-assign-wait');
+            if (wait) wait.hidden = !submitted;
+            var waitTxt = document.getElementById('bt-assign-wait-txt');
+            if (waitTxt) {
+                waitTxt.textContent = a.opponent_submitted
+                    ? 'Соперник готов. Финализируем…'
+                    : 'Расстановка отправлена. Ждём соперника…';
+            }
+            // Таймер стадии — общий, от серверного остатка.
+            _bt.assignAnchor = { at: Date.now(), remaining: a.remaining_ms || 0 };
+            _btStartAssignTimer();
+        }
+
+        function _btDrawAssignList() {
+            var list = document.getElementById('bt-assign-list');
+            if (!list) return;
+            var html = '';
+            (_bt.assignOrder || []).forEach(function (hid, i) {
+                var sel = (_bt.assignSel === i);
+                html += '<button type="button" class="bt-assign-row' + (sel ? ' bt-assign-row--sel' : '') + '" data-slot="' + i + '">' +
+                    '<span class="bt-assign-pos">Pos ' + (i + 1) + '</span>' +
+                    '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" onerror="this.style.visibility=\'hidden\'">' +
+                    '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + '</span>' +
+                '</button>';
+            });
+            list.innerHTML = html;
+        }
+
+        if (!window._btAssignBound) {
+            window._btAssignBound = true;
+            document.addEventListener('click', function (e) {
+                var row = e.target && e.target.closest && e.target.closest('.bt-assign-row');
+                if (!row) return;
+                var i = parseInt(row.getAttribute('data-slot'), 10);
+                if (isNaN(i)) return;
+                if (_bt.assignSel == null) {
+                    _bt.assignSel = i;
+                } else if (_bt.assignSel === i) {
+                    _bt.assignSel = null;
+                } else {
+                    var o = _bt.assignOrder;
+                    var t = o[_bt.assignSel]; o[_bt.assignSel] = o[i]; o[i] = t;
+                    _bt.assignSel = null;
+                    _mghlHaptic('tap');
+                }
+                _btDrawAssignList();
+            });
+        }
+
+        window.btAssignSubmit = async function () {
+            var positions = {};
+            (_bt.assignOrder || []).forEach(function (hid, i) { positions[String(hid)] = i + 1; });
+            var btn = document.getElementById('bt-assign-submit');
+            if (btn) btn.disabled = true;
+            try {
+                var st = await _btPost('/battle/positions', { code: _bt.code, positions: positions });
+                if (st && st.version) _btApply(st);
+            } catch (e) {
+                if (typeof showToast === 'function') showToast(e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        };
+        window.btAssignEdit = function () {
+            // Локально возвращаем редактор; повторный «Готово» перезапишет.
+            var btn = document.getElementById('bt-assign-submit');
+            if (btn) btn.hidden = false;
+            var wait = document.getElementById('bt-assign-wait');
+            if (wait) wait.hidden = true;
+        };
+
+        function _btStartAssignTimer() {
+            if (_bt.assignInt) return;
+            _bt.assignInt = setInterval(_btAssignTick, 250);
+            _btAssignTick();
+        }
+        function _btStopAssignTimer() {
+            if (_bt.assignInt) { clearInterval(_bt.assignInt); _bt.assignInt = null; }
+        }
+        function _btAssignTick() {
+            var a = _bt.assignAnchor;
+            var el = document.getElementById('bt-assign-timer');
+            if (!a || !el) return;
+            var left = Math.max(0, a.remaining - (Date.now() - a.at));
+            el.textContent = Math.ceil(left / 1000);
+            el.classList.toggle('bt-assign-timer--low', left < 10000);
+            // По нулю — сервер финализирует сам, придёт поллингом.
+        }
+
         // ── Результат ──────────────────────────────────────────────────────
         function _btRenderResult(st) {
             var me = _btMyRole(), opp = _btOppRole();
@@ -1751,21 +1962,59 @@
             var oppName = document.getElementById('bt-result-opp-name');
             if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
 
-            function _rows(elId, res) {
+            var r = st.result || {};
+            var finals = r.final || {};
+            var pens = r.penalties || {};
+            var posMaps = r.positions || {};
+
+            function _rows(elId, res, pen) {
                 var el = document.getElementById(elId);
                 if (!el) return;
                 if (!res) { el.innerHTML = ''; return; }
+                var penHtml = '';
+                if (pen != null) {
+                    penHtml = '<div class="bt-result-row"><span>Позиции</span><b' +
+                        (pen < 0 ? ' class="bt-result-pen"' : '') + '>' +
+                        (pen < 0 ? pen : '0') + '</b></div>';
+                }
                 el.innerHTML =
                     '<div class="bt-result-row"><span>Синергия</span><b>' + res.synergy_score + '</b></div>' +
-                    '<div class="bt-result-row"><span>Матчапы</span><b>' + res.matchup_score + '</b></div>';
+                    '<div class="bt-result-row"><span>Матчапы</span><b>' + res.matchup_score + '</b></div>' +
+                    penHtml;
             }
-            var r = st.result || {};
+            // Раскладка стороны: 5 героев с подписями позиций (вскрывается после финала).
+            function _heroes(elId, res, posMap) {
+                var el = document.getElementById(elId);
+                if (!el) return;
+                if (!res || !res.ally_ids) { el.innerHTML = ''; return; }
+                var ids = res.ally_ids.slice();
+                if (posMap) {
+                    ids.sort(function (x, y) {
+                        return (posMap[String(x)] || 9) - (posMap[String(y)] || 9);
+                    });
+                }
+                el.innerHTML = ids.map(function (hid) {
+                    var p = posMap ? posMap[String(hid)] : null;
+                    return '<span class="bt-result-hero">' +
+                        '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" title="' + _mghlEsc(_mghlName(hid)) + '" ' +
+                        'onerror="this.style.visibility=\'hidden\'">' +
+                        (p ? '<i>' + p + '</i>' : '') +
+                    '</span>';
+                }).join('');
+            }
+
             var meScore = document.getElementById('bt-result-me-score');
             var oppScore = document.getElementById('bt-result-opp-score');
-            if (meScore) meScore.textContent = (r[me] && r[me].total_score != null) ? r[me].total_score : '—';
-            if (oppScore) oppScore.textContent = (r[opp] && r[opp].total_score != null) ? r[opp].total_score : '—';
-            _rows('bt-result-me-rows', r[me]);
-            _rows('bt-result-opp-rows', r[opp]);
+            var meFinal = (finals[me] != null) ? finals[me]
+                : (r[me] && r[me].total_score != null ? r[me].total_score : null);
+            var oppFinal = (finals[opp] != null) ? finals[opp]
+                : (r[opp] && r[opp].total_score != null ? r[opp].total_score : null);
+            if (meScore) meScore.textContent = (meFinal != null) ? meFinal : '—';
+            if (oppScore) oppScore.textContent = (oppFinal != null) ? oppFinal : '—';
+            _rows('bt-result-me-rows', r[me], pens[me]);
+            _rows('bt-result-opp-rows', r[opp], pens[opp]);
+            _heroes('bt-result-me-heroes', r[me], posMaps[me]);
+            _heroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
         }
 
         window.btRematch = function () {
@@ -4795,6 +5044,14 @@ function renderHeroesCatalog() {
         tile.addEventListener('click', function () {
             var name = tile.getAttribute('data-hero-name');
             if (!name) return;
+            if (_catalogContext === 'battle') {
+                var bhid = window.dotaHeroIds && window.dotaHeroIds[name];
+                closeHeroesCatalog();
+                if (bhid && typeof window._btCatalogPick === 'function') {
+                    window._btCatalogPick(bhid);
+                }
+                return;
+            }
             if (_catalogContext === 'drafter') {
                 var hid = window.dotaHeroIds && window.dotaHeroIds[name];
                 if (!hid) { closeHeroesCatalog(); return; }

@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=216" />
+    <link rel="stylesheet" href="styles.css?v=218" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -609,9 +609,31 @@
             <i class="ph ph-arrow-left" aria-hidden="true"></i>
           </button>
           <div class="tm-page-title">Битва драфтов</div>
+          <button type="button" class="mghl-head-lb" id="bt-help-btn" onclick="btHelpOpen()" aria-label="Справка о режиме">
+            <i class="ph ph-question" aria-hidden="true"></i>
+          </button>
           <button type="button" class="mghl-head-lb" id="bt-leave-btn" onclick="btLeave()" aria-label="Покинуть битву" hidden>
             <i class="ph ph-flag" aria-hidden="true"></i>
           </button>
+        </div>
+
+        <!-- Справка о режиме (кнопка «?» в шапке — как в Пати) -->
+        <div id="bt-help" hidden>
+          <div class="bt-help-title">Как работает «Битва драфтов»</div>
+          <div class="bt-help-body">
+            <p>Два игрока драфтят друг против друга в реальном времени. Система
+            сравнивает итоговые драфты по синергиям и контрпикам и называет победителя.</p>
+            <p><b>Режимы.</b> «С банами» — 14 банов и 10 пиков по фазам Captains Mode.
+            «Без банов» — только 10 пиков.</p>
+            <p><b>Время.</b> Бан — 20 секунд, пик — 25. Сверх этого у каждого игрока
+            есть 2 минуты дополнительного времени на всю партию, как в турнирной Доте.
+            Кончилось и оно — система сделает ход за тебя.</p>
+            <p><b>Герои.</b> Взятый или забаненный герой недоступен обоим игрокам.</p>
+            <p><b>Позиции.</b> После драфта — 30 секунд на расстановку своих героев
+            по позициям 1-5. Соперник её не видит. Герой не на своей позиции
+            штрафует драфт.</p>
+          </div>
+          <button type="button" class="tm-ghost-btn" onclick="btHelpClose()">Понятно</button>
         </div>
 
         <!-- Полноэкранный интерстишл «Соперник найден» -->
@@ -655,16 +677,17 @@
 
           <button type="button" class="tm-primary-btn bt-menu-primary" onclick="btQueue()">Найти соперника</button>
 
-          <div class="bt-menu-row">
-            <button type="button" class="tm-ghost-btn" onclick="btCreate()">Создать комнату</button>
+          <!-- Игра с другом: создать комнату ИЛИ войти по коду — один блок -->
+          <div class="bt-friend-card">
+            <div class="bt-friend-title">Игра с другом</div>
+            <button type="button" class="tm-ghost-btn bt-friend-create" onclick="btCreate()">Создать комнату</button>
+            <div class="bt-friend-divider"><span>или войди по коду</span></div>
+            <div class="bt-join-row">
+              <input type="text" id="bt-join-code" class="bt-join-input" maxlength="8"
+                     placeholder="КОД" autocomplete="off" autocapitalize="characters">
+              <button type="button" class="tm-ghost-btn bt-join-btn" onclick="btJoinFromInput()">Войти</button>
+            </div>
           </div>
-          <div class="bt-join-row">
-            <input type="text" id="bt-join-code" class="bt-join-input" maxlength="8"
-                   placeholder="Код комнаты" autocomplete="off" autocapitalize="characters">
-            <button type="button" class="tm-ghost-btn" onclick="btJoinFromInput()">Войти</button>
-          </div>
-          <div class="bt-rules">Бан — 20 сек, пик — 25 сек. Плюс 2 минуты дополнительного
-            времени на всю партию, как в турнирной Доте. Не успел — система пикнет за тебя.</div>
         </div>
 
         <!-- Ожидание: поиск соперника / приватная комната с кодом -->
@@ -697,20 +720,34 @@
             <div class="bt-timer-sub" id="bt-timer-sub"></div>
           </div>
 
-          <!-- Ты -->
+          <!-- Ты — структура зеркальна сопернику: имя сверху, пики, баны -->
           <div class="bt-side bt-side--me" id="bt-side-me">
-            <div class="bt-bans" id="bt-me-bans"></div>
-            <div class="bt-picks" id="bt-me-picks"></div>
             <div class="bt-side-head">
               <img id="bt-me-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
               <span class="bt-side-name" id="bt-me-name">Ты</span>
               <span class="bt-side-reserve" id="bt-me-reserve"></span>
             </div>
+            <div class="bt-picks" id="bt-me-picks"></div>
+            <div class="bt-bans" id="bt-me-bans"></div>
           </div>
 
-          <!-- Грид героев -->
-          <input type="text" id="bt-search" class="bt-search" placeholder="Найти героя"
-                 autocomplete="off" oninput="btRenderGrid()">
+          <!-- Грид героев: поиск + каталог + фильтр по позициям -->
+          <div class="bt-search-row">
+            <input type="text" id="bt-search" class="bt-search" placeholder="Найти героя"
+                   autocomplete="off" oninput="btRenderGrid()">
+            <button type="button" class="bt-catalog-btn" id="bt-grid-catalog-btn"
+                    onclick="btOpenCatalog()" aria-label="Открыть каталог героев">
+              <i class="ph ph-squares-four" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="bt-pos-row" id="bt-pos-row">
+            <button type="button" class="bt-pos-btn bt-pos-btn--active" data-pos="0">Все</button>
+            <button type="button" class="bt-pos-btn" data-pos="1">Pos 1</button>
+            <button type="button" class="bt-pos-btn" data-pos="2">Pos 2</button>
+            <button type="button" class="bt-pos-btn" data-pos="3">Pos 3</button>
+            <button type="button" class="bt-pos-btn" data-pos="4">Pos 4</button>
+            <button type="button" class="bt-pos-btn" data-pos="5">Pos 5</button>
+          </div>
           <div class="bt-grid" id="bt-grid"></div>
 
           <!-- Подтверждение хода -->
@@ -721,6 +758,22 @@
           </div>
         </div>
 
+        <!-- Стадия расстановки: каждый приватно раскладывает пики по позициям -->
+        <div id="bt-assign" hidden>
+          <div class="bt-assign-head">
+            <div class="bt-assign-title">Расставь героев по позициям</div>
+            <div class="bt-assign-timer" id="bt-assign-timer">30</div>
+          </div>
+          <div class="bt-assign-sub">Тапни двух героев, чтобы поменять их местами.
+            Соперник не видит твою расстановку.</div>
+          <div class="bt-assign-list" id="bt-assign-list"></div>
+          <button type="button" class="tm-primary-btn" id="bt-assign-submit" onclick="btAssignSubmit()">Готово</button>
+          <div class="bt-assign-wait" id="bt-assign-wait" hidden>
+            <span id="bt-assign-wait-txt">Расстановка отправлена. Ждём соперника…</span>
+            <button type="button" class="tm-ghost-btn" onclick="btAssignEdit()">Изменить</button>
+          </div>
+        </div>
+
         <!-- Результат -->
         <div id="bt-result" hidden>
           <div class="bt-result-verdict" id="bt-result-verdict">Победа!</div>
@@ -728,11 +781,13 @@
             <div class="bt-result-card" id="bt-result-me">
               <div class="bt-result-card-name">Ты</div>
               <div class="bt-result-card-score" id="bt-result-me-score">0</div>
+              <div class="bt-result-picks" id="bt-result-me-heroes"></div>
               <div class="bt-result-card-rows" id="bt-result-me-rows"></div>
             </div>
             <div class="bt-result-card" id="bt-result-opp">
               <div class="bt-result-card-name" id="bt-result-opp-name">Соперник</div>
               <div class="bt-result-card-score" id="bt-result-opp-score">0</div>
+              <div class="bt-result-picks" id="bt-result-opp-heroes"></div>
               <div class="bt-result-card-rows" id="bt-result-opp-rows"></div>
             </div>
           </div>
@@ -1691,6 +1746,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=267"></script>
+    <script defer src="script.js?v=269"></script>
   </body>
 </html>

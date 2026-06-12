@@ -3863,10 +3863,17 @@ from backend.models import (  # noqa: E402
 _BT_BAN_MS = 20_000          # основное время на бан
 _BT_PICK_MS = 25_000         # основное время на пик
 _BT_RESERVE_MS = 120_000     # доп. время на игрока на всю партию (как в CM)
+_BT_ASSIGN_MS = 30_000       # общий таймер стадии расстановки позиций
 _BT_MAX_HOLD_SECONDS = 25.0  # удержание long-poll (< nginx proxy_read_timeout 60s)
 _BT_WAITING_TTL_MIN = 10     # протухание комнат в waiting/searching
 _BT_MODES = ("cm", "ap")
-_BT_ACTIVE_STATUSES = ("searching", "waiting", "drafting")
+_BT_ACTIVE_STATUSES = ("searching", "waiting", "drafting", "assigning")
+# Позиционный штраф (стадия расстановки): доля матчей героя на назначенной
+# позиции < 5% → −2 балла, < 15% → −1, иначе 0. Источник долей — dota_builds.
+_BT_POS_HARD_SHARE = 0.05
+_BT_POS_SOFT_SHARE = 0.15
+_BT_POS_HARD_PENALTY = 2.0
+_BT_POS_SOFT_PENALTY = 1.0
 
 # Последовательности ходов. Роли: 'F' — команда первого пика, 'S' — вторая.
 # 'cm' — фазовая структура Captains Mode 7.34 (14 банов + 10 пиков; баны
@@ -3996,32 +4003,121 @@ def _bt_taken_ids(db: Session, battle_id: int) -> set:
     return {r[0] for r in rows}
 
 
-def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
-    """Все ходы сделаны: счёт обеих сторон через compute_draft_score —
-    ту же функцию, что у сольного /draft/evaluate (этап 0)."""
+_bt_pos_shares_cache: "dict[int, dict[int, float]] | None" = None
+
+
+def _bt_pos_shares() -> dict:
+    """{hero_id: {pos: доля матчей героя на позиции}} из dota_builds.json."""
+    global _bt_pos_shares_cache
+    if _bt_pos_shares_cache is not None:
+        return _bt_pos_shares_cache
+    raw = _load_dota_builds_file() or {}
+    out: dict[int, dict[int, float]] = {}
+    for hid_str, positions in raw.items():
+        if not isinstance(positions, dict):
+            continue
+        try:
+            hid = int(hid_str)
+        except ValueError:
+            continue
+        per_pos: dict[int, int] = {}
+        for pk, pos_num in _DOTA_POS_URL_TO_NUM.items():
+            pd = positions.get(pk)
+            if isinstance(pd, dict):
+                per_pos[pos_num] = int(pd.get("num_matches") or 0)
+        total = sum(per_pos.values())
+        if total > 0:
+            out[hid] = {p: nm / total for p, nm in per_pos.items()}
+    _bt_pos_shares_cache = out
+    return out
+
+
+def _bt_position_penalty(positions: dict) -> float:
+    """Суммарный штраф за несоответствие героев позициям (отрицательный или 0).
+
+    positions: {hero_id(int|str): pos(int)}. Герои без данных о позициях
+    не штрафуются (бенефит сомнения — данные неполны, см. фидбек о флексах)."""
+    shares = _bt_pos_shares()
+    penalty = 0.0
+    for hid, pos in (positions or {}).items():
+        try:
+            hid_i, pos_i = int(hid), int(pos)
+        except (TypeError, ValueError):
+            continue
+        hero_shares = shares.get(hid_i)
+        if not hero_shares:
+            continue
+        share = hero_shares.get(pos_i, 0.0)
+        if share < _BT_POS_HARD_SHARE:
+            penalty -= _BT_POS_HARD_PENALTY
+        elif share < _BT_POS_SOFT_SHARE:
+            penalty -= _BT_POS_SOFT_PENALTY
+    return round(penalty, 1)
+
+
+def _bt_picks_of(db: Session, battle: DBDraftBattle, role: str) -> list:
     rows = (
         db.query(DBDraftBattleAction)
         .filter(DBDraftBattleAction.battle_id == battle.id)
         .filter(DBDraftBattleAction.kind == "pick")
+        .filter(DBDraftBattleAction.actor == role)
         .order_by(DBDraftBattleAction.idx)
         .all()
     )
-    host_picks = [r.hero_id for r in rows if r.actor == "host"]
-    guest_picks = [r.hero_id for r in rows if r.actor == "guest"]
+    return [r.hero_id for r in rows]
 
-    def _entries(ids):
-        return [_BTEntry(hero_id=h, position="pos " + str(i + 1)) for i, h in enumerate(ids)]
 
-    host_res = compute_draft_score(_entries(host_picks), _entries(guest_picks))
-    guest_res = compute_draft_score(_entries(guest_picks), _entries(host_picks))
+def _bt_default_positions(pick_ids: list) -> dict:
+    """Фолбэк для не успевших расставить: позиции в порядке пика.
+    Нейтральный и предсказуемый (никакой «авто-меты» — решение игрока свято)."""
+    return {str(h): i + 1 for i, h in enumerate(pick_ids[:5])}
 
-    if host_res["total_score"] > guest_res["total_score"]:
+
+def _bt_start_assign(battle: DBDraftBattle, now: datetime) -> None:
+    """Драфт окончен → стадия расстановки: общий таймер _BT_ASSIGN_MS."""
+    battle.status = "assigning"
+    battle.turn_started_at = None
+    battle.deadline_at = now + _tm_timedelta(milliseconds=_BT_ASSIGN_MS)
+    battle.last_action_at = now
+
+
+def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
+    """Обе раскладки готовы (или таймер стадии вышел): счёт через
+    compute_draft_score (этап 0) + позиционный штраф каждой стороне."""
+    host_picks = _bt_picks_of(db, battle, "host")
+    guest_picks = _bt_picks_of(db, battle, "guest")
+
+    host_pos = battle.host_positions or _bt_default_positions(host_picks)
+    guest_pos = battle.guest_positions or _bt_default_positions(guest_picks)
+
+    def _entries(ids, pos_map):
+        return [
+            _BTEntry(hero_id=h, position="pos " + str(pos_map.get(str(h), i + 1)))
+            for i, h in enumerate(ids)
+        ]
+
+    host_res = compute_draft_score(_entries(host_picks, host_pos), _entries(guest_picks, guest_pos))
+    guest_res = compute_draft_score(_entries(guest_picks, guest_pos), _entries(host_picks, host_pos))
+
+    host_pen = _bt_position_penalty(host_pos)
+    guest_pen = _bt_position_penalty(guest_pos)
+    host_final = round(max(0.0, host_res["total_score"] + host_pen), 1)
+    guest_final = round(max(0.0, guest_res["total_score"] + guest_pen), 1)
+
+    if host_final > guest_final:
         battle.winner = "host"
-    elif guest_res["total_score"] > host_res["total_score"]:
+    elif guest_final > host_final:
         battle.winner = "guest"
     else:
         battle.winner = "draw"
-    battle.result = {"host": host_res, "guest": guest_res}
+    battle.result = {
+        "host": host_res,
+        "guest": guest_res,
+        "penalties": {"host": host_pen, "guest": guest_pen},
+        "final": {"host": host_final, "guest": guest_final},
+        # Раскладки вскрываются обоим только здесь, после финала.
+        "positions": {"host": host_pos, "guest": guest_pos},
+    }
     battle.status = "finished"
     battle.finished_at = now
     battle.deadline_at = None
@@ -4043,7 +4139,8 @@ def _bt_insert_action(
     battle.last_action_at = now
     battle.state_version += 1
     if battle.turn_index >= len(_BT_SEQUENCES[battle.mode]):
-        _bt_finalize(db, battle, now)
+        # Драфт окончен — НЕ финализируем сразу: стадия расстановки позиций.
+        _bt_start_assign(battle, now)
     else:
         _bt_start_turn(battle, now)
 
@@ -4072,6 +4169,15 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
             changed = True
         return changed
 
+    # Стадия расстановки: общий таймер вышел → не успевшие получают раскладку
+    # «в порядке пика», финализируем.
+    if battle.status == "assigning":
+        if battle.deadline_at is not None and now >= _bt_aware(battle.deadline_at):
+            _bt_finalize(db, battle, now)
+            battle.state_version += 1
+            changed = True
+        return changed
+
     while (
         battle.status == "drafting"
         and battle.deadline_at is not None
@@ -4085,6 +4191,17 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
         # цепочки каждый следующий авто-ход отсчитывается честно.
         moment = _bt_aware(battle.deadline_at)
         _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+        changed = True
+
+    # Авто-цепочка могла довести до стадии расстановки, чей дедлайн тоже уже
+    # в прошлом (оба игрока отсутствовали) — дожимаем финализацию сразу.
+    if (
+        battle.status == "assigning"
+        and battle.deadline_at is not None
+        and now >= _bt_aware(battle.deadline_at)
+    ):
+        _bt_finalize(db, battle, now)
+        battle.state_version += 1
         changed = True
     return changed
 
@@ -4109,6 +4226,26 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "user_id": uid,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
             "photo_url": s.get("photo_url"),
+        }
+
+    # Стадия расстановки: общий таймер + кто уже отправил. Раскладка — ТОЛЬКО
+    # своя (приватность до финала).
+    assign = None
+    if battle.status == "assigning":
+        deadline = _bt_aware(battle.deadline_at)
+        remaining = max(0, int((deadline - now).total_seconds() * 1000)) if deadline else 0
+        my_pos = None
+        if viewer_role == "host":
+            my_pos = battle.host_positions
+        elif viewer_role == "guest":
+            my_pos = battle.guest_positions
+        assign = {
+            "remaining_ms": remaining,
+            "you_submitted": bool(my_pos),
+            "opponent_submitted": bool(
+                battle.guest_positions if viewer_role == "host" else battle.host_positions
+            ),
+            "your_positions": my_pos,
         }
 
     current = None
@@ -4148,6 +4285,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
         "turn_index": battle.turn_index,
         "sequence": [{"actor_rel": a, "kind": k} for a, k in seq],
         "current": current,
+        "assign": assign,
         "actions": [
             {"idx": a.idx, "actor": a.actor, "kind": a.kind,
              "hero_id": a.hero_id, "is_auto": bool(a.is_auto)}
@@ -4374,6 +4512,58 @@ def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
     return _bt_serialize(db, battle, role, now)
 
 
+class BattlePositionsReq(BaseModel):
+    token: str
+    code: str
+    positions: dict[str, int]   # {hero_id(str): pos(1..5)}
+
+
+@app.post("/api/battle/positions")
+def api_battle_positions(data: BattlePositionsReq, db: Session = Depends(get_db)):
+    """Стадия расстановки: игрок отправляет раскладку СВОИХ пиков по позициям.
+
+    Перезапись разрешена, пока стадия не закрыта. Обе раскладки на месте →
+    немедленная финализация (не ждём таймер). Раскладка валидируется жёстко:
+    ровно свои 5 героев, позиции 1-5 без повторов."""
+    uid = _tm_require_user(token=data.token)
+    battle = _bt_get_battle(db, data.code, for_update=True)
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(status_code=403, detail="not a participant")
+
+    now = _bt_now()
+    if _bt_apply_timeouts(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+        raise HTTPException(status_code=409, detail="Время расстановки вышло.")
+    if battle.status != "assigning":
+        raise HTTPException(status_code=409, detail="Сейчас не стадия расстановки.")
+
+    my_picks = _bt_picks_of(db, battle, role)
+    try:
+        pos_map = {str(int(k)): int(v) for k, v in (data.positions or {}).items()}
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="bad positions payload")
+    if set(pos_map.keys()) != {str(h) for h in my_picks}:
+        raise HTTPException(status_code=422, detail="positions must cover exactly your picks")
+    if sorted(pos_map.values()) != list(range(1, len(my_picks) + 1)):
+        raise HTTPException(status_code=422, detail="each position 1..5 must be used exactly once")
+
+    if role == "host":
+        battle.host_positions = pos_map
+    else:
+        battle.guest_positions = pos_map
+    battle.state_version += 1
+    battle.last_action_at = now
+
+    if battle.host_positions and battle.guest_positions:
+        _bt_finalize(db, battle, now)
+
+    db.commit()
+    _bt_notify(battle.id)
+    return _bt_serialize(db, battle, role, now)
+
+
 @app.post("/api/battle/leave")
 def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
     """waiting/searching → отмена; drafting → форфейт (победа соперника)."""
@@ -4390,7 +4580,7 @@ def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
         _bt_notify(battle.id)
         return {"ok": True, "status": "abandoned"}
 
-    if battle.status == "drafting":
+    if battle.status in ("drafting", "assigning"):
         battle.status = "finished"
         battle.winner = "guest" if role == "host" else "host"
         battle.result = {"forfeit": role}

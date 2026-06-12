@@ -702,7 +702,13 @@ class DraftBattle(Base):
     # Остаток дополнительного времени, миллисекунды (см. _BT_RESERVE_MS).
     host_reserve_ms = Column(Integer, nullable=False, default=120000)
     guest_reserve_ms = Column(Integer, nullable=False, default=120000)
-    # Финал: {'host': {...compute_draft_score...}, 'guest': {...}} или {'forfeit': role}.
+    # Стадия расстановки (status='assigning'): каждый игрок приватно
+    # раскладывает своих 5 героев по позициям 1-5. {hero_id(str): pos(int)}.
+    # NULL = ещё не отправил. Сопернику НЕ сериализуется до финала.
+    host_positions = Column(JSON, nullable=True)
+    guest_positions = Column(JSON, nullable=True)
+    # Финал: {'host': {...compute_draft_score...}, 'guest': {...}, 'penalties',
+    # 'final', 'positions'} или {'forfeit': role}.
     result = Column(JSON, nullable=True)
     winner = Column(String(5), nullable=True)   # 'host'/'guest'/'draw'
     created_at = Column(
