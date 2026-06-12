@@ -191,6 +191,23 @@ def init_stats_tables() -> None:
             conn.execute(text(ddl))
             logger.info("[stats_db] Migration applied: added %s to draft_results", col_name)
 
+    # Migration 8b: add host/guest_positions to draft_battles (стадия
+    # расстановки позиций, alembic 0018). Самовосстановление для случая,
+    # когда таблицу создал create_all предыдущего деплоя (ещё без этих
+    # колонок), а alembic upgrade не прогнали: без них ЛЮБОЙ ORM-SELECT
+    # battle-эндпоинтов падает UndefinedColumn → 500. Таблица к этому
+    # моменту существует — create_all выше создаёт её на свежих БД сразу
+    # с колонками, и тогда ALTER не выполняется вовсе.
+    for col_name, ddl in [
+        ("host_positions",  "ALTER TABLE draft_battles ADD COLUMN host_positions JSON"),
+        ("guest_positions", "ALTER TABLE draft_battles ADD COLUMN guest_positions JSON"),
+    ]:
+        with engine.begin() as conn:
+            if _column_exists(conn, "draft_battles", col_name):
+                continue
+            conn.execute(text(ddl))
+            logger.info("[stats_db] Migration applied: added %s to draft_battles", col_name)
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""
