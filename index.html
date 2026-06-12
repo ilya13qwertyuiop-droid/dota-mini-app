@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=213" />
+    <link rel="stylesheet" href="styles.css?v=214" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -257,11 +257,20 @@
           </div>
 
           <!-- Флагман: feature-карточка (вся тапабельна), единственный primary на экране -->
+          <button type="button" class="mg-feature" onclick="goToMinigameWW()">
+            <span class="mg-feature-head">
+              <span class="mg-feature-ic"><i class="ph ph-trophy" aria-hidden="true"></i></span>
+              <span class="mg-feature-title">Кто победил?</span>
+              <span class="card-tag">NEW</span>
+            </span>
+            <span class="mg-feature-desc">Два драфта из реального рангового матча. Угадай по пикам, какая команда выиграла. Каждый раунд — новый матч из 200 000+.</span>
+            <span class="mg-feature-cta">Играть →</span>
+          </button>
+
           <button type="button" class="mg-feature" onclick="goToMinigameHL()">
             <span class="mg-feature-head">
               <span class="mg-feature-ic"><i class="ph ph-scales" aria-hidden="true"></i></span>
               <span class="mg-feature-title">Больше / Меньше</span>
-              <span class="card-tag">NEW</span>
             </span>
             <span class="mg-feature-desc">Угадай, у кого из двух героев показатель больше — по матчам, убийствам или смертям. Серия без права на ошибку: сколько продержишься?</span>
             <span class="mg-feature-cta">Играть →</span>
@@ -590,6 +599,77 @@
           </div>
           <div class="mghl-lb-list" id="mghl-lb-list"></div>
           <button type="button" class="tm-ghost-btn" onclick="mghlCloseLeaderboard()">Назад</button>
+        </div>
+      </div>
+
+      <!-- Мини-игра «Кто победил?»: драфты реального матча, угадай исход.
+           Переиспользует визуальный язык «Больше/Меньше» (mghl-* классы). -->
+      <div id="page-minigame-ww" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="wwBack()" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Кто победил?</div>
+          <button type="button" class="mghl-head-lb" onclick="wwOpenLeaderboard()" aria-label="Таблица лидеров">
+            <i class="ph ph-ranking" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div id="ww-play" hidden>
+          <div id="ww-msg" class="mghl-msg" hidden></div>
+
+          <div id="ww-game">
+            <div class="mghl-bar">
+              <span class="mghl-bar-item">Серия <b id="ww-streak">0</b></span>
+              <span class="mghl-bar-item">Рекорд <b id="ww-best">0</b></span>
+            </div>
+
+            <div class="mghl-q">Какая команда выиграла?</div>
+            <div class="ww-meta" id="ww-meta"></div>
+
+            <div class="ww-duel" id="ww-duel">
+              <button type="button" class="ww-team ww-team--radiant" id="ww-team-radiant" onclick="wwGuess('radiant')">
+                <span class="ww-team-head">
+                  <span class="ww-team-name">Силы Света</span>
+                  <span class="ww-team-stats" id="ww-stats-radiant"></span>
+                </span>
+                <span class="ww-heroes" id="ww-heroes-radiant"></span>
+              </button>
+
+              <div class="ww-vs" aria-hidden="true">VS</div>
+
+              <button type="button" class="ww-team ww-team--dire" id="ww-team-dire" onclick="wwGuess('dire')">
+                <span class="ww-team-head">
+                  <span class="ww-team-name">Силы Тьмы</span>
+                  <span class="ww-team-stats" id="ww-stats-dire"></span>
+                </span>
+                <span class="ww-heroes" id="ww-heroes-dire"></span>
+              </button>
+            </div>
+
+            <div class="ww-hint" id="ww-hint">Тапни по команде-победителю</div>
+          </div>
+        </div>
+
+        <!-- Экран результата (game over) — тот же язык, что у Больше/Меньше -->
+        <div id="ww-over" class="mghl-over" hidden>
+          <div class="mghl-over-label">Серия</div>
+          <div class="mghl-over-streak" id="ww-over-streak">0</div>
+          <div class="mghl-over-tag" id="ww-over-tag"></div>
+          <div class="mghl-over-best" id="ww-over-best"></div>
+          <div class="mghl-rank" id="ww-rank" hidden></div>
+          <button type="button" class="tm-primary-btn" onclick="wwReplay()">Ещё раз</button>
+          <div class="mghl-over-actions">
+            <button type="button" class="tm-ghost-btn" onclick="wwOpenLeaderboard()">Рейтинг</button>
+            <button type="button" class="tm-ghost-btn" onclick="wwShare()">Поделиться</button>
+          </div>
+        </div>
+
+        <!-- Таблица лидеров (одна, без режимов) -->
+        <div id="ww-lb" class="mghl-lb" hidden>
+          <div class="mghl-lb-title">Таблица лидеров</div>
+          <div class="mghl-lb-list" id="ww-lb-list"></div>
+          <button type="button" class="tm-ghost-btn" onclick="wwCloseLeaderboard()">Назад</button>
         </div>
       </div>
 
@@ -1542,6 +1622,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=263"></script>
+    <script defer src="script.js?v=265"></script>
   </body>
 </html>

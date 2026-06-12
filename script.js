@@ -528,6 +528,7 @@
             teammates: 'play',
             quiz: 'play',
             'minigame-hl': 'play',
+            'minigame-ww': 'play',
             'teammate-review': 'play',
             drafter: 'tools',
             database: 'tools',
@@ -1209,6 +1210,332 @@
             }
             list.innerHTML = rows || '<div class="mghl-msg">Пока пусто — будь первым!</div>';
         }
+
+        // ── Мини-игра «Кто победил?» ──────────────────────────────────────
+        // Раунд = случайный реальный ранговый матч (драфты 5×5 без исхода).
+        // Ответ проверяется на сервере (/minigames/ww/guess) — radiant_win
+        // не приходит на клиент до угадывания. Серия/рекорд/лидерборд — общая
+        // minigame-инфраструктура (game id "ww"). Переиспользует хелперы
+        // «Больше/Меньше»: _mghlHaptic / _mghlTag / _mghlCountUp / _mghlEsc.
+        var _ww = {
+            streak: 0, best: 0, busy: false, inProgress: false,
+            cur: null,           // текущий раунд (payload /ww/round)
+            next: null,          // префетч следующего раунда (мгновенный advance)
+            loadedBest: false, lb: null, lbReturn: 'over',
+        };
+        // Медали по шкале Valve (tier // 10) — те же названия, что в «Пати».
+        var _WW_RANKS = { 1: 'Рекрут', 2: 'Страж', 3: 'Рыцарь', 4: 'Герой', 5: 'Легенда', 6: 'Властелин', 7: 'Божество', 8: 'Титан' };
+        function _wwRankLabel(tier) {
+            return (tier && _WW_RANKS[Math.floor(tier / 10)]) || '';
+        }
+        function _wwSetScore() {
+            var s = document.getElementById('ww-streak'); if (s) s.textContent = _ww.streak;
+            var b = document.getElementById('ww-best');   if (b) b.textContent = _ww.best;
+        }
+        function _wwShowMsg(text) {
+            var msg = document.getElementById('ww-msg');
+            var game = document.getElementById('ww-game');
+            if (text) {
+                if (msg) { msg.textContent = text; msg.hidden = false; }
+                if (game) game.style.display = 'none';
+            } else {
+                if (msg) msg.hidden = true;
+                if (game) game.style.display = '';
+            }
+        }
+
+        window.goToMinigameWW = function () {
+            switchPage('minigame-ww');
+            // Серия сохраняется при навигации внутри аппа — как в «Больше/Меньше».
+            if (_ww.inProgress) return;
+            wwStart();
+        };
+
+        window.wwBack = function () {
+            var lb = document.getElementById('ww-lb');
+            if (lb && !lb.hidden) { wwCloseLeaderboard(); return; }
+            switchPage('quiz');
+        };
+
+        // Фиксация незавершённой серии (свернул апп / ушёл со страницы).
+        function _wwBankScore() {
+            if (!_ww.inProgress || _ww.streak <= 0) return;
+            var tok = _mghlTok(); if (!tok) return;
+            var streak = _ww.streak;
+            if (streak > _ww.best) _ww.best = streak;
+            apiFetch(window.API_BASE_URL + '/minigames/score', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: tok, game: 'ww', streak: streak })
+            }).catch(function () {});
+        }
+        if (!window._wwVisBound) {
+            window._wwVisBound = true;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') _wwBankScore();
+            });
+        }
+
+        async function _wwFetchRound() {
+            var tok = _mghlTok();
+            var r = await apiFetch(window.API_BASE_URL + '/minigames/ww/round?token=' + encodeURIComponent(tok));
+            if (!r.ok) throw new Error('round http ' + r.status);
+            return r.json();
+        }
+        // Префетч следующего раунда — advance без сетевой паузы.
+        function _wwPrefetch() {
+            _wwFetchRound().then(function (m) { _ww.next = m; }).catch(function () { _ww.next = null; });
+        }
+
+        function _wwHeroesHtml(ids) {
+            return (ids || []).map(function (id) {
+                return '<span class="ww-hero">' +
+                    '<img src="' + _mghlEsc(_mghlImg(id)) + '" alt="" loading="lazy" ' +
+                        'onerror="this.style.visibility=\'hidden\'">' +
+                    '<span class="ww-hero-name">' + _mghlEsc(_mghlName(id)) + '</span>' +
+                '</span>';
+            }).join('');
+        }
+
+        function _wwRenderRound(m) {
+            _ww.cur = m;
+            var meta = document.getElementById('ww-meta');
+            if (meta) {
+                var parts = [];
+                var rank = _wwRankLabel(m.rank_tier);
+                if (rank) parts.push(rank);
+                if (m.duration) parts.push(Math.round(m.duration / 60) + ' мин');
+                meta.textContent = parts.join(' · ');
+            }
+            document.getElementById('ww-heroes-radiant').innerHTML = _wwHeroesHtml(m.radiant_heroes);
+            document.getElementById('ww-heroes-dire').innerHTML = _wwHeroesHtml(m.dire_heroes);
+            // Сброс reveal-состояния прошлого раунда.
+            ['radiant', 'dire'].forEach(function (side) {
+                var t = document.getElementById('ww-team-' + side);
+                if (t) { t.classList.remove('ww-team--win', 'ww-team--lose'); t.disabled = false; }
+                var st = document.getElementById('ww-stats-' + side);
+                if (st) st.textContent = '';
+            });
+            var hint = document.getElementById('ww-hint');
+            if (hint) hint.textContent = 'Тапни по команде-победителю';
+        }
+
+        async function _wwLoadRound() {
+            var m = _ww.next; _ww.next = null;
+            if (!m) {
+                _wwShowMsg('Загрузка…');
+                try {
+                    m = await _wwFetchRound();
+                } catch (e) {
+                    console.warn('[ww] load round:', e);
+                    _wwShowMsg('Не удалось загрузить матч. Проверь связь и попробуй ещё раз.');
+                    return;
+                }
+            }
+            _wwShowMsg(null);
+            _wwRenderRound(m);
+            _wwPrefetch();
+            _ww.busy = false;
+        }
+
+        window.wwStart = async function () {
+            _ww.streak = 0; _ww.busy = true; _ww.inProgress = false;
+            document.getElementById('ww-over').hidden = true;
+            document.getElementById('ww-lb').hidden = true;
+            var rankEl = document.getElementById('ww-rank'); if (rankEl) rankEl.hidden = true;
+            document.getElementById('ww-play').hidden = false;
+            _wwSetScore();
+            var tok = _mghlTok();
+            if (!_ww.loadedBest && tok) {
+                try {
+                    var br = await apiFetch(window.API_BASE_URL + '/minigames/best?token=' + encodeURIComponent(tok) + '&game=ww');
+                    var bd = await br.json();
+                    _ww.best = (bd && bd.best) || 0;
+                    _ww.loadedBest = true;
+                } catch (e) { console.warn('[ww] load best:', e); }
+                _wwSetScore();
+            }
+            await _wwLoadRound();
+            _ww.inProgress = true;
+        };
+        window.wwReplay = function () { wwStart(); };
+
+        function _wwFmtNw(n) {
+            // Нетворс компактно: 118.4k
+            return n >= 1000 ? ((Math.round(n / 100) / 10) + 'k') : String(n);
+        }
+
+        window.wwGuess = async function (side) {
+            if (_ww.busy || !_ww.cur) return;
+            _ww.busy = true;
+            var tok = _mghlTok();
+            var resp = null;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/minigames/ww/guess', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tok, match_id: _ww.cur.match_id, guess: side })
+                });
+                if (r.status === 404) {
+                    // Матч удалили между раундом и ответом — мягко перезапрашиваем
+                    // раунд, серию не трогаем.
+                    await _wwLoadRound();
+                    return;
+                }
+                if (!r.ok) throw new Error('guess http ' + r.status);
+                resp = await r.json();
+            } catch (e) {
+                console.warn('[ww] guess:', e);
+                if (typeof showToast === 'function') showToast('Не удалось проверить ответ — попробуй ещё раз');
+                _ww.busy = false;
+                return;
+            }
+
+            // Reveal: победитель подсвечивается, проигравший гаснет; командные
+            // итоги (киллы/нетворс) показываем у обеих сторон.
+            var winSide  = resp.radiant_win ? 'radiant' : 'dire';
+            var loseSide = resp.radiant_win ? 'dire' : 'radiant';
+            ['radiant', 'dire'].forEach(function (s) {
+                var t = document.getElementById('ww-team-' + s);
+                if (t) t.disabled = true;
+                var team = (resp.teams || {})[s] || {};
+                var bits = [];
+                if (team.kills != null)     bits.push(team.kills + ' убийств');
+                if (team.net_worth != null) bits.push(_wwFmtNw(team.net_worth) + ' золота');
+                var st = document.getElementById('ww-stats-' + s);
+                if (st) st.textContent = bits.join(' · ');
+            });
+            var winEl = document.getElementById('ww-team-' + winSide);
+            var loseEl = document.getElementById('ww-team-' + loseSide);
+            if (winEl) winEl.classList.add('ww-team--win');
+            if (loseEl) loseEl.classList.add('ww-team--lose');
+            var hint = document.getElementById('ww-hint');
+            if (hint) hint.textContent = resp.correct ? 'Верно!' : 'Мимо — победили ' + (winSide === 'radiant' ? 'Силы Света' : 'Силы Тьмы');
+            _mghlHaptic(resp.correct ? 'ok' : 'bad');
+
+            if (resp.correct) {
+                _ww.streak++;
+                _wwSetScore();
+                var s = document.getElementById('ww-streak');
+                if (s) { s.classList.remove('mghl-pop'); void s.offsetWidth; s.classList.add('mghl-pop'); }
+                if (_ww.streak % 5 === 0) _mghlHaptic('milestone');
+                setTimeout(function () { _wwLoadRound(); }, 1500);
+            } else {
+                setTimeout(_wwGameOver, 1900);
+            }
+        };
+
+        function _wwGameOver() {
+            _ww.inProgress = false;
+            document.getElementById('ww-play').hidden = true;
+            var over = document.getElementById('ww-over'); over.hidden = false;
+            var streakEl = document.getElementById('ww-over-streak');
+            streakEl.classList.remove('mghl-result-pop'); void streakEl.offsetWidth;
+            streakEl.classList.add('mghl-result-pop');
+            _mghlCountUp(streakEl, _ww.streak);
+            var tagEl = document.getElementById('ww-over-tag');
+            if (tagEl) tagEl.textContent = _mghlTag(_ww.streak);
+            var isRecord = _ww.streak > _ww.best;
+            if (isRecord) _ww.best = _ww.streak;
+            var bestEl = document.getElementById('ww-over-best');
+            bestEl.textContent = isRecord ? 'Новый рекорд' : ('Рекорд: ' + _ww.best);
+            bestEl.classList.toggle('mghl-over-best--record', isRecord);
+            if (isRecord && _ww.streak >= 5) _mghlHaptic('milestone');
+            var rankEl = document.getElementById('ww-rank'); if (rankEl) rankEl.hidden = true;
+            var tok = _mghlTok();
+            if (!tok) return;
+            apiFetch(window.API_BASE_URL + '/minigames/score', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: tok, game: 'ww', streak: _ww.streak })
+            }).then(function () {
+                return apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                    encodeURIComponent(tok) + '&game=ww');
+            }).then(function (r) { return r.json(); }).then(function (lb) {
+                _ww.lb = lb;
+                _wwRenderRank();
+                _wwRenderLb(lb);
+            }).catch(function () {});
+        }
+
+        function _wwRenderRank() {
+            var el = document.getElementById('ww-rank');
+            if (!el) return;
+            var you = _ww.lb && _ww.lb.you;
+            if (!you || you.rank == null) { el.hidden = true; return; }
+            var total = (_ww.lb && _ww.lb.total) || 0;
+            var main = (you.rank === 1)
+                ? 'Лучший результат среди всех'
+                : ('Ты обошёл ' + you.percentile + '% игроков');
+            el.innerHTML = '<span class="mghl-rank-main">' + main + '</span>' +
+                '<span class="mghl-rank-sub">#' + you.rank + ' из ' + total + '</span>';
+            el.hidden = false;
+        }
+
+        // Рендер таблицы — тот же markup, что у «Больше/Меньше», свой контейнер.
+        function _wwRenderLb(lb) {
+            if (!lb) return;
+            var list = document.getElementById('ww-lb-list'); if (!list) return;
+            var meId = lb.you && lb.you.user_id;
+            var top = lb.top || [];
+            var rows = top.map(function (e, i) {
+                var me = (e.user_id === meId) ? ' mghl-lb-row--me' : '';
+                var av = e.photo_url
+                    ? '<img class="mghl-lb-av" src="' + _mghlEsc(e.photo_url) + '" alt="" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'mghl-lb-av mghl-lb-av--ph\',textContent:\'·\'}))">'
+                    : '<span class="mghl-lb-av mghl-lb-av--ph">' + _mghlEsc((e.name || '?').charAt(0)) + '</span>';
+                return '<div class="mghl-lb-row' + me + '">' +
+                    '<span class="mghl-lb-rank">' + (i + 1) + '</span>' +
+                    av +
+                    '<span class="mghl-lb-name">' + _mghlEsc(e.name || '') + '</span>' +
+                    '<span class="mghl-lb-best">' + e.best + '</span>' +
+                '</div>';
+            }).join('');
+            var inTop = top.some(function (e) { return e.user_id === meId; });
+            if (lb.you && lb.you.rank && !inTop) {
+                rows += '<div class="mghl-lb-row mghl-lb-row--me">' +
+                    '<span class="mghl-lb-rank">' + lb.you.rank + '</span>' +
+                    '<span class="mghl-lb-av mghl-lb-av--ph">я</span>' +
+                    '<span class="mghl-lb-name">Ты</span>' +
+                    '<span class="mghl-lb-best">' + lb.you.best + '</span>' +
+                '</div>';
+            }
+            list.innerHTML = rows || '<div class="mghl-msg">Пока пусто — будь первым!</div>';
+        }
+
+        window.wwOpenLeaderboard = function () {
+            _ww.lbReturn = !document.getElementById('ww-play').hidden ? 'play'
+                : !document.getElementById('ww-over').hidden ? 'over' : 'play';
+            document.getElementById('ww-play').hidden = true;
+            document.getElementById('ww-over').hidden = true;
+            document.getElementById('ww-lb').hidden = false;
+            var list = document.getElementById('ww-lb-list');
+            if (_ww.lb) _wwRenderLb(_ww.lb);
+            else if (list) list.innerHTML = '<div class="mghl-msg">Загрузка…</div>';
+            var tok = _mghlTok();
+            apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                encodeURIComponent(tok) + '&game=ww')
+                .then(function (r) { return r.json(); })
+                .then(function (lb) {
+                    _ww.lb = lb;
+                    if (!document.getElementById('ww-lb').hidden) _wwRenderLb(lb);
+                })
+                .catch(function () {});
+        };
+        window.wwCloseLeaderboard = function () {
+            document.getElementById('ww-lb').hidden = true;
+            if (_ww.lbReturn === 'over') document.getElementById('ww-over').hidden = false;
+            else document.getElementById('ww-play').hidden = false;
+        };
+
+        // Шеринг — текстовый (без серверной карточки): t.me/share/url.
+        window.wwShare = function () {
+            var text = 'Я угадал исходы ' + _ww.streak + ' реальных матчей подряд в «Кто победил?» (D2Helper). Побьёшь?';
+            var tg = window.Telegram && window.Telegram.WebApp;
+            var link = (window.MINIAPP_URL || '').trim();
+            if (link && link.indexOf('?') === -1) link += '?start=ww_share';
+            var shareUrl = link
+                ? 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
+                : 'https://t.me/share/url?url=' + encodeURIComponent(text);
+            if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(shareUrl);
+            else window.open(shareUrl, '_blank');
+        };
 
 
         function backToQuizList() {
