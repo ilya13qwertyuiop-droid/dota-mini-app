@@ -1237,6 +1237,10 @@
             });
             var leave = document.getElementById('bt-leave-btn');
             if (leave) leave.hidden = !(screen === 'bt-draft' || screen === 'bt-assign');
+            // «?» — только в меню: во время поиска/драфта/результата шапке
+            // достаточно контекстных действий (сдаться/назад).
+            var help = document.getElementById('bt-help-btn');
+            if (help) help.hidden = (screen !== 'bt-menu');
             // Каждая смена состояния — с чистого листа: иначе переход
             // «нашли соперника → драфт» происходит ниже линии прокрутки
             // и выглядит так, будто ничего не случилось.
@@ -1722,6 +1726,12 @@
 
         // ── Полный каталог героев (общий компонент аппа) ───────────────────
         window.btOpenCatalog = function () {
+            // Слушатели закрытия (крестик/фон/Escape) вешает initHeroesCatalog,
+            // которую обычно зовут страницы «Герои»/«Драфтер» при своей
+            // инициализации. Вход из битвы их минует — без этого вызова
+            // открытый каталог было НЕВОЗМОЖНО закрыть. Идемпотентно
+            // (внутри guard _heroesCatalogBound).
+            if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
             _catalogContext = 'battle';
             openHeroesCatalog();
         };
