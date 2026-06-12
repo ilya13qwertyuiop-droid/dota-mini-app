@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=214" />
+    <link rel="stylesheet" href="styles.css?v=216" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -614,8 +614,34 @@
           </button>
         </div>
 
+        <!-- Полноэкранный интерстишл «Соперник найден» -->
+        <div id="bt-found" class="bt-found" hidden>
+          <div class="bt-found-label" id="bt-found-label">Соперник найден</div>
+          <div class="bt-found-vs">
+            <div class="bt-found-player">
+              <img id="bt-found-me-av" class="bt-found-av" alt="" onerror="this.style.visibility='hidden'">
+              <span id="bt-found-me-name"></span>
+            </div>
+            <span class="bt-found-x">VS</span>
+            <div class="bt-found-player">
+              <img id="bt-found-opp-av" class="bt-found-av" alt="" onerror="this.style.visibility='hidden'">
+              <span id="bt-found-opp-name"></span>
+            </div>
+          </div>
+          <div class="bt-found-sub" id="bt-found-sub">Драфт начинается…</div>
+        </div>
+
         <!-- Меню: режим + способ матчинга -->
         <div id="bt-menu" hidden>
+          <!-- Баннер незавершённой битвы: вместо молчаливого авто-входа -->
+          <div id="bt-resume" class="bt-resume" hidden>
+            <div class="bt-resume-txt" id="bt-resume-txt"></div>
+            <div class="bt-resume-actions">
+              <button type="button" class="tm-primary-btn" onclick="btResumeYes()">Продолжить</button>
+              <button type="button" class="tm-ghost-btn" onclick="btResumeNo()">Отменить</button>
+            </div>
+          </div>
+
           <div class="bt-mode-seg" role="radiogroup" aria-label="Режим драфта">
             <button type="button" class="bt-mode-btn bt-mode-btn--active" id="bt-mode-cm" onclick="btSetMode('cm')">
               <span class="bt-mode-name">С банами</span>
@@ -653,8 +679,9 @@
         <!-- Драфт -->
         <div id="bt-draft" hidden>
           <!-- Соперник -->
-          <div class="bt-side bt-side--opp">
+          <div class="bt-side bt-side--opp" id="bt-side-opp">
             <div class="bt-side-head">
+              <img id="bt-opp-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
               <span class="bt-side-name" id="bt-opp-name">Соперник</span>
               <span class="bt-side-reserve" id="bt-opp-reserve"></span>
             </div>
@@ -666,14 +693,16 @@
           <div class="bt-timer" id="bt-timer">
             <div class="bt-timer-turn" id="bt-timer-turn">Ход</div>
             <div class="bt-timer-clock" id="bt-timer-clock">25</div>
+            <div class="bt-timer-bar"><div class="bt-timer-fill" id="bt-timer-fill"></div></div>
             <div class="bt-timer-sub" id="bt-timer-sub"></div>
           </div>
 
           <!-- Ты -->
-          <div class="bt-side bt-side--me">
+          <div class="bt-side bt-side--me" id="bt-side-me">
             <div class="bt-bans" id="bt-me-bans"></div>
             <div class="bt-picks" id="bt-me-picks"></div>
             <div class="bt-side-head">
+              <img id="bt-me-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
               <span class="bt-side-name" id="bt-me-name">Ты</span>
               <span class="bt-side-reserve" id="bt-me-reserve"></span>
             </div>
@@ -1662,6 +1691,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=265"></script>
+    <script defer src="script.js?v=267"></script>
   </body>
 </html>

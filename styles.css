@@ -9513,3 +9513,92 @@ margin-top: var(--space-4);
 .bt-result-row b { font-family: var(--font-mono); color: var(--text-secondary); }
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
 #bt-result .tm-primary-btn, #bt-result .tm-ghost-btn { width: 100%; max-width: 320px; }
+
+/* КРИТИЧНО: у bt-экранов задан display:flex, который перебивает
+   UA-стиль атрибута [hidden] (та же грабля, что у mghl — см. ~9082).
+   Без этого правила ВСЕ экраны битвы видны одновременно, стопкой. */
+#page-draft-battle [hidden] { display: none !important; }
+
+/* ── «Битва драфтов»: полировка UX (интерстишл, resume, активная сторона) ── */
+
+/* Полноэкранные состояния: ожидание и меню занимают весь вьюпорт,
+   ничего «следующего» под ними не проглядывает. */
+#bt-menu, #bt-wait, #bt-found, #bt-result {
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+#bt-wait { justify-content: center; padding-top: var(--space-6); }
+#bt-result { justify-content: center; }
+
+/* Интерстишл «Соперник найден» */
+.bt-found {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-6); padding: var(--space-8) var(--space-4);
+  text-align: center;
+  animation: btFoundIn 0.25s ease-out;
+}
+@keyframes btFoundIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.bt-found-label {
+  font-size: var(--text-2xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-found-vs { display: flex; align-items: center; gap: var(--space-5); }
+.bt-found-player {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  max-width: 110px;
+}
+.bt-found-player span {
+  font-size: var(--text-sm); color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.bt-found-av {
+  width: 64px; height: 64px; border-radius: 999px; object-fit: cover;
+  background: var(--bg-elevated); border: 2px solid var(--border-strong);
+}
+.bt-found-x {
+  font-family: var(--font-mono); font-size: var(--text-lg);
+  font-weight: var(--font-bold); color: var(--accent); letter-spacing: 0.1em;
+}
+.bt-found-sub { font-size: var(--text-sm); color: var(--text-tertiary); }
+
+/* Resume-баннер в меню */
+.bt-resume {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--border-subtle));
+  background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface));
+}
+.bt-resume-txt { font-size: var(--text-sm); color: var(--text-primary); line-height: var(--leading-normal); }
+.bt-resume-actions { display: flex; gap: var(--space-2); }
+.bt-resume-actions .tm-primary-btn, .bt-resume-actions .tm-ghost-btn { flex: 1; padding: 9px 0; }
+
+/* Активная сторона драфта + аватары */
+.bt-side {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.bt-side--active {
+  border-color: color-mix(in oklch, var(--accent) 50%, transparent);
+  background: color-mix(in oklch, var(--accent) 6%, transparent);
+}
+.bt-side-av {
+  width: 22px; height: 22px; border-radius: 999px; object-fit: cover;
+  background: var(--bg-elevated); flex-shrink: 0;
+}
+.bt-side-head { gap: var(--space-2); align-items: center; }
+.bt-side-name { max-width: none; flex: 1; }
+
+/* Прогресс-полоса таймера */
+.bt-timer-bar {
+  width: min(220px, 70%); height: 3px; margin-top: 6px;
+  border-radius: 999px; background: var(--bg-elevated); overflow: hidden;
+}
+.bt-timer-fill {
+  height: 100%; width: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s linear;
+}
+.bt-timer-fill--reserve { background: var(--warning, #d29922); }

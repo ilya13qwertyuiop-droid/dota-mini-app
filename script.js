@@ -1230,12 +1230,37 @@
 
         function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
         function _btShow(screen) {
-            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-result'].forEach(function (id) {
+            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-result', 'bt-found'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.hidden = (id !== screen);
             });
             var leave = document.getElementById('bt-leave-btn');
             if (leave) leave.hidden = (screen !== 'bt-draft');
+            // Каждая смена состояния — с чистого листа: иначе переход
+            // «нашли соперника → драфт» происходит ниже линии прокрутки
+            // и выглядит так, будто ничего не случилось.
+            try { window.scrollTo({ top: 0, behavior: 'instant' }); }
+            catch (e) { window.scrollTo(0, 0); }
+        }
+
+        // Полноэкранный интерстишл «Соперник найден» (haptic + пауза), затем драфт.
+        function _btShowFound(st, label, sub) {
+            var me = st.you || 'host';
+            var opp = me === 'host' ? 'guest' : 'host';
+            var mp = st[me] || {}, op = st[opp] || {};
+            var set = function (id, txt) {
+                var el = document.getElementById(id); if (el) el.textContent = txt;
+            };
+            set('bt-found-label', label);
+            set('bt-found-me-name', mp.name || 'Ты');
+            set('bt-found-opp-name', op.name || 'Соперник');
+            set('bt-found-sub', sub);
+            var meAv = document.getElementById('bt-found-me-av');
+            var opAv = document.getElementById('bt-found-opp-av');
+            if (meAv) { meAv.src = mp.photo_url || ''; meAv.style.visibility = mp.photo_url ? '' : 'hidden'; }
+            if (opAv) { opAv.src = op.photo_url || ''; opAv.style.visibility = op.photo_url ? '' : 'hidden'; }
+            _btShow('bt-found');
+            _mghlHaptic('milestone');
         }
         function _btMyRole() { return (_bt.state && _bt.state.you) || null; }
         function _btOppRole() { return _btMyRole() === 'host' ? 'guest' : 'host'; }
@@ -1252,14 +1277,48 @@
         };
 
         async function btInit() {
-            // Resume: если есть активная битва — сразу в неё.
+            // Меню — сразу (без пустого экрана на время запроса); баннер
+            // незавершённой битвы доедет асинхронно.
+            var banner0 = document.getElementById('bt-resume');
+            if (banner0) banner0.hidden = true;
+            _btShow('bt-menu');
             try {
                 var r = await apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(_btTok()));
                 var d = await r.json();
-                if (d && d.code) { _btEnter(d.code); return; }
+                if (d && d.code) {
+                    if (d.status === 'drafting') {
+                        // Драфт уже идёт — таймер тикает, входим немедленно.
+                        _btEnter(d.code);
+                        return;
+                    }
+                    // Старый поиск/комната: НЕ входим молча («игра началась
+                    // сама» — худший сюрприз). Показываем меню с баннером.
+                    _bt.resumeCode = d.code;
+                    var txtEl = document.getElementById('bt-resume-txt');
+                    if (txtEl) {
+                        txtEl.textContent = (d.status === 'waiting')
+                            ? 'У тебя открыта комната ' + d.code + ' — соперник ещё не зашёл.'
+                            : 'Поиск соперника ещё активен с прошлого захода.';
+                    }
+                    var banner = document.getElementById('bt-resume');
+                    if (banner) banner.hidden = false;
+                }
             } catch (e) { /* меню всё равно покажем */ }
             _btShow('bt-menu');
         }
+
+        window.btResumeYes = function () {
+            var banner = document.getElementById('bt-resume');
+            if (banner) banner.hidden = true;
+            if (_bt.resumeCode) _btEnter(_bt.resumeCode);
+        };
+        window.btResumeNo = async function () {
+            var banner = document.getElementById('bt-resume');
+            if (banner) banner.hidden = true;
+            var code = _bt.resumeCode;
+            _bt.resumeCode = null;
+            if (code) { try { await _btPost('/battle/leave', { code: code }); } catch (e) {} }
+        };
 
         window.btSetMode = function (m) {
             _bt.mode = (m === 'ap') ? 'ap' : 'cm';
@@ -1283,17 +1342,37 @@
             return d;
         }
 
+        // Мгновенный отклик: экран ожидания показываем В МОМЕНТ нажатия,
+        // не дожидаясь ответа сервера — иначе непонятно, началось ли что-то.
+        function _btShowWaitOptimistic(title) {
+            var t = document.getElementById('bt-wait-title');
+            if (t) t.textContent = title;
+            var codeEl = document.getElementById('bt-wait-code');
+            if (codeEl) codeEl.hidden = true;
+            var inv = document.getElementById('bt-wait-invite');
+            if (inv) inv.hidden = true;
+            _btShow('bt-wait');
+        }
+
         window.btQueue = async function () {
+            _btShowWaitOptimistic('Ищем соперника…');
             try {
                 var d = await _btPost('/battle/queue', { mode: _bt.mode });
                 _btEnter(d.code);
-            } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+            } catch (e) {
+                _btShow('bt-menu');
+                if (typeof showToast === 'function') showToast(e.message);
+            }
         };
         window.btCreate = async function () {
+            _btShowWaitOptimistic('Создаём комнату…');
             try {
                 var d = await _btPost('/battle/create', { mode: _bt.mode });
                 _btEnter(d.code);
-            } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+            } catch (e) {
+                _btShow('bt-menu');
+                if (typeof showToast === 'function') showToast(e.message);
+            }
         };
         window.btJoinFromInput = function () {
             var inp = document.getElementById('bt-join-code');
@@ -1361,18 +1440,45 @@
 
         // ── Применение состояния ──────────────────────────────────────────
         function _btApply(st) {
+            var prev = _bt.state;
+            var prevStatus = prev && prev.status;
+            var prevActor = prev && prev.current && prev.current.actor;
             _bt.state = st;
             if (st.status === 'searching' || st.status === 'waiting') {
                 _btRenderWait(st);
                 _btShow('bt-wait');
             } else if (st.status === 'drafting') {
                 _btRenderDraft(st);
-                _btShow('bt-draft');
+                // Матч только что нашёлся (или вернулись в идущую битву) —
+                // полноэкранный интерстишл с хаптикой, потом драфт.
+                // Без него старт выглядит как «ничего не произошло».
+                if (prevStatus !== 'drafting') {
+                    var resumed = (prevStatus == null && st.turn_index > 0);
+                    _btShowFound(
+                        st,
+                        resumed ? 'Битва продолжается' : 'Соперник найден',
+                        resumed ? 'Возвращаемся к драфту…' : 'Драфт начинается…'
+                    );
+                    setTimeout(function () {
+                        var f = document.getElementById('bt-found');
+                        if (f && !f.hidden && _bt.state && _bt.state.status === 'drafting') {
+                            _btShow('bt-draft');
+                        }
+                    }, 1800);
+                } else {
+                    _btShow('bt-draft');
+                    // Ход перешёл к тебе — тактильный сигнал (экран мог быть не в фокусе глаз).
+                    var nowActor = st.current && st.current.actor;
+                    if (nowActor === _btMyRole() && prevActor !== nowActor) _mghlHaptic('tap');
+                }
             } else if (st.status === 'finished') {
                 _btStopTimer();
                 _btStopPolling();
                 _btRenderResult(st);
                 _btShow('bt-result');
+                if (prevStatus === 'drafting') {
+                    _mghlHaptic(st.winner === _btMyRole() ? 'ok' : 'bad');
+                }
             } else { // abandoned
                 _btStopTimer();
                 _btStopPolling();
@@ -1439,6 +1545,16 @@
             if (elOppRes) elOppRes.textContent = _btFmtReserve(st.reserves[opp + '_ms']);
             var elMeRes = document.getElementById('bt-me-reserve');
             if (elMeRes) elMeRes.textContent = _btFmtReserve(st.reserves[me + '_ms']);
+            var meAv = document.getElementById('bt-me-avatar');
+            if (meAv) { meAv.src = mePlayer.photo_url || ''; meAv.style.visibility = mePlayer.photo_url ? '' : 'hidden'; }
+            var oppAv = document.getElementById('bt-opp-avatar');
+            if (oppAv) { oppAv.src = oppPlayer.photo_url || ''; oppAv.style.visibility = oppPlayer.photo_url ? '' : 'hidden'; }
+            // Активная сторона — подсветка панели (видно, чей ход, без чтения текста).
+            var curTurn = st.current;
+            var meSide = document.getElementById('bt-side-me');
+            var oppSide = document.getElementById('bt-side-opp');
+            if (meSide) meSide.classList.toggle('bt-side--active', !!(curTurn && curTurn.actor === me));
+            if (oppSide) oppSide.classList.toggle('bt-side--active', !!(curTurn && curTurn.actor === opp));
 
             // Пики/баны по сторонам из журнала + пустые слоты по последовательности.
             var picksTotal = {}, bansTotal = {};
@@ -1522,6 +1638,17 @@
             clock.textContent = Math.ceil((inReserve ? totalLeft : mainLeft) / 1000);
             clock.classList.toggle('bt-timer-clock--reserve', inReserve);
             if (sub) sub.textContent = inReserve ? 'Дополнительное время' : '';
+            // Прогресс-полоса: доля оставшегося основного времени;
+            // в резерве — янтарная, от остатка на момент якоря.
+            var fill = document.getElementById('bt-timer-fill');
+            if (fill) {
+                var base = (a.kind === 'ban') ? 20000 : 25000;
+                var pct = inReserve
+                    ? (a.total > 0 ? totalLeft / a.total : 0)
+                    : (mainLeft / base);
+                fill.style.width = Math.max(0, Math.min(100, pct * 100)) + '%';
+                fill.classList.toggle('bt-timer-fill--reserve', inReserve);
+            }
             // По нулю ничего не делаем сами: авто-ход исполнит сервер,
             // обновление придёт поллингом.
         }
