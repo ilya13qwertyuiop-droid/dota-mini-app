@@ -277,6 +277,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = await asyncio.to_thread(create_token_for_user, user_id)
     mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
 
+    # Deep-link «Битвы драфтов»: t.me/<bot>?start=db_<КОД> (шеринг приглашения)
+    # → пробрасываем код в URL кнопки мини-аппа, фронт сам откроет комнату.
+    if _start_payload and _start_payload.startswith("db_"):
+        _bt_code = _start_payload[3:].strip().upper()
+        if 4 <= len(_bt_code) <= 8 and _bt_code.isalnum():
+            mini_app_url_with_token += f"&battle={_bt_code}"
+
     # Пишем данные профиля напрямую в БД — без HTTP-запроса к самому себе.
     try:
         await asyncio.to_thread(upsert_user_profile_settings, user_id, {

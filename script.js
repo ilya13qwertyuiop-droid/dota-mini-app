@@ -528,6 +528,7 @@
             teammates: 'play',
             quiz: 'play',
             'minigame-hl': 'play',
+            'draft-battle': 'play',
             'teammate-review': 'play',
             drafter: 'tools',
             database: 'tools',
@@ -1209,6 +1210,458 @@
             }
             list.innerHTML = rows || '<div class="mghl-msg">Пока пусто — будь первым!</div>';
         }
+
+
+        // ── «Битва драфтов» — PvP-драфт в реальном времени ────────────────
+        // Транспорт: long polling /api/battle/events с версионным курсором.
+        // Время считает СЕРВЕР: ответ несёт remaining_ms, клиент только
+        // тикает отрисовку от якоря (Date.now() на момент ответа).
+        var _bt = {
+            mode: 'cm',           // выбранный режим в меню
+            code: null,           // код текущей битвы
+            state: null,          // последний payload
+            polling: false,
+            abort: null,          // AbortController текущего long-poll'а
+            selHero: null,        // выбранный в гриде герой (до подтверждения)
+            timerInt: null,
+            anchor: null,         // {at, main, total} для отрисовки таймера
+            gridBuilt: false,
+        };
+
+        function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
+        function _btShow(screen) {
+            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-result'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.hidden = (id !== screen);
+            });
+            var leave = document.getElementById('bt-leave-btn');
+            if (leave) leave.hidden = (screen !== 'bt-draft');
+        }
+        function _btMyRole() { return (_bt.state && _bt.state.you) || null; }
+        function _btOppRole() { return _btMyRole() === 'host' ? 'guest' : 'host'; }
+
+        window.goToDraftBattle = function () {
+            switchPage('draft-battle');
+            btInit();
+        };
+
+        window.btBack = function () {
+            // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
+            // просто уводит на список игр — вернуться можно тем же входом.
+            switchPage('quiz');
+        };
+
+        async function btInit() {
+            // Resume: если есть активная битва — сразу в неё.
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(_btTok()));
+                var d = await r.json();
+                if (d && d.code) { _btEnter(d.code); return; }
+            } catch (e) { /* меню всё равно покажем */ }
+            _btShow('bt-menu');
+        }
+
+        window.btSetMode = function (m) {
+            _bt.mode = (m === 'ap') ? 'ap' : 'cm';
+            var cm = document.getElementById('bt-mode-cm');
+            var ap = document.getElementById('bt-mode-ap');
+            if (cm) cm.classList.toggle('bt-mode-btn--active', _bt.mode === 'cm');
+            if (ap) ap.classList.toggle('bt-mode-btn--active', _bt.mode === 'ap');
+        };
+
+        async function _btPost(path, body) {
+            var r = await apiFetch(window.API_BASE_URL + path, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({ token: _btTok() }, body || {})),
+            });
+            var d = null;
+            try { d = await r.json(); } catch (e) { /* пустое тело */ }
+            if (!r.ok) {
+                var msg = (d && d.detail) ? String(d.detail) : ('Ошибка ' + r.status);
+                throw new Error(msg);
+            }
+            return d;
+        }
+
+        window.btQueue = async function () {
+            try {
+                var d = await _btPost('/battle/queue', { mode: _bt.mode });
+                _btEnter(d.code);
+            } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+        };
+        window.btCreate = async function () {
+            try {
+                var d = await _btPost('/battle/create', { mode: _bt.mode });
+                _btEnter(d.code);
+            } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+        };
+        window.btJoinFromInput = function () {
+            var inp = document.getElementById('bt-join-code');
+            var code = (inp && inp.value || '').trim().toUpperCase();
+            if (!code) return;
+            btJoinByCode(code);
+        };
+        window.btJoinByCode = async function (code) {
+            try {
+                var d = await _btPost('/battle/join', { code: code });
+                _btEnter(d.code);
+            } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+        };
+
+        function _btEnter(code) {
+            _bt.code = code;
+            _bt.state = null;
+            _btStartPolling();
+        }
+
+        // ── Long polling ───────────────────────────────────────────────────
+        function _btStartPolling() {
+            if (_bt.polling) return;
+            _bt.polling = true;
+            _btPollLoop();
+        }
+        function _btStopPolling() {
+            _bt.polling = false;
+            if (_bt.abort) { try { _bt.abort.abort(); } catch (e) {} _bt.abort = null; }
+        }
+        async function _btPollLoop() {
+            while (_bt.polling && _bt.code) {
+                var since = (_bt.state && _bt.state.version) || 0;
+                try {
+                    _bt.abort = (typeof AbortController === 'function') ? new AbortController() : null;
+                    var r = await apiFetch(
+                        window.API_BASE_URL + '/battle/events?token=' + encodeURIComponent(_btTok()) +
+                        '&code=' + encodeURIComponent(_bt.code) + '&since=' + since,
+                        _bt.abort ? { signal: _bt.abort.signal } : {}
+                    );
+                    if (r.status === 404) { _btStopPolling(); _btShow('bt-menu'); return; }
+                    if (!r.ok) throw new Error('events ' + r.status);
+                    var d = await r.json();
+                    if (d && d.version && d.version > since) _btApply(d);
+                    // changed:false → сразу следующий цикл (heartbeat)
+                } catch (e) {
+                    if (!_bt.polling) return;       // остановлены намеренно
+                    await new Promise(function (res) { setTimeout(res, 2000); });
+                }
+            }
+        }
+
+        // Усыпление WebView: поллинг стоп; при возврате — мгновенный догон.
+        if (!window._btVisBound) {
+            window._btVisBound = true;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') {
+                    _btStopPolling();
+                } else if (_bt.code) {
+                    var page = document.getElementById('page-draft-battle');
+                    if (page && page.classList.contains('active')) _btStartPolling();
+                }
+            });
+        }
+
+        // ── Применение состояния ──────────────────────────────────────────
+        function _btApply(st) {
+            _bt.state = st;
+            if (st.status === 'searching' || st.status === 'waiting') {
+                _btRenderWait(st);
+                _btShow('bt-wait');
+            } else if (st.status === 'drafting') {
+                _btRenderDraft(st);
+                _btShow('bt-draft');
+            } else if (st.status === 'finished') {
+                _btStopTimer();
+                _btStopPolling();
+                _btRenderResult(st);
+                _btShow('bt-result');
+            } else { // abandoned
+                _btStopTimer();
+                _btStopPolling();
+                _bt.code = null;
+                _btShow('bt-menu');
+                if (typeof showToast === 'function') showToast('Комната закрыта.');
+            }
+        }
+
+        function _btRenderWait(st) {
+            var isPrivate = (st.status === 'waiting');
+            var title = document.getElementById('bt-wait-title');
+            if (title) title.textContent = isPrivate ? 'Комната создана' : 'Ищем соперника…';
+            var codeEl = document.getElementById('bt-wait-code');
+            if (codeEl) { codeEl.textContent = st.code; codeEl.hidden = !isPrivate; }
+            var inv = document.getElementById('bt-wait-invite');
+            if (inv) inv.hidden = !isPrivate;
+        }
+
+        window.btCancelWait = async function () {
+            try { await _btPost('/battle/leave', { code: _bt.code }); } catch (e) {}
+            _btStopPolling();
+            _bt.code = null;
+            _btShow('bt-menu');
+        };
+
+        window.btInvite = function () {
+            var code = _bt.code || '';
+            var text = 'Сразись со мной в «Битве драфтов» (D2Helper)! Код комнаты: ' + code;
+            var tg = window.Telegram && window.Telegram.WebApp;
+            var link = (window.MINIAPP_URL || '').trim();
+            if (link && link.indexOf('?') === -1) link += '?start=db_' + code;
+            var url = link
+                ? 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
+                : 'https://t.me/share/url?url=' + encodeURIComponent(text);
+            if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(url);
+            else window.open(url, '_blank');
+        };
+
+        window.btLeave = async function () {
+            var st = _bt.state;
+            if (st && st.status === 'drafting') {
+                if (!window.confirm('Сдаться? Сопернику засчитают победу.')) return;
+            }
+            try { await _btPost('/battle/leave', { code: _bt.code }); } catch (e) {}
+            // Финальное состояние придёт поллингом; на всякий случай дочитаем.
+            if (!_bt.polling) _btStartPolling();
+        };
+
+        // ── Драфт-экран ────────────────────────────────────────────────────
+        function _btFmtReserve(ms) {
+            var s = Math.max(0, Math.round(ms / 1000));
+            return '+' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        }
+
+        function _btRenderDraft(st) {
+            var me = _btMyRole(), opp = _btOppRole();
+            var mePlayer = st[me] || {}, oppPlayer = st[opp] || {};
+            var elOppName = document.getElementById('bt-opp-name');
+            if (elOppName) elOppName.textContent = oppPlayer.name || 'Соперник';
+            var elMeName = document.getElementById('bt-me-name');
+            if (elMeName) elMeName.textContent = mePlayer.name || 'Ты';
+            var elOppRes = document.getElementById('bt-opp-reserve');
+            if (elOppRes) elOppRes.textContent = _btFmtReserve(st.reserves[opp + '_ms']);
+            var elMeRes = document.getElementById('bt-me-reserve');
+            if (elMeRes) elMeRes.textContent = _btFmtReserve(st.reserves[me + '_ms']);
+
+            // Пики/баны по сторонам из журнала + пустые слоты по последовательности.
+            var picksTotal = {}, bansTotal = {};
+            st.sequence.forEach(function (s2, i) {
+                var role = (s2.actor_rel === 'F') === (st.first_pick === me) ? me : opp;
+                var bucket = (s2.kind === 'pick') ? picksTotal : bansTotal;
+                bucket[role] = (bucket[role] || 0) + 1;
+            });
+            var done = { pick: { host: [], guest: [] }, ban: { host: [], guest: [] } };
+            st.actions.forEach(function (a) { done[a.kind][a.actor].push(a); });
+
+            _btRenderSlots('bt-me-picks', done.pick[me], picksTotal[me] || 5, 'pick');
+            _btRenderSlots('bt-opp-picks', done.pick[opp], picksTotal[opp] || 5, 'pick');
+            _btRenderSlots('bt-me-bans', done.ban[me], bansTotal[me] || 0, 'ban');
+            _btRenderSlots('bt-opp-bans', done.ban[opp], bansTotal[opp] || 0, 'ban');
+
+            // Таймер-якорь.
+            var cur = st.current;
+            if (cur) {
+                _bt.anchor = {
+                    at: Date.now(),
+                    main: cur.main_remaining_ms,
+                    total: cur.total_remaining_ms,
+                    kind: cur.kind,
+                    mine: cur.actor === me,
+                };
+                var turnEl = document.getElementById('bt-timer-turn');
+                if (turnEl) {
+                    turnEl.textContent = (cur.actor === me ? 'Твой ход — ' : 'Ход соперника — ') +
+                        (cur.kind === 'ban' ? 'бан' : 'пик');
+                }
+                var timerBox = document.getElementById('bt-timer');
+                if (timerBox) timerBox.classList.toggle('bt-timer--mine', cur.actor === me);
+                _btStartTimer();
+            }
+
+            // Сброс выбора, если герой стал недоступен или ход не наш.
+            var taken = {};
+            st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            if (_bt.selHero && (taken[_bt.selHero] || !cur || cur.actor !== me)) _bt.selHero = null;
+            _btRenderConfirm();
+            btRenderGrid();
+        }
+
+        function _btRenderSlots(elId, actions, total, kind) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            var html = '';
+            for (var i = 0; i < total; i++) {
+                var a = actions[i];
+                if (a) {
+                    html += '<span class="bt-slot bt-slot--' + kind + (a.is_auto ? ' bt-slot--auto' : '') + '">' +
+                        '<img src="' + _mghlEsc(_mghlImg(a.hero_id)) + '" alt="" ' +
+                        'title="' + _mghlEsc(_mghlName(a.hero_id)) + '" ' +
+                        'onerror="this.style.visibility=\'hidden\'"></span>';
+                } else {
+                    html += '<span class="bt-slot bt-slot--' + kind + ' bt-slot--empty"></span>';
+                }
+            }
+            el.innerHTML = html;
+        }
+
+        // ── Таймер (отрисовка от серверного якоря) ─────────────────────────
+        function _btStartTimer() {
+            if (_bt.timerInt) return;
+            _bt.timerInt = setInterval(_btTick, 200);
+            _btTick();
+        }
+        function _btStopTimer() {
+            if (_bt.timerInt) { clearInterval(_bt.timerInt); _bt.timerInt = null; }
+        }
+        function _btTick() {
+            var a = _bt.anchor;
+            var clock = document.getElementById('bt-timer-clock');
+            var sub = document.getElementById('bt-timer-sub');
+            if (!a || !clock) return;
+            var elapsed = Date.now() - a.at;
+            var mainLeft = Math.max(0, a.main - elapsed);
+            var totalLeft = Math.max(0, a.total - elapsed);
+            var inReserve = (mainLeft <= 0 && totalLeft > 0);
+            clock.textContent = Math.ceil((inReserve ? totalLeft : mainLeft) / 1000);
+            clock.classList.toggle('bt-timer-clock--reserve', inReserve);
+            if (sub) sub.textContent = inReserve ? 'Дополнительное время' : '';
+            // По нулю ничего не делаем сами: авто-ход исполнит сервер,
+            // обновление придёт поллингом.
+        }
+
+        // ── Грид героев ────────────────────────────────────────────────────
+        window.btRenderGrid = function () {
+            var grid = document.getElementById('bt-grid');
+            if (!grid || !window.dotaHeroIds) return;
+            var st = _bt.state;
+            var taken = {};
+            if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
+            var q = (document.getElementById('bt-search') || {}).value || '';
+            q = q.trim().toLowerCase();
+
+            var names = Object.keys(window.dotaHeroIds).sort();
+            var html = '';
+            for (var i = 0; i < names.length; i++) {
+                var name = names[i];
+                if (q && name.toLowerCase().indexOf(q) === -1) continue;
+                var hid = window.dotaHeroIds[name];
+                var isTaken = !!taken[hid];
+                var sel = (_bt.selHero === hid);
+                html += '<button type="button" class="bt-cell' +
+                    (isTaken ? ' bt-cell--taken' : '') + (sel ? ' bt-cell--sel' : '') + '" ' +
+                    'data-hid="' + hid + '"' + (isTaken || !myTurn ? ' disabled' : '') + '>' +
+                    '<img src="' + _mghlEsc(window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '') + '" ' +
+                    'alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
+                    '<span>' + _mghlEsc(name) + '</span></button>';
+            }
+            grid.innerHTML = html;
+            grid.classList.toggle('bt-grid--waiting', !myTurn);
+        };
+
+        // Делегирование кликов по гриду — один слушатель на контейнер.
+        if (!window._btGridBound) {
+            window._btGridBound = true;
+            document.addEventListener('click', function (e) {
+                var cell = e.target && e.target.closest && e.target.closest('.bt-cell');
+                if (!cell || cell.disabled) return;
+                var hid = parseInt(cell.getAttribute('data-hid'), 10);
+                if (!hid) return;
+                _bt.selHero = (_bt.selHero === hid) ? null : hid;
+                _btRenderConfirm();
+                btRenderGrid();
+            });
+        }
+
+        function _btRenderConfirm() {
+            var bar = document.getElementById('bt-confirm');
+            if (!bar) return;
+            var st = _bt.state;
+            var cur = st && st.current;
+            if (!_bt.selHero || !cur || cur.actor !== _btMyRole()) { bar.hidden = true; return; }
+            document.getElementById('bt-confirm-img').src = _mghlImg(_bt.selHero);
+            document.getElementById('bt-confirm-name').textContent = _mghlName(_bt.selHero);
+            document.getElementById('bt-confirm-btn').textContent =
+                (cur.kind === 'ban' ? 'Забанить' : 'Пикнуть');
+            bar.hidden = false;
+        }
+
+        window.btConfirm = async function () {
+            var hid = _bt.selHero;
+            if (!hid) return;
+            var btn = document.getElementById('bt-confirm-btn');
+            if (btn) btn.disabled = true;
+            try {
+                var st = await _btPost('/battle/action', { code: _bt.code, hero_id: hid });
+                _bt.selHero = null;
+                if (st && st.version) _btApply(st);
+            } catch (e) {
+                if (typeof showToast === 'function') showToast(e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        };
+
+        // ── Результат ──────────────────────────────────────────────────────
+        function _btRenderResult(st) {
+            var me = _btMyRole(), opp = _btOppRole();
+            var verdict = document.getElementById('bt-result-verdict');
+            var note = document.getElementById('bt-result-note');
+            var isForfeit = !!(st.result && st.result.forfeit);
+            if (verdict) {
+                if (st.winner === 'draw') verdict.textContent = 'Ничья';
+                else if (st.winner === me) verdict.textContent = 'Победа!';
+                else verdict.textContent = 'Поражение';
+                verdict.className = 'bt-result-verdict' +
+                    (st.winner === me ? ' bt-result-verdict--win' :
+                     st.winner === 'draw' ? '' : ' bt-result-verdict--lose');
+            }
+            if (note) {
+                if (isForfeit) {
+                    note.textContent = (st.result.forfeit === me)
+                        ? 'Ты сдался — победа присуждена сопернику.'
+                        : 'Соперник сдался.';
+                    note.hidden = false;
+                } else note.hidden = true;
+            }
+            var oppName = document.getElementById('bt-result-opp-name');
+            if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
+
+            function _rows(elId, res) {
+                var el = document.getElementById(elId);
+                if (!el) return;
+                if (!res) { el.innerHTML = ''; return; }
+                el.innerHTML =
+                    '<div class="bt-result-row"><span>Синергия</span><b>' + res.synergy_score + '</b></div>' +
+                    '<div class="bt-result-row"><span>Матчапы</span><b>' + res.matchup_score + '</b></div>';
+            }
+            var r = st.result || {};
+            var meScore = document.getElementById('bt-result-me-score');
+            var oppScore = document.getElementById('bt-result-opp-score');
+            if (meScore) meScore.textContent = (r[me] && r[me].total_score != null) ? r[me].total_score : '—';
+            if (oppScore) oppScore.textContent = (r[opp] && r[opp].total_score != null) ? r[opp].total_score : '—';
+            _rows('bt-result-me-rows', r[me]);
+            _rows('bt-result-opp-rows', r[opp]);
+        }
+
+        window.btRematch = function () {
+            _bt.code = null; _bt.state = null;
+            _btShow('bt-menu');
+            btQueue();
+        };
+        window.btToMenu = function () {
+            _bt.code = null; _bt.state = null;
+            _btShow('bt-menu');
+        };
+
+        // Deep-link: ?battle=КОД (кнопка из бота по start=db_<КОД>).
+        (function () {
+            var code = null;
+            try { code = new URLSearchParams(window.location.search).get('battle'); }
+            catch (e) { return; }
+            if (!code) return;
+            document.addEventListener('DOMContentLoaded', function () {
+                switchPage('draft-battle');
+                btJoinByCode(String(code).toUpperCase());
+            }, { once: true });
+        })();
 
 
         function backToQuizList() {

@@ -1759,6 +1759,8 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_hub_tools",
     # Мини-игры.
     "page_minigame_hl",
+    # PvP-драфтер «Битва драфтов».
+    "page_draft_battle",
     # Клик по кнопке «Поддержать» на главном экране (goToDonate в script.js).
     "support_click",
 })
@@ -3831,3 +3833,622 @@ def api_teammates_lobbies_history(
             continue
         items.append(_tm_serialize_lobby(db, lobby, slots_by_lobby.get(lid, [])))
     return {"items": items}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  «Битва драфтов» — PvP-драфтер в реальном времени
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Архитектура (анализ транспорта — в истории проекта):
+#   • Состояние битвы только в PG (draft_battles + draft_battle_actions),
+#     воркеры stateless — игроки могут попадать на разные воркеры.
+#   • Доставка событий: long polling с версионным курсором (/battle/events)
+#     + PG LISTEN/NOTIFY как межворкерная шина (backend/battle_bus.py).
+#   • Время считает ТОЛЬКО сервер: deadline_at в БД; просрочка исполняется
+#     ЛЕНИВО любым чтением/действием (висящие long-poll'ы сами будят таймауты
+#     по дедлайну) — фоновый тикер не нужен.
+#   • Мутации — def (threadpool, sync-сессии); /battle/events — async def
+#     (реальные await шины), в БД ходит через asyncio.to_thread.
+
+from types import SimpleNamespace as _BTEntry  # noqa: E402
+
+from backend.database import SessionLocal  # noqa: E402
+from backend.battle_bus import notify_battle_changed as _bt_notify  # noqa: E402
+from backend.battle_bus import wait_for_change as _bt_wait  # noqa: E402
+from backend.models import (  # noqa: E402
+    DraftBattle as DBDraftBattle,
+    DraftBattleAction as DBDraftBattleAction,
+)
+
+_BT_BAN_MS = 20_000          # основное время на бан
+_BT_PICK_MS = 25_000         # основное время на пик
+_BT_RESERVE_MS = 120_000     # доп. время на игрока на всю партию (как в CM)
+_BT_MAX_HOLD_SECONDS = 25.0  # удержание long-poll (< nginx proxy_read_timeout 60s)
+_BT_WAITING_TTL_MIN = 10     # протухание комнат в waiting/searching
+_BT_MODES = ("cm", "ap")
+_BT_ACTIVE_STATUSES = ("searching", "waiting", "drafting")
+
+# Последовательности ходов. Роли: 'F' — команда первого пика, 'S' — вторая.
+# 'cm' — фазовая структура Captains Mode 7.34 (14 банов + 10 пиков; баны
+# 3-2-2 у F / 4-1-2 у S, пики 1-3-1; S выбивает 4 героев до первого пика).
+# Точный внутрифазовый порядок Valve не документирован — внутри фаз змейка,
+# согласованная с этими свойствами. Правится в одном месте.
+_BT_SEQ_CM: list[tuple[str, str]] = [
+    # Ban phase 1 — F×3, S×4
+    ("F", "ban"), ("S", "ban"), ("S", "ban"), ("F", "ban"),
+    ("S", "ban"), ("S", "ban"), ("F", "ban"),
+    # Pick phase 1 — 1-1
+    ("F", "pick"), ("S", "pick"),
+    # Ban phase 2 — S×1, F×2
+    ("S", "ban"), ("F", "ban"), ("F", "ban"),
+    # Pick phase 2 — 3-3 (продолжение змейки)
+    ("S", "pick"), ("F", "pick"), ("F", "pick"),
+    ("S", "pick"), ("S", "pick"), ("F", "pick"),
+    # Ban phase 3 — 2-2
+    ("F", "ban"), ("S", "ban"), ("F", "ban"), ("S", "ban"),
+    # Pick phase 3 — 1-1
+    ("F", "pick"), ("S", "pick"),
+]
+# 'ap' — без банов: 10 пиков чистой змейкой (та же пик-последовательность,
+# что получается в 'cm', — оценки режимов сопоставимы).
+_BT_SEQ_AP: list[tuple[str, str]] = [
+    ("F", "pick"), ("S", "pick"), ("S", "pick"), ("F", "pick"), ("F", "pick"),
+    ("S", "pick"), ("S", "pick"), ("F", "pick"), ("F", "pick"), ("S", "pick"),
+]
+_BT_SEQUENCES = {"cm": _BT_SEQ_CM, "ap": _BT_SEQ_AP}
+
+# Инвайт-код: без визуально похожих символов (0/O, 1/I/L).
+_BT_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+# Объединённый мета-пул для авто-ходов по таймауту.
+_BT_META_POOL: frozenset[int] = frozenset(
+    h for pool in _DRAFT_POOLS_BY_POS.values() for h in pool
+)
+
+_bt_known_heroes_cache: "frozenset[int] | None" = None
+
+
+def _bt_known_heroes() -> frozenset[int]:
+    """Валидные hero_id = ключи hero_matchups.json (источник скоринга)."""
+    global _bt_known_heroes_cache
+    if _bt_known_heroes_cache is None:
+        data = _load_hero_matchups_file() or {}
+        ids = set()
+        for k in data.keys():
+            try:
+                ids.add(int(k))
+            except (TypeError, ValueError):
+                continue
+        _bt_known_heroes_cache = frozenset(ids) or _BT_META_POOL
+    return _bt_known_heroes_cache
+
+
+def _bt_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _bt_aware(dt):
+    """SQLite (dev) возвращает naive datetime — нормализуем к UTC-aware,
+    чтобы сравнения с _bt_now() работали кросс-БД."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _bt_new_code(db: Session) -> str:
+    import secrets as _secrets
+    for _ in range(20):
+        code = "".join(_secrets.choice(_BT_CODE_ALPHABET) for _ in range(6))
+        exists = db.query(DBDraftBattle.id).filter(DBDraftBattle.code == code).first()
+        if exists is None:
+            return code
+    raise HTTPException(status_code=500, detail="failed to allocate battle code")
+
+
+def _bt_role(battle: DBDraftBattle, user_id: int):
+    if battle.host_id == user_id:
+        return "host"
+    if battle.guest_id == user_id:
+        return "guest"
+    return None
+
+
+def _bt_actor_of(battle: DBDraftBattle, idx: int) -> str:
+    """Роль ('host'/'guest') актора хода idx по first_pick и последовательности."""
+    seq = _BT_SEQUENCES[battle.mode]
+    rel = seq[idx][0]   # 'F'/'S'
+    if battle.first_pick == "host":
+        return "host" if rel == "F" else "guest"
+    return "guest" if rel == "F" else "host"
+
+
+def _bt_base_ms(kind: str) -> int:
+    return _BT_BAN_MS if kind == "ban" else _BT_PICK_MS
+
+
+def _bt_reserve_ms(battle: DBDraftBattle, role: str) -> int:
+    return battle.host_reserve_ms if role == "host" else battle.guest_reserve_ms
+
+
+def _bt_set_reserve(battle: DBDraftBattle, role: str, value_ms: int) -> None:
+    if role == "host":
+        battle.host_reserve_ms = max(0, int(value_ms))
+    else:
+        battle.guest_reserve_ms = max(0, int(value_ms))
+
+
+def _bt_start_turn(battle: DBDraftBattle, now: datetime) -> None:
+    """Старт хода turn_index: дедлайн = базовое время + остаток резерва актора."""
+    seq = _BT_SEQUENCES[battle.mode]
+    if battle.turn_index >= len(seq):
+        return
+    actor = _bt_actor_of(battle, battle.turn_index)
+    kind = seq[battle.turn_index][1]
+    total_ms = _bt_base_ms(kind) + _bt_reserve_ms(battle, actor)
+    battle.turn_started_at = now
+    battle.deadline_at = now + _tm_timedelta(milliseconds=total_ms)
+
+
+def _bt_taken_ids(db: Session, battle_id: int) -> set:
+    rows = db.query(DBDraftBattleAction.hero_id).filter(
+        DBDraftBattleAction.battle_id == battle_id
+    ).all()
+    return {r[0] for r in rows}
+
+
+def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
+    """Все ходы сделаны: счёт обеих сторон через compute_draft_score —
+    ту же функцию, что у сольного /draft/evaluate (этап 0)."""
+    rows = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .filter(DBDraftBattleAction.kind == "pick")
+        .order_by(DBDraftBattleAction.idx)
+        .all()
+    )
+    host_picks = [r.hero_id for r in rows if r.actor == "host"]
+    guest_picks = [r.hero_id for r in rows if r.actor == "guest"]
+
+    def _entries(ids):
+        return [_BTEntry(hero_id=h, position="pos " + str(i + 1)) for i, h in enumerate(ids)]
+
+    host_res = compute_draft_score(_entries(host_picks), _entries(guest_picks))
+    guest_res = compute_draft_score(_entries(guest_picks), _entries(host_picks))
+
+    if host_res["total_score"] > guest_res["total_score"]:
+        battle.winner = "host"
+    elif guest_res["total_score"] > host_res["total_score"]:
+        battle.winner = "guest"
+    else:
+        battle.winner = "draw"
+    battle.result = {"host": host_res, "guest": guest_res}
+    battle.status = "finished"
+    battle.finished_at = now
+    battle.deadline_at = None
+    battle.turn_started_at = None
+
+
+def _bt_insert_action(
+    db: Session, battle: DBDraftBattle, actor: str, kind: str,
+    hero_id: int, is_auto: bool, now: datetime,
+) -> None:
+    """Один ход: запись в журнал (PK (battle_id, idx) отсекает гонку двойного
+    хода), продвижение указателя, старт следующего хода или финализация."""
+    db.add(DBDraftBattleAction(
+        battle_id=battle.id, idx=battle.turn_index,
+        actor=actor, kind=kind, hero_id=hero_id,
+        is_auto=is_auto, created_at=now,
+    ))
+    battle.turn_index += 1
+    battle.last_action_at = now
+    battle.state_version += 1
+    if battle.turn_index >= len(_BT_SEQUENCES[battle.mode]):
+        _bt_finalize(db, battle, now)
+    else:
+        _bt_start_turn(battle, now)
+
+
+def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
+    """Авто-ход по таймауту: случайный незанятый герой из мета-пула."""
+    taken = _bt_taken_ids(db, battle.id)
+    pool = list(_BT_META_POOL - taken) or list(_bt_known_heroes() - taken)
+    return random.choice(pool)
+
+
+def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Ленивое исполнение просрочек. Возвращает True, если что-то изменилось.
+
+    drafting: каждый просроченный ход — резерв актора сгорает (дедлайн включал
+    его целиком), авто-ход из мета-пула. Цикл догоняет цепочку просрочек,
+    если оба игрока отсутствовали.
+    waiting/searching: протухание комнаты по TTL.
+    """
+    changed = False
+    if battle.status in ("waiting", "searching"):
+        created = _bt_aware(battle.created_at)
+        if created and now - created > _tm_timedelta(minutes=_BT_WAITING_TTL_MIN):
+            battle.status = "abandoned"
+            battle.state_version += 1
+            changed = True
+        return changed
+
+    while (
+        battle.status == "drafting"
+        and battle.deadline_at is not None
+        and now >= _bt_aware(battle.deadline_at)
+    ):
+        actor = _bt_actor_of(battle, battle.turn_index)
+        kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
+        _bt_set_reserve(battle, actor, 0)
+        hero_id = _bt_auto_hero(db, battle)
+        # Ход стартует от момента истёкшего дедлайна, не от now: при догоне
+        # цепочки каждый следующий авто-ход отсчитывается честно.
+        moment = _bt_aware(battle.deadline_at)
+        _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+        changed = True
+    return changed
+
+
+def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime) -> dict:
+    seq = _BT_SEQUENCES[battle.mode]
+    actions = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .order_by(DBDraftBattleAction.idx)
+        .all()
+    )
+
+    ids = [battle.host_id] + ([battle.guest_id] if battle.guest_id else [])
+    settings = _tm_load_user_settings(db, ids)
+
+    def _player(uid):
+        if uid is None:
+            return None
+        s = settings.get(uid) or {}
+        return {
+            "user_id": uid,
+            "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
+            "photo_url": s.get("photo_url"),
+        }
+
+    current = None
+    if battle.status == "drafting" and battle.turn_index < len(seq):
+        actor = _bt_actor_of(battle, battle.turn_index)
+        kind = seq[battle.turn_index][1]
+        base_ms = _bt_base_ms(kind)
+        started = _bt_aware(battle.turn_started_at)
+        deadline = _bt_aware(battle.deadline_at)
+        elapsed_ms = max(0, int((now - started).total_seconds() * 1000)) if started else 0
+        total_remaining = max(0, int((deadline - now).total_seconds() * 1000)) if deadline else 0
+        main_remaining = max(0, base_ms - elapsed_ms)
+        # Остаток резерва актора С УЧЁТОМ уже горящего на этом ходе.
+        reserve_now = min(_bt_reserve_ms(battle, actor),
+                          max(0, total_remaining - main_remaining))
+        current = {
+            "actor": actor,
+            "kind": kind,
+            "main_remaining_ms": main_remaining,
+            "reserve_remaining_ms": reserve_now,
+            "total_remaining_ms": total_remaining,
+        }
+
+    return {
+        "version": battle.state_version,
+        "code": battle.code,
+        "mode": battle.mode,
+        "status": battle.status,
+        "you": viewer_role,
+        "first_pick": battle.first_pick,
+        "host": _player(battle.host_id),
+        "guest": _player(battle.guest_id),
+        "reserves": {
+            "host_ms": battle.host_reserve_ms,
+            "guest_ms": battle.guest_reserve_ms,
+        },
+        "turn_index": battle.turn_index,
+        "sequence": [{"actor_rel": a, "kind": k} for a, k in seq],
+        "current": current,
+        "actions": [
+            {"idx": a.idx, "actor": a.actor, "kind": a.kind,
+             "hero_id": a.hero_id, "is_auto": bool(a.is_auto)}
+            for a in actions
+        ],
+        "winner": battle.winner,
+        "result": battle.result,
+    }
+
+
+def _bt_get_battle(db: Session, code: str, for_update: bool = False) -> DBDraftBattle:
+    q = db.query(DBDraftBattle).filter(DBDraftBattle.code == code.strip().upper())
+    if for_update:
+        q = q.with_for_update()
+    battle = q.first()
+    if battle is None:
+        raise HTTPException(status_code=404, detail="battle not found")
+    return battle
+
+
+def _bt_active_battle(db: Session, user_id: int):
+    return (
+        db.query(DBDraftBattle)
+        .filter(
+            (DBDraftBattle.host_id == user_id) | (DBDraftBattle.guest_id == user_id)
+        )
+        .filter(DBDraftBattle.status.in_(_BT_ACTIVE_STATUSES))
+        .order_by(DBDraftBattle.id.desc())
+        .first()
+    )
+
+
+def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> None:
+    """Гость закреплён — жеребьёвка и первый ход."""
+    battle.guest_id = guest_id
+    battle.status = "drafting"
+    battle.first_pick = random.choice(("host", "guest"))
+    battle.turn_index = 0
+    battle.started_at = now
+    battle.last_action_at = now
+    battle.state_version += 1
+    _bt_start_turn(battle, now)
+
+
+# ── Pydantic ────────────────────────────────────────────────────────────────
+
+class BattleStartReq(BaseModel):
+    token: str
+    mode: str = "cm"          # 'cm' (с банами) / 'ap' (без банов)
+
+
+class BattleCodeReq(BaseModel):
+    token: str
+    code: str
+
+
+class BattleActionReq(BaseModel):
+    token: str
+    code: str
+    hero_id: int
+
+
+# ── Эндпоинты ───────────────────────────────────────────────────────────────
+
+@app.get("/api/battle/active")
+def api_battle_active(token: str, db: Session = Depends(get_db)):
+    """Активная битва юзера (для resume при входе в раздел) или null."""
+    uid = _tm_require_user(token=token)
+    battle = _bt_active_battle(db, uid)
+    if battle is None:
+        return {"code": None}
+    now = _bt_now()
+    if _bt_apply_timeouts(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+        if battle.status not in _BT_ACTIVE_STATUSES:
+            return {"code": None}
+    return {"code": battle.code, "status": battle.status, "mode": battle.mode}
+
+
+@app.post("/api/battle/queue")
+def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
+    """Быстрый матч: атомарно забираем чужую searching-комнату того же режима
+    или встаём в очередь своей. Гонка двух воркеров решается row-lock'ом
+    (FOR UPDATE SKIP LOCKED на PG; dev-SQLite однопроцессный)."""
+    uid = _tm_require_user(token=data.token)
+    if data.mode not in _BT_MODES:
+        raise HTTPException(status_code=422, detail="invalid mode")
+
+    existing = _bt_active_battle(db, uid)
+    if existing is not None:
+        return {
+            "code": existing.code,
+            "status": existing.status,
+            "matched": existing.status == "drafting",
+        }
+
+    now = _bt_now()
+    ttl_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+    candidate = (
+        db.query(DBDraftBattle)
+        .filter(DBDraftBattle.status == "searching")
+        .filter(DBDraftBattle.mode == data.mode)
+        .filter(DBDraftBattle.host_id != uid)
+        .filter(DBDraftBattle.created_at >= ttl_cutoff)
+        .order_by(DBDraftBattle.id)
+        .with_for_update(skip_locked=True)
+        .first()
+    )
+    if candidate is not None:
+        _bt_start_battle(candidate, uid, now)
+        db.commit()
+        _bt_notify(candidate.id)
+        return {"code": candidate.code, "status": "drafting", "matched": True}
+
+    battle = DBDraftBattle(
+        code=_bt_new_code(db), mode=data.mode, status="searching",
+        host_id=uid, host_reserve_ms=_BT_RESERVE_MS, guest_reserve_ms=_BT_RESERVE_MS,
+        created_at=now,
+    )
+    db.add(battle)
+    db.commit()
+    return {"code": battle.code, "status": "searching", "matched": False}
+
+
+@app.post("/api/battle/create")
+def api_battle_create(data: BattleStartReq, db: Session = Depends(get_db)):
+    """Приватная комната для игры с другом: вход только по коду."""
+    uid = _tm_require_user(token=data.token)
+    if data.mode not in _BT_MODES:
+        raise HTTPException(status_code=422, detail="invalid mode")
+    existing = _bt_active_battle(db, uid)
+    if existing is not None:
+        return {"code": existing.code, "status": existing.status}
+    battle = DBDraftBattle(
+        code=_bt_new_code(db), mode=data.mode, status="waiting",
+        host_id=uid, host_reserve_ms=_BT_RESERVE_MS, guest_reserve_ms=_BT_RESERVE_MS,
+        created_at=_bt_now(),
+    )
+    db.add(battle)
+    db.commit()
+    return {"code": battle.code, "status": "waiting"}
+
+
+@app.post("/api/battle/join")
+def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
+    """Вход по коду (приватная комната или searching по прямой ссылке).
+
+    Атомарный claim гостевого места: UPDATE … WHERE guest_id IS NULL —
+    rowcount=0 означает «комнату уже заняли» (та же схема, что слоты лобби)."""
+    uid = _tm_require_user(token=data.token)
+    code = (data.code or "").strip().upper()
+    battle = _bt_get_battle(db, code)
+
+    role = _bt_role(battle, uid)
+    if role is not None:
+        # Уже участник (в т.ч. хост открыл свою же ссылку) — просто resume.
+        return {"code": battle.code, "status": battle.status, "you": role}
+
+    if battle.status not in ("waiting", "searching"):
+        raise HTTPException(status_code=409, detail="Эта битва уже началась или завершена.")
+    mine = _bt_active_battle(db, uid)
+    if mine is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ты уже в активной битве. Заверши или покинь её сначала.",
+        )
+
+    res = db.execute(
+        text(
+            "UPDATE draft_battles SET guest_id = :uid "
+            "WHERE id = :id AND guest_id IS NULL "
+            "  AND status IN ('waiting', 'searching')"
+        ),
+        {"uid": uid, "id": battle.id},
+    )
+    if not res.rowcount:
+        db.commit()
+        raise HTTPException(status_code=409, detail="Комнату только что заняли.")
+
+    db.refresh(battle)
+    _bt_start_battle(battle, uid, _bt_now())
+    db.commit()
+    _bt_notify(battle.id)
+    return {"code": battle.code, "status": "drafting", "you": "guest"}
+
+
+@app.post("/api/battle/action")
+def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
+    """Ход (пик или бан — тип диктует последовательность)."""
+    uid = _tm_require_user(token=data.token)
+    battle = _bt_get_battle(db, data.code, for_update=True)
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(status_code=403, detail="not a participant")
+
+    now = _bt_now()
+    if _bt_apply_timeouts(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+        # Состояние ушло — клиент перечитает; его клик уже неактуален.
+        raise HTTPException(status_code=409, detail="Ход истёк по таймеру.")
+
+    if battle.status != "drafting":
+        raise HTTPException(status_code=409, detail="Битва не в фазе драфта.")
+    if _bt_actor_of(battle, battle.turn_index) != role:
+        raise HTTPException(status_code=409, detail="Сейчас ход соперника.")
+    if data.hero_id not in _bt_known_heroes():
+        raise HTTPException(status_code=422, detail="unknown hero_id")
+    if data.hero_id in _bt_taken_ids(db, battle.id):
+        raise HTTPException(status_code=409, detail="Этот герой уже занят.")
+
+    kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
+    # Списание резерва: всё, что сверх базового времени хода.
+    started = _bt_aware(battle.turn_started_at)
+    if started is not None:
+        overflow_ms = int((now - started).total_seconds() * 1000) - _bt_base_ms(kind)
+        if overflow_ms > 0:
+            _bt_set_reserve(battle, role, _bt_reserve_ms(battle, role) - overflow_ms)
+
+    _bt_insert_action(db, battle, role, kind, data.hero_id, False, now)
+    db.commit()
+    _bt_notify(battle.id)
+    return _bt_serialize(db, battle, role, now)
+
+
+@app.post("/api/battle/leave")
+def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
+    """waiting/searching → отмена; drafting → форфейт (победа соперника)."""
+    uid = _tm_require_user(token=data.token)
+    battle = _bt_get_battle(db, data.code, for_update=True)
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(status_code=403, detail="not a participant")
+
+    if battle.status in ("waiting", "searching"):
+        battle.status = "abandoned"
+        battle.state_version += 1
+        db.commit()
+        _bt_notify(battle.id)
+        return {"ok": True, "status": "abandoned"}
+
+    if battle.status == "drafting":
+        battle.status = "finished"
+        battle.winner = "guest" if role == "host" else "host"
+        battle.result = {"forfeit": role}
+        battle.finished_at = _bt_now()
+        battle.deadline_at = None
+        battle.state_version += 1
+        db.commit()
+        _bt_notify(battle.id)
+        return {"ok": True, "status": "finished", "winner": battle.winner}
+
+    return {"ok": True, "status": battle.status}
+
+
+@app.get("/api/battle/state")
+def api_battle_state(token: str, code: str, db: Session = Depends(get_db)):
+    """Разовое чтение состояния (вход на экран / резюм после сна WebView)."""
+    uid = _tm_require_user(token=token)
+    battle = _bt_get_battle(db, code)
+    now = _bt_now()
+    if _bt_apply_timeouts(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+    return _bt_serialize(db, battle, _bt_role(battle, uid), now)
+
+
+def _bt_poll_read(code: str, user_id: int, since: int):
+    """Один шаг long-poll'а (выполняется в threadpool): применить ленивые
+    таймауты, отдать состояние если version > since, иначе (battle_id, сколько
+    секунд можно спать до ближайшего дедлайна)."""
+    with SessionLocal() as db:
+        battle = _bt_get_battle(db, code)
+        now = _bt_now()
+        if _bt_apply_timeouts(db, battle, now):
+            db.commit()
+            _bt_notify(battle.id)
+        if battle.state_version > since:
+            return _bt_serialize(db, battle, _bt_role(battle, user_id), now), battle.id, 0.0
+        wait_s = _BT_MAX_HOLD_SECONDS
+        if battle.status == "drafting" and battle.deadline_at is not None:
+            wait_s = max(0.05, (_bt_aware(battle.deadline_at) - now).total_seconds())
+        return None, battle.id, wait_s
+
+
+@app.get("/api/battle/events")
+async def api_battle_events(token: str, code: str, since: int = 0):
+    """Long polling: висим до изменения состояния (version > since), дедлайна
+    текущего хода или _BT_MAX_HOLD_SECONDS. async def с реальными await —
+    висящие запросы НЕ занимают threadpool; БД — через to_thread."""
+    uid = await asyncio.to_thread(get_user_id_by_token, token)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    deadline = time.monotonic() + _BT_MAX_HOLD_SECONDS
+    while True:
+        payload, battle_id, wait_s = await asyncio.to_thread(_bt_poll_read, code, uid, since)
+        if payload is not None:
+            return payload
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {"changed": False, "version": since}
+        await _bt_wait(battle_id, min(wait_s, remaining))

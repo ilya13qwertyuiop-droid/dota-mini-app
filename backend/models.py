@@ -658,6 +658,90 @@ class TeammateLobbySlot(Base):
     joined_at = Column(DateTime(timezone=True), nullable=True)
 
 
+# ─── «Битва драфтов» (PvP-драфтер) ────────────────────────────────────────
+
+
+class DraftBattle(Base):
+    """Комната PvP-драфта. Единственный источник истины о состоянии партии —
+    эта строка + журнал ходов draft_battle_actions; воркеры stateless.
+
+    status lifecycle:
+      searching — в очереди быстрого матча (виден матчеру своего mode)
+      waiting   — приватная комната, ждёт гостя по коду
+      drafting  — драфт идёт
+      finished  — завершена (result заполнен; при форфейте result.forfeit)
+      abandoned — протухла в waiting/searching или отменена хостом
+
+    Оптимистичная блокировка: каждое изменение инкрементит state_version;
+    long-poll клиенты ждут version > since. Время хода считает ТОЛЬКО сервер:
+    deadline_at = старт хода + базовое время (бан 20с / пик 25с) + остаток
+    резерва актора (2 мин на игрока на партию, как bonus time в CM).
+    Просроченный дедлайн исполняется лениво (любое чтение/действие) —
+    фоновый тикер не нужен.
+    """
+    __tablename__ = "draft_battles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Короткий инвайт-код (без 0/O/1/I). Уникален среди всех битв.
+    code = Column(String(8), nullable=False, unique=True, index=True)
+    # 'cm' — с банами (14 банов + 10 пиков, фазы CM 7.34); 'ap' — только 10 пиков.
+    mode = Column(String(8), nullable=False)
+    status = Column(String(12), nullable=False, default="waiting", index=True)
+    host_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
+    )
+    guest_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=True, index=True
+    )
+    # Кто ходит первым ('host'/'guest') — жеребьёвка при старте драфта.
+    first_pick = Column(String(5), nullable=True)
+    turn_index = Column(SmallInteger, nullable=False, default=0)
+    state_version = Column(Integer, nullable=False, default=1)
+    turn_started_at = Column(DateTime(timezone=True), nullable=True)
+    deadline_at = Column(DateTime(timezone=True), nullable=True)
+    # Остаток дополнительного времени, миллисекунды (см. _BT_RESERVE_MS).
+    host_reserve_ms = Column(Integer, nullable=False, default=120000)
+    guest_reserve_ms = Column(Integer, nullable=False, default=120000)
+    # Финал: {'host': {...compute_draft_score...}, 'guest': {...}} или {'forfeit': role}.
+    result = Column(JSON, nullable=True)
+    winner = Column(String(5), nullable=True)   # 'host'/'guest'/'draw'
+    created_at = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    last_action_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        # Матчер очереди: WHERE status='searching' AND mode=... ORDER BY id.
+        Index("ix_draft_battles_status_mode", "status", "mode"),
+    )
+
+
+class DraftBattleAction(Base):
+    """Журнал ходов битвы — источник истины по пикам/банам.
+
+    PK (battle_id, idx) даёт атомарную защиту от двойного хода на один слот
+    последовательности (та же идея, что (lobby_id, position) у слотов лобби):
+    конкурентная вставка того же idx падает по уникальности, гонка исключена.
+    """
+    __tablename__ = "draft_battle_actions"
+
+    battle_id = Column(
+        Integer, ForeignKey("draft_battles.id"), primary_key=True
+    )
+    idx = Column(SmallInteger, primary_key=True)   # 0..len(sequence)-1
+    actor = Column(String(5), nullable=False)      # 'host'/'guest'
+    kind = Column(String(4), nullable=False)       # 'pick'/'ban'
+    hero_id = Column(Integer, nullable=False)
+    is_auto = Column(Boolean, nullable=False, default=False)  # таймаут-автоход
+    created_at = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 # ─── Bot-editable text templates ──────────────────────────────────────────
 
 
