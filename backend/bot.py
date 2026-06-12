@@ -1605,8 +1605,6 @@ _ANALYTICS_EVENT_LABELS = {
     "page_donate":           "Поддержка",
     "page_feedback":         "Фидбек",
     "page_news":             "Новости",
-    "page_minigame_hl":      "Мини-игра «Больше/Меньше»",
-    "page_minigame_ww":      "Мини-игра «Кто победил?»",
     "support_click":         "Поддержать — кликов",
 }
 

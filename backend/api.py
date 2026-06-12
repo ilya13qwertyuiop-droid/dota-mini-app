@@ -1729,7 +1729,6 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_hub_tools",
     # Мини-игры.
     "page_minigame_hl",
-    "page_minigame_ww",
     # Клик по кнопке «Поддержать» на главном экране (goToDonate в script.js).
     "support_click",
 })
@@ -1833,62 +1832,6 @@ async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db))
     from backend.db import upsert_user_profile_settings
     upsert_user_profile_settings(user_id, {"minigame_best": best})
     return {"ok": True, "best": new_best}
-
-
-# ── «Кто победил?» (game id: "ww") ────────────────────────────────────────
-#
-# Раунд = случайный реальный ранговый матч из нашей БД (драфты обеих сторон,
-# ранг, длительность) БЕЗ результата. Ответ проверяется на сервере — клиент
-# узнаёт radiant_win только после своего guess'а. Рекорд серии и лидерборд —
-# общая minigame-инфраструктура (/minigames/best|score|leaderboard, game="ww").
-
-@app.get("/api/minigames/ww/round")
-async def api_minigame_ww_round(token: str):
-    """Случайный матч для раунда. radiant_win в ответе НЕТ — иначе ответ
-    был бы виден в network-табе до угадывания."""
-    if get_user_id_by_token(token) is None:
-        raise HTTPException(status_code=401, detail="unauthorized")
-    from backend.stats_db import get_ww_random_match
-    m = await asyncio.to_thread(get_ww_random_match)
-    if m is None:
-        raise HTTPException(status_code=503, detail="Матчи ещё не загружены. Загляни позже.")
-    return {
-        "match_id":       m["match_id"],
-        "radiant_heroes": m["radiant_heroes"],
-        "dire_heroes":    m["dire_heroes"],
-        "rank_tier":      m["rank_tier"],   # шкала Valve (54 = Legend 4); null у ~4% матчей
-        "duration":       m["duration"],    # секунды
-    }
-
-
-class MinigameWWGuess(BaseModel):
-    token: str
-    match_id: int
-    guess: str   # "radiant" | "dire"
-
-
-@app.post("/api/minigames/ww/guess")
-async def api_minigame_ww_guess(data: MinigameWWGuess):
-    """Проверка ответа + командные итоги (киллы/нетворс) для reveal-экрана.
-
-    Stateless: серию считает клиент и фиксирует через /minigames/score —
-    та же модель доверия, что у «Больше/Меньше».
-    """
-    if get_user_id_by_token(data.token) is None:
-        raise HTTPException(status_code=401, detail="unauthorized")
-    if data.guess not in ("radiant", "dire"):
-        raise HTTPException(status_code=422, detail="guess must be 'radiant' or 'dire'")
-    from backend.stats_db import get_ww_match_result
-    res = await asyncio.to_thread(get_ww_match_result, data.match_id)
-    if res is None:
-        # Матч удалён cleanup'ом между раундом и ответом — фронт перезапросит раунд.
-        raise HTTPException(status_code=404, detail="match not found")
-    correct = (data.guess == "radiant") == res["radiant_win"]
-    return {
-        "correct":     correct,
-        "radiant_win": res["radiant_win"],
-        "teams":       res["teams"],
-    }
 
 
 # ── Шеринг результата: карточка-картинка + prepared inline message ──
