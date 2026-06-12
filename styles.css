@@ -9453,11 +9453,16 @@ margin-top: var(--space-4);
 }
 .bt-search:focus { outline: none; border-color: var(--accent); }
 .bt-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-1);
+  display: grid;
+  /* minmax(0,1fr): иначе длинные имена героев (min-width:auto у grid-items)
+     раздували треки — карточки получались разных размеров и вылезали за экран. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
 }
 .bt-grid--waiting { opacity: 0.55; }
 .bt-cell {
   display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
   padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm);
   background: none; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -9499,9 +9504,13 @@ margin-top: var(--space-4);
 .bt-result-verdict { font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary); }
 .bt-result-verdict--win { color: var(--positive); }
 .bt-result-verdict--lose { color: var(--negative); }
-.bt-result-scores { display: flex; gap: var(--space-2); width: 100%; }
+.bt-result-scores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2); width: 100%;
+}
 .bt-result-card {
-  flex: 1; display: flex; flex-direction: column; gap: var(--space-1);
+  min-width: 0; display: flex; flex-direction: column; gap: var(--space-1);
   padding: var(--space-3); border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle); background: var(--bg-surface);
   text-align: center;
@@ -9689,7 +9698,6 @@ margin-top: var(--space-4);
 }
 
 /* Компактный грид: 5 колонок, плотнее, имена мельче */
-.bt-grid { grid-template-columns: repeat(5, 1fr); gap: 3px; }
 .bt-cell span { font-size: 8px; }
 
 /* Confirm-плашка: над нижним доком, с запасом и safe-area */
@@ -9754,10 +9762,10 @@ margin-top: var(--space-4);
 #bt-assign .tm-primary-btn { margin-top: var(--space-2); }
 
 /* Результат: раскладка героев с позициями */
-.bt-result-picks { display: flex; gap: 3px; justify-content: center; margin: var(--space-1) 0; }
-.bt-result-hero { position: relative; flex: 0 0 auto; }
+.bt-result-picks { display: flex; gap: 3px; justify-content: center; margin: var(--space-1) 0; min-width: 0; }
+.bt-result-hero { position: relative; flex: 1 1 0; min-width: 0; max-width: 36px; }
 .bt-result-hero img {
-  width: 34px; aspect-ratio: 16 / 9; object-fit: cover;
+  width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
   border-radius: 3px; background: var(--bg-elevated); display: block;
 }
 .bt-result-hero i {
@@ -9799,4 +9807,25 @@ margin-top: var(--space-4);
 .bt-join-row .bt-join-btn {
   flex: 0 0 auto; width: auto; min-width: 88px;
   height: 46px; padding: 0 var(--space-4);
+}
+
+/* ── «Битва драфтов»: мобильный полиш (вылеты за экран, иконки позиций) ── */
+
+/* Страховка: ни одно состояние битвы не должно давать горизонтальный скролл */
+#page-draft-battle { overflow-x: clip; }
+
+/* Чипы позиций с иконками драфтера вместо текста */
+.bt-pos-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; height: 32px; padding: 0 10px;
+}
+.bt-pos-btn img {
+  width: 18px; height: 18px; object-fit: contain; display: block;
+  opacity: 0.65;
+}
+.bt-pos-btn--active img { opacity: 1; }
+
+/* Узкие телефоны: карточки результата в столбик — читается без сжатия */
+@media (max-width: 359px) {
+  .bt-result-scores { grid-template-columns: minmax(0, 1fr); }
 }
