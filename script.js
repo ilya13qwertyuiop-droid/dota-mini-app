@@ -465,6 +465,9 @@
                 }).catch(function () { /* fire-and-forget */ });
             } catch (e) { /* never break UI */ }
         }
+        // Экспорт для функций вне этого IIFE (goToDonate и т.п.) — как
+        // window._dockActivateByPage ниже.
+        window._track = _track;
 
         function switchPage(pageName, event) {
             // Скрыть undo-toast Анализа — он position:fixed и иначе виден на новой странице
@@ -3723,6 +3726,7 @@ async function submitFeedback() {
 // ========== DONATE ==========
 
 function goToDonate() {
+    if (window._track) window._track('support_click');
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     document.getElementById('page-donate').classList.add('active');
     // Donate — не раздел дока: снимаем подсветку.
@@ -3736,12 +3740,18 @@ function goBackFromDonate() {
 }
 
 function openDonationAlerts() {
+    // Tribute вместо Donation Alerts. Внутри Telegram — мини-апп Tribute через
+    // openTelegramLink (t.me-ссылка открывается поверх текущего мини-аппа);
+    // в браузере — веб-версия Tribute в новой вкладке.
     var tg = window.Telegram && window.Telegram.WebApp;
-    var url = 'https://www.donationalerts.com/r/kasumi_dota';
-    if (tg && typeof tg.openLink === 'function') {
-        tg.openLink(url);
+    var insideTelegram = !!(
+        tg && tg.platform && tg.platform !== 'unknown'
+        && typeof tg.openTelegramLink === 'function'
+    );
+    if (insideTelegram) {
+        tg.openTelegramLink('https://t.me/tribute/app?startapp=dLLd');
     } else {
-        window.open(url, '_blank');
+        window.open('https://web.tribute.tg/d/LLd', '_blank');
     }
 }
 

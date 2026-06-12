@@ -1496,16 +1496,30 @@ def get_analytics_overview(days: int = 7) -> dict:
             for r in feature_rows
         ]
 
-        # 3) Retention D1 / D7 — средние по cohort'ам.
+        # 3) Кнопка «Поддержать» — отдельный счётчик за окно. Событие
+        # support_click пишет фронт при клике на главном экране (goToDonate).
+        # В features оно тоже попадёт через общий GROUP BY, но явный счётчик
+        # виден в дайджесте всегда — даже когда кликов за окно ноль.
+        support_clicks = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM analytics_events "
+                "WHERE event = 'support_click' "
+                "  AND created_at >= :s AND created_at < :e"
+            ),
+            {"s": window_start, "e": window_end},
+        ).scalar() or 0
+
+        # 4) Retention D1 / D7 — средние по cohort'ам.
         d1 = _retention_avg(conn, today_mid, lookback_days=14, gap=1)
         d7 = _retention_avg(conn, today_mid, lookback_days=21, gap=7)
 
     return {
-        "window_days":   days,
-        "daily":         daily,
-        "features":      features,
-        "retention_d1":  d1,
-        "retention_d7":  d7,
+        "window_days":    days,
+        "daily":          daily,
+        "features":       features,
+        "support_clicks": support_clicks,
+        "retention_d1":   d1,
+        "retention_d7":   d7,
     }
 
 

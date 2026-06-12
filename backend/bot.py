@@ -1605,6 +1605,7 @@ _ANALYTICS_EVENT_LABELS = {
     "page_donate":           "Поддержка",
     "page_feedback":         "Фидбек",
     "page_news":             "Новости",
+    "support_click":         "Поддержать — кликов",
 }
 
 
@@ -1663,6 +1664,7 @@ async def analytics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 Аналитика D2Helper (окно {days} дн.)\n\n"
         f"📅 По дням:\n{daily_lines}\n\n"
         f"📈 Итого за окно: новых {total_new} · средний DAU ≈ {avg_dau}\n\n"
+        f"💖 Поддержать — кликов: {a.get('support_clicks', 0)}\n\n"
         f"🔧 Использование по фичам:\n{feat_lines}\n\n"
         f"♻ Retention:\n"
         f"{_ret_line('D1', d1)}\n"
