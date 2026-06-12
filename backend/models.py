@@ -40,6 +40,13 @@ class Token(Base):
     user_id = Column(BigInteger, nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False)
 
+    __table_args__ = (
+        # Под периодический DELETE протухших токенов (db.cleanup_expired_tokens).
+        # Имя совпадает с миграцией 0016 — на свежих БД индекс создаёт
+        # create_all, на существующих — миграция (как 0015).
+        Index("ix_tokens_expires_at", "expires_at"),
+    )
+
 
 # ---------------------------------------------------------------------------
 # User data
@@ -150,6 +157,13 @@ class Match(Base):
     # Hero lists stored as JSON strings (json.dumps / json.loads in stats_db.py)
     radiant_heroes = Column(Text, nullable=False)
     dire_heroes = Column(Text, nullable=False)
+
+    __table_args__ = (
+        # get_old_match_ids / get_oldest_match_ids (cleanup) и
+        # get_latest_match_patch (ORDER BY start_time DESC LIMIT 1).
+        # Имя совпадает с миграцией 0016.
+        Index("ix_matches_start_time", "start_time"),
+    )
 
 
 class HeroMatchup(Base):
@@ -269,6 +283,10 @@ class MatchPlayer(Base):
 
     __table_args__ = (
         UniqueConstraint("match_id", "player_slot", name="uq_match_player"),
+        # get_hero_core_items (6 UNION-сканов по hero_id) и strict-режим
+        # get_hero_matchup_rows / get_hero_synergy_rows фильтруют по hero_id;
+        # без индекса — full-scan ~3M строк. Имя совпадает с миграцией 0016.
+        Index("ix_match_players_hero_id_match_id", "hero_id", "match_id"),
     )
 
 
@@ -342,6 +360,13 @@ class AnalyticsEvent(Base):
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        # get_analytics_overview: ~50 запросов с фильтром по created_at
+        # (DAU по дням + retention-cohorts) + ретеншен-чистка
+        # cleanup_old_analytics_events. Имя совпадает с миграцией 0016.
+        Index("ix_analytics_events_created_at_user_id", "created_at", "user_id"),
     )
 
 

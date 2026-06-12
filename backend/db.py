@@ -87,6 +87,31 @@ def delete_token(token: str) -> None:
             session.commit()
 
 
+def cleanup_expired_tokens() -> int:
+    """Удаляет все протухшие токены (expires_at < now). Возвращает число
+    удалённых строк.
+
+    Каждый /start и каждый refresh_token создают НОВУЮ строку, а протухшие
+    удалялись только лениво — при попытке использования. Не использованные
+    повторно токены копились вечно. Вызывается периодически из
+    teammates_notifier (раз в ~24 ч).
+
+    Cutoff — naive utcnow(): токены пишутся и валидируются через naive
+    datetime.utcnow() (см. create_token_for_user / get_user_id_by_token),
+    сравниваем в той же шкале. Индекс ix_tokens_expires_at — миграция 0016.
+    """
+    with SessionLocal() as session:
+        deleted = (
+            session.query(Token)
+            .filter(Token.expires_at < datetime.utcnow())
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+    if deleted:
+        logger.info("[db] cleanup_expired_tokens: deleted %d expired token(s)", deleted)
+    return deleted
+
+
 # ---------------------------------------------------------------------------
 # Hero matchups cache
 # ---------------------------------------------------------------------------

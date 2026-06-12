@@ -53,6 +53,37 @@ REVIEW_DELAY_MINUTES   = int(os.environ.get("TM_REVIEW_DELAY_MINUTES", "180"))
 POLL_INTERVAL_SECONDS  = int(os.environ.get("TM_NOTIFIER_INTERVAL_SEC", "60"))
 BATCH_SIZE             = int(os.environ.get("TM_NOTIFIER_BATCH_SIZE", "100"))
 
+# Периодическая чистка БД (протухшие токены + старые analytics-события).
+# Живёт в этом воркере, потому что он единственный постоянный однопроцессный
+# цикл: в api.py 4 воркера дёргали бы чистку вчетвером, бот — не место для
+# DB-обслуживания. Первый прогон — сразу при старте процесса.
+DB_CLEANUP_INTERVAL_SECONDS = int(os.environ.get("TM_DB_CLEANUP_INTERVAL_SEC", str(24 * 3600)))
+ANALYTICS_RETENTION_DAYS    = int(os.environ.get("ANALYTICS_RETENTION_DAYS", "90"))
+
+
+def _run_db_cleanup() -> None:
+    """Один прогон чистки: протухшие токены + analytics_events старше N дней.
+
+    Каждая чистка в своём try/except — отказ одной не блокирует другую.
+    Lazy-import'ы, чтобы не тащить лишние module-import side-effect'ы
+    (паттерн как у _reminder_text).
+    """
+    try:
+        from backend.db import cleanup_expired_tokens
+        n_tokens = cleanup_expired_tokens()
+        logger.info("[tm_notifier] db cleanup: %d expired token(s) deleted", n_tokens)
+    except Exception:
+        logger.exception("[tm_notifier] cleanup_expired_tokens failed")
+    try:
+        from backend.stats_db import cleanup_old_analytics_events
+        n_events = cleanup_old_analytics_events(days=ANALYTICS_RETENTION_DAYS)
+        logger.info(
+            "[tm_notifier] db cleanup: %d analytics event(s) older than %dd deleted",
+            n_events, ANALYTICS_RETENTION_DAYS,
+        )
+    except Exception:
+        logger.exception("[tm_notifier] cleanup_old_analytics_events failed")
+
 # Текст напоминания теперь admin-редактируется через /admin_text
 # tm_push_review_reminder. См. backend/bot_texts.py для дефолта.
 # Здесь оставлен только legacy-fallback на крайний случай отказа БД.
@@ -451,6 +482,11 @@ async def run_loop() -> None:
     )
 
     cycle = 0
+    # None → первый цикл сразу запускает чистку (полезно после долгого простоя
+    # воркера: протухшие токены/события накопились, ждать сутки незачем).
+    # Не 0.0: monotonic() стартует с произвольной точки (часто — от загрузки
+    # ОС), и на свежеперезагруженном сервере «elapsed с нуля» < 24ч.
+    last_db_cleanup: float | None = None
     while True:
         cycle += 1
         t0 = time.monotonic()
@@ -466,6 +502,20 @@ async def run_loop() -> None:
             n_lobbies = await process_expired_lobbies()
         except Exception:
             logger.exception("[tm_notifier] lobbies cycle #%d failed", cycle)
+
+        # Раз в DB_CLEANUP_INTERVAL_SECONDS (default 24ч) — чистка токенов и
+        # analytics_events. В threadpool: первый DELETE после долгого простоя
+        # может быть массивным, не блокируем loop. _run_db_cleanup сам глотает
+        # свои ошибки, но страхуемся try/except по контракту цикла.
+        if (
+            last_db_cleanup is None
+            or time.monotonic() - last_db_cleanup >= DB_CLEANUP_INTERVAL_SECONDS
+        ):
+            last_db_cleanup = time.monotonic()
+            try:
+                await asyncio.to_thread(_run_db_cleanup)
+            except Exception:
+                logger.exception("[tm_notifier] db cleanup cycle #%d failed", cycle)
 
         elapsed = time.monotonic() - t0
         # Heartbeat: лог КАЖДОГО цикла — иначе при пустой выборке (нормальный

@@ -1553,6 +1553,34 @@ def _retention_avg(conn, today_mid: datetime, lookback_days: int, gap: int) -> d
     return {"cohorts": len(pcts), "avg_pct": round(sum(pcts) / len(pcts))}
 
 
+def cleanup_old_analytics_events(days: int = 90) -> int:
+    """Удаляет события из analytics_events старше `days` дней. Возвращает
+    число удалённых строк.
+
+    Таблица растёт на каждое открытие страницы миниаппа и каждую команду
+    бота — без ретеншена она бесконечная. 90 дней с запасом покрывает все
+    потребители (/analytics смотрит максимум на 60 дней назад: окно до 60
+    плюс retention-cohorts до 28).
+
+    Cutoff — tz-aware UTC, как и created_at (TIMESTAMPTZ): сравнение идёт
+    по абсолютным моментам времени при любом server TZ (см. комментарий
+    в teammates_notifier.process_pending_reviews).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("DELETE FROM analytics_events WHERE created_at < :cutoff"),
+            {"cutoff": cutoff},
+        )
+        deleted = result.rowcount or 0
+    if deleted:
+        logger.info(
+            "[stats_db] cleanup_old_analytics_events: deleted %d row(s) older than %d days",
+            deleted, days,
+        )
+    return deleted
+
+
 # ---------------------------------------------------------------------------
 # Backfill helpers — match_players for pre-existing matches
 # ---------------------------------------------------------------------------
