@@ -435,7 +435,7 @@ async def check_subscription(data: CheckRequest):
 
 
 @app.post("/api/save_telegram_data")
-async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
+def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
     """Сохраняет данные пользователя из Telegram (имя, username, фото)"""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
@@ -466,7 +466,7 @@ async def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_d
 
 
 @app.get("/api/profile_full", response_model=UserStats)
-async def get_profile_full(token: str, db: Session = Depends(get_db)):
+def get_profile_full(token: str, db: Session = Depends(get_db)):
     """Получает полный профиль пользователя с историей квизов"""
     # 1. Проверяем токен
     user_id = get_user_id_by_token(token)
@@ -539,7 +539,7 @@ async def get_profile_full(token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/save_result", response_model=SaveResultResponse)
-async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
+def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     """Сохраняет результат квиза (позиции и герои в одном JSON)"""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
@@ -634,7 +634,7 @@ async def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/get_result", response_model=GetResultResponse)
-async def get_result(token: str, db: Session = Depends(get_db)):
+def get_result(token: str, db: Session = Depends(get_db)):
     """Получает результат квиза по токену"""
     user_id = get_user_id_by_token(token)
     if not user_id:
@@ -688,7 +688,7 @@ async def api_hero_matchups(hero_id: int):
 # ========== Custom Stats: counters from our own match data ==========
 
 @app.get("/api/hero/{hero_id}/counters")
-async def api_hero_counters(
+def api_hero_counters(
     hero_id: int,
     limit: int = Query(default=20, ge=1, le=200, description="Max entries in counters/victims lists"),
     min_games: int = Query(default=50, ge=1, description="Minimum games for a pair to be included"),
@@ -725,7 +725,7 @@ async def api_hero_counters(
 # ========== Custom Stats: ally synergy from our own match data ==========
 
 @app.get("/api/hero/{hero_id}/synergy")
-async def api_hero_synergy(
+def api_hero_synergy(
     hero_id: int,
     limit: int = Query(default=20, ge=1, le=200, description="Max entries in best/worst allies lists"),
     min_games: int = Query(default=50, ge=1, description="Minimum shared games for a pair to be included"),
@@ -853,7 +853,7 @@ def _resolve_dota_builds(
 
 
 @app.get("/api/hero/{hero_id}/build")
-async def api_hero_build(hero_id: int):
+def api_hero_build(hero_id: int):
     """Returns all data for the Build tab: facets, ability build, talents, items.
 
     When dota_builds is present in the cache (imported via import_dota_builds.py),
@@ -997,7 +997,7 @@ async def api_hero_build(hero_id: int):
 # ========== Hero Positions ==========
 
 @app.get("/api/hero/{hero_id}/positions")
-async def api_hero_positions(hero_id: int):
+def api_hero_positions(hero_id: int):
     """Returns positions for a hero sorted by popularity.
 
     When dota_builds is present in the cache, uses total sixslot num_matches
@@ -1035,7 +1035,7 @@ async def api_hero_positions(hero_id: int):
 from fastapi.responses import JSONResponse
 
 @app.get("/api/items_db")
-async def api_items_db():
+def api_items_db():
     """Returns items_by_id dict (shared across all heroes).
 
     Cached in-memory server-side; clients should treat it as immutable
@@ -1048,7 +1048,7 @@ async def api_items_db():
 # ========== Feedback ==========
 
 @app.get("/api/meta")
-async def api_meta():
+def api_meta():
     """Returns top-5 meta heroes per position from dota_builds.json.
 
     Primary position = the position with max num_matches for a hero.
@@ -1164,7 +1164,7 @@ class FeedbackRequest(BaseModel):
 
 
 @app.post("/api/feedback")
-async def submit_feedback(data: FeedbackRequest, db: Session = Depends(get_db)):
+def submit_feedback(data: FeedbackRequest, db: Session = Depends(get_db)):
     """Сохраняет отзыв пользователя из мини‑аппа."""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
@@ -1272,7 +1272,7 @@ _DRAFT_POOLS_BY_POS = {
 
 
 @app.get("/api/draft/random")
-async def api_draft_random():
+def api_draft_random():
     """Returns a random enemy draft generated from per-position hero pools."""
     enemy = []
     used_ids: set[int] = set()
@@ -1290,7 +1290,7 @@ _draft_popularity_cache: dict[str, dict] | None = None
 
 
 @app.get("/api/draft/matchups_all")
-async def api_draft_matchups_all():
+def api_draft_matchups_all():
     """Returns full hero_matchups.json blob.
 
     Used by the frontend "Анализ" mode of the Drafter to compute live recommendations
@@ -1305,7 +1305,7 @@ async def api_draft_matchups_all():
 
 
 @app.get("/api/draft/popularity")
-async def api_draft_popularity():
+def api_draft_popularity():
     """Returns popularity data per hero with per-position breakdown.
 
     Schema:
@@ -1389,22 +1389,21 @@ def _pos_str_to_num(pos) -> int | None:
     return None
 
 
-@app.post("/api/draft/evaluate")
-async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)):
-    """Evaluates a draft based on synergy, matchups, and position fit."""
-    # ── Rate limiting: 30 req / 10 min per authenticated user ───────────────
-    # Uses SQLite so all uvicorn workers share the same counters.
-    rl_user_id = get_user_id_by_token(data.token) if data.token else None
-    if rl_user_id:
-        allowed, count = _rl_check_and_record(rl_user_id)
-        logger.info("[rate_limit] user_id=%s window_count=%d allowed=%s", rl_user_id, count, allowed)
-        if not allowed:
-            raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите немного.")
+def compute_draft_score(ally_entries, enemy_entries) -> dict:
+    """Чистая оценка драфта — без HTTP-контекста (токенов, rate-limit, БД).
 
+    ally_entries / enemy_entries — последовательности объектов с атрибутами
+    .hero_id и .position (Pydantic DraftHeroEntry или любой совместимый объект).
+
+    Единственный источник правды для счёта: /api/draft/evaluate просто
+    оборачивает эту функцию, и финализация «Битвы драфтов» (этап 1) обязана
+    считать итоги обеих сторон ИМЕННО ею — тогда числа гарантированно
+    совпадают с сольным драфтером.
+    """
     matchups = _load_hero_matchups_file() or {}
 
-    ally_ids = [h.hero_id for h in data.ally]
-    enemy_ids = [h.hero_id for h in data.enemy]
+    ally_ids = [h.hero_id for h in ally_entries]
+    enemy_ids = [h.hero_id for h in enemy_entries]
 
     # ── Компонент 1: Синергия команды (0-50) — 10 пар союзников ─────────────
     # Усредняем обе стороны, чтобы результат не зависел от порядка ввода героев:
@@ -1422,18 +1421,28 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
     synergy_component = max(0.0, min(50.0, (avg_synergy + 1.5) / 3.0 * 50.0))
 
     # ── Компонент 2: Матчап против врагов (0-50) — 25 пар наш vs вражеский ──
+    # СИММЕТРИЗОВАНО: val = (v_ae − v_ea) / 2, где v_ea — тот же матчап
+    # глазами противника. Поле "vs" в данных Stratz асимметрично (дельта от
+    # собственного base WR каждого героя), и одностороннее чтение давало
+    # смещение в пользу стороны с более полным словарём. После симметризации
+    # пары антисимметричны: matchup(A,B) = −matchup(B,A), сумма сырых
+    # матчап-баллов двух команд — строго ноль. Критично для PvP («Битва
+    # драфтов»): у кого плюс — тот в преимуществе, парадокс «обе команды в
+    # минусе из-за дыр в данных» исключён.
     matchup_pairs: list[tuple[int, int, float]] = []
     for a in ally_ids:
         for e in enemy_ids:
-            val = (matchups.get(str(a)) or {}).get("vs", {}).get(str(e), {}).get("synergy", 0.0)
-            matchup_pairs.append((a, e, float(val)))
+            v_ae = (matchups.get(str(a)) or {}).get("vs", {}).get(str(e), {}).get("synergy", 0.0)
+            v_ea = (matchups.get(str(e)) or {}).get("vs", {}).get(str(a), {}).get("synergy", 0.0)
+            val = (float(v_ae) - float(v_ea)) / 2
+            matchup_pairs.append((a, e, val))
 
     matchup_score = sum(v for _, _, v in matchup_pairs) / (len(matchup_pairs) or 1)
     matchup_component = max(0.0, min(50.0, (matchup_score + 1.5) / 3.0 * 50.0))
 
     # ── Позиции — не влияют на total_score, только comments ─────────────────
     pos_scores: list[tuple[int, bool]] = []
-    for h in data.ally:
+    for h in ally_entries:
         chosen = _pos_str_to_num(h.position)
         valid_positions = _hero_valid_pos_nums(h.hero_id)
         on_valid = chosen is not None and chosen in valid_positions
@@ -1483,17 +1492,6 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
             "count": len(atypical_ids),
         })
 
-    # ── Сохраняем результат если передан токен ───────────────────────────────
-    uid = get_user_id_by_token(data.token) if data.token else None
-    if uid:
-        db.add(DBDraftResult(
-            user_id=uid,
-            total_score=round(total_score, 1),
-            ally_heroes=ally_ids,
-            enemy_heroes=enemy_ids,
-        ))
-        db.commit()
-
     return {
         "total_score": round(total_score, 1),
         "synergy_score": round(synergy_component, 2),
@@ -1511,6 +1509,38 @@ async def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(g
         "enemy_ids": enemy_ids,
         "comments": comments,
     }
+
+
+@app.post("/api/draft/evaluate")
+def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)):
+    """Evaluates a draft based on synergy, matchups, and position fit.
+
+    Счёт целиком в compute_draft_score (чистая функция выше); здесь только
+    HTTP-обвязка: rate-limit, токен, сохранение результата в draft_results.
+    """
+    # ── Rate limiting: 30 req / 10 min per authenticated user ───────────────
+    # Uses SQLite so all uvicorn workers share the same counters.
+    rl_user_id = get_user_id_by_token(data.token) if data.token else None
+    if rl_user_id:
+        allowed, count = _rl_check_and_record(rl_user_id)
+        logger.info("[rate_limit] user_id=%s window_count=%d allowed=%s", rl_user_id, count, allowed)
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите немного.")
+
+    result = compute_draft_score(data.ally, data.enemy)
+
+    # ── Сохраняем результат если передан токен ───────────────────────────────
+    uid = get_user_id_by_token(data.token) if data.token else None
+    if uid:
+        db.add(DBDraftResult(
+            user_id=uid,
+            total_score=result["total_score"],
+            ally_heroes=result["ally_ids"],
+            enemy_heroes=result["enemy_ids"],
+        ))
+        db.commit()
+
+    return result
 
 
 def _normalize_ally_heroes(raw):
@@ -1585,7 +1615,7 @@ def _current_month_start_utc() -> datetime:
 
 
 @app.get("/api/draft/leaderboard")
-async def api_draft_leaderboard(db: Session = Depends(get_db)):
+def api_draft_leaderboard(db: Session = Depends(get_db)):
     """Топ-25 пользователей по сумме топ-5 результатов за текущий месяц.
 
     Правило: на уникальный союзный состав (sorted ally_heroes) засчитываются
@@ -1637,7 +1667,7 @@ async def api_draft_leaderboard(db: Session = Depends(get_db)):
 
 
 @app.get("/api/draft/leaderboard/me")
-async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db)):
+def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db)):
     """Место и счёт текущего пользователя среди всех участников за текущий месяц.
 
     Использует то же правило дедупа по союзному составу и тот же месячный
@@ -1672,7 +1702,7 @@ async def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db
 
 
 @app.get("/api/draft/history")
-async def api_draft_history(token: str, db: Session = Depends(get_db)):
+def api_draft_history(token: str, db: Session = Depends(get_db)):
     """Последние 10 драфтов пользователя."""
     user_id = get_user_id_by_token(token) if token else None
     if not user_id:
@@ -1740,7 +1770,7 @@ class AnalyticsEventBody(BaseModel):
 
 
 @app.post("/api/analytics/event")
-async def api_analytics_event(data: AnalyticsEventBody):
+def api_analytics_event(data: AnalyticsEventBody):
     """Принимает событие с миниаппа. Жёсткий аллоулист по имени; невалидные
     игнорируются с 422, чтобы клиент не пихал произвольный мусор."""
     if data.event not in _ANALYTICS_ALLOWED_EVENTS:
@@ -1777,7 +1807,7 @@ async def api_minigame_hl_pool(token: str):
 
 
 @app.get("/api/minigames/best")
-async def api_minigame_best(token: str, game: str, db: Session = Depends(get_db)):
+def api_minigame_best(token: str, game: str, db: Session = Depends(get_db)):
     """Личный рекорд стрика по игре (из user_profiles.settings.minigame_best)."""
     user_id = get_user_id_by_token(token)
     if user_id is None:
@@ -1817,7 +1847,7 @@ async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = D
 
 
 @app.post("/api/minigames/score")
-async def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
+def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
     """Сохраняет результат: обновляет личный рекорд, если стрик выше прошлого."""
     user_id = get_user_id_by_token(data.token)
     if user_id is None:
@@ -2345,7 +2375,7 @@ class TeammateLobbyAction(BaseModel):
 # ── 1. POST /api/teammates/profile — upsert ─────────────────────────────────
 
 @app.post("/api/teammates/profile")
-async def api_teammates_profile_upsert(
+def api_teammates_profile_upsert(
     data: TeammateProfileUpsert, db: Session = Depends(get_db),
 ):
     """Создаёт или обновляет профиль текущего пользователя для поиска тиммейтов."""
@@ -2432,7 +2462,7 @@ async def api_teammates_profile_upsert(
 # "me" как int и вернёт 422.
 
 @app.get("/api/teammates/profile/me")
-async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
+def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     """Возвращает свой профиль (со статусом и тегами) или null.
 
     Поле status: ready_now / looking_regular / looking_casual / hidden / null.
@@ -2462,7 +2492,7 @@ async def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
 # ── 2b. GET /api/teammates/founders — счётчик «первопроходцев» ───────────────
 
 @app.get("/api/teammates/founders")
-async def api_teammates_founders(db: Session = Depends(get_db)):
+def api_teammates_founders(db: Session = Depends(get_db)):
     """Сколько мест «первопроходца» выдано и сколько осталось.
 
     Не требует токена — это публичный счётчик для экрана заполнения профиля
@@ -2483,7 +2513,7 @@ async def api_teammates_founders(db: Session = Depends(get_db)):
 # ── 2c. POST /api/teammates/admin/delete_profile — модерация (только админ) ──
 
 @app.post("/api/teammates/admin/delete_profile")
-async def api_teammates_admin_delete_profile(
+def api_teammates_admin_delete_profile(
     data: TeammateAdminDelete, db: Session = Depends(get_db),
 ):
     """Удаляет teammate-профиль игрока. Только для админов (_TM_ADMIN_IDS).
@@ -2522,7 +2552,7 @@ async def api_teammates_admin_delete_profile(
 # ── 3. POST /api/teammates/status — установить статус видимости ──────────────
 
 @app.post("/api/teammates/status")
-async def api_teammates_status_set(
+def api_teammates_status_set(
     data: TeammateStatusUpdate, db: Session = Depends(get_db),
 ):
     """Ставит статус профиля. Используется и обязательным экраном выбора при
@@ -2548,7 +2578,7 @@ async def api_teammates_status_set(
 # ── 5. GET /api/teammates/feed ──────────────────────────────────────────────
 
 @app.get("/api/teammates/feed")
-async def api_teammates_feed(
+def api_teammates_feed(
     token: str,
     ranks: str | None = None,
     positions: str | None = None,
@@ -2820,7 +2850,7 @@ async def api_teammates_request_respond(
 # ── 8. GET /api/teammates/requests/incoming ─────────────────────────────────
 
 @app.get("/api/teammates/requests/incoming")
-async def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
+def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
     """Входящие pending-запросы с прикреплённым профилем отправителя."""
     user_id = _tm_authenticate(token, db)
 
@@ -2861,7 +2891,7 @@ async def api_teammates_requests_incoming(token: str, db: Session = Depends(get_
 # ── 9. POST /api/teammates/review — оставить отзыв ──────────────────────────
 
 @app.post("/api/teammates/review")
-async def api_teammates_review_submit(
+def api_teammates_review_submit(
     data: TeammateReviewSubmit, db: Session = Depends(get_db),
 ):
     """Сохраняет отзыв (список тегов) и инкрементит счётчики в teammate_tags.
@@ -3036,7 +3066,7 @@ async def api_teammates_report_submit(
 # приведении к int.
 
 @app.get("/api/teammates/profile/{user_id}")
-async def api_teammates_profile_public(
+def api_teammates_profile_public(
     user_id: int, token: str, db: Session = Depends(get_db),
 ):
     """Профиль игрока + накопленные теги. Требует валидный токен.
@@ -3059,7 +3089,7 @@ async def api_teammates_profile_public(
 # ── 11. GET /api/teammates/requests/outgoing ────────────────────────────────
 
 @app.get("/api/teammates/requests/outgoing")
-async def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
+def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
     """Исходящие pending-запросы текущего пользователя с профилем получателя."""
     user_id = _tm_authenticate(token, db)
 
@@ -3100,7 +3130,7 @@ async def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_
 # ── 12. GET /api/teammates/requests/history ─────────────────────────────────
 
 @app.get("/api/teammates/requests/history")
-async def api_teammates_requests_history(
+def api_teammates_requests_history(
     token: str,
     limit: int = Query(default=20, ge=1, le=50),
     cursor: str | None = None,   # ISO-строка accepted_at последней показанной строки
@@ -3192,7 +3222,7 @@ async def api_teammates_requests_history(
 # ── 13. POST /api/teammates/request/cancel ──────────────────────────────────
 
 @app.post("/api/teammates/request/cancel")
-async def api_teammates_request_cancel(
+def api_teammates_request_cancel(
     data: TeammateRequestCancel, db: Session = Depends(get_db),
 ):
     """Отмена исходящего pending-запроса автором. Переводит status в 'cancelled'.
@@ -3410,7 +3440,7 @@ async def _tm_send_lobby_disband_pushes(
 # ── L1. POST /api/teammates/lobby — create ──────────────────────────────────
 
 @app.post("/api/teammates/lobby")
-async def api_teammates_lobby_create(
+def api_teammates_lobby_create(
     data: TeammateLobbyCreate, db: Session = Depends(get_db),
 ):
     """Создаёт лобби. Host автоматически занимает свой слот."""
@@ -3509,7 +3539,7 @@ async def api_teammates_lobby_create(
 # ── L2. GET /api/teammates/lobbies — list active ────────────────────────────
 
 @app.get("/api/teammates/lobbies")
-async def api_teammates_lobbies_list(token: str, db: Session = Depends(get_db)):
+def api_teammates_lobbies_list(token: str, db: Session = Depends(get_db)):
     """Возвращает список активных лобби (status='open', expires_at > now).
 
     Сортировка: created_at DESC (новые сверху). UI рендерит их над одиночными
@@ -3745,7 +3775,7 @@ async def api_teammates_lobby_disband(
 # ── L6. GET /api/teammates/lobbies/history ──────────────────────────────────
 
 @app.get("/api/teammates/lobbies/history")
-async def api_teammates_lobbies_history(
+def api_teammates_lobbies_history(
     token: str, db: Session = Depends(get_db),
 ):
     """История лобби, в которых юзер участвовал и которые ЗАПОЛНИЛИСЬ.
