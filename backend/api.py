@@ -1729,6 +1729,8 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_hub_tools",
     # Мини-игры.
     "page_minigame_hl",
+    # Клик по кнопке «Поддержать» на главном экране (goToDonate в script.js).
+    "support_click",
 })
 
 
