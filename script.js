@@ -1519,9 +1519,12 @@
                 // Без него старт выглядит как «ничего не произошло».
                 if (prevStatus !== 'drafting') {
                     var resumed = (prevStatus == null && st.turn_index > 0);
+                    var label = resumed ? 'Битва продолжается'
+                              : st.vs_bot ? 'Игра против бота'
+                              : 'Соперник найден';
                     _btShowFound(
                         st,
-                        resumed ? 'Битва продолжается' : 'Соперник найден',
+                        label,
                         resumed ? 'Возвращаемся к драфту…' : 'Драфт начинается…'
                     );
                     setTimeout(function () {

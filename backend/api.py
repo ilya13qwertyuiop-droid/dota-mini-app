@@ -173,6 +173,7 @@ from pydantic import BaseModel
 
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -4221,6 +4222,248 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
     return changed
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Бот-соперник (подсаживается, когда живой не нашёлся за таймаут поиска).
+#
+#  Намеренно НЕ оптимальный: знает все числа из hero_matchups.json, но играет
+#  «средне» — из подходящих по позиции кандидатов берёт не топ, а середину
+#  (см. _BT_BOT_SKILL_*). Иначе обыграть бота невозможно и нет азарта. При этом
+#  позиционно грамотен — пикает героев на их реальные позиции (не ловит штраф).
+#  Роль бота всегда 'guest' (host = инициатор поиска, человек). Ходит лениво
+#  на сервере: при чтении/поллинге, отстояв «думалку» _bt_think_ms.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BT_BOT_FALLBACK_SEC = 40        # сколько ищем живого, прежде чем подсадить бота
+_BT_BOT_THINK_MIN_MS = 1200      # «думалка» бота на ход — нижняя граница
+_BT_BOT_THINK_MAX_MS = 2800      # верхняя граница (детерминир. по ходу)
+# Притупление: из кандидатов, отсортированных по силе убыв., бот берёт срез
+# [SKILL_LO, SKILL_HI] перцентиля — т.е. крепкую середину, а не лучшее.
+_BT_BOT_SKILL_LO = 0.30
+_BT_BOT_SKILL_HI = 0.70
+# Позиционная логика: кандидат на позицию — герой, играющий там не реже этого
+# (та же планка, что soft-порог позиционного штрафа → бот штраф не ловит).
+_BT_BOT_POS_MIN_SHARE = 0.15
+# Порядок, в котором бот закрывает позиции (кор-роли раньше — их важнее
+# застолбить, пока пул не разобран).
+_BT_BOT_POS_ORDER = (2, 1, 3, 4, 5)
+
+_bt_bot_pos_pool_cache: "dict[int, list[int]] | None" = None
+
+
+def _bt_bot_pos_pool() -> dict:
+    """{pos: [hero_id, ...]} — кто играбелен на позиции (share >= порога).
+    Только известные герои (есть в hero_matchups.json → есть чем скорить)."""
+    global _bt_bot_pos_pool_cache
+    if _bt_bot_pos_pool_cache is not None:
+        return _bt_bot_pos_pool_cache
+    shares = _bt_pos_shares()
+    known = _bt_known_heroes()
+    out: dict[int, list[int]] = {p: [] for p in (1, 2, 3, 4, 5)}
+    for hid, per_pos in shares.items():
+        if hid not in known:
+            continue
+        for pos, share in per_pos.items():
+            if share >= _BT_BOT_POS_MIN_SHARE:
+                out[pos].append(hid)
+    # Фолбэк для пустой позиции (нет данных) — мета-пул.
+    for pos in out:
+        if not out[pos]:
+            out[pos] = [h for h in _BT_META_POOL if h in known] or list(known)
+    _bt_bot_pos_pool_cache = out
+    return out
+
+
+def _bt_pair_val(matchups: dict, mapkey: str, a: int, b: int) -> float:
+    return float((matchups.get(str(a)) or {}).get(mapkey, {})
+                 .get(str(b), {}).get("synergy", 0.0))
+
+
+def _bt_bot_cand_value(matchups: dict, cand: int,
+                       ally: list, enemy: list) -> float:
+    """Ценность кандидата для бота: синергия с союзниками (симметризовано) +
+    матчап против врагов (антисимметрично) — та же арифметика, что
+    compute_draft_score, но инкрементально по уже сделанным пикам."""
+    val = 0.0
+    for a in ally:
+        val += (_bt_pair_val(matchups, "with", cand, a)
+                + _bt_pair_val(matchups, "with", a, cand)) / 2
+    for e in enemy:
+        val += (_bt_pair_val(matchups, "vs", cand, e)
+                - _bt_pair_val(matchups, "vs", e, cand)) / 2
+    return val
+
+
+def _bt_bot_picks_so_far(db: Session, battle: DBDraftBattle):
+    """(ally=пики бота, enemy=пики человека, taken=все занятые id, bot_positions)."""
+    actions = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .all()
+    )
+    taken = {a.hero_id for a in actions}
+    ally = [a.hero_id for a in actions if a.kind == "pick" and a.actor == "guest"]
+    enemy = [a.hero_id for a in actions if a.kind == "pick" and a.actor == "host"]
+    return ally, enemy, taken
+
+
+def _bt_bot_choose_pick(db: Session, battle: DBDraftBattle) -> tuple:
+    """Возвращает (hero_id, pos): притуплённый выбор героя на ещё не закрытую
+    ботом позицию. Бот = guest, его позиции копятся в guest_positions."""
+    matchups = _load_hero_matchups_file() or {}
+    ally, enemy, taken = _bt_bot_picks_so_far(db, battle)
+    bot_pos = battle.guest_positions or {}
+    used_positions = set(int(p) for p in bot_pos.values())
+
+    pos_pool = _bt_bot_pos_pool()
+    target_pos = next((p for p in _BT_BOT_POS_ORDER if p not in used_positions),
+                      None)
+    if target_pos is None:   # все 5 заняты (не должно случиться) — любой свободный
+        target_pos = 1
+
+    cands = [h for h in pos_pool.get(target_pos, []) if h not in taken]
+    if not cands:   # позиция вычерпана банами — берём любого свободного известного
+        cands = [h for h in _bt_known_heroes() if h not in taken]
+    if not cands:
+        cands = [h for h in _BT_META_POOL if h not in taken] or [next(iter(_bt_known_heroes()))]
+
+    # Сортируем по ценности убыв. и берём из СРЕДНЕГО среза (притупление).
+    scored = sorted(cands, key=lambda h: _bt_bot_cand_value(matchups, h, ally, enemy),
+                    reverse=True)
+    n = len(scored)
+    lo = int(n * _BT_BOT_SKILL_LO)
+    hi = max(lo + 1, int(n * _BT_BOT_SKILL_HI))
+    mid_slice = scored[lo:hi] or scored
+    return random.choice(mid_slice), target_pos
+
+
+def _bt_bot_choose_ban(db: Session, battle: DBDraftBattle) -> int:
+    """Бан бота — простой: случайный незанятый из мета-пула (бан-фаза слабо
+    влияет на счёт, переусложнять незачем)."""
+    _ally, _enemy, taken = _bt_bot_picks_so_far(db, battle)
+    pool = [h for h in _BT_META_POOL if h not in taken] or \
+           [h for h in _bt_known_heroes() if h not in taken]
+    return random.choice(pool) if pool else next(iter(_bt_known_heroes()))
+
+
+def _bt_think_ms(battle: DBDraftBattle, idx: int) -> int:
+    """Детерминированная «думалка» бота на ход idx (стабильна между чтениями,
+    иначе момент хода прыгал бы)."""
+    h = (int(battle.id) * 131 + idx * 977) % 1000
+    span = _BT_BOT_THINK_MAX_MS - _BT_BOT_THINK_MIN_MS
+    return _BT_BOT_THINK_MIN_MS + h * span // 1000
+
+
+def _bt_bot_due(battle: DBDraftBattle, now: datetime):
+    """Если сейчас ход бота и он «надумал» — момент, когда ход должен исполниться
+    (turn_started + думалка). Иначе None. Второй элемент — сколько ещё ждать (с)."""
+    if not battle.is_bot or battle.status != "drafting":
+        return None, None
+    seq = _BT_SEQUENCES[battle.mode]
+    if battle.turn_index >= len(seq):
+        return None, None
+    if _bt_actor_of(battle, battle.turn_index) != "guest":
+        return None, None
+    started = _bt_aware(battle.turn_started_at)
+    if started is None:
+        return None, None
+    think = _bt_think_ms(battle, battle.turn_index)
+    due_at = started + _tm_timedelta(milliseconds=think)
+    if now >= due_at:
+        return due_at, 0.0
+    return None, (due_at - now).total_seconds()
+
+
+def _bt_apply_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Лениво исполняет «надуманные» ходы бота (pick/ban). True, если сходил."""
+    if not battle.is_bot:
+        return False
+    changed = False
+    seq = _BT_SEQUENCES[battle.mode]
+    while (
+        battle.status == "drafting"
+        and battle.turn_index < len(seq)
+        and _bt_actor_of(battle, battle.turn_index) == "guest"
+    ):
+        due_at, _wait = _bt_bot_due(battle, now)
+        if due_at is None:
+            break   # бот ещё думает
+        kind = seq[battle.turn_index][1]
+        if kind == "pick":
+            hero_id, pos = _bt_bot_choose_pick(db, battle)
+        else:
+            hero_id, pos = _bt_bot_choose_ban(db, battle), None
+        try:
+            # Ход стартует от момента «надумывания», не от now — честный отсчёт
+            # при догоне цепочки ходов бота (напр. SS подряд).
+            _bt_insert_action(db, battle, "guest", kind, hero_id, False, due_at)
+        except IntegrityError:
+            # Другой воркер уже сходил за бота на этот idx — откатываемся.
+            db.rollback()
+            return changed
+        if kind == "pick":
+            gp = dict(battle.guest_positions or {})
+            gp[str(hero_id)] = pos
+            battle.guest_positions = gp   # реассайн → SQLAlchemy увидит JSON-change
+        changed = True
+    return changed
+
+
+def _bt_tick(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Единая «прокрутка» состояния: просрочки таймеров + ходы бота, до
+    фикс-точки. Заменяет прямые вызовы _bt_apply_timeouts в эндпоинтах/поллинге."""
+    changed = False
+    for _ in range(len(_BT_SEQUENCES[battle.mode]) + 2):
+        c1 = _bt_apply_timeouts(db, battle, now)
+        c2 = _bt_apply_bot_moves(db, battle, now)
+        changed = changed or c1 or c2
+        if not (c1 or c2):
+            break
+    return changed
+
+
+def _bt_send_match_push(host_id, guest_id, code: str) -> None:
+    """Пуш «соперник найден» с кнопкой-входом обоим участникам живого матча.
+
+    Sync httpx (вызывается из def-эндпоинтов очереди/входа — те живут в
+    threadpool, блокирующий POST там не трогает event loop). Best-effort:
+    любая ошибка проглатывается. Тот, кто свернул апп в ожидании, получит
+    пуш в чат бота; тот, кто онлайн, и так увидит матч через long-poll."""
+    if not BOT_TOKEN:
+        return
+    deep = f"{_TM_MINI_APP_URL}?battle={code}" if _TM_MINI_APP_URL else None
+    payload_base = {
+        "text": "⚔️ Соперник найден! Заходи в «Битву драфтов» — драфт уже идёт.",
+        "disable_web_page_preview": True,
+    }
+    if deep:
+        payload_base["reply_markup"] = {
+            "inline_keyboard": [[{"text": "Открыть битву", "web_app": {"url": deep}}]]
+        }
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    for chat_id in (host_id, guest_id):
+        if chat_id is None:
+            continue
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                client.post(url, json={**payload_base, "chat_id": chat_id})
+        except Exception as e:
+            logger.warning("[battle] match push to %s failed: %s", chat_id, e)
+
+
+def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
+    """Подсадка бота в зависшую searching-комнату. guest_id остаётся NULL."""
+    battle.is_bot = True
+    battle.status = "drafting"
+    battle.first_pick = random.choice(("host", "guest"))
+    battle.turn_index = 0
+    battle.started_at = now
+    battle.last_action_at = now
+    battle.state_version += 1
+    _bt_start_turn(battle, now)
+    _bt_log("battle_start", battle.host_id)
+    _bt_log("battle_vs_bot", battle.host_id)
+
+
 def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime) -> dict:
     seq = _BT_SEQUENCES[battle.mode]
     actions = (
@@ -4242,6 +4485,12 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
             "photo_url": s.get("photo_url"),
         }
+
+    # Бот занимает место гостя (guest_id NULL): отдаём его как «игрока-бота».
+    def _guest_player():
+        if battle.is_bot:
+            return {"user_id": None, "name": "Бот", "photo_url": None, "is_bot": True}
+        return _player(battle.guest_id)
 
     # Стадия расстановки: общий таймер + кто уже отправил. Раскладка — ТОЛЬКО
     # своя (приватность до финала).
@@ -4290,9 +4539,10 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
         "mode": battle.mode,
         "status": battle.status,
         "you": viewer_role,
+        "vs_bot": bool(battle.is_bot),
         "first_pick": battle.first_pick,
         "host": _player(battle.host_id),
-        "guest": _player(battle.guest_id),
+        "guest": _guest_player(),
         "reserves": {
             "host_ms": battle.host_reserve_ms,
             "guest_ms": battle.guest_reserve_ms,
@@ -4408,7 +4658,7 @@ def api_battle_active(token: str, db: Session = Depends(get_db)):
     if battle is None:
         return {"code": None}
     now = _bt_now()
-    if _bt_apply_timeouts(db, battle, now):
+    if _bt_tick(db, battle, now):
         db.commit()
         _bt_notify(battle.id)
         if battle.status not in _BT_ACTIVE_STATUSES:
@@ -4450,9 +4700,11 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
     )
     if candidate is not None:
         _bt_start_battle(candidate, uid, now)
+        host_id, guest_id, code = candidate.host_id, uid, candidate.code
         db.commit()
         _bt_notify(candidate.id)
-        return {"code": candidate.code, "status": "drafting", "matched": True}
+        _bt_send_match_push(host_id, guest_id, code)
+        return {"code": code, "status": "drafting", "matched": True}
 
     battle = DBDraftBattle(
         code=_bt_new_code(db), mode=data.mode, status="searching",
@@ -4522,9 +4774,11 @@ def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
 
     db.refresh(battle)
     _bt_start_battle(battle, uid, _bt_now())
+    host_id, code = battle.host_id, battle.code
     db.commit()
     _bt_notify(battle.id)
-    return {"code": battle.code, "status": "drafting", "you": "guest"}
+    _bt_send_match_push(host_id, uid, code)
+    return {"code": code, "status": "drafting", "you": "guest"}
 
 
 @app.post("/api/battle/action")
@@ -4537,7 +4791,7 @@ def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="not a participant")
 
     now = _bt_now()
-    if _bt_apply_timeouts(db, battle, now):
+    if _bt_tick(db, battle, now):
         db.commit()
         _bt_notify(battle.id)
         # Состояние ушло — клиент перечитает; его клик уже неактуален.
@@ -4586,7 +4840,7 @@ def api_battle_positions(data: BattlePositionsReq, db: Session = Depends(get_db)
         raise HTTPException(status_code=403, detail="not a participant")
 
     now = _bt_now()
-    if _bt_apply_timeouts(db, battle, now):
+    if _bt_tick(db, battle, now):
         db.commit()
         _bt_notify(battle.id)
         raise HTTPException(status_code=409, detail="Время расстановки вышло.")
@@ -4655,7 +4909,7 @@ def api_battle_state(token: str, code: str, db: Session = Depends(get_db)):
     uid = _tm_require_user(token=token)
     battle = _bt_get_battle(db, code)
     now = _bt_now()
-    if _bt_apply_timeouts(db, battle, now):
+    if _bt_tick(db, battle, now):
         db.commit()
         _bt_notify(battle.id)
     return _bt_serialize(db, battle, _bt_role(battle, uid), now)
@@ -4668,7 +4922,22 @@ def _bt_poll_read(code: str, user_id: int, since: int):
     with SessionLocal() as db:
         battle = _bt_get_battle(db, code)
         now = _bt_now()
-        if _bt_apply_timeouts(db, battle, now):
+        # Бот-фолбэк: searching висит дольше таймаута и юзер всё ещё ждёт (раз
+        # поллит) → подсаживаем бота. Перечитываем с FOR UPDATE и перепроверяем
+        # статус — живой соперник мог занять комнату параллельно (тогда no-op).
+        if (
+            battle.status == "searching"
+            and not battle.is_bot
+            and battle.created_at is not None
+            and (now - _bt_aware(battle.created_at)).total_seconds() >= _BT_BOT_FALLBACK_SEC
+        ):
+            locked = _bt_get_battle(db, code, for_update=True)
+            if locked.status == "searching" and not locked.is_bot:
+                _bt_start_battle_vs_bot(locked, now)
+                db.commit()
+                _bt_notify(locked.id)
+                battle = locked
+        if _bt_tick(db, battle, now):
             db.commit()
             _bt_notify(battle.id)
         if battle.state_version > since:
@@ -4676,6 +4945,15 @@ def _bt_poll_read(code: str, user_id: int, since: int):
         wait_s = _BT_MAX_HOLD_SECONDS
         if battle.status == "drafting" and battle.deadline_at is not None:
             wait_s = max(0.05, (_bt_aware(battle.deadline_at) - now).total_seconds())
+            # Ход бота: проснуться к моменту, когда он «надумает», чтобы сходить.
+            _due, bot_wait = _bt_bot_due(battle, now)
+            if bot_wait is not None:
+                wait_s = min(wait_s, max(0.05, bot_wait))
+        elif battle.status == "searching" and not battle.is_bot:
+            # Спим не дольше, чем до момента подсадки бота.
+            if battle.created_at is not None:
+                left = _BT_BOT_FALLBACK_SEC - (now - _bt_aware(battle.created_at)).total_seconds()
+                wait_s = min(wait_s, max(0.5, left))
         return None, battle.id, wait_s
 
 

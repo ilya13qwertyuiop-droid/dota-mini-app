@@ -693,6 +693,10 @@ class DraftBattle(Base):
     guest_id = Column(
         BigInteger, ForeignKey("user_profiles.user_id"), nullable=True, index=True
     )
+    # Соперник — ИИ-бот (подсаживается, когда живой не нашёлся за таймаут
+    # поиска). guest_id при этом NULL; роль бота — всегда 'guest'. Бот ходит
+    # лениво на сервере (см. _bt_apply_bot_moves). В онлайн-счётчик не идёт.
+    is_bot = Column(Boolean, nullable=False, default=False, server_default="0")
     # Кто ходит первым ('host'/'guest') — жеребьёвка при старте драфта.
     first_pick = Column(String(5), nullable=True)
     turn_index = Column(SmallInteger, nullable=False, default=0)

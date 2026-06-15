@@ -1617,6 +1617,7 @@ _ANALYTICS_EVENT_LABELS = {
     "page_draft_battle":     "Битва драфтов — открыт экран",
     "battle_queue":          "Битва — встал в очередь",
     "battle_start":          "Битва — началась",
+    "battle_vs_bot":         "Битва — против бота",
     "battle_finish":         "Битва — доиграна",
     "battle_forfeit":        "Битва — сдался",
 }

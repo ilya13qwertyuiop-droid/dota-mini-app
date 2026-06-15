@@ -208,6 +208,17 @@ def init_stats_tables() -> None:
             conn.execute(text(ddl))
             logger.info("[stats_db] Migration applied: added %s to draft_battles", col_name)
 
+    # is_bot — отдельно: boolean DEFAULT кросс-БД (PG: false, SQLite: 0).
+    # NOT NULL с дефолтом, чтобы ALTER на непустой таблице не падал.
+    with engine.begin() as conn:
+        if not _column_exists(conn, "draft_battles", "is_bot"):
+            _bool_default = "0" if conn.dialect.name == "sqlite" else "false"
+            conn.execute(text(
+                "ALTER TABLE draft_battles ADD COLUMN is_bot BOOLEAN NOT NULL "
+                f"DEFAULT {_bool_default}"
+            ))
+            logger.info("[stats_db] Migration applied: added is_bot to draft_battles")
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""
