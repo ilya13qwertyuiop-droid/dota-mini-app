@@ -9910,7 +9910,9 @@ margin-top: var(--space-4);
   width: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--space-5);
-  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+  /* БЕЗ собственного min-height: центрирует родитель #bt-result (у него
+     min-height + justify-center). Иначе двойной vh-100 → акт не влезал и
+     контент уезжал в нижнюю половину. */
 }
 .bt-rv-label {
   font-size: var(--text-xs); font-weight: var(--font-bold);
@@ -9940,23 +9942,31 @@ margin-top: var(--space-4);
 }
 .bt-rv-mu-team--opp .bt-rv-mu-cap { color: var(--negative); }
 .bt-rv-mu-team--me .bt-rv-mu-cap { color: var(--positive); }
-.bt-rv-heroes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-/* «Перетягивание» — дорожка с ползунком, склоняется к сильнейшему матчапу. */
-.bt-rv-mu-clash { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
-.bt-rv-mu-tug {
-  position: relative; width: 100%; height: 4px; border-radius: 999px;
-  background: linear-gradient(90deg,
-    color-mix(in oklch, var(--positive) 55%, transparent),
-    var(--bg-elevated) 50%,
-    color-mix(in oklch, var(--negative) 55%, transparent));
+.bt-rv-heroes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
+/* Клэш матчапа: числа сверху + diverging-полосы из центра навстречу. */
+.bt-rv-mu-clash { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: 100%; }
+.bt-rv-mu-nums {
+  display: flex; align-items: baseline; justify-content: center; gap: var(--space-3);
+  width: 100%;
 }
-.bt-rv-mu-knob {
-  position: absolute; top: 50%; left: 50%;
-  width: 14px; height: 14px; border-radius: 999px;
-  background: var(--text-primary);
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+.bt-rv-mu-num {
+  font-family: var(--font-mono); font-size: var(--text-2xl); font-weight: var(--font-bold);
+  font-variant-numeric: tabular-nums; min-width: 56px;
 }
+.bt-rv-mu-num.is-opp { color: var(--negative); text-align: right; }
+.bt-rv-mu-num.is-me { color: var(--positive); text-align: left; }
+.bt-rv-mu-mid {
+  font-size: var(--text-2xs); color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+/* Две половины: левая (соперник) заполняется к центру справа-налево,
+   правая (ты) — от центра вправо. Длиннее полоса = сильнее контрпик. */
+.bt-rv-mu-bars { display: flex; width: 100%; height: 10px; gap: 2px; }
+.bt-rv-mu-half { flex: 1; display: flex; }
+.bt-rv-mu-half--opp { justify-content: flex-end; }
+.bt-rv-mu-fill { height: 100%; border-radius: 999px; width: 0%; }
+.bt-rv-mu-fill--opp { background: var(--negative); }
+.bt-rv-mu-fill--me { background: var(--positive); }
 .bt-rv-mu-verdict {
   font-size: var(--text-sm); font-weight: var(--font-semibold);
   color: var(--text-secondary); min-height: 18px; text-align: center;
@@ -9964,11 +9974,11 @@ margin-top: var(--space-4);
 .bt-rv-mu-verdict.is-win { color: var(--positive); }
 .bt-rv-mu-verdict.is-lose { color: var(--negative); }
 
-/* ── Акт 2 · Синергия ── */
+/* ── Акт 2 · Синергия (две команды, крупно, сравнение) ── */
 .bt-rv-syn {
   width: 100%; max-width: 360px;
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
@@ -9979,24 +9989,14 @@ margin-top: var(--space-4);
   background: color-mix(in oklch, var(--accent) 7%, var(--bg-surface));
 }
 .bt-rv-syn-cap {
-  flex: 0 0 64px; font-size: var(--text-2xs); color: var(--text-tertiary);
-  text-transform: uppercase; letter-spacing: 0.06em; line-height: 1.2;
+  align-self: flex-start;
+  font-size: var(--text-2xs); color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.08em;
 }
-.bt-rv-syn-chain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; }
-.bt-rv-syn-chain .bt-rv-hero { flex: 1; min-width: 0; }
-.bt-rv-syn-link {
-  flex: 0 0 6px; height: 2px; border-radius: 999px;
-  background: var(--border-strong);
-  transform-origin: center;
-}
-.bt-rv-syn-chain.is-me .bt-rv-syn-link { background: color-mix(in oklch, var(--accent) 70%, transparent); }
+.bt-rv-syn .bt-rv-heroes { gap: var(--space-2); }
 .bt-rv-syn-val {
-  flex: 0 0 auto; min-width: 44px; text-align: right;
-  font-family: var(--font-mono); font-size: var(--text-lg);
+  font-family: var(--font-mono); font-size: var(--text-3xl);
   font-weight: var(--font-bold); color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; line-height: 1;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .bt-rv-mu-knob { box-shadow: none; }
-}
+.bt-rv-syn.is-lead .bt-rv-syn-val { color: var(--accent); }

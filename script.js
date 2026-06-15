@@ -2251,9 +2251,15 @@
             if (oppH) oppH.innerHTML = _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]);
 
             var meMu = r[me].matchup_score || 0, oppMu = r[opp].matchup_score || 0;
-            var sum = meMu + oppMu || 1;
-            var mePct = Math.max(6, Math.min(94, meMu / sum * 100));
-            var knob = document.getElementById('bt-rv-mu-knob');
+            // Компоненты в [0,50]; нормируем длину полос к самому сильному из
+            // двух, чтобы перевес читался крупно (а не как ±6% от центра).
+            var maxMu = Math.max(meMu, oppMu, 1);
+            var mePct = Math.max(4, meMu / maxMu * 100);
+            var oppPct = Math.max(4, oppMu / maxMu * 100);
+            var meFill = document.getElementById('bt-rv-mu-me-fill');
+            var oppFill = document.getElementById('bt-rv-mu-opp-fill');
+            var meValEl = document.getElementById('bt-rv-mu-me-val');
+            var oppValEl = document.getElementById('bt-rv-mu-opp-val');
             var verdictEl = document.getElementById('bt-rv-mu-verdict');
             var meTeam = scr.querySelector('.bt-rv-mu-team--me');
             var oppTeam = scr.querySelector('.bt-rv-mu-team--opp');
@@ -2264,7 +2270,9 @@
             gsap.set(label, { opacity: 0, y: -8 });
             gsap.set(oppTeam, { opacity: 0, y: -28 });
             gsap.set(meTeam, { opacity: 0, y: 28 });
-            gsap.set(knob, { left: '50%' });
+            gsap.set([meFill, oppFill], { width: '0%' });
+            if (meValEl) meValEl.textContent = '0';
+            if (oppValEl) oppValEl.textContent = '0';
             if (verdictEl) { verdictEl.textContent = ''; verdictEl.className = 'bt-rv-mu-verdict'; }
 
             gsap.to(label, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
@@ -2273,13 +2281,21 @@
             await _btRvSleep(900);
             if (_btRvSkip) return;
 
-            gsap.to(knob, { left: mePct.toFixed(1) + '%', duration: 1.0, ease: 'power2.inOut' });
+            // Полосы растут из центра навстречу, числа набегают.
+            gsap.to(meFill, { width: mePct.toFixed(1) + '%', duration: 0.9, ease: 'power2.out' });
+            gsap.to(oppFill, { width: oppPct.toFixed(1) + '%', duration: 0.9, ease: 'power2.out' });
+            var cm = { v: 0 }, co = { v: 0 };
+            gsap.to(cm, { v: meMu, duration: 0.9, ease: 'power2.out',
+                onUpdate: function () { if (meValEl) meValEl.textContent = _btFmt1(cm.v); } });
+            gsap.to(co, { v: oppMu, duration: 0.9, ease: 'power2.out',
+                onUpdate: function () { if (oppValEl) oppValEl.textContent = _btFmt1(co.v); } });
+
             var diff = meMu - oppMu;
             if (verdictEl) {
                 if (Math.abs(diff) < 0.5) { verdictEl.textContent = 'Контрпики равны'; }
                 else if (diff > 0) { verdictEl.textContent = 'Твой драфт контрит сильнее'; verdictEl.classList.add('is-win'); }
                 else { verdictEl.textContent = 'Соперник контрит сильнее'; verdictEl.classList.add('is-lose'); }
-                gsap.fromTo(verdictEl, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.5, delay: 0.5, ease: 'power2.out' });
+                gsap.fromTo(verdictEl, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.5, delay: 0.7, ease: 'power2.out' });
             }
             _mghlHaptic('tap');
             await _btRvSleep(2000);
@@ -2295,25 +2311,22 @@
         async function _btActSynergy(st, me, opp, r) {
             var scr = document.getElementById('bt-rv-synergy');
             if (!scr) return;
-            function chain(res) {
-                var ids = res.ally_ids || [];
-                var parts = [];
-                ids.forEach(function (id, i) {
-                    if (i > 0) parts.push('<span class="bt-rv-syn-link"></span>');
-                    parts.push('<span class="bt-rv-hero"><img src="' + _mghlEsc(_mghlImg(id)) +
-                        '" alt="" onerror="this.style.visibility=\'hidden\'"></span>');
-                });
-                return parts.join('');
+            function heroesHtml(res) {
+                return (res.ally_ids || []).map(function (id) {
+                    return '<span class="bt-rv-hero"><img src="' + _mghlEsc(_mghlImg(id)) +
+                        '" alt="" title="' + _mghlEsc(_mghlName(id)) +
+                        '" onerror="this.style.visibility=\'hidden\'"></span>';
+                }).join('');
             }
-            function rowHtml(res, name, mine) {
+            function rowHtml(res, name) {
                 return '<div class="bt-rv-syn-cap">' + _mghlEsc(name) + '</div>' +
-                    '<div class="bt-rv-syn-chain' + (mine ? ' is-me' : '') + '">' + chain(res) + '</div>' +
+                    '<div class="bt-rv-heroes">' + heroesHtml(res) + '</div>' +
                     '<div class="bt-rv-syn-val" data-target="' + (res.synergy_score || 0) + '">0</div>';
             }
             var meRow = document.getElementById('bt-rv-syn-me');
             var oppRow = document.getElementById('bt-rv-syn-opp');
-            if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда', true);
-            if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник', false);
+            if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда');
+            if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник');
             var label = scr.querySelector('.bt-rv-label');
 
             scr.hidden = false;
@@ -2322,21 +2335,21 @@
             gsap.set([meRow, oppRow], { opacity: 0, y: 18 });
             gsap.to(label, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
             gsap.to([meRow, oppRow], { opacity: 1, y: 0, duration: 0.55, stagger: 0.12, delay: 0.1, ease: 'power3.out' });
-            await _btRvSleep(560);
+            await _btRvSleep(620);
             if (_btRvSkip) return;
 
-            // Вспышка связей + набег числа у обеих сторон.
+            // Иконки «оживают» по очереди + крупное число синергии набегает.
             [meRow, oppRow].forEach(function (row, ri) {
                 if (!row) return;
-                var links = row.querySelectorAll('.bt-rv-syn-link');
-                gsap.fromTo(links, { opacity: 0.2, scaleX: 0.3 },
-                    { opacity: 1, scaleX: 1, duration: 0.4, stagger: 0.09, delay: 0.15 + ri * 0.1, ease: 'power2.out' });
+                var heroes = row.querySelectorAll('.bt-rv-hero');
+                gsap.fromTo(heroes, { opacity: 0.35, scale: 0.85 },
+                    { opacity: 1, scale: 1, duration: 0.4, stagger: 0.07, delay: 0.1 + ri * 0.1, ease: 'power2.out' });
                 var valEl = row.querySelector('.bt-rv-syn-val');
                 if (valEl) {
                     var target = parseFloat(valEl.getAttribute('data-target')) || 0;
                     var c = { v: 0 };
                     gsap.to(c, {
-                        v: target, duration: 0.9, delay: 0.2 + ri * 0.1, ease: 'power2.out',
+                        v: target, duration: 1.0, delay: 0.25 + ri * 0.1, ease: 'power2.out',
                         onUpdate: function () { valEl.textContent = _btFmt1(c.v); },
                     });
                 }
