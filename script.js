@@ -1548,11 +1548,10 @@
                 _btStopTimer();
                 _btStopAssignTimer();
                 _btStopPolling();
+                _btShow('bt-result');     // контейнер виден до запуска актов
                 _btRenderResult(st);
-                _btShow('bt-result');
-                if (prevStatus === 'drafting' || prevStatus === 'assigning') {
-                    _mghlHaptic(st.winner === _btMyRole() ? 'ok' : 'bad');
-                }
+                // Хаптику вердикта даёт сам разбор (applyVerdict) в кульминации,
+                // здесь не дублируем — иначе вибрация бьёт сразу, до раскрытия.
             } else { // abandoned
                 _btStopTimer();
                 _btStopPolling();
@@ -2133,14 +2132,236 @@
             return '';
         }
 
+        // ── Результат: кинематографичный разбор по актам ───────────────────
+        // PvP-адаптация (не копия тренировки, где разбираешь свой драфт против
+        // ботов): здесь два живых драфта ПРОТИВОСТОЯТ, потому акты построены на
+        // сравнении сторон — Контрпики (перетягивание), Синергия (чья команда
+        // сыграннее), Вердикт. GSAP + sleep/skip — тот же паттерн, что у
+        // showDrafterResult. Тап по экрану или «Пропустить» — сразу к финалу.
+        var _btRvSkip = false;
+
+        function _btRvSleep(ms) {
+            return new Promise(function (resolve) {
+                if (_btRvSkip) { resolve(); return; }
+                _bt.revealTimers.push(setTimeout(resolve, ms));
+            });
+        }
+        function _btRvHeroesHtml(ids, posMap) {
+            var arr = (ids || []).slice();
+            if (posMap) arr.sort(function (x, y) {
+                return (posMap[String(x)] || 9) - (posMap[String(y)] || 9);
+            });
+            return arr.map(function (id) {
+                var p = posMap ? posMap[String(id)] : null;
+                return '<span class="bt-rv-hero">' +
+                    '<img src="' + _mghlEsc(_mghlImg(id)) + '" alt="" ' +
+                    'title="' + _mghlEsc(_mghlName(id)) + '" onerror="this.style.visibility=\'hidden\'">' +
+                    (p ? '<i>' + p + '</i>' : '') +
+                '</span>';
+            }).join('');
+        }
+        function _btRvSkipBtn(on) {
+            var b = document.getElementById('bt-rv-skip');
+            if (!on) { if (b) b.remove(); return; }
+            if (b) return;
+            b = document.createElement('button');
+            b.id = 'bt-rv-skip';
+            b.className = 'dr-skip-btn';   // единый язык со скипом тренировки
+            b.textContent = 'Пропустить';
+            b.addEventListener('click', function () {
+                if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
+            });
+            document.documentElement.appendChild(b);
+            b.style.opacity = '0';
+            setTimeout(function () {
+                b.style.transition = 'opacity 0.35s ease-out'; b.style.opacity = '1';
+            }, 400);
+        }
+
         function _btRenderResult(st) {
             _btClearReveal();
+            _btRvSkip = false;
+            _bt.revealTimers = [];
             var me = _btMyRole(), opp = _btOppRole();
             var r = st.result || {};
             var isForfeit = !!r.forfeit;
+            var posMaps = r.positions || {};
+
+            ['bt-rv-matchup', 'bt-rv-synergy', 'bt-rv-final'].forEach(function (id) {
+                var e = document.getElementById(id); if (e) e.hidden = true;
+            });
+
+            // Финальный экран наполняем контекстом заранее (имена/герои).
+            var oppNameEl = document.getElementById('bt-result-opp-name');
+            if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
+            _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
+
+            // Форфейт / нет компонентов / reduced-motion — без актов, сразу финал.
+            if (isForfeit || !r[me] || !r[opp] || _btReduceMotion()) {
+                _btShowFinal(st, me, opp, true);
+                _bt.revealActive = false;
+                return;
+            }
+
+            _bt.revealActive = true;
+            _bt.revealFinalize = function () {
+                if (_btRvSkip) return;
+                _btRvSkip = true;
+                _btClearReveal();
+                try { gsap.globalTimeline.clear(); } catch (e) {}
+                _btRvSkipBtn(false);
+                ['bt-rv-matchup', 'bt-rv-synergy'].forEach(function (id) {
+                    var e = document.getElementById(id);
+                    if (e) { e.hidden = true; gsap.set(e, { clearProps: 'opacity' }); }
+                });
+                _btShowFinal(st, me, opp, true);
+                _bt.revealActive = false;
+            };
+
+            _btRvSkipBtn(true);
+            _btPlayActs(st, me, opp, r, posMaps);
+        }
+
+        async function _btPlayActs(st, me, opp, r, posMaps) {
+            try {
+                await _btActMatchup(st, me, opp, r, posMaps);
+                if (_btRvSkip) return;
+                await _btActSynergy(st, me, opp, r);
+                if (_btRvSkip) return;
+                _btRvSkipBtn(false);
+                _btShowFinal(st, me, opp, false);
+                _bt.revealActive = false;
+            } catch (e) {
+                // Любой сбой анимации не должен оставить игрока без результата.
+                if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
+            }
+        }
+
+        // АКТ 1 · КОНТРПИКИ — драфты въезжают навстречу, «перетягивание»
+        // склоняется к тому, чей матчап сильнее (антисимметрично, сумма = 50).
+        async function _btActMatchup(st, me, opp, r, posMaps) {
+            var scr = document.getElementById('bt-rv-matchup');
+            if (!scr) return;
+            var oppName = document.getElementById('bt-rv-mu-opp-name');
+            if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            var meH = document.getElementById('bt-rv-mu-me-heroes');
+            var oppH = document.getElementById('bt-rv-mu-opp-heroes');
+            if (meH) meH.innerHTML = _btRvHeroesHtml(r[me].ally_ids, posMaps[me]);
+            if (oppH) oppH.innerHTML = _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]);
+
+            var meMu = r[me].matchup_score || 0, oppMu = r[opp].matchup_score || 0;
+            var sum = meMu + oppMu || 1;
+            var mePct = Math.max(6, Math.min(94, meMu / sum * 100));
+            var knob = document.getElementById('bt-rv-mu-knob');
+            var verdictEl = document.getElementById('bt-rv-mu-verdict');
+            var meTeam = scr.querySelector('.bt-rv-mu-team--me');
+            var oppTeam = scr.querySelector('.bt-rv-mu-team--opp');
+            var label = scr.querySelector('.bt-rv-label');
+
+            scr.hidden = false;
+            gsap.set(scr, { opacity: 1 });
+            gsap.set(label, { opacity: 0, y: -8 });
+            gsap.set(oppTeam, { opacity: 0, y: -28 });
+            gsap.set(meTeam, { opacity: 0, y: 28 });
+            gsap.set(knob, { left: '50%' });
+            if (verdictEl) { verdictEl.textContent = ''; verdictEl.className = 'bt-rv-mu-verdict'; }
+
+            gsap.to(label, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
+            gsap.to(oppTeam, { opacity: 1, y: 0, duration: 0.55, delay: 0.1, ease: 'power3.out' });
+            gsap.to(meTeam, { opacity: 1, y: 0, duration: 0.55, delay: 0.2, ease: 'power3.out' });
+            await _btRvSleep(900);
+            if (_btRvSkip) return;
+
+            gsap.to(knob, { left: mePct.toFixed(1) + '%', duration: 1.0, ease: 'power2.inOut' });
+            var diff = meMu - oppMu;
+            if (verdictEl) {
+                if (Math.abs(diff) < 0.5) { verdictEl.textContent = 'Контрпики равны'; }
+                else if (diff > 0) { verdictEl.textContent = 'Твой драфт контрит сильнее'; verdictEl.classList.add('is-win'); }
+                else { verdictEl.textContent = 'Соперник контрит сильнее'; verdictEl.classList.add('is-lose'); }
+                gsap.fromTo(verdictEl, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.5, delay: 0.5, ease: 'power2.out' });
+            }
+            _mghlHaptic('tap');
+            await _btRvSleep(2000);
+            if (_btRvSkip) return;
+
+            gsap.to(scr, { opacity: 0, duration: 0.32, ease: 'power2.in' });
+            await _btRvSleep(360);
+            scr.hidden = true;
+        }
+
+        // АКТ 2 · СИНЕРГИЯ — две команды цепочками, связи вспыхивают, число
+        // синергии набегает. Сравнение: чья команда сыграннее.
+        async function _btActSynergy(st, me, opp, r) {
+            var scr = document.getElementById('bt-rv-synergy');
+            if (!scr) return;
+            function chain(res) {
+                var ids = res.ally_ids || [];
+                var parts = [];
+                ids.forEach(function (id, i) {
+                    if (i > 0) parts.push('<span class="bt-rv-syn-link"></span>');
+                    parts.push('<span class="bt-rv-hero"><img src="' + _mghlEsc(_mghlImg(id)) +
+                        '" alt="" onerror="this.style.visibility=\'hidden\'"></span>');
+                });
+                return parts.join('');
+            }
+            function rowHtml(res, name, mine) {
+                return '<div class="bt-rv-syn-cap">' + _mghlEsc(name) + '</div>' +
+                    '<div class="bt-rv-syn-chain' + (mine ? ' is-me' : '') + '">' + chain(res) + '</div>' +
+                    '<div class="bt-rv-syn-val" data-target="' + (res.synergy_score || 0) + '">0</div>';
+            }
+            var meRow = document.getElementById('bt-rv-syn-me');
+            var oppRow = document.getElementById('bt-rv-syn-opp');
+            if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда', true);
+            if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник', false);
+            var label = scr.querySelector('.bt-rv-label');
+
+            scr.hidden = false;
+            gsap.set(scr, { opacity: 1 });
+            gsap.set(label, { opacity: 0, y: -8 });
+            gsap.set([meRow, oppRow], { opacity: 0, y: 18 });
+            gsap.to(label, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
+            gsap.to([meRow, oppRow], { opacity: 1, y: 0, duration: 0.55, stagger: 0.12, delay: 0.1, ease: 'power3.out' });
+            await _btRvSleep(560);
+            if (_btRvSkip) return;
+
+            // Вспышка связей + набег числа у обеих сторон.
+            [meRow, oppRow].forEach(function (row, ri) {
+                if (!row) return;
+                var links = row.querySelectorAll('.bt-rv-syn-link');
+                gsap.fromTo(links, { opacity: 0.2, scaleX: 0.3 },
+                    { opacity: 1, scaleX: 1, duration: 0.4, stagger: 0.09, delay: 0.15 + ri * 0.1, ease: 'power2.out' });
+                var valEl = row.querySelector('.bt-rv-syn-val');
+                if (valEl) {
+                    var target = parseFloat(valEl.getAttribute('data-target')) || 0;
+                    var c = { v: 0 };
+                    gsap.to(c, {
+                        v: target, duration: 0.9, delay: 0.2 + ri * 0.1, ease: 'power2.out',
+                        onUpdate: function () { valEl.textContent = _btFmt1(c.v); },
+                    });
+                }
+            });
+            // Подсветка сыграннее: чья синергия выше.
+            var meSyn = r[me].synergy_score || 0, oppSyn = r[opp].synergy_score || 0;
+            if (meRow) meRow.classList.toggle('is-lead', meSyn >= oppSyn);
+            if (oppRow) oppRow.classList.toggle('is-lead', oppSyn > meSyn);
+            _mghlHaptic('tap');
+            await _btRvSleep(2100);
+            if (_btRvSkip) return;
+
+            gsap.to(scr, { opacity: 0, duration: 0.32, ease: 'power2.in' });
+            await _btRvSleep(360);
+            scr.hidden = true;
+        }
+
+        // ФИНАЛ — метрики собираются, вердикт появляется последним.
+        function _btShowFinal(st, me, opp, instant) {
+            var r = st.result || {};
             var finals = r.final || {};
             var pens = r.penalties || {};
-            var posMaps = r.positions || {};
+            var isForfeit = !!r.forfeit;
+            var scr = document.getElementById('bt-rv-final');
+            if (scr) scr.hidden = false;
 
             var verdict = document.getElementById('bt-result-verdict');
             var note = document.getElementById('bt-result-note');
@@ -2150,17 +2371,11 @@
             var oppRows = document.getElementById('bt-result-opp-rows');
             var meCard = document.getElementById('bt-result-me');
             var oppCard = document.getElementById('bt-result-opp');
-            var oppNameEl = document.getElementById('bt-result-opp-name');
 
             var meFinal = (finals[me] != null) ? finals[me]
                 : (r[me] && r[me].total_score != null ? r[me].total_score : null);
             var oppFinal = (finals[opp] != null) ? finals[opp]
                 : (r[opp] && r[opp].total_score != null ? r[opp].total_score : null);
-
-            // Контекст (имена + герои сторон) — сразу, его не «раскрываем».
-            if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
-            _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
-            _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
 
             function applyVerdict() {
                 if (verdict) {
@@ -2179,73 +2394,31 @@
                 if (isForfeit) {
                     note.textContent = (r.forfeit === me)
                         ? 'Ты сдался — победа присуждена сопернику.' : 'Соперник сдался.';
-                    note.hidden = false;
-                    return;
+                    note.hidden = false; return;
                 }
                 var km = _btKeyMoment(r[me]);
                 if (km) { note.textContent = km; note.hidden = false; } else note.hidden = true;
             }
-            // Конечное состояние (для skip и для finished без разбора).
-            function finalize() {
-                _btClearReveal();
+
+            _btFillRows(meRows, r[me], pens[me]);
+            _btFillRows(oppRows, r[opp], pens[opp]);
+
+            if (instant || _btReduceMotion()) {
                 if (meScoreEl) meScoreEl.textContent = meFinal != null ? _btFmt1(meFinal) : '—';
                 if (oppScoreEl) oppScoreEl.textContent = oppFinal != null ? _btFmt1(oppFinal) : '—';
-                _btFillRows(meRows, r[me], pens[me]);
-                _btFillRows(oppRows, r[opp], pens[opp]);
-                applyVerdict();
-                applyNote();
-                _bt.revealActive = false;
-            }
-            _bt.revealFinalize = finalize;
-
-            // Форфейт / нет компонентов / reduced-motion — без разбора.
-            if (isForfeit || !r[me] || !r[opp] || _btReduceMotion()) {
-                finalize();
+                applyVerdict(); applyNote();
                 return;
             }
 
-            // ── Стартовое состояние разбора ──
+            // Лёгкая кульминация: большие числа собираются, затем вердикт.
+            if (verdict) verdict.className = 'bt-result-verdict';
+            if (note) note.hidden = true;
             if (meScoreEl) meScoreEl.textContent = '0';
             if (oppScoreEl) oppScoreEl.textContent = '0';
-            if (meRows) meRows.innerHTML = '';
-            if (oppRows) oppRows.innerHTML = '';
-            if (verdict) verdict.className = 'bt-result-verdict';   // скрыт (нет --show)
-            if (note) note.hidden = true;
-            if (meCard) meCard.classList.remove('bt-result-card--win');
-            if (oppCard) oppCard.classList.remove('bt-result-card--win');
-
-            var meSyn = r[me].synergy_score || 0, meMu = r[me].matchup_score || 0, mePen = pens[me] || 0;
-            var oppSyn = r[opp].synergy_score || 0, oppMu = r[opp].matchup_score || 0, oppPen = pens[opp] || 0;
-
-            var steps = [];
-            steps.push(function () {            // синергия
-                _btAddRow(meRows, 'Синергия', r[me].synergy_score);
-                _btAddRow(oppRows, 'Синергия', r[opp].synergy_score);
-                _btCountUp(meScoreEl, 0, meSyn);
-                _btCountUp(oppScoreEl, 0, oppSyn);
-            });
-            steps.push(function () {            // контрпики
-                _btAddRow(meRows, 'Контрпики', r[me].matchup_score);
-                _btAddRow(oppRows, 'Контрпики', r[opp].matchup_score);
-                _btCountUp(meScoreEl, meSyn, meSyn + meMu);
-                _btCountUp(oppScoreEl, oppSyn, oppSyn + oppMu);
-            });
-            if (mePen < 0 || oppPen < 0) {      // позиции (только если есть штраф)
-                steps.push(function () {
-                    _btAddRow(meRows, 'Позиции', mePen < 0 ? mePen : 0, mePen < 0);
-                    _btAddRow(oppRows, 'Позиции', oppPen < 0 ? oppPen : 0, oppPen < 0);
-                    _btCountUp(meScoreEl, meSyn + meMu, meFinal);
-                    _btCountUp(oppScoreEl, oppSyn + oppMu, oppFinal);
-                });
-            }
-            steps.push(function () { finalize(); });   // итог + вердикт (защёлкивает всё)
-
-            _bt.revealActive = true;
-            _bt.revealTimers = [];
-            var START = 400, GAP = 850;
-            steps.forEach(function (fn, i) {
-                _bt.revealTimers.push(setTimeout(fn, START + i * GAP));
-            });
+            _btCountUp(meScoreEl, 0, meFinal != null ? meFinal : 0);
+            _btCountUp(oppScoreEl, 0, oppFinal != null ? oppFinal : 0);
+            _bt.revealTimers.push(setTimeout(function () { applyVerdict(); }, 750));
+            _bt.revealTimers.push(setTimeout(function () { applyNote(); }, 1050));
         }
 
         // Тап по экрану результата во время разбора — пропустить к финалу.
@@ -2254,12 +2427,13 @@
             var resultEl = document.getElementById('bt-result');
             if (resultEl) {
                 resultEl.addEventListener('click', function (e) {
-                    if (!_bt.revealActive) return;            // разбор не идёт — обычные клики
-                    if (e.target.closest('button')) return;   // тап по «Ещё раз»/«В меню» — не перехватываем
+                    if (!_bt.revealActive) return;
+                    if (e.target.closest('button')) return;
                     if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
                 });
             }
         }
+
 
         window.btRematch = function () {
             _btClearReveal(); _bt.revealActive = false;
