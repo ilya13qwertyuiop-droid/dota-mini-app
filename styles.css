@@ -9504,7 +9504,13 @@ margin-top: var(--space-4);
   display: flex; flex-direction: column; align-items: center;
   gap: var(--space-4); padding: var(--space-8) var(--space-4);
 }
-.bt-result-verdict { font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary); }
+/* Вердикт скрыт до кульминации разбора — появляется последним (--show). */
+.bt-result-verdict {
+  font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary);
+  opacity: 0; transform: translateY(10px) scale(0.94);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0, 0, 1);
+}
+.bt-result-verdict--show { opacity: 1; transform: none; }
 .bt-result-verdict--win { color: var(--positive); }
 .bt-result-verdict--lose { color: var(--negative); }
 .bt-result-scores {
@@ -9523,6 +9529,22 @@ margin-top: var(--space-4);
 .bt-result-card-rows { display: flex; flex-direction: column; gap: 2px; margin-top: var(--space-1); }
 .bt-result-row { display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--text-tertiary); }
 .bt-result-row b { font-family: var(--font-mono); color: var(--text-secondary); }
+/* Компоненты счёта вкатываются по одному во время разбора. */
+.bt-result-row--in { animation: btRowIn 0.35s cubic-bezier(0.2, 0, 0, 1) both; }
+@keyframes btRowIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+/* Победившая сторона подсвечивается на кульминации. */
+.bt-result-card { transition: border-color 0.35s ease, background 0.35s ease; }
+.bt-result-card--win {
+  border-color: var(--positive);
+  background: color-mix(in oklch, var(--positive) 9%, var(--bg-surface));
+}
+@media (prefers-reduced-motion: reduce) {
+  .bt-result-verdict { transition: none; }
+  .bt-result-row--in { animation: none; }
+}
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
 #bt-result .tm-primary-btn, #bt-result .tm-ghost-btn { width: 100%; max-width: 320px; }
 
@@ -9733,13 +9755,25 @@ margin-top: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
-  cursor: pointer; text-align: left;
+  cursor: grab; text-align: left;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  /* none: вертикальный драг по строке не скроллит страницу. Список из 5 строк
+     помещается на экран, потому перехват прокрутки на строках безопасен. */
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  /* Плавный «слайд» соседей при reorder. Перетаскиваемая строка transition
+     отключает (--dragging) — она должна жёстко следовать за пальцем. */
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1),
+              border-color 0.15s ease, background 0.15s ease;
 }
-.bt-assign-row--sel {
+.bt-assign-row--dragging {
+  cursor: grabbing;
+  transition: none;
+  z-index: 5; position: relative;
   border-color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface));
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  transform: scale(1.02);
 }
 .bt-assign-pos {
   flex: 0 0 52px;
@@ -9749,6 +9783,13 @@ margin-top: var(--space-4);
 .bt-assign-row img {
   width: 64px; aspect-ratio: 16 / 9; object-fit: cover;
   border-radius: var(--radius-sm); background: var(--bg-elevated);
+  pointer-events: none;
+}
+/* Ручка-индикатор, что строку можно тянуть. */
+.bt-assign-grip {
+  flex: 0 0 auto; color: var(--text-tertiary);
+  font-size: 18px; line-height: 1; letter-spacing: -1px;
+  padding-left: var(--space-1);
 }
 .bt-assign-name {
   flex: 1; min-width: 0;

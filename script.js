@@ -1864,6 +1864,10 @@
             try {
                 var st = await _btPost('/battle/action', { code: _bt.code, hero_id: hid });
                 _bt.selHero = null;
+                // Чистим поиск после хода — игрок сразу вводит следующего героя,
+                // не стирая прошлый запрос вручную.
+                var search = document.getElementById('bt-search');
+                if (search) search.value = '';
                 if (st && st.version) _btApply(st);
             } catch (e) {
                 if (typeof showToast === 'function') showToast(e.message);
@@ -1873,9 +1877,10 @@
         };
 
         // ── Стадия расстановки позиций ─────────────────────────────────────
-        // Раскладка локальная (assignOrder[i] = hero_id на позиции i+1),
-        // тап по двум героям меняет их местами. «Готово» шлёт на сервер;
-        // менять можно, пока стадия не закрыта.
+        // Раскладка локальная (assignOrder[i] = hero_id на позиции i+1).
+        // Герои перетаскиваются: зажал карточку, потянул — остальные слайдят,
+        // герой встаёт на новую позицию (move-with-shift, не swap). «Готово»
+        // шлёт на сервер; менять можно, пока стадия не закрыта.
         function _btMyPickIds(st) {
             var me = _btMyRole();
             return (st.actions || [])
@@ -1900,7 +1905,6 @@
                     _bt.assignOrder = picks.slice();
                 }
             }
-            _bt.assignSel = null;
             _btDrawAssignList();
 
             var submitted = !!a.you_submitted;
@@ -1924,35 +1928,89 @@
             if (!list) return;
             var html = '';
             (_bt.assignOrder || []).forEach(function (hid, i) {
-                var sel = (_bt.assignSel === i);
-                html += '<button type="button" class="bt-assign-row' + (sel ? ' bt-assign-row--sel' : '') + '" data-slot="' + i + '">' +
+                html += '<div class="bt-assign-row" data-slot="' + i + '">' +
                     '<span class="bt-assign-pos">Pos ' + (i + 1) + '</span>' +
-                    '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" onerror="this.style.visibility=\'hidden\'">' +
+                    '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" draggable="false" onerror="this.style.visibility=\'hidden\'">' +
                     '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + '</span>' +
-                '</button>';
+                    '<span class="bt-assign-grip" aria-hidden="true">⠿</span>' +
+                '</div>';
             });
             list.innerHTML = html;
         }
 
+        // Drag-reorder на pointer events (touch + mouse). Делегируем pointerdown
+        // на стабильный контейнер списка; move/up — на document (палец может
+        // уйти за пределы строки). Перерисовка пересоздаёт строки — обработчик
+        // живёт на контейнере, переживает её.
+        var _btDrag = null;
+        function _btAssignRowH(list) {
+            // Шаг = высота строки + gap. Берём по двум первым строкам, иначе
+            // fallback по высоте одной + 8px (--space-2).
+            if (list.children.length >= 2) {
+                return list.children[1].getBoundingClientRect().top
+                     - list.children[0].getBoundingClientRect().top;
+            }
+            var first = list.children[0];
+            return first ? first.getBoundingClientRect().height + 8 : 1;
+        }
+        function _btDragMove(e) {
+            if (!_btDrag) return;
+            e.preventDefault();
+            var dy = (e.clientY != null ? e.clientY : 0) - _btDrag.startY;
+            if (Math.abs(dy) > 4) _btDrag.moved = true;
+            _btDrag.el.style.transform = 'translateY(' + dy + 'px)';
+            var rowH = _btDrag.rowH || 1;
+            var target = _btDrag.index + Math.round(dy / rowH);
+            target = Math.max(0, Math.min(_btDrag.children.length - 1, target));
+            if (target !== _btDrag.target) {
+                _btDrag.target = target;
+                // Слайд промежуточных строк, освобождая место под перетаскиваемую.
+                _btDrag.children.forEach(function (ch, i) {
+                    if (i === _btDrag.index) return;
+                    var shift = 0;
+                    if (_btDrag.index < target && i > _btDrag.index && i <= target) shift = -rowH;
+                    else if (_btDrag.index > target && i >= target && i < _btDrag.index) shift = rowH;
+                    ch.style.transform = shift ? ('translateY(' + shift + 'px)') : '';
+                });
+            }
+        }
+        function _btDragEnd() {
+            document.removeEventListener('pointermove', _btDragMove);
+            document.removeEventListener('pointerup', _btDragEnd);
+            document.removeEventListener('pointercancel', _btDragEnd);
+            if (!_btDrag) return;
+            var d = _btDrag; _btDrag = null;
+            d.el.classList.remove('bt-assign-row--dragging');
+            if (d.moved && d.target !== d.index) {
+                var arr = _bt.assignOrder;
+                var item = arr.splice(d.index, 1)[0];
+                arr.splice(d.target, 0, item);   // move-with-shift
+                _mghlHaptic('tap');
+            }
+            d.children.forEach(function (ch) { ch.style.transform = ''; });
+            _btDrawAssignList();   // перерисовка с обновлёнными метками Pos
+        }
         if (!window._btAssignBound) {
             window._btAssignBound = true;
-            document.addEventListener('click', function (e) {
-                var row = e.target && e.target.closest && e.target.closest('.bt-assign-row');
-                if (!row) return;
-                var i = parseInt(row.getAttribute('data-slot'), 10);
-                if (isNaN(i)) return;
-                if (_bt.assignSel == null) {
-                    _bt.assignSel = i;
-                } else if (_bt.assignSel === i) {
-                    _bt.assignSel = null;
-                } else {
-                    var o = _bt.assignOrder;
-                    var t = o[_bt.assignSel]; o[_bt.assignSel] = o[i]; o[i] = t;
-                    _bt.assignSel = null;
-                    _mghlHaptic('tap');
-                }
-                _btDrawAssignList();
-            });
+            var list = document.getElementById('bt-assign-list');
+            if (list) {
+                list.addEventListener('pointerdown', function (e) {
+                    var row = e.target && e.target.closest && e.target.closest('.bt-assign-row');
+                    if (!row || _btDrag) return;
+                    var children = Array.prototype.slice.call(list.children);
+                    var index = children.indexOf(row);
+                    if (index < 0) return;
+                    e.preventDefault();
+                    _btDrag = {
+                        index: index, target: index, startY: e.clientY,
+                        rowH: _btAssignRowH(list), el: row, children: children, moved: false,
+                    };
+                    row.classList.add('bt-assign-row--dragging');
+                    document.addEventListener('pointermove', _btDragMove, { passive: false });
+                    document.addEventListener('pointerup', _btDragEnd);
+                    document.addEventListener('pointercancel', _btDragEnd);
+                });
+            }
         }
 
         window.btAssignSubmit = async function () {
@@ -1995,92 +2053,222 @@
             // По нулю — сервер финализирует сам, придёт поллингом.
         }
 
-        // ── Результат ──────────────────────────────────────────────────────
-        function _btRenderResult(st) {
-            var me = _btMyRole(), opp = _btOppRole();
-            var verdict = document.getElementById('bt-result-verdict');
-            var note = document.getElementById('bt-result-note');
-            var isForfeit = !!(st.result && st.result.forfeit);
-            if (verdict) {
-                if (st.winner === 'draw') verdict.textContent = 'Ничья';
-                else if (st.winner === me) verdict.textContent = 'Победа!';
-                else verdict.textContent = 'Поражение';
-                verdict.className = 'bt-result-verdict' +
-                    (st.winner === me ? ' bt-result-verdict--win' :
-                     st.winner === 'draw' ? '' : ' bt-result-verdict--lose');
+        // ── Результат: пошаговый «разбор» с отложенным вердиктом ───────────
+        // Не бросаем итог в лицо — очки набегают по компонентам (синергия →
+        // контрпики → позиции → итог), вердикт появляется последним. Тап по
+        // экрану — пропустить. Reduced-motion — сразу финал.
+        function _btReduceMotion() {
+            return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        }
+        function _btClearReveal() {
+            (_bt.revealTimers || []).forEach(clearTimeout);
+            _bt.revealTimers = [];
+            // Поколение: уже запущенные rAF-тикеры count-up прекращаются, когда
+            // оно сменилось (иначе при skip они перезаписали бы финальное число).
+            _bt.revealGen = (_bt.revealGen || 0) + 1;
+        }
+        // Тикер числа с одним знаком после запятой (счёт битвы — round(.,1)).
+        function _btCountUp(el, from, to) {
+            if (!el) return;
+            if (_btReduceMotion()) { el.textContent = _btFmt1(to); return; }
+            var gen = _bt.revealGen || 0, dur = 600, t0 = null;
+            function step(ts) {
+                if ((_bt.revealGen || 0) !== gen) return;   // отменено skip'ом/новым разбором
+                if (t0 === null) t0 = ts;
+                var p = Math.min(1, (ts - t0) / dur);
+                var v = from + (to - from) * (1 - Math.pow(1 - p, 3));
+                el.textContent = _btFmt1(v);
+                if (p < 1) requestAnimationFrame(step); else el.textContent = _btFmt1(to);
             }
-            if (note) {
-                if (isForfeit) {
-                    note.textContent = (st.result.forfeit === me)
-                        ? 'Ты сдался — победа присуждена сопернику.'
-                        : 'Соперник сдался.';
-                    note.hidden = false;
-                } else note.hidden = true;
+            requestAnimationFrame(step);
+        }
+        function _btFmt1(v) {
+            var r = Math.round(v * 10) / 10;
+            return (Math.abs(r - Math.round(r)) < 0.05) ? String(Math.round(r)) : r.toFixed(1);
+        }
+        function _btResultRowHtml(label, value, isPen) {
+            return '<div class="bt-result-row bt-result-row--in"><span>' + label + '</span><b' +
+                (isPen ? ' class="bt-result-pen"' : '') + '>' + value + '</b></div>';
+        }
+        function _btAddRow(el, label, value, isPen) {
+            if (el) el.insertAdjacentHTML('beforeend', _btResultRowHtml(label, value, isPen));
+        }
+        function _btFillRows(el, res, pen) {
+            if (!el) return;
+            if (!res) { el.innerHTML = ''; return; }
+            var html = _btResultRowHtml('Синергия', res.synergy_score, false)
+                     + _btResultRowHtml('Контрпики', res.matchup_score, false);
+            if (pen != null) html += _btResultRowHtml('Позиции', pen < 0 ? pen : 0, pen < 0);
+            el.innerHTML = html;
+        }
+        function _btFillHeroes(elId, res, posMap) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            if (!res || !res.ally_ids) { el.innerHTML = ''; return; }
+            var ids = res.ally_ids.slice();
+            if (posMap) {
+                ids.sort(function (x, y) {
+                    return (posMap[String(x)] || 9) - (posMap[String(y)] || 9);
+                });
             }
-            var oppName = document.getElementById('bt-result-opp-name');
-            if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            el.innerHTML = ids.map(function (hid) {
+                var p = posMap ? posMap[String(hid)] : null;
+                return '<span class="bt-result-hero">' +
+                    '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" title="' + _mghlEsc(_mghlName(hid)) + '" ' +
+                    'onerror="this.style.visibility=\'hidden\'">' +
+                    (p ? '<i>' + p + '</i>' : '') +
+                '</span>';
+            }).join('');
+        }
+        // «Ключевой момент» из comments — одна строка для эмоции, не панель.
+        function _btKeyMoment(res) {
+            var c = (res && res.comments) || [];
+            var good = null, bad = null;
+            for (var i = 0; i < c.length; i++) {
+                if (!good && c[i].type === 'good' && c[i].kind === 'synergy') good = c[i];
+                if (!bad && c[i].type === 'bad' && c[i].kind === 'matchup') bad = c[i];
+            }
+            if (good) return 'Связка ' + _mghlName(good.hero_id1) + ' + ' + _mghlName(good.hero_id2) + ' — сильнейшая в драфте';
+            if (bad) return _mghlName(bad.ally_hero_id) + ' тяжело против ' + _mghlName(bad.enemy_hero_id);
+            return '';
+        }
 
+        function _btRenderResult(st) {
+            _btClearReveal();
+            var me = _btMyRole(), opp = _btOppRole();
             var r = st.result || {};
+            var isForfeit = !!r.forfeit;
             var finals = r.final || {};
             var pens = r.penalties || {};
             var posMaps = r.positions || {};
 
-            function _rows(elId, res, pen) {
-                var el = document.getElementById(elId);
-                if (!el) return;
-                if (!res) { el.innerHTML = ''; return; }
-                var penHtml = '';
-                if (pen != null) {
-                    penHtml = '<div class="bt-result-row"><span>Позиции</span><b' +
-                        (pen < 0 ? ' class="bt-result-pen"' : '') + '>' +
-                        (pen < 0 ? pen : '0') + '</b></div>';
-                }
-                el.innerHTML =
-                    '<div class="bt-result-row"><span>Синергия</span><b>' + res.synergy_score + '</b></div>' +
-                    '<div class="bt-result-row"><span>Матчапы</span><b>' + res.matchup_score + '</b></div>' +
-                    penHtml;
-            }
-            // Раскладка стороны: 5 героев с подписями позиций (вскрывается после финала).
-            function _heroes(elId, res, posMap) {
-                var el = document.getElementById(elId);
-                if (!el) return;
-                if (!res || !res.ally_ids) { el.innerHTML = ''; return; }
-                var ids = res.ally_ids.slice();
-                if (posMap) {
-                    ids.sort(function (x, y) {
-                        return (posMap[String(x)] || 9) - (posMap[String(y)] || 9);
-                    });
-                }
-                el.innerHTML = ids.map(function (hid) {
-                    var p = posMap ? posMap[String(hid)] : null;
-                    return '<span class="bt-result-hero">' +
-                        '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" title="' + _mghlEsc(_mghlName(hid)) + '" ' +
-                        'onerror="this.style.visibility=\'hidden\'">' +
-                        (p ? '<i>' + p + '</i>' : '') +
-                    '</span>';
-                }).join('');
-            }
+            var verdict = document.getElementById('bt-result-verdict');
+            var note = document.getElementById('bt-result-note');
+            var meScoreEl = document.getElementById('bt-result-me-score');
+            var oppScoreEl = document.getElementById('bt-result-opp-score');
+            var meRows = document.getElementById('bt-result-me-rows');
+            var oppRows = document.getElementById('bt-result-opp-rows');
+            var meCard = document.getElementById('bt-result-me');
+            var oppCard = document.getElementById('bt-result-opp');
+            var oppNameEl = document.getElementById('bt-result-opp-name');
 
-            var meScore = document.getElementById('bt-result-me-score');
-            var oppScore = document.getElementById('bt-result-opp-score');
             var meFinal = (finals[me] != null) ? finals[me]
                 : (r[me] && r[me].total_score != null ? r[me].total_score : null);
             var oppFinal = (finals[opp] != null) ? finals[opp]
                 : (r[opp] && r[opp].total_score != null ? r[opp].total_score : null);
-            if (meScore) meScore.textContent = (meFinal != null) ? meFinal : '—';
-            if (oppScore) oppScore.textContent = (oppFinal != null) ? oppFinal : '—';
-            _rows('bt-result-me-rows', r[me], pens[me]);
-            _rows('bt-result-opp-rows', r[opp], pens[opp]);
-            _heroes('bt-result-me-heroes', r[me], posMaps[me]);
-            _heroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
+
+            // Контекст (имена + герои сторон) — сразу, его не «раскрываем».
+            if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
+            _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
+
+            function applyVerdict() {
+                if (verdict) {
+                    verdict.textContent = st.winner === 'draw' ? 'Ничья'
+                        : st.winner === me ? 'Победа!' : 'Поражение';
+                    verdict.className = 'bt-result-verdict bt-result-verdict--show' +
+                        (st.winner === me ? ' bt-result-verdict--win'
+                         : st.winner === 'draw' ? '' : ' bt-result-verdict--lose');
+                }
+                if (meCard) meCard.classList.toggle('bt-result-card--win', st.winner === me);
+                if (oppCard) oppCard.classList.toggle('bt-result-card--win', st.winner === opp);
+                _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
+            }
+            function applyNote() {
+                if (!note) return;
+                if (isForfeit) {
+                    note.textContent = (r.forfeit === me)
+                        ? 'Ты сдался — победа присуждена сопернику.' : 'Соперник сдался.';
+                    note.hidden = false;
+                    return;
+                }
+                var km = _btKeyMoment(r[me]);
+                if (km) { note.textContent = km; note.hidden = false; } else note.hidden = true;
+            }
+            // Конечное состояние (для skip и для finished без разбора).
+            function finalize() {
+                _btClearReveal();
+                if (meScoreEl) meScoreEl.textContent = meFinal != null ? _btFmt1(meFinal) : '—';
+                if (oppScoreEl) oppScoreEl.textContent = oppFinal != null ? _btFmt1(oppFinal) : '—';
+                _btFillRows(meRows, r[me], pens[me]);
+                _btFillRows(oppRows, r[opp], pens[opp]);
+                applyVerdict();
+                applyNote();
+                _bt.revealActive = false;
+            }
+            _bt.revealFinalize = finalize;
+
+            // Форфейт / нет компонентов / reduced-motion — без разбора.
+            if (isForfeit || !r[me] || !r[opp] || _btReduceMotion()) {
+                finalize();
+                return;
+            }
+
+            // ── Стартовое состояние разбора ──
+            if (meScoreEl) meScoreEl.textContent = '0';
+            if (oppScoreEl) oppScoreEl.textContent = '0';
+            if (meRows) meRows.innerHTML = '';
+            if (oppRows) oppRows.innerHTML = '';
+            if (verdict) verdict.className = 'bt-result-verdict';   // скрыт (нет --show)
+            if (note) note.hidden = true;
+            if (meCard) meCard.classList.remove('bt-result-card--win');
+            if (oppCard) oppCard.classList.remove('bt-result-card--win');
+
+            var meSyn = r[me].synergy_score || 0, meMu = r[me].matchup_score || 0, mePen = pens[me] || 0;
+            var oppSyn = r[opp].synergy_score || 0, oppMu = r[opp].matchup_score || 0, oppPen = pens[opp] || 0;
+
+            var steps = [];
+            steps.push(function () {            // синергия
+                _btAddRow(meRows, 'Синергия', r[me].synergy_score);
+                _btAddRow(oppRows, 'Синергия', r[opp].synergy_score);
+                _btCountUp(meScoreEl, 0, meSyn);
+                _btCountUp(oppScoreEl, 0, oppSyn);
+            });
+            steps.push(function () {            // контрпики
+                _btAddRow(meRows, 'Контрпики', r[me].matchup_score);
+                _btAddRow(oppRows, 'Контрпики', r[opp].matchup_score);
+                _btCountUp(meScoreEl, meSyn, meSyn + meMu);
+                _btCountUp(oppScoreEl, oppSyn, oppSyn + oppMu);
+            });
+            if (mePen < 0 || oppPen < 0) {      // позиции (только если есть штраф)
+                steps.push(function () {
+                    _btAddRow(meRows, 'Позиции', mePen < 0 ? mePen : 0, mePen < 0);
+                    _btAddRow(oppRows, 'Позиции', oppPen < 0 ? oppPen : 0, oppPen < 0);
+                    _btCountUp(meScoreEl, meSyn + meMu, meFinal);
+                    _btCountUp(oppScoreEl, oppSyn + oppMu, oppFinal);
+                });
+            }
+            steps.push(function () { finalize(); });   // итог + вердикт (защёлкивает всё)
+
+            _bt.revealActive = true;
+            _bt.revealTimers = [];
+            var START = 400, GAP = 850;
+            steps.forEach(function (fn, i) {
+                _bt.revealTimers.push(setTimeout(fn, START + i * GAP));
+            });
+        }
+
+        // Тап по экрану результата во время разбора — пропустить к финалу.
+        if (!window._btResultSkipBound) {
+            window._btResultSkipBound = true;
+            var resultEl = document.getElementById('bt-result');
+            if (resultEl) {
+                resultEl.addEventListener('click', function (e) {
+                    if (!_bt.revealActive) return;            // разбор не идёт — обычные клики
+                    if (e.target.closest('button')) return;   // тап по «Ещё раз»/«В меню» — не перехватываем
+                    if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
+                });
+            }
         }
 
         window.btRematch = function () {
+            _btClearReveal(); _bt.revealActive = false;
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
             btQueue();
         };
         window.btToMenu = function () {
+            _btClearReveal(); _bt.revealActive = false;
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
         };
