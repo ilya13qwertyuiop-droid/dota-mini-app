@@ -3934,6 +3934,18 @@ def _bt_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _bt_log(event: str, *user_ids: int) -> None:
+    """Серверная аналитика воронки битвы. Пишется на бэке (а не с фронта),
+    чтобы события не терялись, когда игрок закрыл апп. log_event сам глотает
+    ошибки (на dev-SQLite BigInteger PK не автоинкрементит — молча no-op,
+    на PG — ок). Воронка: battle_queue → battle_start → battle_finish,
+    battle_forfeit — отвал."""
+    from backend.db import log_event as _log_event
+    for uid in user_ids:
+        if uid is not None:
+            _log_event(event, uid)
+
+
 def _bt_aware(dt):
     """SQLite (dev) возвращает naive datetime — нормализуем к UTC-aware,
     чтобы сравнения с _bt_now() работали кросс-БД."""
@@ -4122,6 +4134,9 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
     battle.finished_at = now
     battle.deadline_at = None
     battle.turn_started_at = None
+    # Один раз на битву: финализация ставит status='finished', повторные
+    # _bt_apply_timeouts в эту ветку уже не входят.
+    _bt_log("battle_finish", battle.host_id, battle.guest_id)
 
 
 def _bt_insert_action(
@@ -4328,6 +4343,7 @@ def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> Non
     battle.last_action_at = now
     battle.state_version += 1
     _bt_start_turn(battle, now)
+    _bt_log("battle_start", battle.host_id, guest_id)
 
 
 # ── Pydantic ────────────────────────────────────────────────────────────────
@@ -4349,6 +4365,40 @@ class BattleActionReq(BaseModel):
 
 
 # ── Эндпоинты ───────────────────────────────────────────────────────────────
+
+_bt_online_cache = {"n": 0, "at": 0.0}
+_BT_ONLINE_TTL = 8.0   # счётчику онлайна секундная свежесть не нужна
+
+
+@app.get("/api/battle/online")
+def api_battle_online(token: str, db: Session = Depends(get_db)):
+    """Сколько человек сейчас «в Битве драфтов»: участники активных битв —
+    ищущие соперника (searching/waiting) + играющие (drafting/assigning).
+
+    Кеш в памяти процесса на _BT_ONLINE_TTL: счётчик дёргается поллингом с
+    экранов меню/поиска, точность до пары секунд не нужна. Расхождение между
+    4 воркерами безвредно (число приблизительное). Считается честно — без
+    накрутки: один человек = одна активная битва (инвариант), UNION дедупит."""
+    _tm_require_user(token=token)
+    now = time.time()
+    if now - _bt_online_cache["at"] < _BT_ONLINE_TTL:
+        return {"online": _bt_online_cache["n"]}
+    row = db.execute(text(
+        """
+        SELECT COUNT(*) FROM (
+            SELECT host_id AS uid FROM draft_battles
+                WHERE status IN ('searching', 'waiting', 'drafting', 'assigning')
+            UNION
+            SELECT guest_id AS uid FROM draft_battles
+                WHERE status IN ('drafting', 'assigning') AND guest_id IS NOT NULL
+        ) t
+        """
+    )).fetchone()
+    n = int(row[0]) if row else 0
+    _bt_online_cache["n"] = n
+    _bt_online_cache["at"] = now
+    return {"online": n}
+
 
 @app.get("/api/battle/active")
 def api_battle_active(token: str, db: Session = Depends(get_db)):
@@ -4382,6 +4432,9 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
             "status": existing.status,
             "matched": existing.status == "drafting",
         }
+
+    # Намерение играть (existing уже отсеян выше — это не resume).
+    _bt_log("battle_queue", uid)
 
     now = _bt_now()
     ttl_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
@@ -4420,6 +4473,7 @@ def api_battle_create(data: BattleStartReq, db: Session = Depends(get_db)):
     existing = _bt_active_battle(db, uid)
     if existing is not None:
         return {"code": existing.code, "status": existing.status}
+    _bt_log("battle_queue", uid)   # намерение играть (приватная комната)
     battle = DBDraftBattle(
         code=_bt_new_code(db), mode=data.mode, status="waiting",
         host_id=uid, host_reserve_ms=_BT_RESERVE_MS, guest_reserve_ms=_BT_RESERVE_MS,
@@ -4589,6 +4643,7 @@ def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
         battle.state_version += 1
         db.commit()
         _bt_notify(battle.id)
+        _bt_log("battle_forfeit", uid)   # отвал из воронки (сдался посреди боя)
         return {"ok": True, "status": "finished", "winner": battle.winner}
 
     return {"ok": True, "status": battle.status}

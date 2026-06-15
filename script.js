@@ -1241,6 +1241,9 @@
             // достаточно контекстных действий (сдаться/назад).
             var help = document.getElementById('bt-help-btn');
             if (help) help.hidden = (screen !== 'bt-menu');
+            // Онлайн-счётчик поллим только на меню/поиске, где он показан.
+            if (screen === 'bt-menu' || screen === 'bt-wait') _btStartOnline();
+            else _btStopOnline();
             // Каждая смена состояния — с чистого листа: иначе переход
             // «нашли соперника → драфт» происходит ниже линии прокрутки
             // и выглядит так, будто ничего не случилось.
@@ -1270,6 +1273,41 @@
         function _btMyRole() { return (_bt.state && _bt.state.you) || null; }
         function _btOppRole() { return _btMyRole() === 'host' ? 'guest' : 'host'; }
 
+        // ── Онлайн-счётчик: участники активных битв (ищут + играют) ────────
+        // Опрашиваем /battle/online раз в _BT_ONLINE_POLL_MS, пока открыт
+        // экран меню или поиска. Сервер кеширует на 8с — нагрузка копеечная.
+        var _BT_ONLINE_POLL_MS = 10000;
+        function _btPlural(n) {
+            var a = Math.abs(n) % 100, b = n % 10;
+            if (a > 10 && a < 20) return 'человек';
+            if (b === 1) return 'человек';
+            if (b >= 2 && b <= 4) return 'человека';
+            return 'человек';
+        }
+        async function _btFetchOnline() {
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/online?token=' + encodeURIComponent(_btTok()));
+                if (!r.ok) return;
+                var d = await r.json();
+                var n = (d && d.online) || 0;
+                var txt = n + ' ' + _btPlural(n) + ' в игре';
+                ['bt-online-menu', 'bt-online-wait'].forEach(function (boxId) {
+                    var box = document.getElementById(boxId);
+                    var tEl = document.getElementById(boxId + '-text');
+                    if (tEl) tEl.textContent = txt;
+                    if (box) box.hidden = false;
+                });
+            } catch (e) { /* счётчик необязателен — молчим */ }
+        }
+        function _btStartOnline() {
+            _btFetchOnline();
+            if (_bt.onlineInt) return;
+            _bt.onlineInt = setInterval(_btFetchOnline, _BT_ONLINE_POLL_MS);
+        }
+        function _btStopOnline() {
+            if (_bt.onlineInt) { clearInterval(_bt.onlineInt); _bt.onlineInt = null; }
+        }
+
         window.goToDraftBattle = function () {
             switchPage('draft-battle');
             btInit();
@@ -1281,6 +1319,7 @@
             if (help && !help.hidden) { btHelpClose(); return; }
             // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
             // просто уводит на список игр — вернуться можно тем же входом.
+            _btStopOnline();
             switchPage('quiz');
         };
 
@@ -1451,9 +1490,15 @@
             document.addEventListener('visibilitychange', function () {
                 if (document.visibilityState === 'hidden') {
                     _btStopPolling();
-                } else if (_bt.code) {
+                    _btStopOnline();
+                } else {
                     var page = document.getElementById('page-draft-battle');
-                    if (page && page.classList.contains('active')) _btStartPolling();
+                    if (!(page && page.classList.contains('active'))) return;
+                    if (_bt.code) _btStartPolling();
+                    // Онлайн возобновляем, если открыт экран меню/поиска.
+                    var menu = document.getElementById('bt-menu');
+                    var wait = document.getElementById('bt-wait');
+                    if ((menu && !menu.hidden) || (wait && !wait.hidden)) _btStartOnline();
                 }
             });
         }

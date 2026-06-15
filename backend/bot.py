@@ -1613,6 +1613,12 @@ _ANALYTICS_EVENT_LABELS = {
     "page_feedback":         "Фидбек",
     "page_news":             "Новости",
     "support_click":         "Поддержать — кликов",
+    # Битва драфтов — воронка (battle_queue → battle_start → battle_finish).
+    "page_draft_battle":     "Битва драфтов — открыт экран",
+    "battle_queue":          "Битва — встал в очередь",
+    "battle_start":          "Битва — началась",
+    "battle_finish":         "Битва — доиграна",
+    "battle_forfeit":        "Битва — сдался",
 }
 
 

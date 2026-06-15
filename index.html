@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=221" />
+    <link rel="stylesheet" href="styles.css?v=222" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -623,8 +623,8 @@
           <div class="bt-help-body">
             <p>Два игрока драфтят друг против друга в реальном времени. Система
             сравнивает итоговые драфты по синергиям и контрпикам и называет победителя.</p>
-            <p><b>Режимы.</b> «С банами» — 14 банов и 10 пиков по фазам Captains Mode.
-            «Без банов» — только 10 пиков.</p>
+            <p><b>Режимы.</b> «С банами» — 14 банов и 10 пиков. «Без банов» —
+            только 10 пиков.</p>
             <p><b>Время.</b> Бан — 20 секунд, пик — 25. Сверх этого у каждого игрока
             есть 2 минуты дополнительного времени на всю партию, как в турнирной Доте.
             Кончилось и оно — система сделает ход за тебя.</p>
@@ -664,14 +664,20 @@
             </div>
           </div>
 
+          <!-- Онлайн в режиме: участники активных битв (ищут + играют) -->
+          <div class="bt-online" id="bt-online-menu" hidden>
+            <span class="bt-online-dot" aria-hidden="true"></span>
+            <span class="bt-online-text" id="bt-online-menu-text"></span>
+          </div>
+
           <div class="bt-mode-seg" role="radiogroup" aria-label="Режим драфта">
             <button type="button" class="bt-mode-btn bt-mode-btn--active" id="bt-mode-cm" onclick="btSetMode('cm')">
               <span class="bt-mode-name">С банами</span>
-              <span class="bt-mode-sub">14 банов + 10 пиков · фазы Captains Mode</span>
+              <span class="bt-mode-sub">14 банов + 10 пиков</span>
             </button>
             <button type="button" class="bt-mode-btn" id="bt-mode-ap" onclick="btSetMode('ap')">
               <span class="bt-mode-name">Без банов</span>
-              <span class="bt-mode-sub">Только 10 пиков · быстрая партия</span>
+              <span class="bt-mode-sub">Только 10 пиков</span>
             </button>
           </div>
 
@@ -694,6 +700,10 @@
         <div id="bt-wait" hidden>
           <div class="bt-wait-spinner" aria-hidden="true"></div>
           <div class="bt-wait-title" id="bt-wait-title">Ищем соперника…</div>
+          <div class="bt-online" id="bt-online-wait" hidden>
+            <span class="bt-online-dot" aria-hidden="true"></span>
+            <span class="bt-online-text" id="bt-online-wait-text"></span>
+          </div>
           <div class="bt-wait-code" id="bt-wait-code" hidden></div>
           <button type="button" class="tm-primary-btn" id="bt-wait-invite" onclick="btInvite()" hidden>Пригласить друга</button>
           <button type="button" class="tm-ghost-btn" onclick="btCancelWait()">Отменить</button>
@@ -1746,6 +1756,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=270"></script>
+    <script defer src="script.js?v=271"></script>
   </body>
 </html>

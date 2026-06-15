@@ -441,6 +441,71 @@ async def process_expired_lobbies() -> int:
     return expired_count
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  «Битва драфтов»: подметание брошенных битв.
+#
+#  Состояние битвы живёт в PG, а просрочки исполняются ЛЕНИВО — любым чтением
+#  (long-poll соперника / заход на экран). Пока хотя бы один игрок поллит, всё
+#  движется само. Но если ОБА ушли, никто не читает → строка застревает:
+#    • searching/waiting — комната-зомби копится в БД;
+#    • drafting/assigning — у юзера /battle/active вернёт её и НЕ пустит в новую.
+#  Этот sweep — единственная точка, добивающая такие битвы в фоне (api = 4
+#  воркера без общей памяти, поллинга у брошенной битвы нет). Тот же дом и тот
+#  же приём, что process_expired_lobbies.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# searching/waiting старше этого — комната не собралась, метим abandoned.
+# Зеркалит _BT_WAITING_TTL_MIN в api.py (10 мин).
+BATTLE_WAITING_TTL_MIN = int(os.environ.get("BT_WAITING_TTL_MIN", "10"))
+# drafting/assigning, чей дедлайн прошёл БОЛЕЕ чем на это — значит никто не
+# дожал лениво, т.е. оба ушли (активный поллинг исполняет просрочку за секунды,
+# максимум за один hold-цикл ~25с). С запасом — 120с.
+BATTLE_DEAD_GRACE_SEC = int(os.environ.get("BT_DEAD_GRACE_SEC", "120"))
+
+
+def sweep_stale_battles() -> int:
+    """Метит брошенные битвы как 'abandoned'. Возвращает число затронутых строк.
+
+    Bulk-UPDATE без уведомлений: участников уже нет (на то они и брошенные).
+    Редкий завис-поллер сам отвалится по hold-таймауту и перечитает abandoned.
+    """
+    now = datetime.now(timezone.utc)
+    waiting_cutoff = now - timedelta(minutes=BATTLE_WAITING_TTL_MIN)
+    dead_cutoff = now - timedelta(seconds=BATTLE_DEAD_GRACE_SEC)
+    total = 0
+    with SessionLocal() as session:
+        # 1) Комнаты, в которые никто не зашёл.
+        r1 = session.execute(
+            text(
+                """
+                UPDATE draft_battles
+                SET status = 'abandoned', state_version = state_version + 1
+                WHERE status IN ('searching', 'waiting')
+                  AND created_at < :cutoff
+                """
+            ),
+            {"cutoff": waiting_cutoff},
+        )
+        # 2) Битвы, брошенные посреди драфта/расстановки (никто не поллит).
+        r2 = session.execute(
+            text(
+                """
+                UPDATE draft_battles
+                SET status = 'abandoned', state_version = state_version + 1
+                WHERE status IN ('drafting', 'assigning')
+                  AND deadline_at IS NOT NULL
+                  AND deadline_at < :cutoff
+                """
+            ),
+            {"cutoff": dead_cutoff},
+        )
+        session.commit()
+        total = (r1.rowcount or 0) + (r2.rowcount or 0)
+    if total:
+        logger.info("[tm_notifier] swept %d stale battle(s) → abandoned", total)
+    return total
+
+
 async def _send_simple_message(
     client: httpx.AsyncClient, chat_id: int, text_str: str,
 ) -> bool:
@@ -492,6 +557,7 @@ async def run_loop() -> None:
         t0 = time.monotonic()
         n_reviews = 0
         n_lobbies = 0
+        n_battles = 0
         try:
             n_reviews = await process_pending_reviews()
         except Exception:
@@ -502,6 +568,10 @@ async def run_loop() -> None:
             n_lobbies = await process_expired_lobbies()
         except Exception:
             logger.exception("[tm_notifier] lobbies cycle #%d failed", cycle)
+        try:
+            n_battles = await asyncio.to_thread(sweep_stale_battles)
+        except Exception:
+            logger.exception("[tm_notifier] battle sweep cycle #%d failed", cycle)
 
         # Раз в DB_CLEANUP_INTERVAL_SECONDS (default 24ч) — чистка токенов и
         # analytics_events. В threadpool: первый DELETE после долгого простоя
@@ -521,9 +591,9 @@ async def run_loop() -> None:
         # Heartbeat: лог КАЖДОГО цикла — иначе при пустой выборке (нормальный
         # рабочий случай) воркер молчит часами и кажется зависшим.
         logger.info(
-            "[tm_notifier] cycle #%d: reviews=%d lobbies_expired=%d (%.2fs); "
-            "next poll in %ds",
-            cycle, n_reviews, n_lobbies, elapsed, POLL_INTERVAL_SECONDS,
+            "[tm_notifier] cycle #%d: reviews=%d lobbies_expired=%d battles_swept=%d "
+            "(%.2fs); next poll in %ds",
+            cycle, n_reviews, n_lobbies, n_battles, elapsed, POLL_INTERVAL_SECONDS,
         )
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
