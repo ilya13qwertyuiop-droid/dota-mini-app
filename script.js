@@ -1317,6 +1317,17 @@
             // Из справки «назад» возвращает на прежний экран битвы.
             var help = document.getElementById('bt-help');
             if (help && !help.hidden) { btHelpClose(); return; }
+            // Просмотр матча из истории: «назад» возвращает в меню битвы (к ленте
+            // истории), а не выкидывает на список мини-игр.
+            if (_bt.historyView && _bt.screen === 'bt-result') {
+                _btStopPolling();
+                _bt.historyView = false;
+                _bt.code = null; _bt.state = null;
+                _btClearReveal(); _bt.revealActive = false;
+                _btShow('bt-menu');
+                btRenderHistory();
+                return;
+            }
             // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
             // просто уводит на список игр — вернуться можно тем же входом.
             _btStopOnline();
@@ -1423,11 +1434,14 @@
             } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
         };
 
-        function _btEnter(code) {
+        function _btEnter(code, fromHistory) {
             _bt.code = code;
             _bt.state = null;
             _bt.assignOrder = null;   // раскладка прошлой битвы не наследуется
             _bt.selHero = null;
+            // Просмотр из истории: результат показываем сразу финалом (без актов),
+            // «назад» возвращает в меню битвы. См. _btRenderResult / btBack.
+            _bt.historyView = !!fromHistory;
             _btStartPolling();
         }
 
@@ -1572,6 +1586,15 @@
         }
         window.btRenderHistory = btRenderHistory;
 
+        // Заглушка-инициал для аватара (нет фото / битый URL) — span с буквой.
+        function _btAvatarInitial(name) {
+            var s = (name || '').trim();
+            var sp = document.createElement('span');
+            sp.className = 'bt-hist-initial';
+            sp.textContent = s ? s.charAt(0).toUpperCase() : '·';
+            return sp;
+        }
+
         function _btHistoryRow(b) {
             var opp = b.opponent || {};
             var row = document.createElement('button');
@@ -1579,7 +1602,8 @@
             row.className = 'bt-hist-row bt-hist-row--' + (b.outcome || 'draw');
             row.onclick = function () { _btOpenHistory(b.code); };
 
-            // Аватар соперника (бот / фото / заглушка).
+            // Аватар соперника: бот → робот; фото → img (с фоллбэком на инициал,
+            // если URL протух/битый); нет фото → инициал имени (как в тиммейтах).
             var av = document.createElement('div');
             av.className = 'bt-hist-av';
             if (opp.is_bot) {
@@ -1588,10 +1612,13 @@
             } else if (opp.photo_url) {
                 var img = document.createElement('img');
                 img.src = opp.photo_url; img.alt = '';
-                img.onerror = function () { this.style.display = 'none'; };
+                img.onerror = function () {
+                    if (this.parentNode) this.parentNode.replaceChild(
+                        _btAvatarInitial(opp.name), this);
+                };
                 av.appendChild(img);
             } else {
-                av.innerHTML = '<i class="ph ph-user" aria-hidden="true"></i>';
+                av.appendChild(_btAvatarInitial(opp.name));
             }
 
             // Центр: имя + (режим · дата).
@@ -1659,7 +1686,7 @@
         function _btOpenHistory(code) {
             if (!code) return;
             if (typeof _mghlHaptic === 'function') _mghlHaptic('tap');
-            _btEnter(code);
+            _btEnter(code, true);
         }
 
         window.btCancelWait = async function () {
@@ -2275,8 +2302,9 @@
             _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
             _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
 
-            // Форфейт / нет компонентов / reduced-motion — без актов, сразу финал.
-            if (isForfeit || !r[me] || !r[opp] || _btReduceMotion()) {
+            // Просмотр из истории / форфейт / нет компонентов / reduced-motion —
+            // без актов, сразу финал (пики + числовой счёт + вердикт).
+            if (_bt.historyView || isForfeit || !r[me] || !r[opp] || _btReduceMotion()) {
                 _btShowFinal(st, me, opp, true);
                 _bt.revealActive = false;
                 return;
@@ -2528,12 +2556,14 @@
 
         window.btRematch = function () {
             _btClearReveal(); _bt.revealActive = false;
+            _bt.historyView = false;
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
             btQueue();
         };
         window.btToMenu = function () {
             _btClearReveal(); _bt.revealActive = false;
+            _bt.historyView = false;
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
             btRenderHistory();   // только что сыгранная битва — в ленту

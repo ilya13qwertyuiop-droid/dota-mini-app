@@ -9658,6 +9658,10 @@ margin-top: var(--space-4);
 }
 .bt-hist-av img { width: 100%; height: 100%; object-fit: cover; }
 .bt-hist-av--bot { color: var(--accent); }
+.bt-hist-initial {
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  color: var(--text-secondary); line-height: 1;
+}
 .bt-hist-mid {
   flex: 1 1 auto; min-width: 0;
   display: flex; flex-direction: column; gap: 2px;
