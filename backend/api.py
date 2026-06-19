@@ -4094,6 +4094,174 @@ def _bt_start_assign(battle: DBDraftBattle, now: datetime) -> None:
     battle.last_action_at = now
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Рейтинг «Битвы драфтов» — Elo с адаптивным K и поправкой на разгром.
+#
+#  Считается ТОЛЬКО за бои с живым соперником (is_bot=False). Бот-бои не двигают
+#  рейтинг и не считаются в калибровку. Шкала намеренно крупная (дота-подобная):
+#  начинаешь у _BT_RATING_BASE, пол — _BT_RATING_FLOOR, потолка нет (на практике
+#  ограничен мастерством). Первые _BT_CALIBRATION_GAMES живых боёв — калибровка
+#  (большой K → быстрый поиск своего уровня; ранг скрыт за бейджем «Калибровка»).
+#
+#  Все числа — в одной таблице ниже, чтобы крутить тюнинг без поиска по коду.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BT_RATING_BASE = 1000        # стартовый рейтинг (внутренний; скрыт на калибровке)
+_BT_RATING_FLOOR = 0          # ниже не падает
+_BT_ELO_DIVISOR = 1600.0      # насколько разрыв рейтинга влияет на шансы (≈9:1 на 1600)
+_BT_K_CALIBRATION = 400       # K на калибровке — большие скачки
+_BT_K_ESTABLISHED = 96        # K после калибровки — стабильно (~±50 за равный бой)
+_BT_CALIBRATION_GAMES = 5     # сколько живых боёв длится калибровка (холодный старт; потом 10)
+_BT_MARGIN_MIN = 0.5          # множитель за разгром: ничейный счёт → меньше
+_BT_MARGIN_MAX = 1.5          #                      разгром → больше
+
+# Ранги: (нижний порог рейтинга, ключ-ассет, отображаемое имя). По возрастанию.
+# Пороги — гипотеза; подвинем по реальному распределению (один список — одна правка).
+_BT_RANKS = [
+    (0,    "pawn",      "Пешка"),
+    (1000, "harbinger", "Предвестник"),
+    (2200, "chosen",    "Избранный"),
+    (3800, "overlord",  "Владыка"),
+    (6000, "eternal",   "Вечный"),
+]
+
+
+def _bt_expected(rating_a: float, rating_b: float) -> float:
+    """Ожидаемый счёт A против B по логистике Elo (0..1)."""
+    return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / _BT_ELO_DIVISOR))
+
+
+def _bt_k_factor(games_played: int) -> int:
+    """K по числу УЖЕ сыгранных живых боёв: калибровка → большой, иначе обычный."""
+    return _BT_K_CALIBRATION if games_played < _BT_CALIBRATION_GAMES else _BT_K_ESTABLISHED
+
+
+def _bt_margin_mult(my_final, opp_final) -> float:
+    """Множитель за разгром из счёта драфта: ничья-в-ничью → к минимуму, разгром
+    → к максимуму. При форфейте (счёта нет) — нейтральный 1.0."""
+    if my_final is None or opp_final is None:
+        return 1.0
+    total = (my_final or 0) + (opp_final or 0)
+    if total <= 0:
+        return 1.0
+    frac_gap = abs(my_final - opp_final) / total   # 0 (ничья) … 1 (всухую)
+    # Центр ~1.0 на «обычной» победе (~55:45, frac≈0.1), к краям — clamp.
+    m = 1.0 + (frac_gap - 0.1) * 1.67
+    return max(_BT_MARGIN_MIN, min(_BT_MARGIN_MAX, m))
+
+
+def _bt_rating_delta(my_rating, opp_rating, score: float, k: int, margin: float) -> int:
+    """Изменение рейтинга за бой. score: 1 победа / 0.5 ничья / 0 поражение."""
+    expected = _bt_expected(my_rating, opp_rating)
+    return round(k * margin * (score - expected))
+
+
+def _bt_apply_floor(rating: int) -> int:
+    return max(_BT_RATING_FLOOR, rating)
+
+
+def _bt_rank_for(rating: int) -> tuple:
+    """(ключ-ассет, имя) ранга по рейтингу."""
+    key, name = _BT_RANKS[0][1], _BT_RANKS[0][2]
+    for threshold, k, n in _BT_RANKS:
+        if rating >= threshold:
+            key, name = k, n
+        else:
+            break
+    return key, name
+
+
+def _bt_is_calibrating(games_played: int) -> bool:
+    return games_played < _BT_CALIBRATION_GAMES
+
+
+# Подбор по рейтингу: окно расширяется по времени ожидания КАНДИДАТА (чем дольше
+# ждёт — тем шире берёт, чтобы никто не застрял в очереди навечно).
+_BT_MATCH_WINDOW_NEAR = 800    # свежий кандидат — только близкий по рейтингу
+_BT_MATCH_WINDOW_MID = 2000    # подождал — окно шире
+_BT_MATCH_WIDEN_1_SEC = 10
+_BT_MATCH_WIDEN_2_SEC = 25
+_BT_MATCH_SCAN_LIMIT = 20      # сколько кандидатов осматриваем за раз
+
+
+def _bt_match_window(wait_seconds: float):
+    """Допустимый разрыв рейтинга для кандидата, ждущего wait_seconds.
+    None = любой (ждёт давно → берём кого угодно)."""
+    if wait_seconds < _BT_MATCH_WIDEN_1_SEC:
+        return _BT_MATCH_WINDOW_NEAR
+    if wait_seconds < _BT_MATCH_WIDEN_2_SEC:
+        return _BT_MATCH_WINDOW_MID
+    return None
+
+
+def _bt_player_rating(db: Session, user_id: int) -> int:
+    """Текущий боевой рейтинг игрока (или база, если профиля/значения нет)."""
+    r = (
+        db.query(DBUserProfile.battle_rating)
+        .filter(DBUserProfile.user_id == user_id)
+        .scalar()
+    )
+    return r if r is not None else _BT_RATING_BASE
+
+
+def _bt_apply_ratings(db: Session, battle: DBDraftBattle) -> None:
+    """Пересчёт рейтинга обеих сторон по итогу боя. Пишет снимок в
+    draft_battles.*_rating_before/after, обновляет user_profiles.battle_rating и
+    battle_games_played. Идемпотентно (повторный вызов — no-op).
+
+    Только живые бои: бот (is_bot) и бои без живого гостя рейтинг не трогают.
+    Счёт сторон берётся из battle.winner (победа/ничья), разгром — из result.final
+    (при форфейте final нет → нейтральный множитель). Каждый игрок калибруется
+    независимо: K зависит от ЕГО battle_games_played до этого боя."""
+    if battle.host_rating_after is not None:
+        return   # уже применяли (двойная финализация/форфейт-гонка)
+    if battle.is_bot or battle.guest_id is None:
+        return   # бот/нет живого гостя — рейтинг не меняем
+
+    profiles = {
+        p.user_id: p
+        for p in db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id.in_([battle.host_id, battle.guest_id]))
+        .with_for_update()
+        .all()
+    }
+    host_p = profiles.get(battle.host_id)
+    guest_p = profiles.get(battle.guest_id)
+    if host_p is None or guest_p is None:
+        return   # без обоих профилей рейтинг не считаем (страховка)
+
+    host_r = host_p.battle_rating if host_p.battle_rating is not None else _BT_RATING_BASE
+    guest_r = guest_p.battle_rating if guest_p.battle_rating is not None else _BT_RATING_BASE
+    host_games = host_p.battle_games_played or 0
+    guest_games = guest_p.battle_games_played or 0
+
+    if battle.winner == "host":
+        host_score, guest_score = 1.0, 0.0
+    elif battle.winner == "guest":
+        host_score, guest_score = 0.0, 1.0
+    else:
+        host_score, guest_score = 0.5, 0.5
+
+    final = (battle.result or {}).get("final") or {}
+    host_margin = _bt_margin_mult(final.get("host"), final.get("guest"))
+    guest_margin = _bt_margin_mult(final.get("guest"), final.get("host"))
+
+    host_delta = _bt_rating_delta(host_r, guest_r, host_score,
+                                  _bt_k_factor(host_games), host_margin)
+    guest_delta = _bt_rating_delta(guest_r, host_r, guest_score,
+                                   _bt_k_factor(guest_games), guest_margin)
+
+    host_new = _bt_apply_floor(host_r + host_delta)
+    guest_new = _bt_apply_floor(guest_r + guest_delta)
+
+    battle.host_rating_before, battle.host_rating_after = host_r, host_new
+    battle.guest_rating_before, battle.guest_rating_after = guest_r, guest_new
+    host_p.battle_rating = host_new
+    guest_p.battle_rating = guest_new
+    host_p.battle_games_played = host_games + 1
+    guest_p.battle_games_played = guest_games + 1
+
+
 def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
     """Обе раскладки готовы (или таймер стадии вышел): счёт через
     compute_draft_score (этап 0) + позиционный штраф каждой стороне."""
@@ -4135,6 +4303,9 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
     battle.finished_at = now
     battle.deadline_at = None
     battle.turn_started_at = None
+    # Рейтинг — до лога: пишет снимок в *_rating_*, двигает battle_rating
+    # обоих (живой бой; бот — no-op). Идемпотентно по host_rating_after.
+    _bt_apply_ratings(db, battle)
     # Один раз на битву: финализация ставит status='finished', повторные
     # _bt_apply_timeouts в эту ветку уже не входят.
     _bt_log("battle_finish", battle.host_id, battle.guest_id)
@@ -4533,6 +4704,26 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "total_remaining_ms": total_remaining,
         }
 
+    # Изменение рейтинга «тебя» за этот бой — для «+N» на экране результата.
+    # Только завершённый живой бой со снимком (бот рейтинг не двигает).
+    you_rating = None
+    if (
+        viewer_role in ("host", "guest")
+        and battle.status == "finished"
+        and not battle.is_bot
+    ):
+        before = getattr(battle, viewer_role + "_rating_before")
+        after = getattr(battle, viewer_role + "_rating_after")
+        if after is not None and before is not None:
+            rk_key, rk_name = _bt_rank_for(after)
+            you_rating = {
+                "before": before,
+                "after": after,
+                "delta": after - before,
+                "rank_key": rk_key,
+                "rank_name": rk_name,
+            }
+
     return {
         "version": battle.state_version,
         "code": battle.code,
@@ -4558,6 +4749,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
         ],
         "winner": battle.winner,
         "result": battle.result,
+        "rating": you_rating,
     }
 
 
@@ -4688,16 +4880,39 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
 
     now = _bt_now()
     ttl_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
-    candidate = (
+    # Подбор по рейтингу: осматриваем самых давно ждущих первыми (у них окно
+    # шире — расширяется по их времени ожидания), берём первого в допуске.
+    my_rating = _bt_player_rating(db, uid)
+    scan = (
         db.query(DBDraftBattle)
         .filter(DBDraftBattle.status == "searching")
         .filter(DBDraftBattle.mode == data.mode)
         .filter(DBDraftBattle.host_id != uid)
         .filter(DBDraftBattle.created_at >= ttl_cutoff)
-        .order_by(DBDraftBattle.id)
+        .order_by(DBDraftBattle.created_at)   # дольше всех ждущие — первыми
         .with_for_update(skip_locked=True)
-        .first()
+        .limit(_BT_MATCH_SCAN_LIMIT)
+        .all()
     )
+    host_ratings: dict[int, int] = {}
+    if scan:
+        for hid, hr in (
+            db.query(DBUserProfile.user_id, DBUserProfile.battle_rating)
+            .filter(DBUserProfile.user_id.in_([c.host_id for c in scan]))
+            .all()
+        ):
+            host_ratings[hid] = hr if hr is not None else _BT_RATING_BASE
+
+    candidate = None
+    for c in scan:
+        cand_rating = host_ratings.get(c.host_id, _BT_RATING_BASE)
+        created = _bt_aware(c.created_at)
+        wait = (now - created).total_seconds() if created else 0.0
+        window = _bt_match_window(wait)
+        if window is None or abs(my_rating - cand_rating) <= window:
+            candidate = c
+            break
+
     if candidate is not None:
         _bt_start_battle(candidate, uid, now)
         host_id, guest_id, code = candidate.host_id, uid, candidate.code
@@ -4813,6 +5028,39 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
     return {"battles": out}
 
 
+@app.get("/api/battle/profile")
+def api_battle_profile(token: str, db: Session = Depends(get_db)):
+    """Рейтинговый профиль игрока для меню битвы: текущий рейтинг, ранг и
+    состояние калибровки. На калибровке ранг отдаём как «Калибровка» (отдельный
+    бейдж, не Пешка) — фронт решает, показывать ли число."""
+    uid = _tm_require_user(token=token)
+    p = (
+        db.query(DBUserProfile.battle_rating, DBUserProfile.battle_games_played)
+        .filter(DBUserProfile.user_id == uid)
+        .first()
+    )
+    rating = (p.battle_rating if p and p.battle_rating is not None else _BT_RATING_BASE)
+    games = (p.battle_games_played if p and p.battle_games_played is not None else 0)
+    calibrating = _bt_is_calibrating(games)
+    key, name = _bt_rank_for(rating)
+
+    next_rank_at = None
+    for threshold, _k, _n in _BT_RANKS:
+        if threshold > rating:
+            next_rank_at = threshold
+            break
+
+    return {
+        "rating": rating,
+        "rank_key": "calibration" if calibrating else key,
+        "rank_name": "Калибровка" if calibrating else name,
+        "calibrating": calibrating,
+        "games_played": games,
+        "calibration_total": _BT_CALIBRATION_GAMES,
+        "next_rank_at": next_rank_at,
+    }
+
+
 @app.post("/api/battle/action")
 def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
     """Ход (пик или бан — тип диктует последовательность)."""
@@ -4926,6 +5174,9 @@ def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
         battle.result = {"forfeit": role}
         battle.finished_at = _bt_now()
         battle.deadline_at = None
+        # Форфейт штрафует рейтингом так же, как обычное поражение (без счёта →
+        # нейтральный множитель за разгром). Иначе рейтинг можно «сберечь» сдачей.
+        _bt_apply_ratings(db, battle)
         battle.state_version += 1
         db.commit()
         _bt_notify(battle.id)

@@ -1231,7 +1231,7 @@
         function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
         function _btShow(screen) {
             if (screen !== 'bt-help') _bt.screen = screen;   // для возврата из справки
-            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help'].forEach(function (id) {
+            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help', 'bt-rank-reveal'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.hidden = (id !== screen);
             });
@@ -1351,6 +1351,7 @@
             if (banner0) banner0.hidden = true;
             _btShow('bt-menu');
             btRenderHistory();   // лента истории догружается асинхронно
+            btRenderRank();      // рейтинговая карточка догружается асинхронно
             try {
                 var r = await apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(_btTok()));
                 var d = await r.json();
@@ -1543,6 +1544,8 @@
                 _btStopPolling();
                 _btShow('bt-result');     // контейнер виден до запуска актов
                 _btRenderResult(st);
+                // Живой бой мог завершить калибровку — проверяем для посвящения.
+                if (!_bt.historyView) _btCheckGraduation();
                 // Хаптику вердикта даёт сам разбор (applyVerdict) в кульминации,
                 // здесь не дублируем — иначе вибрация бьёт сразу, до раскрытия.
             } else { // abandoned
@@ -1687,6 +1690,79 @@
             if (!code) return;
             if (typeof _mghlHaptic === 'function') _mghlHaptic('tap');
             _btEnter(code, true);
+        }
+
+        // ── Рейтинг / ранг (карточка в меню) ───────────────────────────────
+        function _btRankImg(key) { return '/images/ranks/' + key + '.png'; }
+
+        async function btRenderRank() {
+            var card = document.getElementById('bt-rankcard');
+            if (!card) return;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/profile?token='
+                    + encodeURIComponent(_btTok()));
+                var d = await r.json();
+                _bt.profile = d;
+                _bt.wasCalibrating = !!d.calibrating;
+                _btFillRankCard(d);
+                card.hidden = false;
+            } catch (e) { card.hidden = true; }
+        }
+        window.btRenderRank = btRenderRank;
+
+        function _btFillRankCard(d) {
+            var img = document.getElementById('bt-rankcard-img');
+            var name = document.getElementById('bt-rankcard-name');
+            var sub = document.getElementById('bt-rankcard-sub');
+            var rating = document.getElementById('bt-rankcard-rating');
+            var badge = document.getElementById('bt-rankcard-badge');
+            if (img) { img.style.visibility = ''; img.src = _btRankImg(d.rank_key); }
+            if (badge) badge.classList.toggle('bt-rankcard-badge--cal', !!d.calibrating);
+            if (d.calibrating) {
+                // На калибровке ранг скрыт — отдельный бейдж и прогресс.
+                if (name) name.textContent = 'Калибровка';
+                if (sub) sub.textContent = d.games_played + ' / ' + d.calibration_total + ' боёв';
+                if (rating) rating.textContent = '';
+            } else {
+                if (name) name.textContent = d.rank_name;
+                if (sub) {
+                    sub.textContent = (d.next_rank_at != null)
+                        ? 'до повышения: ' + Math.max(0, d.next_rank_at - d.rating)
+                        : 'высший ранг';
+                }
+                if (rating) rating.textContent = d.rating;
+            }
+        }
+
+        // Посвящение: калибровка пройдена — раскрываем заработанный ранг.
+        function _btShowRankReveal(p) {
+            var img = document.getElementById('bt-reveal-img');
+            var rank = document.getElementById('bt-reveal-rank');
+            var sub = document.getElementById('bt-reveal-sub');
+            if (img) { img.style.visibility = ''; img.src = _btRankImg(p.rank_key); }
+            if (rank) rank.textContent = p.rank_name;
+            if (sub) sub.textContent = p.rating + ' MMR';
+            // Полноэкранный скрин (как bt-found) — через _btShow, чтобы скрыть результат.
+            _btShow('bt-rank-reveal');
+            if (typeof _mghlHaptic === 'function') _mghlHaptic('milestone');
+        }
+        window.btRevealClose = function () {
+            var el = document.getElementById('bt-rank-reveal');
+            if (el) el.hidden = true;
+            _bt.code = null; _bt.state = null;
+            _btShow('bt-menu');
+            btRenderHistory(); btRenderRank();
+        };
+
+        // После живого боя проверяем: не завершилась ли калибровка этим боем.
+        async function _btCheckGraduation() {
+            if (!_bt.wasCalibrating) return;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/profile?token='
+                    + encodeURIComponent(_btTok()));
+                var d = await r.json();
+                if (!d.calibrating) { _bt.pendingReveal = d; _bt.wasCalibrating = false; }
+            } catch (e) { /* посвящение необязательно */ }
         }
 
         window.btCancelWait = async function () {
@@ -2522,6 +2598,21 @@
             _btFillRows(meRows, r[me], pens[me]);
             _btFillRows(oppRows, r[opp], pens[opp]);
 
+            // Изменение рейтинга за бой (живой бой со снимком; бот/нет данных —
+            // скрыто). Ранг тут не светим — на калибровке его раскроет посвящение.
+            var ratEl = document.getElementById('bt-result-rating');
+            if (ratEl) {
+                var rt = st.rating;
+                if (rt && typeof rt.delta === 'number') {
+                    var sign = rt.delta >= 0 ? '+' : '';
+                    ratEl.textContent = 'Рейтинг ' + sign + rt.delta + ' · ' + rt.after;
+                    ratEl.className = 'bt-result-rating ' + (rt.delta >= 0 ? 'is-up' : 'is-down');
+                    ratEl.hidden = false;
+                } else {
+                    ratEl.hidden = true;
+                }
+            }
+
             if (instant || _btReduceMotion()) {
                 if (meScoreEl) meScoreEl.textContent = meFinal != null ? _btFmt1(meFinal) : '—';
                 if (oppScoreEl) oppScoreEl.textContent = oppFinal != null ? _btFmt1(oppFinal) : '—';
@@ -2557,6 +2648,7 @@
         window.btRematch = function () {
             _btClearReveal(); _bt.revealActive = false;
             _bt.historyView = false;
+            _bt.pendingReveal = null;   // посвящение пропускаем при «Ещё раз»
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
             btQueue();
@@ -2564,9 +2656,16 @@
         window.btToMenu = function () {
             _btClearReveal(); _bt.revealActive = false;
             _bt.historyView = false;
+            // Если этим боем завершилась калибровка — сперва посвящение.
+            if (_bt.pendingReveal) {
+                var p = _bt.pendingReveal; _bt.pendingReveal = null;
+                _btShowRankReveal(p);
+                return;
+            }
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
             btRenderHistory();   // только что сыгранная битва — в ленту
+            btRenderRank();      // рейтинг мог измениться
         };
 
         // Deep-link: ?battle=КОД — кнопка из пуша «соперник найден» (живой

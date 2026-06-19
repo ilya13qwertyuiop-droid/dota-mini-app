@@ -67,11 +67,16 @@ class UserProfile(Base):
     )
     # Opt-in flag for Dota 2 news broadcast (toggled via /news bot command)
     notify_news = Column(Boolean, nullable=False, default=False, server_default="0")
-    # Рейтинг игрока в «Битве драфтов» (этап рейтинга). Стартовое значение —
-    # _BT_RATING_BASE (1000). Логику пересчёта добавим позже; колонка нужна,
-    # чтобы история битв сразу резервировала место под изменение рейтинга.
+    # Рейтинг игрока в «Битве драфтов» (Elo, _BT_RATING_BASE). Меняется только
+    # за бои с живым соперником; бот-бои не влияют. Пол — _BT_RATING_FLOOR (0).
     battle_rating = Column(
         Integer, nullable=False, default=1000, server_default="1000"
+    )
+    # Сколько ЖИВЫХ боёв завершено (бот-бои не считаются). Первые
+    # _BT_CALIBRATION_GAMES — калибровка (большой K, ранг скрыт). Дешёвое
+    # состояние калибровки без подсчёта строк draft_battles на каждый чих.
+    battle_games_played = Column(
+        Integer, nullable=False, default=0, server_default="0"
     )
 
     quiz_results = relationship(

@@ -241,6 +241,15 @@ def init_stats_tables() -> None:
             ))
             logger.info("[stats_db] Migration applied: added battle_rating to user_profiles")
 
+    # Migration 8d: счётчик живых боёв (состояние калибровки, alembic 0021).
+    with engine.begin() as conn:
+        if not _column_exists(conn, "user_profiles", "battle_games_played"):
+            conn.execute(text(
+                "ALTER TABLE user_profiles ADD COLUMN battle_games_played INTEGER "
+                "NOT NULL DEFAULT 0"
+            ))
+            logger.info("[stats_db] Migration applied: added battle_games_played to user_profiles")
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""

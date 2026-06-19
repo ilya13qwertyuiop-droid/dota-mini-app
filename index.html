@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=228" />
+    <link rel="stylesheet" href="styles.css?v=229" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -664,6 +664,20 @@
             </div>
           </div>
 
+          <!-- Рейтинговая карточка: ранг + MMR ИЛИ прогресс калибровки.
+               Картинки рангов — /images/ranks/<key>.png (key из бэка:
+               pawn/harbinger/chosen/overlord/eternal/calibration). -->
+          <div class="bt-rankcard" id="bt-rankcard" hidden>
+            <div class="bt-rankcard-badge" id="bt-rankcard-badge">
+              <img id="bt-rankcard-img" alt="" onerror="this.style.visibility='hidden'">
+            </div>
+            <div class="bt-rankcard-main">
+              <div class="bt-rankcard-name" id="bt-rankcard-name">—</div>
+              <div class="bt-rankcard-sub" id="bt-rankcard-sub"></div>
+            </div>
+            <div class="bt-rankcard-rating" id="bt-rankcard-rating"></div>
+          </div>
+
           <!-- Онлайн в режиме: участники активных битв (ищут + играют) -->
           <div class="bt-online" id="bt-online-menu" hidden>
             <span class="bt-online-dot" aria-hidden="true"></span>
@@ -841,9 +855,22 @@
               </div>
             </div>
             <div class="bt-result-note" id="bt-result-note" hidden></div>
+            <!-- Изменение рейтинга за бой (живой бой; на калибровке/боте скрыто) -->
+            <div class="bt-result-rating" id="bt-result-rating" hidden></div>
             <button type="button" class="tm-primary-btn" onclick="btRematch()">Ещё раз</button>
             <button type="button" class="tm-ghost-btn" onclick="btToMenu()">В меню</button>
           </div>
+        </div>
+
+        <!-- Посвящение: калибровка пройдена — раскрываем заработанный ранг -->
+        <div id="bt-rank-reveal" class="bt-found" hidden>
+          <div class="bt-found-label">Калибровка пройдена</div>
+          <div class="bt-reveal-badge">
+            <img id="bt-reveal-img" alt="" onerror="this.style.visibility='hidden'">
+          </div>
+          <div class="bt-reveal-rank" id="bt-reveal-rank">—</div>
+          <div class="bt-found-sub" id="bt-reveal-sub"></div>
+          <button type="button" class="tm-primary-btn" onclick="btRevealClose()">Открыть</button>
         </div>
       </div>
 
@@ -1796,6 +1823,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=278"></script>
+    <script defer src="script.js?v=279"></script>
   </body>
 </html>
