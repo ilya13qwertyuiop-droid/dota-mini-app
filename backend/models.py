@@ -67,6 +67,12 @@ class UserProfile(Base):
     )
     # Opt-in flag for Dota 2 news broadcast (toggled via /news bot command)
     notify_news = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Рейтинг игрока в «Битве драфтов» (этап рейтинга). Стартовое значение —
+    # _BT_RATING_BASE (1000). Логику пересчёта добавим позже; колонка нужна,
+    # чтобы история битв сразу резервировала место под изменение рейтинга.
+    battle_rating = Column(
+        Integer, nullable=False, default=1000, server_default="1000"
+    )
 
     quiz_results = relationship(
         "QuizResult", back_populates="user", cascade="all, delete-orphan"
@@ -667,7 +673,8 @@ class DraftBattle(Base):
 
     status lifecycle:
       searching — в очереди быстрого матча (виден матчеру своего mode)
-      waiting   — приватная комната, ждёт гостя по коду
+      waiting   — ЛЕГАСИ: приватная комната по коду (механика убрана; новые
+                  не создаются, ветки чтения/sweep оставлены для старых строк)
       drafting  — драфт идёт
       finished  — завершена (result заполнен; при форфейте result.forfeit)
       abandoned — протухла в waiting/searching или отменена хостом
@@ -715,6 +722,12 @@ class DraftBattle(Base):
     # 'final', 'positions'} или {'forfeit': role}.
     result = Column(JSON, nullable=True)
     winner = Column(String(5), nullable=True)   # 'host'/'guest'/'draw'
+    # Снимок рейтинга обеих сторон на момент финализации (задел под рейтинг).
+    # NULL, пока пересчёт рейтинга не включён; история показывает «до → после».
+    host_rating_before = Column(Integer, nullable=True)
+    host_rating_after = Column(Integer, nullable=True)
+    guest_rating_before = Column(Integer, nullable=True)
+    guest_rating_after = Column(Integer, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False,
         default=lambda: datetime.now(timezone.utc),

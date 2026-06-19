@@ -1339,6 +1339,7 @@
             var banner0 = document.getElementById('bt-resume');
             if (banner0) banner0.hidden = true;
             _btShow('bt-menu');
+            btRenderHistory();   // лента истории догружается асинхронно
             try {
                 var r = await apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(_btTok()));
                 var d = await r.json();
@@ -1348,15 +1349,11 @@
                         _btEnter(d.code);
                         return;
                     }
-                    // Старый поиск/комната: НЕ входим молча («игра началась
-                    // сама» — худший сюрприз). Показываем меню с баннером.
+                    // Старый поиск: НЕ входим молча («игра началась сама» —
+                    // худший сюрприз). Показываем меню с баннером.
                     _bt.resumeCode = d.code;
                     var txtEl = document.getElementById('bt-resume-txt');
-                    if (txtEl) {
-                        txtEl.textContent = (d.status === 'waiting')
-                            ? 'У тебя открыта комната ' + d.code + ' — соперник ещё не зашёл.'
-                            : 'Поиск соперника ещё активен с прошлого захода.';
-                    }
+                    if (txtEl) txtEl.textContent = 'Поиск соперника ещё активен с прошлого захода.';
                     var banner = document.getElementById('bt-resume');
                     if (banner) banner.hidden = false;
                 }
@@ -1404,10 +1401,6 @@
         function _btShowWaitOptimistic(title) {
             var t = document.getElementById('bt-wait-title');
             if (t) t.textContent = title;
-            var codeEl = document.getElementById('bt-wait-code');
-            if (codeEl) codeEl.hidden = true;
-            var inv = document.getElementById('bt-wait-invite');
-            if (inv) inv.hidden = true;
             _btShow('bt-wait');
         }
 
@@ -1421,22 +1414,8 @@
                 if (typeof showToast === 'function') showToast(e.message);
             }
         };
-        window.btCreate = async function () {
-            _btShowWaitOptimistic('Создаём комнату…');
-            try {
-                var d = await _btPost('/battle/create', { mode: _bt.mode });
-                _btEnter(d.code);
-            } catch (e) {
-                _btShow('bt-menu');
-                if (typeof showToast === 'function') showToast(e.message);
-            }
-        };
-        window.btJoinFromInput = function () {
-            var inp = document.getElementById('bt-join-code');
-            var code = (inp && inp.value || '').trim().toUpperCase();
-            if (!code) return;
-            btJoinByCode(code);
-        };
+        // Вход по коду — только resume своей битвы (deep-link `?battle=` из
+        // пуша «соперник найден»). Приватных комнат больше нет.
         window.btJoinByCode = async function (code) {
             try {
                 var d = await _btPost('/battle/join', { code: code });
@@ -1562,13 +1541,125 @@
         }
 
         function _btRenderWait(st) {
-            var isPrivate = (st.status === 'waiting');
             var title = document.getElementById('bt-wait-title');
-            if (title) title.textContent = isPrivate ? 'Комната создана' : 'Ищем соперника…';
-            var codeEl = document.getElementById('bt-wait-code');
-            if (codeEl) { codeEl.textContent = st.code; codeEl.hidden = !isPrivate; }
-            var inv = document.getElementById('bt-wait-invite');
-            if (inv) inv.hidden = !isPrivate;
+            if (title) title.textContent = 'Ищем соперника…';
+        }
+
+        // ── История битв (лента в меню) ────────────────────────────────────
+        async function btRenderHistory() {
+            var wrap = document.getElementById('bt-history');
+            var list = document.getElementById('bt-history-list');
+            if (!wrap || !list) return;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/history?token='
+                    + encodeURIComponent(_btTok()) + '&limit=20');
+                var d = await r.json();
+                var battles = (d && d.battles) || [];
+                wrap.hidden = false;
+                list.innerHTML = '';
+                if (!battles.length) {
+                    var empty = document.createElement('div');
+                    empty.className = 'bt-history-empty';
+                    empty.textContent = 'Ещё нет сыгранных битв';
+                    list.appendChild(empty);
+                    return;
+                }
+                battles.forEach(function (b) { list.appendChild(_btHistoryRow(b)); });
+            } catch (e) {
+                // история необязательна — если не загрузилась, прячем секцию
+                wrap.hidden = true;
+            }
+        }
+        window.btRenderHistory = btRenderHistory;
+
+        function _btHistoryRow(b) {
+            var opp = b.opponent || {};
+            var row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'bt-hist-row bt-hist-row--' + (b.outcome || 'draw');
+            row.onclick = function () { _btOpenHistory(b.code); };
+
+            // Аватар соперника (бот / фото / заглушка).
+            var av = document.createElement('div');
+            av.className = 'bt-hist-av';
+            if (opp.is_bot) {
+                av.classList.add('bt-hist-av--bot');
+                av.innerHTML = '<i class="ph ph-robot" aria-hidden="true"></i>';
+            } else if (opp.photo_url) {
+                var img = document.createElement('img');
+                img.src = opp.photo_url; img.alt = '';
+                img.onerror = function () { this.style.display = 'none'; };
+                av.appendChild(img);
+            } else {
+                av.innerHTML = '<i class="ph ph-user" aria-hidden="true"></i>';
+            }
+
+            // Центр: имя + (режим · дата).
+            var mid = document.createElement('div');
+            mid.className = 'bt-hist-mid';
+            var nm = document.createElement('div');
+            nm.className = 'bt-hist-name';
+            nm.textContent = opp.name || 'Игрок';
+            var meta = document.createElement('div');
+            meta.className = 'bt-hist-meta';
+            var modeTag = (b.mode === 'ap') ? 'Без банов' : 'С банами';
+            meta.textContent = modeTag + ' · ' + _btFmtDate(b.finished_at);
+            mid.appendChild(nm); mid.appendChild(meta);
+
+            // Право: исход + счёт + (задел) изменение рейтинга.
+            var right = document.createElement('div');
+            right.className = 'bt-hist-right';
+            var chip = document.createElement('div');
+            chip.className = 'bt-hist-outcome';
+            chip.textContent = (b.outcome === 'win') ? 'Победа'
+                             : (b.outcome === 'loss') ? 'Поражение' : 'Ничья';
+            right.appendChild(chip);
+
+            var score = document.createElement('div');
+            score.className = 'bt-hist-score';
+            if (b.your_score != null && b.opp_score != null) {
+                score.textContent = b.your_score + ' : ' + b.opp_score;
+            } else if (b.forfeit) {
+                score.textContent = (b.outcome === 'win') ? 'соперник сдался' : 'сдача';
+            } else {
+                score.textContent = '—';
+            }
+            right.appendChild(score);
+
+            // Чип рейтинга — пока сервер не шлёт rating_after, блок не рисуется.
+            if (b.rating_after != null && b.rating_before != null) {
+                var delta = b.rating_after - b.rating_before;
+                var rc = document.createElement('div');
+                rc.className = 'bt-hist-rating ' + (delta >= 0 ? 'is-up' : 'is-down');
+                rc.textContent = (delta >= 0 ? '+' : '') + delta;
+                right.appendChild(rc);
+            }
+
+            row.appendChild(av); row.appendChild(mid); row.appendChild(right);
+            return row;
+        }
+
+        function _btFmtDate(iso) {
+            if (!iso) return '';
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            var now = new Date();
+            var hh = ('0' + d.getHours()).slice(-2);
+            var mm = ('0' + d.getMinutes()).slice(-2);
+            if (d.toDateString() === now.toDateString()) return 'сегодня ' + hh + ':' + mm;
+            var months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн',
+                          'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+            var s = d.getDate() + ' ' + months[d.getMonth()];
+            if (d.getFullYear() !== now.getFullYear()) s += ' ' + d.getFullYear();
+            return s;
+        }
+
+        // Тап по строке истории — переоткрываем разбор результата (poll
+        // завершённой битвы сразу отдаёт finished → _btRenderResult).
+        function _btOpenHistory(code) {
+            if (!code) return;
+            if (typeof _mghlHaptic === 'function') _mghlHaptic('tap');
+            _btEnter(code);
         }
 
         window.btCancelWait = async function () {
@@ -1576,19 +1667,6 @@
             _btStopPolling();
             _bt.code = null;
             _btShow('bt-menu');
-        };
-
-        window.btInvite = function () {
-            var code = _bt.code || '';
-            var text = 'Сразись со мной в «Битве драфтов» (D2Helper)! Код комнаты: ' + code;
-            var tg = window.Telegram && window.Telegram.WebApp;
-            var link = (window.MINIAPP_URL || '').trim();
-            if (link && link.indexOf('?') === -1) link += '?start=db_' + code;
-            var url = link
-                ? 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)
-                : 'https://t.me/share/url?url=' + encodeURIComponent(text);
-            if (tg && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(url);
-            else window.open(url, '_blank');
         };
 
         window.btLeave = async function () {
@@ -2458,9 +2536,11 @@
             _btClearReveal(); _bt.revealActive = false;
             _bt.code = null; _bt.state = null;
             _btShow('bt-menu');
+            btRenderHistory();   // только что сыгранная битва — в ленту
         };
 
-        // Deep-link: ?battle=КОД (кнопка из бота по start=db_<КОД>).
+        // Deep-link: ?battle=КОД — кнопка из пуша «соперник найден» (живой
+        // быстрый матч). Игрок уже участник пары → btJoinByCode = resume.
         (function () {
             var code = null;
             try { code = new URLSearchParams(window.location.search).get('battle'); }

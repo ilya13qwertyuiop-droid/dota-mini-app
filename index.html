@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=226" />
+    <link rel="stylesheet" href="styles.css?v=227" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -683,20 +683,18 @@
 
           <button type="button" class="tm-primary-btn bt-menu-primary" onclick="btQueue()">Найти соперника</button>
 
-          <!-- Игра с другом: создать комнату ИЛИ войти по коду — один блок -->
-          <div class="bt-friend-card">
-            <div class="bt-friend-title">Игра с другом</div>
-            <button type="button" class="tm-ghost-btn bt-friend-create" onclick="btCreate()">Создать комнату</button>
-            <div class="bt-friend-divider"><span>или войди по коду</span></div>
-            <div class="bt-join-row">
-              <input type="text" id="bt-join-code" class="bt-join-input" maxlength="8"
-                     placeholder="КОД" autocomplete="off" autocapitalize="characters">
-              <button type="button" class="tm-ghost-btn bt-join-btn" onclick="btJoinFromInput()">Войти</button>
+          <!-- История битв: лента завершённых партий (тап → разбор результата).
+               Под рейтинг заложено место (чип bt-hist-rating, скрыт до этапа
+               рейтинга). Наполняется btRenderHistory из /api/battle/history. -->
+          <div class="bt-history" id="bt-history" hidden>
+            <div class="bt-history-head">
+              <span class="bt-history-title">История битв</span>
             </div>
+            <div class="bt-history-list" id="bt-history-list"></div>
           </div>
         </div>
 
-        <!-- Ожидание: поиск соперника / приватная комната с кодом -->
+        <!-- Ожидание: поиск соперника (быстрый матч) -->
         <div id="bt-wait" hidden>
           <div class="bt-wait-spinner" aria-hidden="true"></div>
           <div class="bt-wait-title" id="bt-wait-title">Ищем соперника…</div>
@@ -704,8 +702,6 @@
             <span class="bt-online-dot" aria-hidden="true"></span>
             <span class="bt-online-text" id="bt-online-wait-text"></span>
           </div>
-          <div class="bt-wait-code" id="bt-wait-code" hidden></div>
-          <button type="button" class="tm-primary-btn" id="bt-wait-invite" onclick="btInvite()" hidden>Пригласить друга</button>
           <button type="button" class="tm-ghost-btn" onclick="btCancelWait()">Отменить</button>
         </div>
 
@@ -1800,6 +1796,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=276"></script>
+    <script defer src="script.js?v=277"></script>
   </body>
 </html>

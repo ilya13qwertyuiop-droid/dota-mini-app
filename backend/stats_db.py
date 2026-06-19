@@ -219,6 +219,28 @@ def init_stats_tables() -> None:
             ))
             logger.info("[stats_db] Migration applied: added is_bot to draft_battles")
 
+    # Migration 8c: задел под рейтинг битв (alembic 0020). Снимок рейтинга
+    # обеих сторон на draft_battles (nullable) + рейтинг игрока на user_profiles
+    # (NOT NULL DEFAULT 1000). Самовосстановление для тех же случаев, что 8b.
+    for col_name in (
+        "host_rating_before", "host_rating_after",
+        "guest_rating_before", "guest_rating_after",
+    ):
+        with engine.begin() as conn:
+            if _column_exists(conn, "draft_battles", col_name):
+                continue
+            conn.execute(text(
+                f"ALTER TABLE draft_battles ADD COLUMN {col_name} INTEGER"
+            ))
+            logger.info("[stats_db] Migration applied: added %s to draft_battles", col_name)
+    with engine.begin() as conn:
+        if not _column_exists(conn, "user_profiles", "battle_rating"):
+            conn.execute(text(
+                "ALTER TABLE user_profiles ADD COLUMN battle_rating INTEGER "
+                "NOT NULL DEFAULT 1000"
+            ))
+            logger.info("[stats_db] Migration applied: added battle_rating to user_profiles")
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""

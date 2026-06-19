@@ -4716,69 +4716,101 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
     return {"code": battle.code, "status": "searching", "matched": False}
 
 
-@app.post("/api/battle/create")
-def api_battle_create(data: BattleStartReq, db: Session = Depends(get_db)):
-    """Приватная комната для игры с другом: вход только по коду."""
-    uid = _tm_require_user(token=data.token)
-    if data.mode not in _BT_MODES:
-        raise HTTPException(status_code=422, detail="invalid mode")
-    existing = _bt_active_battle(db, uid)
-    if existing is not None:
-        return {"code": existing.code, "status": existing.status}
-    _bt_log("battle_queue", uid)   # намерение играть (приватная комната)
-    battle = DBDraftBattle(
-        code=_bt_new_code(db), mode=data.mode, status="waiting",
-        host_id=uid, host_reserve_ms=_BT_RESERVE_MS, guest_reserve_ms=_BT_RESERVE_MS,
-        created_at=_bt_now(),
-    )
-    db.add(battle)
-    db.commit()
-    return {"code": battle.code, "status": "waiting"}
-
-
 @app.post("/api/battle/join")
 def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
-    """Вход по коду (приватная комната или searching по прямой ссылке).
+    """Вход по коду — теперь только RESUME уже своей битвы.
 
-    Атомарный claim гостевого места: UPDATE … WHERE guest_id IS NULL —
-    rowcount=0 означает «комнату уже заняли» (та же схема, что слоты лобби)."""
+    Приватные комнаты (создать код → отдать другу) убраны: единственный путь к
+    сопернику — быстрый поиск (/battle/queue). Сюда попадают лишь по deep-link
+    `?battle=КОД` из пуша «соперник найден» — игрок к этому моменту уже
+    участник пары (queue проставил host/guest), так что это resume, не claim.
+    Чужой код (не участник) → 409: присоединиться к чужой битве больше нельзя."""
     uid = _tm_require_user(token=data.token)
     code = (data.code or "").strip().upper()
     battle = _bt_get_battle(db, code)
 
     role = _bt_role(battle, uid)
-    if role is not None:
-        # Уже участник (в т.ч. хост открыл свою же ссылку) — просто resume.
-        return {"code": battle.code, "status": battle.status, "you": role}
-
-    if battle.status not in ("waiting", "searching"):
-        raise HTTPException(status_code=409, detail="Эта битва уже началась или завершена.")
-    mine = _bt_active_battle(db, uid)
-    if mine is not None:
+    if role is None:
         raise HTTPException(
             status_code=409,
-            detail="Ты уже в активной битве. Заверши или покинь её сначала.",
+            detail="Войти можно только через быстрый поиск соперника.",
         )
+    return {"code": battle.code, "status": battle.status, "you": role}
 
-    res = db.execute(
-        text(
-            "UPDATE draft_battles SET guest_id = :uid "
-            "WHERE id = :id AND guest_id IS NULL "
-            "  AND status IN ('waiting', 'searching')"
-        ),
-        {"uid": uid, "id": battle.id},
+
+@app.get("/api/battle/history")
+def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db)):
+    """Последние завершённые битвы игрока — лента истории на экране меню.
+
+    Отдаёт компактную строку на битву (исход, счёт, соперник, дата + снимок
+    рейтинга — пока NULL, задел под этап рейтинга). Полный разбор открывается
+    тапом по строке: фронт переоткрывает результат через /battle/state по code.
+    Бот-битвы включены (на холодном старте это большинство партий) с пометкой."""
+    uid = _tm_require_user(token=token)
+    limit = max(1, min(int(limit), 50))
+
+    rows = (
+        db.query(DBDraftBattle)
+        .filter(DBDraftBattle.status == "finished")
+        .filter((DBDraftBattle.host_id == uid) | (DBDraftBattle.guest_id == uid))
+        .order_by(DBDraftBattle.finished_at.desc())
+        .limit(limit)
+        .all()
     )
-    if not res.rowcount:
-        db.commit()
-        raise HTTPException(status_code=409, detail="Комнату только что заняли.")
 
-    db.refresh(battle)
-    _bt_start_battle(battle, uid, _bt_now())
-    host_id, code = battle.host_id, battle.code
-    db.commit()
-    _bt_notify(battle.id)
-    _bt_send_match_push(host_id, uid, code)
-    return {"code": code, "status": "drafting", "you": "guest"}
+    # Резолвим имена/аватары живых соперников одним запросом.
+    opp_ids = []
+    for b in rows:
+        opp_id = b.guest_id if b.host_id == uid else b.host_id
+        if opp_id:
+            opp_ids.append(opp_id)
+    settings = _tm_load_user_settings(db, opp_ids) if opp_ids else {}
+
+    out = []
+    for b in rows:
+        my_role = "host" if b.host_id == uid else "guest"
+        opp_role = "guest" if my_role == "host" else "host"
+        vs_bot = bool(b.is_bot and opp_role == "guest")
+
+        if vs_bot:
+            opponent = {"name": "Бот", "photo_url": None, "is_bot": True}
+        else:
+            opp_id = b.guest_id if my_role == "host" else b.host_id
+            s = settings.get(opp_id) or {}
+            opponent = {
+                "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
+                "photo_url": s.get("photo_url"),
+                "is_bot": False,
+            }
+
+        res = b.result or {}
+        final = res.get("final") or {}
+        forfeit_role = res.get("forfeit")  # роль сдавшегося, если форфейт
+
+        if b.winner == "draw":
+            outcome = "draw"
+        elif b.winner == my_role:
+            outcome = "win"
+        elif b.winner in ("host", "guest"):
+            outcome = "loss"
+        else:
+            outcome = "draw"
+
+        out.append({
+            "code": b.code,
+            "mode": b.mode,
+            "finished_at": b.finished_at.isoformat() if b.finished_at else None,
+            "opponent": opponent,
+            "vs_bot": vs_bot,
+            "outcome": outcome,
+            "forfeit": forfeit_role is not None,
+            "your_score": final.get(my_role),
+            "opp_score": final.get(opp_role),
+            "rating_before": getattr(b, f"{my_role}_rating_before", None),
+            "rating_after": getattr(b, f"{my_role}_rating_after", None),
+        })
+
+    return {"battles": out}
 
 
 @app.post("/api/battle/action")
