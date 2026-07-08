@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=229" />
+    <link rel="stylesheet" href="styles.css?v=230" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -643,11 +643,15 @@
             <div class="bt-found-player">
               <img id="bt-found-me-av" class="bt-found-av" alt="" onerror="this.style.visibility='hidden'">
               <span id="bt-found-me-name"></span>
+              <img id="bt-found-me-rank" class="bt-found-rank" alt="" hidden
+                   onerror="this.hidden=true">
             </div>
             <span class="bt-found-x">VS</span>
             <div class="bt-found-player">
               <img id="bt-found-opp-av" class="bt-found-av" alt="" onerror="this.style.visibility='hidden'">
               <span id="bt-found-opp-name"></span>
+              <img id="bt-found-opp-rank" class="bt-found-rank" alt="" hidden
+                   onerror="this.hidden=true">
             </div>
           </div>
           <div class="bt-found-sub" id="bt-found-sub">Драфт начинается…</div>
@@ -725,6 +729,7 @@
           <div class="bt-side bt-side--opp" id="bt-side-opp">
             <div class="bt-side-head">
               <img id="bt-opp-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
+              <img id="bt-opp-rank" class="bt-side-rank" alt="" hidden onerror="this.hidden=true">
               <span class="bt-side-name" id="bt-opp-name">Соперник</span>
               <span class="bt-side-reserve" id="bt-opp-reserve"></span>
             </div>
@@ -744,6 +749,7 @@
           <div class="bt-side bt-side--me" id="bt-side-me">
             <div class="bt-side-head">
               <img id="bt-me-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
+              <img id="bt-me-rank" class="bt-side-rank" alt="" hidden onerror="this.hidden=true">
               <span class="bt-side-name" id="bt-me-name">Ты</span>
               <span class="bt-side-reserve" id="bt-me-reserve"></span>
             </div>
@@ -1823,6 +1829,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=279"></script>
+    <script defer src="script.js?v=280"></script>
   </body>
 </html>

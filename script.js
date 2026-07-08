@@ -1267,6 +1267,8 @@
             var opAv = document.getElementById('bt-found-opp-av');
             if (meAv) { meAv.src = mp.photo_url || ''; meAv.style.visibility = mp.photo_url ? '' : 'hidden'; }
             if (opAv) { opAv.src = op.photo_url || ''; opAv.style.visibility = op.photo_url ? '' : 'hidden'; }
+            _btSetRankMedal('bt-found-me-rank', mp.rank_key);
+            _btSetRankMedal('bt-found-opp-rank', op.rank_key);
             _btShow('bt-found');
             _mghlHaptic('milestone');
         }
@@ -1695,6 +1697,15 @@
         // ── Рейтинг / ранг (карточка в меню) ───────────────────────────────
         function _btRankImg(key) { return '/images/ranks/' + key + '.png'; }
 
+        // Медаль ранга в произвольный <img>: нет ключа (бот) → прячем.
+        function _btSetRankMedal(imgId, key) {
+            var el = document.getElementById(imgId);
+            if (!el) return;
+            if (!key) { el.hidden = true; return; }
+            el.hidden = false;
+            el.src = _btRankImg(key);
+        }
+
         async function btRenderRank() {
             var card = document.getElementById('bt-rankcard');
             if (!card) return;
@@ -1803,6 +1814,8 @@
             if (meAv) { meAv.src = mePlayer.photo_url || ''; meAv.style.visibility = mePlayer.photo_url ? '' : 'hidden'; }
             var oppAv = document.getElementById('bt-opp-avatar');
             if (oppAv) { oppAv.src = oppPlayer.photo_url || ''; oppAv.style.visibility = oppPlayer.photo_url ? '' : 'hidden'; }
+            _btSetRankMedal('bt-me-rank', mePlayer.rank_key);
+            _btSetRankMedal('bt-opp-rank', oppPlayer.rank_key);
             // Активная сторона — подсветка панели (видно, чей ход, без чтения текста).
             var curTurn = st.current;
             var meSide = document.getElementById('bt-side-me');
@@ -2605,7 +2618,19 @@
                 var rt = st.rating;
                 if (rt && typeof rt.delta === 'number') {
                     var sign = rt.delta >= 0 ? '+' : '';
-                    ratEl.textContent = 'Рейтинг ' + sign + rt.delta + ' · ' + rt.after;
+                    // На калибровке настоящий ранг не палим — медаль «Калибровка»
+                    // (wasCalibrating = состояние ДО боя; раскрытие — на посвящении).
+                    var medalKey = _bt.wasCalibrating ? 'calibration' : rt.rank_key;
+                    ratEl.innerHTML = '';
+                    if (medalKey) {
+                        var medal = document.createElement('img');
+                        medal.className = 'bt-result-rating-medal';
+                        medal.src = _btRankImg(medalKey); medal.alt = '';
+                        medal.onerror = function () { this.hidden = true; };
+                        ratEl.appendChild(medal);
+                    }
+                    ratEl.appendChild(document.createTextNode(
+                        'Рейтинг ' + sign + rt.delta + ' · ' + rt.after));
                     ratEl.className = 'bt-result-rating ' + (rt.delta >= 0 ? 'is-up' : 'is-down');
                     ratEl.hidden = false;
                 } else {

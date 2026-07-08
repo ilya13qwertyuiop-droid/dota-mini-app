@@ -4646,6 +4646,21 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
 
     ids = [battle.host_id] + ([battle.guest_id] if battle.guest_id else [])
     settings = _tm_load_user_settings(db, ids)
+    # Ранг-медаль каждого игрока (на калибровке — 'calibration', ранг не палим).
+    rank_rows = {
+        r.user_id: (r.battle_rating, r.battle_games_played)
+        for r in db.query(
+            DBUserProfile.user_id,
+            DBUserProfile.battle_rating,
+            DBUserProfile.battle_games_played,
+        ).filter(DBUserProfile.user_id.in_(ids)).all()
+    }
+
+    def _rank_key_of(uid):
+        rating, games = rank_rows.get(uid, (None, 0))
+        if _bt_is_calibrating(games or 0):
+            return "calibration"
+        return _bt_rank_for(rating if rating is not None else _BT_RATING_BASE)[0]
 
     def _player(uid):
         if uid is None:
@@ -4655,12 +4670,15 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "user_id": uid,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
             "photo_url": s.get("photo_url"),
+            "rank_key": _rank_key_of(uid),
         }
 
     # Бот занимает место гостя (guest_id NULL): отдаём его как «игрока-бота».
+    # Медали у бота нет (rank_key None) — фронт её просто не рисует.
     def _guest_player():
         if battle.is_bot:
-            return {"user_id": None, "name": "Бот", "photo_url": None, "is_bot": True}
+            return {"user_id": None, "name": "Бот", "photo_url": None,
+                    "is_bot": True, "rank_key": None}
         return _player(battle.guest_id)
 
     # Стадия расстановки: общий таймер + кто уже отправил. Раскладка — ТОЛЬКО
