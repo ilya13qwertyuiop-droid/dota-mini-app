@@ -2389,6 +2389,12 @@
             _btClearReveal();
             _btRvSkip = false;
             _bt.revealTimers = [];
+            // Снапшот флага калибровки В МОМЕНТ входа в результат: пока играют
+            // GSAP-акты (~5.6с), _btCheckGraduation успевает сбросить живой
+            // _bt.wasCalibrating — и медаль настоящего ранга просочилась бы на
+            // финал ДО церемонии посвящения. Все пути (_btShowFinal из актов,
+            // instant, skip) читают только этот снапшот.
+            _bt.resultMedalCal = !!_bt.wasCalibrating;
             var me = _btMyRole(), opp = _btOppRole();
             var r = st.result || {};
             var isForfeit = !!r.forfeit;
@@ -2631,9 +2637,10 @@
                 var rt = st.rating;
                 if (rt && typeof rt.delta === 'number') {
                     var sign = rt.delta >= 0 ? '+' : '';
-                    // На калибровке настоящий ранг не палим — медаль «Калибровка»
-                    // (wasCalibrating = состояние ДО боя; раскрытие — на посвящении).
-                    var medalKey = _bt.wasCalibrating ? 'calibration' : rt.rank_key;
+                    // На калибровке настоящий ранг не палим — медаль «Калибровка».
+                    // ТОЛЬКО снапшот из _btRenderResult: живой _bt.wasCalibrating к
+                    // этому моменту мог сбросить _btCheckGraduation (см. F1-фикс).
+                    var medalKey = _bt.resultMedalCal ? 'calibration' : rt.rank_key;
                     ratEl.innerHTML = '';
                     if (medalKey) {
                         var medal = document.createElement('img');
