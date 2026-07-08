@@ -3869,7 +3869,13 @@ _BT_ASSIGN_MS = 30_000       # общий таймер стадии расста
 # матча — покрывает доставку матча второму игроку (его полл) + интерстишл.
 _BT_START_COUNTDOWN_MS = 4_000
 _BT_MAX_HOLD_SECONDS = 25.0  # удержание long-poll (< nginx proxy_read_timeout 60s)
-_BT_WAITING_TTL_MIN = 10     # протухание комнат в waiting/searching
+# Протухание комнат в waiting/searching (env — тот же ключ, что раньше читал
+# sweep в teammates_notifier; уборка теперь живёт здесь, см. _bt_sweep_loop).
+_BT_WAITING_TTL_MIN = int(os.environ.get("BT_WAITING_TTL_MIN", "10"))
+# drafting/assigning, чей дедлайн просрочен БОЛЕЕ чем на это — оба игрока ушли
+# (активный поллинг исполняет просрочку максимум за один hold-цикл ~25с).
+_BT_DEAD_GRACE_SEC = int(os.environ.get("BT_DEAD_GRACE_SEC", "120"))
+_BT_SWEEP_INTERVAL_SEC = 60.0   # период фоновой уборки брошенных битв
 _BT_MODES = ("cm", "ap")
 _BT_ACTIVE_STATUSES = ("searching", "waiting", "drafting", "assigning")
 # Позиционный штраф (стадия расстановки): доля матчей героя на назначенной
@@ -4587,9 +4593,51 @@ def _bt_apply_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bo
     return changed
 
 
+def _bt_tick_pending(battle: DBDraftBattle, now: datetime) -> bool:
+    """Чистый предикат: «есть ли что исполнять в _bt_tick?» — зеркалит условия
+    _bt_apply_timeouts + _bt_bot_due БЕЗ побочных эффектов и БЕЗ обращений к БД.
+
+    Используется для double-checked locking в _bt_tick: сначала дешёвая проверка
+    на нелоченном снимке (99% поллов — false, ни одного лока), и повторная —
+    на свежей строке после FOR UPDATE. Пере-срабатывание безвредно (после лока
+    решает настоящая логика), недо-срабатывание опасно (застрявшие таймауты) —
+    поэтому условия тупо повторяют мутирующие ветки, без оптимизаций."""
+    if battle.status in ("waiting", "searching"):
+        created = _bt_aware(battle.created_at)
+        return bool(
+            created and now - created > _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+        )
+    if battle.status in ("drafting", "assigning"):
+        deadline = _bt_aware(battle.deadline_at)
+        if deadline is not None and now >= deadline:
+            return True
+        due_at, _wait = _bt_bot_due(battle, now)
+        return due_at is not None
+    return False
+
+
 def _bt_tick(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     """Единая «прокрутка» состояния: просрочки таймеров + ходы бота, до
-    фикс-точки. Заменяет прямые вызовы _bt_apply_timeouts в эндпоинтах/поллинге."""
+    фикс-точки. Заменяет прямые вызовы _bt_apply_timeouts в эндпоинтах/поллинге.
+
+    Гонко-безопасность (двойная финализация / lost-update): read-пути
+    (/battle/events, /battle/state, /battle/active) читают битву обычным
+    SELECT'ом. Мутировать на основе такого снимка нельзя — параллельный
+    /battle/positions мог уже финализировать битву, и мы бы перезаписали его
+    результат фолбэк-позициями и наложили второй Elo-сдвиг. Поэтому:
+      1) дешёвый предикат на нелоченном снимке — обычно false, лока нет;
+      2) сработал → db.refresh(with_for_update=True): ре-SELECT строки ПОД
+         ЛОКОМ с перезаписью in-memory состояния (именно refresh — обычный
+         query вернул бы тот же identity-mapped объект со старыми атрибутами);
+      3) повторная проверка предиката на свежей строке — если другой воркер
+         уже всё исполнил (finished), выходим без изменений.
+    Пишущие эндпоинты и так держат FOR UPDATE — для них refresh это повторный
+    SELECT в той же транзакции, дедлока нет."""
+    if not _bt_tick_pending(battle, now):
+        return False
+    db.refresh(battle, with_for_update=True)
+    if not _bt_tick_pending(battle, now):
+        return False
     changed = False
     for _ in range(len(_BT_SEQUENCES[battle.mode]) + 2):
         c1 = _bt_apply_timeouts(db, battle, now)
@@ -5372,3 +5420,79 @@ async def api_battle_events(token: str, code: str, since: int = 0):
         if remaining <= 0:
             return {"changed": False, "version": since}
         await _bt_wait(battle_id, min(wait_s, remaining))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  «Битва драфтов»: фоновая уборка брошенных битв.
+#
+#  Состояние битвы живёт в БД, просрочки исполняются ЛЕНИВО — любым чтением
+#  (long-poll соперника / заход на экран). Пока хотя бы один игрок поллит, всё
+#  движется само. Но если ОБА ушли, никто не читает → строка застревает:
+#    • searching/waiting — комната-зомби копится в БД;
+#    • drafting/assigning — /battle/active вернёт её юзеру и НЕ пустит в новую.
+#
+#  Раньше sweep жил в teammates_notifier — и на окружениях без этого процесса
+#  (staging) зомби не подметались вовсе. Уборка — часть домена битвы, поэтому
+#  переехала сюда: работает в каждом окружении, где крутится API. При
+#  нескольких uvicorn-воркерах задача запускается в каждом — это безопасно:
+#  идемпотентный bulk-UPDATE по индексированному status, «лишние» воркеры
+#  получают rowcount=0; джиттер разводит их по времени.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _bt_sweep_stale_battles() -> int:
+    """Метит брошенные битвы как 'abandoned'. Возвращает число затронутых строк.
+
+    Bulk-UPDATE без уведомлений: участников уже нет (на то они и брошенные).
+    Редкий завис-поллер сам отвалится по hold-таймауту и перечитает abandoned."""
+    now = _bt_now()
+    waiting_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+    dead_cutoff = now - _tm_timedelta(seconds=_BT_DEAD_GRACE_SEC)
+    with SessionLocal() as session:
+        # 1) Комнаты, в которые никто не зашёл.
+        r1 = session.execute(
+            text(
+                """
+                UPDATE draft_battles
+                SET status = 'abandoned', state_version = state_version + 1
+                WHERE status IN ('searching', 'waiting')
+                  AND created_at < :cutoff
+                """
+            ),
+            {"cutoff": waiting_cutoff},
+        )
+        # 2) Битвы, брошенные посреди драфта/расстановки (никто не поллит).
+        r2 = session.execute(
+            text(
+                """
+                UPDATE draft_battles
+                SET status = 'abandoned', state_version = state_version + 1
+                WHERE status IN ('drafting', 'assigning')
+                  AND deadline_at IS NOT NULL
+                  AND deadline_at < :cutoff
+                """
+            ),
+            {"cutoff": dead_cutoff},
+        )
+        session.commit()
+        total = (r1.rowcount or 0) + (r2.rowcount or 0)
+    if total:
+        logger.info("[bt_sweep] swept %d stale battle(s) → abandoned", total)
+    return total
+
+
+async def _bt_sweep_loop() -> None:
+    """Вечный цикл уборки. Ошибка одного прохода не валит цикл."""
+    # Джиттер старта: несколько воркеров не бьют в БД синхронно.
+    await asyncio.sleep(random.uniform(0.0, _BT_SWEEP_INTERVAL_SEC))
+    while True:
+        try:
+            await asyncio.to_thread(_bt_sweep_stale_battles)
+        except Exception as e:
+            logger.warning("[bt_sweep] pass failed: %s", e)
+        await asyncio.sleep(_BT_SWEEP_INTERVAL_SEC)
+
+
+@app.on_event("startup")
+async def _bt_start_sweep_task() -> None:
+    asyncio.create_task(_bt_sweep_loop())
