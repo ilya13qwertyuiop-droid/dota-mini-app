@@ -3865,6 +3865,9 @@ _BT_BAN_MS = 20_000          # основное время на бан
 _BT_PICK_MS = 25_000         # основное время на пик
 _BT_RESERVE_MS = 120_000     # доп. время на игрока на всю партию (как в CM)
 _BT_ASSIGN_MS = 30_000       # общий таймер стадии расстановки позиций
+# Стартовый отсчёт: таймер ПЕРВОГО хода начинает тикать через столько мс после
+# матча — покрывает доставку матча второму игроку (его полл) + интерстишл.
+_BT_START_COUNTDOWN_MS = 4_000
 _BT_MAX_HOLD_SECONDS = 25.0  # удержание long-poll (< nginx proxy_read_timeout 60s)
 _BT_WAITING_TTL_MIN = 10     # протухание комнат в waiting/searching
 _BT_MODES = ("cm", "ap")
@@ -4175,18 +4178,23 @@ def _bt_is_calibrating(games_played: int) -> bool:
     return games_played < _BT_CALIBRATION_GAMES
 
 
-# Подбор по рейтингу: окно расширяется по времени ожидания КАНДИДАТА (чем дольше
-# ждёт — тем шире берёт, чтобы никто не застрял в очереди навечно).
+# Подбор по рейтингу: окно расширяется по времени ожидания (чем дольше ждёт —
+# тем шире берёт, чтобы никто не застрял в очереди навечно).
 _BT_MATCH_WINDOW_NEAR = 800    # свежий кандидат — только близкий по рейтингу
 _BT_MATCH_WINDOW_MID = 2000    # подождал — окно шире
 _BT_MATCH_WIDEN_1_SEC = 10
 _BT_MATCH_WIDEN_2_SEC = 25
 _BT_MATCH_SCAN_LIMIT = 20      # сколько кандидатов осматриваем за раз
+# Тест-режим (staging): BT_MATCH_ANY=1 полностью выключает окно рейтинга —
+# любые два игрока матчатся сразу. На проде НЕ ставить.
+_BT_MATCH_ANY = os.environ.get("BT_MATCH_ANY", "0") == "1"
 
 
 def _bt_match_window(wait_seconds: float):
-    """Допустимый разрыв рейтинга для кандидата, ждущего wait_seconds.
+    """Допустимый разрыв рейтинга для игрока, ждущего wait_seconds.
     None = любой (ждёт давно → берём кого угодно)."""
+    if _BT_MATCH_ANY:
+        return None
     if wait_seconds < _BT_MATCH_WIDEN_1_SEC:
         return _BT_MATCH_WINDOW_NEAR
     if wait_seconds < _BT_MATCH_WIDEN_2_SEC:
@@ -4622,7 +4630,8 @@ def _bt_send_match_push(host_id, guest_id, code: str) -> None:
 
 
 def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
-    """Подсадка бота в зависшую searching-комнату. guest_id остаётся NULL."""
+    """Подсадка бота в зависшую searching-комнату. guest_id остаётся NULL.
+    Стартовый отсчёт — как у живого матча (интерстишл не ест время игрока)."""
     battle.is_bot = True
     battle.status = "drafting"
     battle.first_pick = random.choice(("host", "guest"))
@@ -4630,7 +4639,7 @@ def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
     battle.started_at = now
     battle.last_action_at = now
     battle.state_version += 1
-    _bt_start_turn(battle, now)
+    _bt_start_turn(battle, now + _tm_timedelta(milliseconds=_BT_START_COUNTDOWN_MS))
     _bt_log("battle_start", battle.host_id)
     _bt_log("battle_vs_bot", battle.host_id)
 
@@ -4708,8 +4717,12 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
         base_ms = _bt_base_ms(kind)
         started = _bt_aware(battle.turn_started_at)
         deadline = _bt_aware(battle.deadline_at)
+        # Стартовый отсчёт: turn_started_at может быть в будущем (первый ход
+        # после матча). До старта elapsed=0 (время не горит), а в total
+        # отсчёт не включаем — фронт получает «останется на момент старта».
+        starts_in = max(0, int((started - now).total_seconds() * 1000)) if started else 0
         elapsed_ms = max(0, int((now - started).total_seconds() * 1000)) if started else 0
-        total_remaining = max(0, int((deadline - now).total_seconds() * 1000)) if deadline else 0
+        total_remaining = max(0, int((deadline - now).total_seconds() * 1000) - starts_in) if deadline else 0
         main_remaining = max(0, base_ms - elapsed_ms)
         # Остаток резерва актора С УЧЁТОМ уже горящего на этом ходе.
         reserve_now = min(_bt_reserve_ms(battle, actor),
@@ -4717,6 +4730,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
         current = {
             "actor": actor,
             "kind": kind,
+            "starts_in_ms": starts_in,
             "main_remaining_ms": main_remaining,
             "reserve_remaining_ms": reserve_now,
             "total_remaining_ms": total_remaining,
@@ -4794,7 +4808,12 @@ def _bt_active_battle(db: Session, user_id: int):
 
 
 def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> None:
-    """Гость закреплён — жеребьёвка и первый ход."""
+    """Гость закреплён — жеребьёвка и первый ход (со стартовым отсчётом).
+
+    Таймер первого хода стартует через _BT_START_COUNTDOWN_MS, а не сразу:
+    матч исполняет ОДИН из игроков, второй узнаёт о нём своим поллом + оба
+    смотрят интерстишл «Соперник найден» — без отсчёта эти секунды сгорали у
+    первого пикера ещё до того, как он видел драфт."""
     battle.guest_id = guest_id
     battle.status = "drafting"
     battle.first_pick = random.choice(("host", "guest"))
@@ -4802,7 +4821,7 @@ def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> Non
     battle.started_at = now
     battle.last_action_at = now
     battle.state_version += 1
-    _bt_start_turn(battle, now)
+    _bt_start_turn(battle, now + _tm_timedelta(milliseconds=_BT_START_COUNTDOWN_MS))
     _bt_log("battle_start", battle.host_id, guest_id)
 
 
@@ -5216,6 +5235,77 @@ def api_battle_state(token: str, code: str, db: Session = Depends(get_db)):
     return _bt_serialize(db, battle, _bt_role(battle, uid), now)
 
 
+def _bt_try_live_match(db: Session, code: str, now: datetime) -> bool:
+    """Ленивый матчер из long-poll'а searching-комнаты.
+
+    Без него два игрока, вставшие в очередь в РАЗНОЕ время, могли не сматчиться
+    никогда: подбор происходил только в момент POST /queue, и если кандидат не
+    прошёл по окну рейтинга — второй создавал свою комнату, обе просто поллились
+    (окно «расширялось» без исполнителя), и через 40с оба получали ботов.
+
+    Окно — по МАКСИМАЛЬНОМУ ожиданию из двух комнат: раз обе ждут, самая
+    терпеливая расширяет допуск за обоих. Боевой становится ПОЛЛЯЩАЯСЯ комната
+    (её хост увидит драфт этим же поллом); комната кандидата помечается
+    abandoned с result={'moved_to': code} — его фронт сам перепрыгнет.
+
+    Гонки: своя комната FOR UPDATE, кандидаты FOR UPDATE SKIP LOCKED (встречный
+    воркер просто пропустит уже залоченную строку — дедлока нет; /queue и /leave
+    лочат те же строки). Возвращает True, если матч состоялся."""
+    mine = _bt_get_battle(db, code, for_update=True)
+    if mine.status != "searching" or mine.is_bot:
+        db.commit()   # отпустить лок
+        return False
+    my_created = _bt_aware(mine.created_at)
+    my_wait = (now - my_created).total_seconds() if my_created else 0.0
+    my_rating = _bt_player_rating(db, mine.host_id)
+    ttl_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+
+    cands = (
+        db.query(DBDraftBattle)
+        .filter(DBDraftBattle.status == "searching")
+        .filter(DBDraftBattle.mode == mine.mode)
+        .filter(DBDraftBattle.id != mine.id)
+        .filter(DBDraftBattle.host_id != mine.host_id)
+        .filter(DBDraftBattle.created_at >= ttl_cutoff)
+        .order_by(DBDraftBattle.created_at)
+        .with_for_update(skip_locked=True)
+        .limit(_BT_MATCH_SCAN_LIMIT)
+        .all()
+    )
+    if not cands:
+        db.commit()
+        return False
+    ratings: dict[int, int] = {}
+    for hid, hr in (
+        db.query(DBUserProfile.user_id, DBUserProfile.battle_rating)
+        .filter(DBUserProfile.user_id.in_([c.host_id for c in cands]))
+        .all()
+    ):
+        ratings[hid] = hr if hr is not None else _BT_RATING_BASE
+
+    for c in cands:
+        c_created = _bt_aware(c.created_at)
+        c_wait = (now - c_created).total_seconds() if c_created else 0.0
+        window = _bt_match_window(max(my_wait, c_wait))
+        cand_rating = ratings.get(c.host_id, _BT_RATING_BASE)
+        if window is not None and abs(my_rating - cand_rating) > window:
+            continue
+        _bt_start_battle(mine, c.host_id, now)
+        c.status = "abandoned"
+        c.result = {"moved_to": mine.code}
+        c.state_version += 1
+        host_id, guest_id, bcode = mine.host_id, c.host_id, mine.code
+        mine_id, cand_id = mine.id, c.id
+        db.commit()
+        _bt_notify(mine_id)
+        _bt_notify(cand_id)
+        _bt_send_match_push(host_id, guest_id, bcode)
+        return True
+
+    db.commit()   # никого в допуске — отпустить локи
+    return False
+
+
 def _bt_poll_read(code: str, user_id: int, since: int):
     """Один шаг long-poll'а (выполняется в threadpool): применить ленивые
     таймауты, отдать состояние если version > since, иначе (battle_id, сколько
@@ -5223,6 +5313,12 @@ def _bt_poll_read(code: str, user_id: int, since: int):
     with SessionLocal() as db:
         battle = _bt_get_battle(db, code)
         now = _bt_now()
+        # Ленивый live-матч: пока комната ждёт в searching, каждый полл пробует
+        # спарить её с другой ждущей (окно по max-ожиданию). Живой соперник
+        # всегда в приоритете над бот-фоллбэком ниже.
+        if battle.status == "searching" and not battle.is_bot:
+            if _bt_try_live_match(db, code, now):
+                battle = _bt_get_battle(db, code)
         # Бот-фолбэк: searching висит дольше таймаута и юзер всё ещё ждёт (раз
         # поллит) → подсаживаем бота. Перечитываем с FOR UPDATE и перепроверяем
         # статус — живой соперник мог занять комнату параллельно (тогда no-op).

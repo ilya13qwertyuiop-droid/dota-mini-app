@@ -1523,12 +1523,17 @@
                         label,
                         resumed ? 'Возвращаемся к драфту…' : 'Драфт начинается…'
                     );
+                    // Интерстишл держим до старта таймера первого хода
+                    // (серверный отсчёт starts_in_ms): драфт открывается ровно
+                    // в момент, когда время реально начинает гореть.
+                    var holdMs = Math.max(1800,
+                        (st.current && st.current.starts_in_ms) || 0);
                     setTimeout(function () {
                         var f = document.getElementById('bt-found');
                         if (f && !f.hidden && _bt.state && _bt.state.status === 'drafting') {
                             _btShow('bt-draft');
                         }
-                    }, 1800);
+                    }, holdMs);
                 } else {
                     _btShow('bt-draft');
                     // Ход перешёл к тебе — тактильный сигнал (экран мог быть не в фокусе глаз).
@@ -1553,6 +1558,10 @@
             } else { // abandoned
                 _btStopTimer();
                 _btStopPolling();
+                // Ленивый матчер слил нашу searching-комнату с чужой: сервер
+                // оставил указатель moved_to — перепрыгиваем в боевую комнату.
+                var mv = st.result && st.result.moved_to;
+                if (mv) { _btEnter(mv); return; }
                 _bt.code = null;
                 _btShow('bt-menu');
                 if (typeof showToast === 'function') showToast('Комната закрыта.');
@@ -1842,7 +1851,10 @@
             var cur = st.current;
             if (cur) {
                 _bt.anchor = {
-                    at: Date.now(),
+                    // Стартовый отсчёт: сервер мог назначить старт хода в будущем
+                    // (starts_in_ms) — сдвигаем якорь, до этого момента таймер
+                    // стоит на полном времени (см. clamp в _btTick).
+                    at: Date.now() + (cur.starts_in_ms || 0),
                     main: cur.main_remaining_ms,
                     total: cur.total_remaining_ms,
                     kind: cur.kind,
@@ -1898,7 +1910,8 @@
             var clock = document.getElementById('bt-timer-clock');
             var sub = document.getElementById('bt-timer-sub');
             if (!a || !clock) return;
-            var elapsed = Date.now() - a.at;
+            // Якорь может быть в будущем (стартовый отсчёт) — до него время не горит.
+            var elapsed = Math.max(0, Date.now() - a.at);
             var mainLeft = Math.max(0, a.main - elapsed);
             var totalLeft = Math.max(0, a.total - elapsed);
             var inReserve = (mainLeft <= 0 && totalLeft > 0);
