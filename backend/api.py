@@ -4078,6 +4078,71 @@ def _bt_position_penalty(positions: dict) -> float:
     return round(penalty, 1)
 
 
+# ── Мета-компонент (только битва, сольный драфтер НЕ трогаем) ────────────────
+# Та же формула и гейт, что у клиентского «Анализа» (_ANALYSIS_META_* в
+# script.js): за героя (win_rate на его позиции − 0.5) × SCALE, выборка < 200
+# матчей — герой нейтрален. Реальный вклад ~±3 на команду — приправа уровня
+# позиционного штрафа, синергия/контрпики остаются ядром счёта.
+_BT_META_MIN_MATCHES = 200
+_BT_META_CENTER = 0.5
+_BT_META_SCALE = 10.0
+
+_bt_meta_wr_cache: "dict[int, dict[int, tuple[float, int]]] | None" = None
+
+
+def _bt_meta_wr() -> dict:
+    """{hero_id: {pos: (win_rate, num_matches)}} из dota_builds.json
+    (тот же файл, что кормит позиционный штраф и пулы бота)."""
+    global _bt_meta_wr_cache
+    if _bt_meta_wr_cache is not None:
+        return _bt_meta_wr_cache
+    raw = _load_dota_builds_file() or {}
+    out: dict[int, dict[int, tuple]] = {}
+    for hid_str, positions in raw.items():
+        if not isinstance(positions, dict):
+            continue
+        try:
+            hid = int(hid_str)
+        except ValueError:
+            continue
+        per_pos: dict[int, tuple] = {}
+        for pk, pos_num in _DOTA_POS_URL_TO_NUM.items():
+            pd = positions.get(pk)
+            if isinstance(pd, dict) and pd.get("win_rate") is not None:
+                per_pos[pos_num] = (
+                    float(pd["win_rate"]), int(pd.get("num_matches") or 0)
+                )
+        if per_pos:
+            out[hid] = per_pos
+    _bt_meta_wr_cache = out
+    return out
+
+
+def _bt_meta_score(positions: dict) -> float:
+    """Метовость драфта: сумма отклонений позиционного винрейта пиков от 50%.
+
+    positions: {hero_id(int|str): pos(int)} — та же раскладка, что у штрафа.
+    Герой без данных / с малой выборкой — нейтрален (0), как в «Анализе»."""
+    wr_map = _bt_meta_wr()
+    score = 0.0
+    for hid, pos in (positions or {}).items():
+        try:
+            hid_i, pos_i = int(hid), int(pos)
+        except (TypeError, ValueError):
+            continue
+        per_pos = wr_map.get(hid_i)
+        if not per_pos:
+            continue
+        entry = per_pos.get(pos_i)
+        if not entry:
+            continue
+        wr, matches = entry
+        if matches < _BT_META_MIN_MATCHES:
+            continue
+        score += (wr - _BT_META_CENTER) * _BT_META_SCALE
+    return round(score, 1)
+
+
 def _bt_picks_of(db: Session, battle: DBDraftBattle, role: str) -> list:
     rows = (
         db.query(DBDraftBattleAction)
@@ -4297,8 +4362,11 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
 
     host_pen = _bt_position_penalty(host_pos)
     guest_pen = _bt_position_penalty(guest_pos)
-    host_final = round(max(0.0, host_res["total_score"] + host_pen), 1)
-    guest_final = round(max(0.0, guest_res["total_score"] + guest_pen), 1)
+    # Мета-компонент (battle-only): метовость пиков на их позициях.
+    host_meta = _bt_meta_score(host_pos)
+    guest_meta = _bt_meta_score(guest_pos)
+    host_final = round(max(0.0, host_res["total_score"] + host_pen + host_meta), 1)
+    guest_final = round(max(0.0, guest_res["total_score"] + guest_pen + guest_meta), 1)
 
     if host_final > guest_final:
         battle.winner = "host"
@@ -4310,6 +4378,8 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
         "host": host_res,
         "guest": guest_res,
         "penalties": {"host": host_pen, "guest": guest_pen},
+        # Метовость (нет у битв до этого деплоя — фронт рендерит строку условно).
+        "meta": {"host": host_meta, "guest": guest_meta},
         "final": {"host": host_final, "guest": guest_final},
         # Раскладки вскрываются обоим только здесь, после финала.
         "positions": {"host": host_pos, "guest": guest_pos},

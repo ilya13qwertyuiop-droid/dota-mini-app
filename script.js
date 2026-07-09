@@ -2510,6 +2510,10 @@
                               '<span class="bt-proto-poszero">Все герои на своих позициях</span>' +
                           '</div>'
                         : _btProtoRowHtml('pos', 'Позиции', penMe, penOpp, false);
+                    // Метовость: у битв до её появления в result нет — строка условная.
+                    var metaRow = (r.meta && r.meta[me] != null && r.meta[opp] != null)
+                        ? _btProtoRowHtml('meta', 'Мета', r.meta[me], r.meta[opp], false)
+                        : '';
                     table.innerHTML =
                         '<div class="bt-proto-row bt-proto-row--caps" data-key="caps">' +
                             '<b class="bt-proto-cap">Ты</b><span></span>' +
@@ -2517,6 +2521,7 @@
                         '</div>' +
                         _btProtoRowHtml('syn', 'Синергия', r[me].synergy_score, r[opp].synergy_score, false) +
                         _btProtoRowHtml('mu', 'Контрпики', r[me].matchup_score, r[opp].matchup_score, false) +
+                        metaRow +
                         posRow +
                         _btProtoRowHtml('total', 'Итог', meFinal, oppFinal, true);
                 } else {
@@ -2572,18 +2577,25 @@
 
             // 1) Драфты въезжают (~1с сцена героев)
             T(function () { proto.classList.add('bt-proto--teams-in'); }, 80);
-            // 2) Чья сторона — тихие колонки-подписи, затем строки-акты
+            // 2) Чья сторона — тихие колонки-подписи, затем строки-акты.
+            // Расписание динамическое: строка «Мета» есть только у битв после
+            // её появления в result — акты идут по фактическим строкам.
             stageRow('caps', 950, true);
-            stageRow('syn', 1100);
-            stageRow('mu', 2300);
-            stageRow('pos', 3450);
+            var seqKeys = ['syn', 'mu', 'meta', 'pos'].filter(function (k) {
+                return !!table.querySelector('[data-key="' + k + '"]');
+            });
+            var stepMs = 1000;
+            seqKeys.forEach(function (k, i) {
+                stageRow(k, 1100 + i * stepMs);
+            });
             // 3) Кульминация: итог + вердикт + рейтинг + кнопки, хаптика исхода
+            var finalAt = 1100 + seqKeys.length * stepMs;
             T(function () {
                 proto.classList.add('bt-proto--final-in');
                 _bt.protoSeqActive = false;
                 _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
-            }, 4300);
-            stageRow('total', 4300, true);
+            }, finalAt);
+            stageRow('total', finalAt, true);
         }
 
         // Тап по экрану во время монтажа — сразу к финалу (ре-рендер instant;
