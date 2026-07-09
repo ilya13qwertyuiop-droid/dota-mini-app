@@ -2095,14 +2095,18 @@
             var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
             var q = (document.getElementById('bt-search') || {}).value || '';
             q = q.trim().toLowerCase();
-            var posSet = (_bt.posFilter && _bt.posSets) ? _bt.posSets[_bt.posFilter] : null;
+            // Поиск ГЛАВНЕЕ фильтра позиций: с запросом ищем по всему пулу
+            // (иначе героя «не с той» вкладки не найти вовсе).
+            var posSet = (!q && _bt.posFilter && _bt.posSets) ? _bt.posSets[_bt.posFilter] : null;
 
             var names = Object.keys(window.dotaHeroIds).sort();
             var html = '';
             for (var i = 0; i < names.length; i++) {
                 var name = names[i];
-                if (q && name.toLowerCase().indexOf(q) === -1) continue;
                 var hid = window.dotaHeroIds[name];
+                // Тот же матчер, что у драфтера: англ. имена + русские алиасы
+                // (_ANALYSIS_HERO_NAMES_RU), без учёта регистра.
+                if (q && !_analysisHeroMatchesQuery(hid, q)) continue;
                 if (posSet && !posSet[hid]) continue;
                 var isTaken = !!taken[hid];
                 var sel = (_bt.selHero === hid);
@@ -2113,7 +2117,11 @@
                     'alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
                     '<span>' + _mghlEsc(name) + '</span></button>';
             }
-            grid.innerHTML = html || '<div class="mghl-msg">Никого не нашлось</div>';
+            grid.innerHTML = html ||
+                '<div class="bt-grid-empty">' +
+                    '<i class="ph ph-magnifying-glass" aria-hidden="true"></i>' +
+                    '<span>Ничего не найдено</span>' +
+                '</div>';
             grid.classList.toggle('bt-grid--waiting', !myTurn);
         };
 

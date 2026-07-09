@@ -9619,6 +9619,19 @@ margin-top: var(--space-4);
 .bt-proto-row--flat { display: flex; justify-content: center; }
 .bt-proto-poszero { font-size: var(--text-xs); color: var(--text-tertiary); }
 
+/* Пустой результат поиска в гриде драфта: стилизованное состояние на всю
+   ширину грида вместо голого текста. */
+.bt-grid-empty {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-tertiary); font-size: var(--text-sm);
+  text-align: center;
+  border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);
+}
+.bt-grid-empty i { font-size: 22px; opacity: 0.6; }
+
 /* Подсказка скипа: только во время секвенции, тихо и с задержкой (не мигать
    на пустом старте). Обычный поток — НЕ fixed (урок F3: ничего плавающего). */
 .bt-proto-skiphint {
