@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=239" />
+    <link rel="stylesheet" href="styles.css?v=240" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -756,8 +756,8 @@
           <button type="button" class="tm-primary-btn bt-menu-primary" onclick="btQueue()">Найти соперника</button>
 
           <!-- История битв: лента завершённых партий (тап → разбор результата).
-               Под рейтинг заложено место (чип bt-hist-rating, скрыт до этапа
-               рейтинга). Наполняется btRenderHistory из /api/battle/history. -->
+               Строка: аватар + имя с медалью ранга + режим·дата | исход,
+               счёт, MMR-чип. Наполняется btRenderHistory из /api/battle/history. -->
           <div class="bt-history" id="bt-history" hidden>
             <div class="bt-history-head">
               <span class="bt-history-title">История битв</span>
@@ -1869,6 +1869,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=293"></script>
+    <script defer src="script.js?v=294"></script>
   </body>
 </html>

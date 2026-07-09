@@ -1796,12 +1796,22 @@
                 av.appendChild(_btAvatarInitial(opp.name));
             }
 
-            // Центр: имя + (режим · дата).
+            // Центр: имя + медаль ранга соперника + (режим · дата).
             var mid = document.createElement('div');
             mid.className = 'bt-hist-mid';
             var nm = document.createElement('div');
             nm.className = 'bt-hist-name';
-            nm.textContent = opp.name || 'Игрок';
+            var nmTxt = document.createElement('span');
+            nmTxt.className = 'bt-hist-name-txt';
+            nmTxt.textContent = opp.name || 'Игрок';
+            nm.appendChild(nmTxt);
+            if (opp.rank_key) {
+                var medal = document.createElement('img');
+                medal.className = 'bt-side-rank';   // те же 18px, что в драфте
+                medal.src = _btRankImg(opp.rank_key); medal.alt = '';
+                medal.onerror = function () { this.hidden = true; };
+                nm.appendChild(medal);
+            }
             var meta = document.createElement('div');
             meta.className = 'bt-hist-meta';
             var modeTag = (b.mode === 'ap') ? 'Без банов' : 'С банами';
@@ -1829,12 +1839,13 @@
             }
             right.appendChild(score);
 
-            // Чип рейтинга — пока сервер не шлёт rating_after, блок не рисуется.
+            // MMR-чип: подписанный пилл «+51 MMR» — отдельная сущность, а не
+            // третье голое число рядом со счётом (иначе каша из значений).
             if (b.rating_after != null && b.rating_before != null) {
                 var delta = b.rating_after - b.rating_before;
                 var rc = document.createElement('div');
-                rc.className = 'bt-hist-rating ' + (delta >= 0 ? 'is-up' : 'is-down');
-                rc.textContent = (delta >= 0 ? '+' : '') + delta;
+                rc.className = 'bt-hist-mmr ' + (delta >= 0 ? 'is-up' : 'is-down');
+                rc.textContent = (delta >= 0 ? '+' : '') + delta + ' MMR';
                 right.appendChild(rc);
             }
 

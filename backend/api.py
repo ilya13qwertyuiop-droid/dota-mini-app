@@ -4253,6 +4253,13 @@ def _bt_is_calibrating(games_played: int) -> bool:
     return games_played < _BT_CALIBRATION_GAMES
 
 
+def _bt_public_rank_key(rating, games_played) -> str:
+    """Публичный ключ медали игрока: на калибровке настоящий ранг не палим."""
+    if _bt_is_calibrating(games_played or 0):
+        return "calibration"
+    return _bt_rank_for(rating if rating is not None else _BT_RATING_BASE)[0]
+
+
 # Подбор по рейтингу: окно расширяется по времени ожидания (чем дольше ждёт —
 # тем шире берёт, чтобы никто не застрял в очереди навечно).
 _BT_MATCH_WINDOW_NEAR = 800    # свежий кандидат — только близкий по рейтингу
@@ -4803,9 +4810,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
 
     def _rank_key_of(uid):
         rating, games = rank_rows.get(uid, (None, 0))
-        if _bt_is_calibrating(games or 0):
-            return "calibration"
-        return _bt_rank_for(rating if rating is not None else _BT_RATING_BASE)[0]
+        return _bt_public_rank_key(rating, games)
 
     def _player(uid):
         if uid is None:
@@ -5149,13 +5154,23 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
         .all()
     )
 
-    # Резолвим имена/аватары живых соперников одним запросом.
+    # Резолвим имена/аватары/ранги живых соперников батчем.
     opp_ids = []
     for b in rows:
         opp_id = b.guest_id if b.host_id == uid else b.host_id
         if opp_id:
             opp_ids.append(opp_id)
     settings = _tm_load_user_settings(db, opp_ids) if opp_ids else {}
+    opp_ranks: dict[int, str] = {}
+    if opp_ids:
+        for r_uid, r_rating, r_games in (
+            db.query(
+                DBUserProfile.user_id,
+                DBUserProfile.battle_rating,
+                DBUserProfile.battle_games_played,
+            ).filter(DBUserProfile.user_id.in_(opp_ids)).all()
+        ):
+            opp_ranks[r_uid] = _bt_public_rank_key(r_rating, r_games)
 
     out = []
     for b in rows:
@@ -5164,7 +5179,8 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
         vs_bot = bool(b.is_bot and opp_role == "guest")
 
         if vs_bot:
-            opponent = {"name": "Бот", "photo_url": None, "is_bot": True}
+            opponent = {"name": "Бот", "photo_url": None, "is_bot": True,
+                        "rank_key": None}
         else:
             opp_id = b.guest_id if my_role == "host" else b.host_id
             s = settings.get(opp_id) or {}
@@ -5172,6 +5188,7 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
                 "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
                 "photo_url": s.get("photo_url"),
                 "is_bot": False,
+                "rank_key": opp_ranks.get(opp_id),
             }
 
         res = b.result or {}

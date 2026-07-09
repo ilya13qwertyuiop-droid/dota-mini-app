@@ -9872,9 +9872,13 @@ margin-top: var(--space-4);
   display: flex; flex-direction: column; gap: 2px;
 }
 .bt-hist-name {
+  display: flex; align-items: center; gap: 6px;
   font-size: var(--text-base); font-weight: var(--font-semibold);
   color: var(--text-primary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+}
+.bt-hist-name-txt {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .bt-hist-meta { font-size: var(--text-xs); color: var(--text-secondary); }   /* AA + 12px */
 .bt-hist-right {
@@ -9889,12 +9893,22 @@ margin-top: var(--space-4);
   font-family: var(--font-mono); font-size: var(--text-xs);
   color: var(--text-secondary);   /* AA */
 }
-.bt-hist-rating {
-  font-family: var(--font-mono); font-size: var(--text-2xs);
+/* MMR-чип: подписанный пилл с тонированным фоном — читается как отдельная
+   сущность «изменение рейтинга», а не третье число в столбике. */
+.bt-hist-mmr {
+  font-family: var(--font-mono); font-size: 10px;
   font-weight: var(--font-semibold);
+  padding: 2px 7px; border-radius: 999px;
+  margin-top: 1px;
 }
-.bt-hist-rating.is-up   { color: var(--success, #3db87a); }
-.bt-hist-rating.is-down { color: var(--danger, #e5534b); }
+.bt-hist-mmr.is-up {
+  color: var(--success, #3db87a);
+  background: color-mix(in oklch, var(--success, #3db87a) 12%, var(--bg-surface));
+}
+.bt-hist-mmr.is-down {
+  color: var(--danger, #e5534b);
+  background: color-mix(in oklch, var(--danger, #e5534b) 12%, var(--bg-surface));
+}
 
 /* Рейтинговая карточка в меню: ранг-бейдж + MMR ИЛИ прогресс калибровки */
 /* Карточка — <button> (тап открывает справку о рейтинге): сбрасываем
