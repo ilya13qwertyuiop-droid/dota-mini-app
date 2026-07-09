@@ -1225,22 +1225,23 @@
             selHero: null,        // выбранный в гриде герой (до подтверждения)
             timerInt: null,
             anchor: null,         // {at, main, total} для отрисовки таймера
-            gridBuilt: false,
         };
 
         function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
         function _btShow(screen) {
             if (screen !== 'bt-help') _bt.screen = screen;   // для возврата из справки
-            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help', 'bt-rank-reveal'].forEach(function (id) {
+            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help', 'bt-rank-reveal', 'bt-lb'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.hidden = (id !== screen);
             });
             var leave = document.getElementById('bt-leave-btn');
             if (leave) leave.hidden = !(screen === 'bt-draft' || screen === 'bt-assign');
-            // «?» — только в меню: во время поиска/драфта/результата шапке
-            // достаточно контекстных действий (сдаться/назад).
+            // «?» и трофей — только в меню: во время поиска/драфта/результата
+            // шапке достаточно контекстных действий (сдаться/назад).
             var help = document.getElementById('bt-help-btn');
             if (help) help.hidden = (screen !== 'bt-menu');
+            var lbBtn = document.getElementById('bt-lb-btn');
+            if (lbBtn) lbBtn.hidden = (screen !== 'bt-menu');
             // Онлайн-счётчик поллим только на меню/поиске, где он показан.
             if (screen === 'bt-menu' || screen === 'bt-wait') _btStartOnline();
             else _btStopOnline();
@@ -1324,6 +1325,8 @@
             // Из справки «назад» возвращает на прежний экран битвы.
             var help = document.getElementById('bt-help');
             if (help && !help.hidden) { btHelpClose(); return; }
+            // Из топа — в меню битвы.
+            if (_bt.screen === 'bt-lb') { _btShow('bt-menu'); return; }
             // Просмотр матча из истории: «назад» возвращает в меню битвы (к ленте
             // истории), а не выкидывает на список мини-игр.
             if (_bt.historyView && _bt.screen === 'bt-result') {
@@ -1363,6 +1366,83 @@
             _btStopOnline();
             switchPage('quiz');
         };
+
+        // ── Топ игроков (кнопка-трофей в шапке меню) ────────────────────────
+        window.btLbOpen = async function () {
+            _btShow('bt-lb');
+            var list = document.getElementById('bt-lb-list');
+            var meBar = document.getElementById('bt-lb-me');
+            if (!list) return;
+            list.innerHTML = '<div class="bt-history-empty">Загружаем…</div>';
+            if (meBar) meBar.hidden = true;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/leaderboard?token='
+                    + encodeURIComponent(_btTok()));
+                if (!r.ok) throw new Error('lb ' + r.status);
+                var d = await r.json();
+                var top = (d && d.top) || [];
+                list.innerHTML = '';
+                if (!top.length) {
+                    var empty = document.createElement('div');
+                    empty.className = 'bt-history-empty';
+                    empty.textContent = 'Пока никто не откалибровался — стань первым';
+                    list.appendChild(empty);
+                } else {
+                    top.forEach(function (p, i) { list.appendChild(_btLbRow(i + 1, p)); });
+                }
+                // «Твоё место»: вне топа — позиция; на калибровке — прогресс.
+                var you = d && d.you;
+                if (meBar && you) {
+                    var inTop = top.some(function (p) { return p.you; });
+                    if (you.calibrating) {
+                        meBar.textContent = 'Калибровка ' + (you.games_played || 0) +
+                            ' / ' + (you.calibration_total || 5) +
+                            ' — место появится после неё';
+                        meBar.hidden = false;
+                    } else if (!inTop && you.rank != null) {
+                        meBar.innerHTML = '';
+                        meBar.appendChild(_btLbRow(you.rank, {
+                            name: 'Ты', rank_key: you.rank_key,
+                            rating: you.rating, you: true,
+                        }));
+                        meBar.hidden = false;
+                    }
+                }
+            } catch (e) {
+                list.innerHTML = '';
+                var err = document.createElement('button');
+                err.type = 'button';
+                err.className = 'bt-history-empty bt-history-retry';
+                err.textContent = 'Топ не загрузился · Повторить';
+                err.onclick = function () { btLbOpen(); };
+                list.appendChild(err);
+            }
+        };
+
+        function _btLbRow(place, p) {
+            var row = document.createElement('div');
+            row.className = 'bt-lb-row' + (p.you ? ' bt-lb-row--you' : '');
+            var num = document.createElement('span');
+            num.className = 'bt-lb-num';
+            num.textContent = place;
+            row.appendChild(num);
+            if (p.rank_key) {
+                var medal = document.createElement('img');
+                medal.className = 'bt-lb-medal';
+                medal.src = _btRankImg(p.rank_key); medal.alt = '';
+                medal.onerror = function () { this.hidden = true; };
+                row.appendChild(medal);
+            }
+            var nm = document.createElement('span');
+            nm.className = 'bt-lb-name';
+            nm.textContent = p.name || 'Игрок';
+            row.appendChild(nm);
+            var mmr = document.createElement('b');
+            mmr.className = 'bt-lb-mmr';
+            mmr.textContent = p.rating;
+            row.appendChild(mmr);
+            return row;
+        }
 
         // ── Справка о режиме (кнопка «?» в шапке) ──────────────────────────
         window.btHelpOpen = function () {
@@ -1629,7 +1709,7 @@
                     // вошли (состояние ещё не прочитано) — поллим.
                     var stStatus = _bt.state && _bt.state.status;
                     var alive = !stStatus ||
-                        ['searching', 'waiting', 'drafting', 'assigning'].indexOf(stStatus) !== -1;
+                        ['searching', 'drafting', 'assigning'].indexOf(stStatus) !== -1;
                     if (_bt.code && alive) _btStartPolling();
                     // Онлайн возобновляем, если открыт экран меню/поиска.
                     var menu = document.getElementById('bt-menu');
@@ -1652,7 +1732,7 @@
                 _bt.searchStartedAt = null;
             }
             _btPillUpdate();
-            if (st.status === 'searching' || st.status === 'waiting') {
+            if (st.status === 'searching') {
                 _btRenderWait(st);
                 _btShow('bt-wait');
             } else if (st.status === 'drafting') {
@@ -2618,7 +2698,7 @@
             if (note) {
                 if (isForfeit) {
                     note.textContent = (r.forfeit === me)
-                        ? 'Ты сдался — победа присуждена сопернику.' : 'Соперник сдался.';
+                        ? 'Ты сдался.' : 'Соперник сдался.';
                     note.hidden = false;
                 } else {
                     note.hidden = true;

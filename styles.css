@@ -9635,13 +9635,61 @@ margin-top: var(--space-4);
 .bt-proto-cap {
   font-size: var(--text-2xs); font-weight: var(--font-semibold);
   text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);   /* AA: tertiary не читался «чья колонка» */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .bt-proto-cap:last-child { text-align: right; }
 /* Позиции без штрафов — тихая строка вместо нулей. */
 .bt-proto-row--flat { display: flex; justify-content: center; }
 .bt-proto-poszero { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* Топ игроков по MMR: строки без рамок, хэрлайны; своя строка подсвечена. */
+#bt-lb {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-4);
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+.bt-lb-title {
+  font-size: var(--text-xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-lb-list { display: flex; flex-direction: column; }
+.bt-lb-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px 2px;
+}
+.bt-lb-row + .bt-lb-row { border-top: 1px solid var(--border-subtle); }
+.bt-lb-row--you {
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+  border-radius: var(--radius-md);
+  padding-left: var(--space-2); padding-right: var(--space-2);
+}
+.bt-lb-num {
+  flex: 0 0 26px; text-align: right;
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  color: var(--text-tertiary); font-variant-numeric: tabular-nums;
+}
+.bt-lb-row:nth-child(-n+3) .bt-lb-num { color: var(--warning, #d29922); font-weight: var(--font-bold); }
+.bt-lb-medal { flex: 0 0 auto; width: 22px; height: 22px; object-fit: contain; }
+.bt-lb-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: var(--text-base); color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-lb-mmr {
+  flex: 0 0 auto;
+  font-family: var(--font-mono); font-size: var(--text-base);
+  font-weight: var(--font-bold); color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.bt-lb-me {
+  margin-top: auto;
+  font-size: var(--text-xs); color: var(--text-secondary);
+  text-align: center;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.bt-lb-me .bt-lb-row { text-align: left; }
 
 /* Пилюля-«островок» поиска: фиксирована сверху приложения, видна когда поиск
    (или начавшийся матч) идёт вне экрана ожидания. Статичный элемент разметки;
