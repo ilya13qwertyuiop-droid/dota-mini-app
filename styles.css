@@ -9548,25 +9548,44 @@ margin-top: var(--space-4);
   text-align: center;
 }
 .bt-result-card-name { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bt-result-card-rows { display: flex; flex-direction: column; gap: 2px; margin-top: var(--space-1); }
-.bt-result-row { display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--text-tertiary); }
-.bt-result-row b { font-family: var(--font-mono); color: var(--text-secondary); }
-/* Компоненты счёта вкатываются по одному во время разбора. */
-.bt-result-row--in { animation: btRowIn 0.35s cubic-bezier(0.2, 0, 0, 1) both; }
-@keyframes btRowIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: none; }
-}
-/* Победившая сторона подсвечивается на кульминации. */
-.bt-result-card { transition: border-color 0.35s ease, background 0.35s ease; }
 .bt-result-card--win {
   border-color: var(--positive);
   background: color-mix(in oklch, var(--positive) 9%, var(--bg-surface));
 }
-@media (prefers-reduced-motion: reduce) {
-  .bt-result-verdict { transition: none; }
-  .bt-result-row--in { animation: none; }
+
+/* Дуэльная полоса — единый язык сравнения «ты vs соперник»: центральная ось,
+   отклонение вправо (зелёное) = твой перевес, влево (красное) = соперника,
+   число — целый перевес. Один компонент на все сравнения результата. */
+.bt-duel-list {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  width: 100%; max-width: 360px;
 }
+.bt-duel { display: flex; align-items: center; gap: var(--space-3); }
+.bt-duel-label {
+  flex: 0 0 76px;
+  font-size: var(--text-xs); color: var(--text-tertiary);
+}
+.bt-duel-track {
+  position: relative; flex: 1 1 auto; height: 8px;
+  border-radius: 999px; background: var(--bg-elevated);
+}
+.bt-duel-track::before {           /* центральная ось = паритет */
+  content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px;
+  width: 1px; background: var(--border-strong);
+}
+.bt-duel-fill {
+  position: absolute; top: 0; bottom: 0; border-radius: 999px;
+}
+.bt-duel-fill.is-me  { left: 50%; background: var(--positive); }
+.bt-duel-fill.is-opp { right: 50%; background: var(--negative); }
+.bt-duel-val {
+  flex: 0 0 34px; text-align: right;
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  font-weight: var(--font-semibold); font-variant-numeric: tabular-nums;
+}
+.bt-duel-val.is-up   { color: var(--positive); }
+.bt-duel-val.is-down { color: var(--negative); }
+.bt-duel-val.is-zero { color: var(--text-tertiary); }
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
 #bt-result .tm-primary-btn, #bt-result .tm-ghost-btn { width: 100%; max-width: 320px; }
 
@@ -10048,30 +10067,8 @@ margin-top: var(--space-4);
 .bt-rv-mu-team--opp .bt-rv-mu-cap { color: var(--negative); }
 .bt-rv-mu-team--me .bt-rv-mu-cap { color: var(--positive); }
 .bt-rv-heroes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
-/* Клэш матчапа: числа сверху + diverging-полосы из центра навстречу. */
+/* Клэш матчапа: дуэльная полоса + словесный вердикт. */
 .bt-rv-mu-clash { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: 100%; }
-.bt-rv-mu-nums {
-  display: flex; align-items: baseline; justify-content: center; gap: var(--space-3);
-  width: 100%;
-}
-.bt-rv-mu-num {
-  font-family: var(--font-mono); font-size: var(--text-2xl); font-weight: var(--font-bold);
-  font-variant-numeric: tabular-nums; min-width: 56px;
-}
-.bt-rv-mu-num.is-opp { color: var(--negative); text-align: right; }
-.bt-rv-mu-num.is-me { color: var(--positive); text-align: left; }
-.bt-rv-mu-mid {
-  font-size: var(--text-2xs); color: var(--text-tertiary);
-  text-transform: uppercase; letter-spacing: 0.1em;
-}
-/* Две половины: левая (соперник) заполняется к центру справа-налево,
-   правая (ты) — от центра вправо. Длиннее полоса = сильнее контрпик. */
-.bt-rv-mu-bars { display: flex; width: 100%; height: 10px; gap: 2px; }
-.bt-rv-mu-half { flex: 1; display: flex; }
-.bt-rv-mu-half--opp { justify-content: flex-end; }
-.bt-rv-mu-fill { height: 100%; border-radius: 999px; width: 0%; }
-.bt-rv-mu-fill--opp { background: var(--negative); }
-.bt-rv-mu-fill--me { background: var(--positive); }
 .bt-rv-mu-verdict {
   font-size: var(--text-sm); font-weight: var(--font-semibold);
   color: var(--text-secondary); min-height: 18px; text-align: center;
@@ -10099,9 +10096,3 @@ margin-top: var(--space-4);
   text-transform: uppercase; letter-spacing: 0.08em;
 }
 .bt-rv-syn .bt-rv-heroes { gap: var(--space-2); }
-.bt-rv-syn-val {
-  font-family: var(--font-mono); font-size: var(--text-3xl);
-  font-weight: var(--font-bold); color: var(--text-primary);
-  font-variant-numeric: tabular-nums; line-height: 1;
-}
-.bt-rv-syn.is-lead .bt-rv-syn-val { color: var(--accent); }

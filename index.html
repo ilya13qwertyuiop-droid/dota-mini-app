@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=231" />
+    <link rel="stylesheet" href="styles.css?v=232" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -831,20 +831,21 @@
                     data-tab="synergy" onclick="btResultTab('synergy')">Синергия</button>
           </div>
 
-          <!-- СВОДКА: пики по позициям + строки разбора обеих сторон -->
+          <!-- СВОДКА: пики по позициям + дуэльные полосы компонентов.
+               Один язык сравнения: центр = паритет, отклонение = чей перевес,
+               числа целые (см. _btDuelRowHtml). -->
           <div class="bt-res-pane" id="bt-res-pane-summary" hidden>
             <div class="bt-result-scores">
               <div class="bt-result-card" id="bt-result-me">
                 <div class="bt-result-card-name">Ты</div>
                 <div class="bt-result-picks" id="bt-result-me-heroes"></div>
-                <div class="bt-result-card-rows" id="bt-result-me-rows"></div>
               </div>
               <div class="bt-result-card" id="bt-result-opp">
                 <div class="bt-result-card-name" id="bt-result-opp-name">Соперник</div>
                 <div class="bt-result-picks" id="bt-result-opp-heroes"></div>
-                <div class="bt-result-card-rows" id="bt-result-opp-rows"></div>
               </div>
             </div>
+            <div class="bt-duel-list" id="bt-res-duels"></div>
           </div>
 
           <!-- КОНТРПИКИ: противостояние (статично, без анимации въезда) -->
@@ -855,19 +856,7 @@
                 <div class="bt-rv-heroes" id="bt-rv-mu-opp-heroes"></div>
               </div>
               <div class="bt-rv-mu-clash">
-                <div class="bt-rv-mu-nums">
-                  <span class="bt-rv-mu-num is-opp" id="bt-rv-mu-opp-val">0</span>
-                  <span class="bt-rv-mu-mid">контрпик</span>
-                  <span class="bt-rv-mu-num is-me" id="bt-rv-mu-me-val">0</span>
-                </div>
-                <div class="bt-rv-mu-bars">
-                  <div class="bt-rv-mu-half bt-rv-mu-half--opp">
-                    <div class="bt-rv-mu-fill bt-rv-mu-fill--opp" id="bt-rv-mu-opp-fill"></div>
-                  </div>
-                  <div class="bt-rv-mu-half bt-rv-mu-half--me">
-                    <div class="bt-rv-mu-fill bt-rv-mu-fill--me" id="bt-rv-mu-me-fill"></div>
-                  </div>
-                </div>
+                <div class="bt-duel-list" id="bt-mu-duel"></div>
                 <div class="bt-rv-mu-verdict" id="bt-rv-mu-verdict"></div>
               </div>
               <div class="bt-rv-mu-team bt-rv-mu-team--me">
@@ -881,6 +870,8 @@
           <div class="bt-res-pane" id="bt-res-pane-synergy" hidden>
             <div class="bt-rv-syn" id="bt-rv-syn-me"></div>
             <div class="bt-rv-syn" id="bt-rv-syn-opp"></div>
+            <div class="bt-duel-list" id="bt-syn-duel"></div>
+            <div class="bt-rv-mu-verdict" id="bt-syn-verdict"></div>
           </div>
 
           <div class="bt-res-actions">
@@ -1850,6 +1841,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=284"></script>
+    <script defer src="script.js?v=285"></script>
   </body>
 </html>

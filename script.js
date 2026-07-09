@@ -2350,39 +2350,44 @@
             // оно сменилось (иначе при skip они перезаписали бы финальное число).
             _bt.revealGen = (_bt.revealGen || 0) + 1;
         }
-        // Тикер числа с одним знаком после запятой (счёт битвы — round(.,1)).
+        // Тикер ЦЕЛОГО числа: дробные «очки драфта» — внутренняя кухня модели,
+        // дотеру наружу показываем только целые (счёт, перевесы).
         function _btCountUp(el, from, to) {
             if (!el) return;
-            if (_btReduceMotion()) { el.textContent = _btFmt1(to); return; }
+            if (_btReduceMotion()) { el.textContent = String(Math.round(to)); return; }
             var gen = _bt.revealGen || 0, dur = 600, t0 = null;
             function step(ts) {
-                if ((_bt.revealGen || 0) !== gen) return;   // отменено skip'ом/новым разбором
+                if ((_bt.revealGen || 0) !== gen) return;   // отменено новым разбором
                 if (t0 === null) t0 = ts;
                 var p = Math.min(1, (ts - t0) / dur);
                 var v = from + (to - from) * (1 - Math.pow(1 - p, 3));
-                el.textContent = _btFmt1(v);
-                if (p < 1) requestAnimationFrame(step); else el.textContent = _btFmt1(to);
+                el.textContent = String(Math.round(v));
+                if (p < 1) requestAnimationFrame(step);
+                else el.textContent = String(Math.round(to));
             }
             requestAnimationFrame(step);
         }
-        function _btFmt1(v) {
-            var r = Math.round(v * 10) / 10;
-            return (Math.abs(r - Math.round(r)) < 0.05) ? String(Math.round(r)) : r.toFixed(1);
-        }
-        function _btResultRowHtml(label, value, isPen) {
-            return '<div class="bt-result-row bt-result-row--in"><span>' + label + '</span><b' +
-                (isPen ? ' class="bt-result-pen"' : '') + '>' + value + '</b></div>';
-        }
-        function _btAddRow(el, label, value, isPen) {
-            if (el) el.insertAdjacentHTML('beforeend', _btResultRowHtml(label, value, isPen));
-        }
-        function _btFillRows(el, res, pen) {
-            if (!el) return;
-            if (!res) { el.innerHTML = ''; return; }
-            var html = _btResultRowHtml('Синергия', res.synergy_score, false)
-                     + _btResultRowHtml('Контрпики', res.matchup_score, false);
-            if (pen != null) html += _btResultRowHtml('Позиции', pen < 0 ? pen : 0, pen < 0);
-            el.innerHTML = html;
+
+        // ── Дуэльная полоса: единый язык сравнения «ты vs соперник» ─────────
+        // Центр = паритет; отклонение вправо (зелёное) = твой перевес, влево
+        // (красное) = соперника. Число — ЦЕЛЫЙ перевес. Один компонент на все
+        // сравнения (сводка, контрпики, синергия) — вместо четырёх визуальных
+        // языков, которые делали экран громоздким.
+        var _BT_DUEL_MAX = 10;   // перевес, при котором полоса упирается в край
+
+        function _btDuelRowHtml(label, meVal, oppVal) {
+            var delta = Math.round((meVal || 0) - (oppVal || 0));
+            var pct = Math.min(1, Math.abs(delta) / _BT_DUEL_MAX) * 50;
+            var fill = delta === 0 ? '' :
+                '<span class="bt-duel-fill ' + (delta > 0 ? 'is-me' : 'is-opp') +
+                '" style="width:' + pct.toFixed(1) + '%"></span>';
+            var valCls = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : 'is-zero';
+            var valTxt = delta > 0 ? '+' + delta : String(delta);
+            return '<div class="bt-duel">' +
+                '<span class="bt-duel-label">' + _mghlEsc(label) + '</span>' +
+                '<span class="bt-duel-track">' + fill + '</span>' +
+                '<b class="bt-duel-val ' + valCls + '">' + valTxt + '</b>' +
+            '</div>';
         }
         function _btFillHeroes(elId, res, posMap) {
             var el = document.getElementById(elId);
@@ -2402,18 +2407,6 @@
                     (p ? '<i>' + p + '</i>' : '') +
                 '</span>';
             }).join('');
-        }
-        // «Ключевой момент» из comments — одна строка для эмоции, не панель.
-        function _btKeyMoment(res) {
-            var c = (res && res.comments) || [];
-            var good = null, bad = null;
-            for (var i = 0; i < c.length; i++) {
-                if (!good && c[i].type === 'good' && c[i].kind === 'synergy') good = c[i];
-                if (!bad && c[i].type === 'bad' && c[i].kind === 'matchup') bad = c[i];
-            }
-            if (good) return 'Связка ' + _mghlName(good.hero_id1) + ' + ' + _mghlName(good.hero_id2) + ' — сильнейшая в драфте';
-            if (bad) return _mghlName(bad.ally_hero_id) + ' тяжело против ' + _mghlName(bad.enemy_hero_id);
-            return '';
         }
 
         // ── Результат: шапка-вердикт + вкладки разбора ──────────────────────
@@ -2481,7 +2474,7 @@
             function setScore(el, v) {
                 if (!el) return;
                 if (v == null) { el.textContent = '—'; return; }
-                if (instant) { el.textContent = _btFmt1(v); return; }
+                if (instant) { el.textContent = String(Math.round(v)); return; }
                 // Единственная «живая» деталь шапки: счёт коротко набегает.
                 el.textContent = '0';
                 _btCountUp(el, 0, v);
@@ -2513,6 +2506,7 @@
                 }
             }
 
+            // note — только пояснение форфейта; «ключевой момент» убран (шум).
             var note = document.getElementById('bt-result-note');
             if (note) {
                 if (isForfeit) {
@@ -2520,23 +2514,30 @@
                         ? 'Ты сдался — победа присуждена сопернику.' : 'Соперник сдался.';
                     note.hidden = false;
                 } else {
-                    var km = _btKeyMoment(r[me]);
-                    if (km) { note.textContent = km; note.hidden = false; }
-                    else note.hidden = true;
+                    note.hidden = true;
                 }
             }
 
-            // ── Вкладка «Сводка»: пики по позициям + строки разбора ──
+            // ── Вкладка «Сводка»: пики по позициям + дуэльные полосы ──
             var oppNameEl = document.getElementById('bt-result-opp-name');
             if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
             _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
             _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
-            _btFillRows(document.getElementById('bt-result-me-rows'), r[me], pens[me]);
-            _btFillRows(document.getElementById('bt-result-opp-rows'), r[opp], pens[opp]);
             var meCard = document.getElementById('bt-result-me');
             var oppCard = document.getElementById('bt-result-opp');
             if (meCard) meCard.classList.toggle('bt-result-card--win', st.winner === me);
             if (oppCard) oppCard.classList.toggle('bt-result-card--win', st.winner === opp);
+            var duels = document.getElementById('bt-res-duels');
+            if (duels) {
+                if (r[me] && r[opp]) {
+                    duels.innerHTML =
+                        _btDuelRowHtml('Синергия', r[me].synergy_score, r[opp].synergy_score) +
+                        _btDuelRowHtml('Контрпики', r[me].matchup_score, r[opp].matchup_score) +
+                        _btDuelRowHtml('Позиции', pens[me] || 0, pens[opp] || 0);
+                } else {
+                    duels.innerHTML = '';
+                }
+            }
 
             // ── Вкладки: разбор есть только при обеих сторонах (не форфейт) ──
             var hasBreakdown = !isForfeit && !!(r[me] && r[opp]);
@@ -2562,7 +2563,7 @@
             _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
         }
 
-        // Панель «Контрпики»: то же противостояние, что было актом, — статично.
+        // Панель «Контрпики»: драфты сторон + дуэльная полоса + словесный вердикт.
         function _btFillMatchupPane(st, me, opp, r, posMaps) {
             var oppName = document.getElementById('bt-rv-mu-opp-name');
             if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
@@ -2572,29 +2573,19 @@
             if (oppH) oppH.innerHTML = _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]);
 
             var meMu = r[me].matchup_score || 0, oppMu = r[opp].matchup_score || 0;
-            // Компоненты в [0,50]; нормируем длину полос к сильнейшему из двух,
-            // чтобы перевес читался крупно (а не как ±6% от центра).
-            var maxMu = Math.max(meMu, oppMu, 1);
-            var meFill = document.getElementById('bt-rv-mu-me-fill');
-            var oppFill = document.getElementById('bt-rv-mu-opp-fill');
-            if (meFill) meFill.style.width = Math.max(4, meMu / maxMu * 100).toFixed(1) + '%';
-            if (oppFill) oppFill.style.width = Math.max(4, oppMu / maxMu * 100).toFixed(1) + '%';
-            var meValEl = document.getElementById('bt-rv-mu-me-val');
-            var oppValEl = document.getElementById('bt-rv-mu-opp-val');
-            if (meValEl) meValEl.textContent = _btFmt1(meMu);
-            if (oppValEl) oppValEl.textContent = _btFmt1(oppMu);
-
+            var duel = document.getElementById('bt-mu-duel');
+            if (duel) duel.innerHTML = _btDuelRowHtml('Контрпики', meMu, oppMu);
             var verdictEl = document.getElementById('bt-rv-mu-verdict');
             if (verdictEl) {
-                var diff = meMu - oppMu;
+                var diff = Math.round(meMu - oppMu);
                 verdictEl.className = 'bt-rv-mu-verdict';
-                if (Math.abs(diff) < 0.5) { verdictEl.textContent = 'Контрпики равны'; }
+                if (diff === 0) { verdictEl.textContent = 'Контрпики равны'; }
                 else if (diff > 0) { verdictEl.textContent = 'Твой драфт контрит сильнее'; verdictEl.classList.add('is-win'); }
                 else { verdictEl.textContent = 'Соперник контрит сильнее'; verdictEl.classList.add('is-lose'); }
             }
         }
 
-        // Панель «Синергия»: чья команда сыграннее (значения сразу, без набега).
+        // Панель «Синергия»: команды + дуэльная полоса + словесный вердикт.
         function _btFillSynergyPane(st, me, opp, r) {
             function heroesHtml(res) {
                 return (res.ally_ids || []).map(function (id) {
@@ -2605,17 +2596,26 @@
             }
             function rowHtml(res, name) {
                 return '<div class="bt-rv-syn-cap">' + _mghlEsc(name) + '</div>' +
-                    '<div class="bt-rv-heroes">' + heroesHtml(res) + '</div>' +
-                    '<div class="bt-rv-syn-val">' + _btFmt1(res.synergy_score || 0) + '</div>';
+                    '<div class="bt-rv-heroes">' + heroesHtml(res) + '</div>';
             }
             var meRow = document.getElementById('bt-rv-syn-me');
             var oppRow = document.getElementById('bt-rv-syn-opp');
             if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда');
             if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник');
-            // Подсветка сыграннее: чья синергия выше.
             var meSyn = r[me].synergy_score || 0, oppSyn = r[opp].synergy_score || 0;
-            if (meRow) meRow.classList.toggle('is-lead', meSyn >= oppSyn);
-            if (oppRow) oppRow.classList.toggle('is-lead', oppSyn > meSyn);
+            var diff = Math.round(meSyn - oppSyn);
+            // Подсветка сыграннее: чья синергия выше (при равенстве — никто).
+            if (meRow) meRow.classList.toggle('is-lead', diff > 0);
+            if (oppRow) oppRow.classList.toggle('is-lead', diff < 0);
+            var duel = document.getElementById('bt-syn-duel');
+            if (duel) duel.innerHTML = _btDuelRowHtml('Синергия', meSyn, oppSyn);
+            var verdictEl = document.getElementById('bt-syn-verdict');
+            if (verdictEl) {
+                verdictEl.className = 'bt-rv-mu-verdict';
+                if (diff === 0) { verdictEl.textContent = 'Синергия равна'; }
+                else if (diff > 0) { verdictEl.textContent = 'Твоя команда сыграннее'; verdictEl.classList.add('is-win'); }
+                else { verdictEl.textContent = 'Команда соперника сыграннее'; verdictEl.classList.add('is-lose'); }
+            }
         }
 
 
