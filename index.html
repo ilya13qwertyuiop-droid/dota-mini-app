@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=235" />
+    <link rel="stylesheet" href="styles.css?v=236" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -838,6 +838,9 @@
               <button type="button" class="tm-primary-btn" onclick="btRematch()">Ещё раз</button>
               <button type="button" class="tm-ghost-btn" onclick="btToMenu()">В меню</button>
             </div>
+
+            <!-- Подсказка скипа: видима только во время секвенции (CSS) -->
+            <div class="bt-proto-skiphint" aria-hidden="true">тап — пропустить</div>
           </div>
         </div>
 
@@ -1802,6 +1805,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=288"></script>
+    <script defer src="script.js?v=289"></script>
   </body>
 </html>

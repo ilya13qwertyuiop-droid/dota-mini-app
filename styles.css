@@ -9595,14 +9595,17 @@ margin-top: var(--space-4);
 }
 .bt-proto-val:first-child { text-align: left; }
 .bt-proto-val:last-child { text-align: right; }
-/* Исход строки: победившее значение — зелёное и жирное, проигравшее —
-   приглушённо-красное. Ничья в строке — оба нейтральные. */
-.bt-proto-val.is-win { color: var(--positive); font-weight: var(--font-bold); }
-.bt-proto-val.is-lose { color: var(--negative); opacity: 0.75; }
-/* Итог — кульминация: крупнее и внизу таблицы. */
+/* Исход строки — весом, не цветом: победившее значение белое жирное,
+   проигравшее серое. Зелёный/красный зарезервированы за вердиктом, строкой
+   ИТОГ и рейтингом — один цветовой акцент на экране вместо семи. */
+.bt-proto-val.is-win { color: var(--text-primary); font-weight: var(--font-bold); }
+.bt-proto-val.is-lose { color: var(--text-tertiary); }
+/* Итог — кульминация: единственная цветная строка таблицы, ниже вердикта
+   по кеглю (вердикт — единственный герой экрана). Без прозрачностей — AA. */
 .bt-proto-row--total { padding: 14px 0 0; }
-.bt-proto-row--total .bt-proto-val { font-size: var(--text-3xl); font-weight: var(--font-bold); }
-.bt-proto-row--total .bt-proto-val.is-lose { opacity: 0.6; }
+.bt-proto-row--total .bt-proto-val { font-size: var(--text-2xl); font-weight: var(--font-bold); }
+.bt-proto-row--total .bt-proto-val.is-win { color: var(--positive); }
+.bt-proto-row--total .bt-proto-val.is-lose { color: var(--negative); }
 /* Шапка колонок: чья сторона — левая всегда твоя. */
 .bt-proto-row--caps { padding: 4px 0; }
 .bt-proto-cap {
@@ -9615,6 +9618,23 @@ margin-top: var(--space-4);
 /* Позиции без штрафов — тихая строка вместо нулей. */
 .bt-proto-row--flat { display: flex; justify-content: center; }
 .bt-proto-poszero { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* Подсказка скипа: только во время секвенции, тихо и с задержкой (не мигать
+   на пустом старте). Обычный поток — НЕ fixed (урок F3: ничего плавающего). */
+.bt-proto-skiphint {
+  display: none;
+  text-align: center;
+  font-size: var(--text-2xs); color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+.bt-proto--seq:not(.bt-proto--final-in) .bt-proto-skiphint {
+  display: block;
+  animation: btHintIn 0.4s 0.9s both ease-out;
+}
+@keyframes btHintIn { from { opacity: 0; } to { opacity: 0.8; } }
+
+/* Защита от «кнопки под пальцем»: 350мс после скипа тапы по кнопкам глохнут. */
+.bt-proto--guard .bt-res-actions { pointer-events: none; }
 
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
 

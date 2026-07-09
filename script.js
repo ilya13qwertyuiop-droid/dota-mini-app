@@ -2525,7 +2525,10 @@
             var instant = forceInstant || _bt.historyView || _btReduceMotion();
             var canSeq = !instant && table && !table.hidden && !isForfeit;
             if (proto) {
-                proto.classList.remove('bt-proto--seq', 'bt-proto--teams-in', 'bt-proto--final-in');
+                proto.classList.remove(
+                    'bt-proto--seq', 'bt-proto--teams-in', 'bt-proto--final-in',
+                    'bt-proto--guard'
+                );
             }
             if (!canSeq) {
                 _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
@@ -2587,6 +2590,15 @@
                     _bt.protoSeqActive = false;
                     if (_bt.state && _bt.state.status === 'finished') {
                         _btRenderResult(_bt.state, true);
+                        // Кнопки материализуются под пальцем скипа — глушим
+                        // тапы на 350мс, чтобы второй тап не улетел в очередь.
+                        var proto = document.getElementById('bt-proto');
+                        if (proto) {
+                            proto.classList.add('bt-proto--guard');
+                            _bt.revealTimers.push(setTimeout(function () {
+                                proto.classList.remove('bt-proto--guard');
+                            }, 350));
+                        }
                     }
                 });
             }
