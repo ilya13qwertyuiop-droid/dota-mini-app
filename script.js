@@ -2368,52 +2368,11 @@
             requestAnimationFrame(step);
         }
 
-        // ── Дуэльная полоса: единый язык сравнения «ты vs соперник» ─────────
-        // Центр = паритет; отклонение вправо (зелёное) = твой перевес, влево
-        // (красное) = соперника. Число — ЦЕЛЫЙ перевес. Один компонент на все
-        // сравнения (сводка, контрпики, синергия) — вместо четырёх визуальных
-        // языков, которые делали экран громоздким.
-        var _BT_DUEL_MAX = 10;   // перевес, при котором полоса упирается в край
-
-        function _btDuelRowHtml(label, meVal, oppVal) {
-            var delta = Math.round((meVal || 0) - (oppVal || 0));
-            var pct = Math.min(1, Math.abs(delta) / _BT_DUEL_MAX) * 50;
-            var fill = delta === 0 ? '' :
-                '<span class="bt-duel-fill ' + (delta > 0 ? 'is-me' : 'is-opp') +
-                '" style="width:' + pct.toFixed(1) + '%"></span>';
-            var valCls = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : 'is-zero';
-            var valTxt = delta > 0 ? '+' + delta : String(delta);
-            return '<div class="bt-duel">' +
-                '<span class="bt-duel-label">' + _mghlEsc(label) + '</span>' +
-                '<span class="bt-duel-track">' + fill + '</span>' +
-                '<b class="bt-duel-val ' + valCls + '">' + valTxt + '</b>' +
-            '</div>';
-        }
-        function _btFillHeroes(elId, res, posMap) {
-            var el = document.getElementById(elId);
-            if (!el) return;
-            if (!res || !res.ally_ids) { el.innerHTML = ''; return; }
-            var ids = res.ally_ids.slice();
-            if (posMap) {
-                ids.sort(function (x, y) {
-                    return (posMap[String(x)] || 9) - (posMap[String(y)] || 9);
-                });
-            }
-            el.innerHTML = ids.map(function (hid) {
-                var p = posMap ? posMap[String(hid)] : null;
-                return '<span class="bt-result-hero">' +
-                    '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" title="' + _mghlEsc(_mghlName(hid)) + '" ' +
-                    'onerror="this.style.visibility=\'hidden\'">' +
-                    (p ? '<i>' + p + '</i>' : '') +
-                '</span>';
-            }).join('');
-        }
-
-        // ── Результат: шапка-вердикт + вкладки разбора ──────────────────────
-        // Ответ (кто победил, счёт, рейтинг) — сразу в шапке; разбор разложен
-        // ПО ПРОСТРАНСТВУ вкладками Сводка/Контрпики/Синергия, а не по времени
-        // (GSAP-акты выпилены: противоречили restrained-intensity принципам и
-        // держали floating-кнопку «Пропустить» — источник бага F3).
+        // ── Результат: «протокол матча» ────────────────────────────────────
+        // Одна композиция без вкладок: вердикт → два драфта КРУПНО (герои —
+        // главный контент режима) → таблица-протокол без рамок. Победившее
+        // значение строки — вес + основной цвет; зелёный/красный оставлены
+        // вердикту и рейтингу (цвет только для смысла). Монтаж — CSS-каскад.
         function _btRvHeroesHtml(ids, posMap) {
             var arr = (ids || []).slice();
             if (posMap) arr.sort(function (x, y) {
@@ -2428,25 +2387,24 @@
                 '</span>';
             }).join('');
         }
-        // Переключение вкладки разбора (Сводка / Контрпики / Синергия).
-        window.btResultTab = function (tab) {
-            ['summary', 'matchup', 'synergy'].forEach(function (t) {
-                var btn = document.querySelector('#bt-res-tabs [data-tab="' + t + '"]');
-                if (btn) {
-                    btn.classList.toggle('bt-res-tab--active', t === tab);
-                    btn.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-                }
-                var pane = document.getElementById('bt-res-pane-' + t);
-                if (pane) pane.hidden = (t !== tab);
-            });
-        };
+
+        // Строка протокола: значения по бокам, метка по центру.
+        function _btProtoRowHtml(label, meVal, oppVal, isTotal) {
+            var m = Math.round(meVal || 0), o = Math.round(oppVal || 0);
+            return '<div class="bt-proto-row' + (isTotal ? ' bt-proto-row--total' : '') + '">' +
+                '<b class="bt-proto-val' + (m > o ? ' is-lead' : '') + '"' +
+                    (isTotal ? ' id="bt-proto-total-me"' : '') + '>' + m + '</b>' +
+                '<span class="bt-proto-label">' + _mghlEsc(label) + '</span>' +
+                '<b class="bt-proto-val' + (o > m ? ' is-lead' : '') + '"' +
+                    (isTotal ? ' id="bt-proto-total-opp"' : '') + '>' + o + '</b>' +
+            '</div>';
+        }
 
         function _btRenderResult(st) {
             _btClearReveal();
             // Снапшот флага калибровки В МОМЕНТ входа в результат (F1-фикс):
-            // ответ /battle/profile из _btCheckGraduation может сбросить живой
-            // _bt.wasCalibrating раньше ухода с экрана — медаль в чипе рейтинга
-            // читает только снапшот, настоящий ранг раскрывает посвящение.
+            // живой _bt.wasCalibrating может сбросить _btCheckGraduation раньше
+            // ухода с экрана — медаль в чипе рейтинга читает только снапшот.
             _bt.resultMedalCal = !!_bt.wasCalibrating;
             var me = _btMyRole(), opp = _btOppRole();
             var r = st.result || {};
@@ -2460,29 +2418,17 @@
             var oppFinal = (finals[opp] != null) ? finals[opp]
                 : (r[opp] && r[opp].total_score != null ? r[opp].total_score : null);
 
-            // ── Шапка: вердикт + счёт + рейтинг + заметка — ответ сразу ──
+            // Вердикт — сцена экрана: самый крупный элемент, цвет = смысл.
             var verdict = document.getElementById('bt-result-verdict');
             if (verdict) {
                 verdict.textContent = st.winner === 'draw' ? 'Ничья'
                     : st.winner === me ? 'Победа!' : 'Поражение';
-                verdict.className = 'bt-result-verdict' +
-                    (st.winner === me ? ' bt-result-verdict--win'
-                     : st.winner === 'draw' ? '' : ' bt-result-verdict--lose');
+                verdict.className = 'bt-proto-verdict' +
+                    (st.winner === me ? ' is-win'
+                     : st.winner === 'draw' ? '' : ' is-lose');
             }
 
-            var instant = _bt.historyView || _btReduceMotion();
-            function setScore(el, v) {
-                if (!el) return;
-                if (v == null) { el.textContent = '—'; return; }
-                if (instant) { el.textContent = String(Math.round(v)); return; }
-                // Единственная «живая» деталь шапки: счёт коротко набегает.
-                el.textContent = '0';
-                _btCountUp(el, 0, v);
-            }
-            setScore(document.getElementById('bt-res-score-me'), meFinal);
-            setScore(document.getElementById('bt-res-score-opp'), oppFinal);
-
-            // Изменение рейтинга за бой (живой бой со снимком; бот — скрыто).
+            // Рейтинг за бой (живой бой со снимком; бот — скрыто).
             var ratEl = document.getElementById('bt-result-rating');
             if (ratEl) {
                 var rt = st.rating;
@@ -2506,7 +2452,7 @@
                 }
             }
 
-            // note — только пояснение форфейта; «ключевой момент» убран (шум).
+            // note — только пояснение форфейта.
             var note = document.getElementById('bt-result-note');
             if (note) {
                 if (isForfeit) {
@@ -2518,104 +2464,49 @@
                 }
             }
 
-            // ── Вкладка «Сводка»: пики по позициям + дуэльные полосы ──
-            var oppNameEl = document.getElementById('bt-result-opp-name');
+            // Команды: пики крупно, свои — первыми; у соперника — медаль ранга.
+            var hasSides = !!(r[me] && r[opp]);
+            var oppNameEl = document.getElementById('bt-proto-opp-name');
             if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
-            _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
-            _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
-            var meCard = document.getElementById('bt-result-me');
-            var oppCard = document.getElementById('bt-result-opp');
-            if (meCard) meCard.classList.toggle('bt-result-card--win', st.winner === me);
-            if (oppCard) oppCard.classList.toggle('bt-result-card--win', st.winner === opp);
-            var duels = document.getElementById('bt-res-duels');
-            if (duels) {
-                if (r[me] && r[opp]) {
-                    duels.innerHTML =
-                        _btDuelRowHtml('Синергия', r[me].synergy_score, r[opp].synergy_score) +
-                        _btDuelRowHtml('Контрпики', r[me].matchup_score, r[opp].matchup_score) +
-                        _btDuelRowHtml('Позиции', pens[me] || 0, pens[opp] || 0);
+            _btSetRankMedal('bt-proto-opp-medal', st[opp] && st[opp].rank_key);
+            var meH = document.getElementById('bt-proto-me-heroes');
+            var oppH = document.getElementById('bt-proto-opp-heroes');
+            if (meH) meH.innerHTML = hasSides ? _btRvHeroesHtml(r[me].ally_ids, posMaps[me]) : '';
+            if (oppH) oppH.innerHTML = hasSides ? _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]) : '';
+            var teams = document.getElementById('bt-proto-teams');
+            if (teams) teams.hidden = !hasSides;
+
+            // Протокол: итог (крупно) + компоненты. Форфейт — таблицы нет.
+            var table = document.getElementById('bt-proto-table');
+            if (table) {
+                if (hasSides && meFinal != null && oppFinal != null) {
+                    table.hidden = false;
+                    table.innerHTML =
+                        _btProtoRowHtml('Итог', meFinal, oppFinal, true) +
+                        _btProtoRowHtml('Синергия', r[me].synergy_score, r[opp].synergy_score) +
+                        _btProtoRowHtml('Контрпики', r[me].matchup_score, r[opp].matchup_score) +
+                        _btProtoRowHtml('Позиции', pens[me] || 0, pens[opp] || 0);
                 } else {
-                    duels.innerHTML = '';
+                    table.hidden = true;
+                    table.innerHTML = '';
                 }
             }
 
-            // ── Вкладки: разбор есть только при обеих сторонах (не форфейт) ──
-            var hasBreakdown = !isForfeit && !!(r[me] && r[opp]);
-            var tabs = document.getElementById('bt-res-tabs');
-            if (tabs) tabs.hidden = !hasBreakdown;
-            btResultTab('summary');   // каждый вход — со Сводки
-            if (hasBreakdown) {
-                _btFillMatchupPane(st, me, opp, r, posMaps);
-                _btFillSynergyPane(st, me, opp, r);
-            } else {
-                // Форфейт: сравнивать нечего — только шапка (+пустая сводка прячется).
-                var sumPane = document.getElementById('bt-res-pane-summary');
-                if (sumPane) sumPane.hidden = !(r[me] || r[opp]);
+            // Монтаж: каскад блоков (~0.5с суммарно). История/reduced — мгновенно.
+            var instant = _bt.historyView || _btReduceMotion();
+            var proto = document.getElementById('bt-proto');
+            if (proto) {
+                proto.classList.remove('bt-proto--in');
+                proto.classList.toggle('bt-proto--fast', instant);
+                void proto.offsetWidth;   // рестарт transition
+                proto.classList.add('bt-proto--in');
             }
-
-            // Каскад появления шапки — перезапуск CSS-анимации (~250мс).
-            var head = document.getElementById('bt-res-head');
-            if (head) {
-                head.classList.remove('bt-res-head--in');
-                void head.offsetWidth;
-                head.classList.add('bt-res-head--in');
+            // Единственный тикер экрана: итоговый счёт набегает.
+            if (!instant && meFinal != null && oppFinal != null) {
+                _btCountUp(document.getElementById('bt-proto-total-me'), 0, meFinal);
+                _btCountUp(document.getElementById('bt-proto-total-opp'), 0, oppFinal);
             }
             _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
-        }
-
-        // Панель «Контрпики»: драфты сторон + дуэльная полоса + словесный вердикт.
-        function _btFillMatchupPane(st, me, opp, r, posMaps) {
-            var oppName = document.getElementById('bt-rv-mu-opp-name');
-            if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
-            var meH = document.getElementById('bt-rv-mu-me-heroes');
-            var oppH = document.getElementById('bt-rv-mu-opp-heroes');
-            if (meH) meH.innerHTML = _btRvHeroesHtml(r[me].ally_ids, posMaps[me]);
-            if (oppH) oppH.innerHTML = _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]);
-
-            var meMu = r[me].matchup_score || 0, oppMu = r[opp].matchup_score || 0;
-            var duel = document.getElementById('bt-mu-duel');
-            if (duel) duel.innerHTML = _btDuelRowHtml('Контрпики', meMu, oppMu);
-            var verdictEl = document.getElementById('bt-rv-mu-verdict');
-            if (verdictEl) {
-                var diff = Math.round(meMu - oppMu);
-                verdictEl.className = 'bt-rv-mu-verdict';
-                if (diff === 0) { verdictEl.textContent = 'Контрпики равны'; }
-                else if (diff > 0) { verdictEl.textContent = 'Твой драфт контрит сильнее'; verdictEl.classList.add('is-win'); }
-                else { verdictEl.textContent = 'Соперник контрит сильнее'; verdictEl.classList.add('is-lose'); }
-            }
-        }
-
-        // Панель «Синергия»: команды + дуэльная полоса + словесный вердикт.
-        function _btFillSynergyPane(st, me, opp, r) {
-            function heroesHtml(res) {
-                return (res.ally_ids || []).map(function (id) {
-                    return '<span class="bt-rv-hero"><img src="' + _mghlEsc(_mghlImg(id)) +
-                        '" alt="" title="' + _mghlEsc(_mghlName(id)) +
-                        '" onerror="this.style.visibility=\'hidden\'"></span>';
-                }).join('');
-            }
-            function rowHtml(res, name) {
-                return '<div class="bt-rv-syn-cap">' + _mghlEsc(name) + '</div>' +
-                    '<div class="bt-rv-heroes">' + heroesHtml(res) + '</div>';
-            }
-            var meRow = document.getElementById('bt-rv-syn-me');
-            var oppRow = document.getElementById('bt-rv-syn-opp');
-            if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда');
-            if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник');
-            var meSyn = r[me].synergy_score || 0, oppSyn = r[opp].synergy_score || 0;
-            var diff = Math.round(meSyn - oppSyn);
-            // Подсветка сыграннее: чья синергия выше (при равенстве — никто).
-            if (meRow) meRow.classList.toggle('is-lead', diff > 0);
-            if (oppRow) oppRow.classList.toggle('is-lead', diff < 0);
-            var duel = document.getElementById('bt-syn-duel');
-            if (duel) duel.innerHTML = _btDuelRowHtml('Синергия', meSyn, oppSyn);
-            var verdictEl = document.getElementById('bt-syn-verdict');
-            if (verdictEl) {
-                verdictEl.className = 'bt-rv-mu-verdict';
-                if (diff === 0) { verdictEl.textContent = 'Синергия равна'; }
-                else if (diff > 0) { verdictEl.textContent = 'Твоя команда сыграннее'; verdictEl.classList.add('is-win'); }
-                else { verdictEl.textContent = 'Команда соперника сыграннее'; verdictEl.classList.add('is-lose'); }
-            }
         }
 
 

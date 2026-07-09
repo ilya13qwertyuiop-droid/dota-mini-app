@@ -9480,114 +9480,87 @@ margin-top: var(--space-4);
 /* ── Результат ── */
 #bt-result {
   display: flex; flex-direction: column; align-items: center;
-  gap: var(--space-4); padding: var(--space-6) var(--space-4);
+  gap: var(--space-4);
+  /* Нижний отступ с запасом под фиксированный док — кнопки не режутся. */
+  padding: var(--space-6) var(--space-4) calc(var(--space-8) + 84px);
 }
-.bt-result-verdict {
-  font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary);
-}
-.bt-result-verdict--win { color: var(--positive); }
-.bt-result-verdict--lose { color: var(--negative); }
 
-/* Шапка результата: вердикт + счёт + рейтинг + заметка. Единственная анимация
-   экрана — короткий каскад появления детей (transition-delay по порядку). */
-.bt-res-head {
+/* ── «Протокол матча» ────────────────────────────────────────────────────
+   Скорборд без единой рамки: вердикт-сцена → два драфта крупно → таблица
+   (значения по краям, метки по центру, победившее значение — вес + цвет).
+   Монтаж: каскад прямых детей .bt-proto (transition-delay), ~0.5с суммарно. */
+.bt-proto {
+  width: 100%; max-width: 380px;
+  display: flex; flex-direction: column;
+  gap: var(--space-6);
+}
+.bt-proto > * {
+  opacity: 0; transform: translateY(12px);
+  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-proto--in > * { opacity: 1; transform: none; }
+.bt-proto--in > :nth-child(2) { transition-delay: 0.1s; }
+.bt-proto--in > :nth-child(3) { transition-delay: 0.18s; }
+.bt-proto--in > :nth-child(4) { transition-delay: 0.26s; }
+.bt-proto--fast > * { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .bt-proto > * { transition: none; opacity: 1; transform: none; }
+}
+
+.bt-proto-head {
   display: flex; flex-direction: column; align-items: center;
   gap: var(--space-2); text-align: center;
 }
-.bt-res-head > * {
-  opacity: 0; transform: translateY(8px);
-  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+.bt-proto-verdict {
+  font-size: var(--text-3xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
 }
-.bt-res-head--in > * { opacity: 1; transform: none; }
-.bt-res-head--in > :nth-child(2) { transition-delay: 0.07s; }
-.bt-res-head--in > :nth-child(3) { transition-delay: 0.14s; }
-.bt-res-head--in > :nth-child(4) { transition-delay: 0.21s; }
-@media (prefers-reduced-motion: reduce) {
-  .bt-res-head > * { transition: none; opacity: 1; transform: none; }
-}
-.bt-res-score {
-  display: flex; align-items: baseline; gap: var(--space-3);
-  font-family: var(--font-mono); font-weight: var(--font-bold);
-}
-.bt-res-score-num { font-size: var(--text-3xl); color: var(--text-primary); }
-.bt-res-score-sep { font-size: var(--text-xl); color: var(--text-tertiary); }
+.bt-proto-verdict.is-win { color: var(--positive); }
+.bt-proto-verdict.is-lose { color: var(--negative); }
 
-/* Сегменты разбора (тот же язык, что у bt-mode-seg) */
-.bt-res-tabs {
-  display: flex; width: 100%; gap: 4px;
-  padding: 3px; border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle); background: var(--bg-surface);
-}
-.bt-res-tab {
-  flex: 1; padding: 8px 4px;
-  border: none; border-radius: calc(var(--radius-lg) - 3px);
-  background: transparent; color: var(--text-tertiary);
-  font-size: var(--text-xs); font-weight: var(--font-semibold);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.bt-res-tab--active { background: var(--bg-elevated); color: var(--text-primary); }
-.bt-res-pane {
-  width: 100%; display: flex; flex-direction: column; align-items: center;
-  gap: var(--space-4);
-}
-.bt-res-pane .bt-result-scores { width: 100%; }
-.bt-res-actions {
-  display: flex; flex-direction: column; align-items: center;
-  gap: var(--space-2); width: 100%; margin-top: auto;
-}
-.bt-result-scores {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2); width: 100%;
-}
-.bt-result-card {
-  min-width: 0; display: flex; flex-direction: column; gap: var(--space-1);
-  padding: var(--space-3); border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle); background: var(--bg-surface);
-  text-align: center;
-}
-.bt-result-card-name { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bt-result-card--win {
-  border-color: var(--positive);
-  background: color-mix(in oklch, var(--positive) 9%, var(--bg-surface));
+/* Команды: герои — звёзды экрана, полная ширина, тихие подписи. */
+.bt-proto-teams { display: flex; flex-direction: column; gap: var(--space-5); }
+.bt-proto-team { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-proto-team-name {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  overflow: hidden; white-space: nowrap;
 }
 
-/* Дуэльная полоса — единый язык сравнения «ты vs соперник»: центральная ось,
-   отклонение вправо (зелёное) = твой перевес, влево (красное) = соперника,
-   число — целый перевес. Один компонент на все сравнения результата. */
-.bt-duel-list {
-  display: flex; flex-direction: column; gap: var(--space-2);
-  width: 100%; max-width: 360px;
+/* Таблица-протокол: хэрлайны вместо рамок, mono-числа по краям. */
+.bt-proto-table { display: flex; flex-direction: column; }
+.bt-proto-row {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: baseline; column-gap: var(--space-3);
+  padding: 10px 0;
 }
-.bt-duel { display: flex; align-items: center; gap: var(--space-3); }
-.bt-duel-label {
-  flex: 0 0 76px;
-  font-size: var(--text-xs); color: var(--text-tertiary);
+.bt-proto-row + .bt-proto-row { border-top: 1px solid var(--border-subtle); }
+.bt-proto-label {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary); text-align: center;
 }
-.bt-duel-track {
-  position: relative; flex: 1 1 auto; height: 8px;
-  border-radius: 999px; background: var(--bg-elevated);
+.bt-proto-val {
+  font-family: var(--font-mono); font-size: var(--text-lg);
+  font-weight: var(--font-regular, 400); color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
-.bt-duel-track::before {           /* центральная ось = паритет */
-  content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px;
-  width: 1px; background: var(--border-strong);
-}
-.bt-duel-fill {
-  position: absolute; top: 0; bottom: 0; border-radius: 999px;
-}
-.bt-duel-fill.is-me  { left: 50%; background: var(--positive); }
-.bt-duel-fill.is-opp { right: 50%; background: var(--negative); }
-.bt-duel-val {
-  flex: 0 0 34px; text-align: right;
-  font-family: var(--font-mono); font-size: var(--text-sm);
-  font-weight: var(--font-semibold); font-variant-numeric: tabular-nums;
-}
-.bt-duel-val.is-up   { color: var(--positive); }
-.bt-duel-val.is-down { color: var(--negative); }
-.bt-duel-val.is-zero { color: var(--text-tertiary); }
+.bt-proto-val:first-child { text-align: left; }
+.bt-proto-val:last-child { text-align: right; }
+.bt-proto-val.is-lead { color: var(--text-primary); font-weight: var(--font-bold); }
+.bt-proto-row--total { padding: 0 0 14px; }
+.bt-proto-row--total .bt-proto-val { font-size: var(--text-3xl); font-weight: var(--font-bold); }
+
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
-#bt-result .tm-primary-btn, #bt-result .tm-ghost-btn { width: 100%; max-width: 320px; }
+
+/* Действия: компактный ряд, не стопка гигантов. */
+.bt-res-actions { display: flex; gap: var(--space-3); width: 100%; }
+.bt-res-actions .tm-primary-btn,
+.bt-res-actions .tm-ghost-btn { flex: 1; width: auto; max-width: none; }
 
 /* КРИТИЧНО: у bt-экранов задан display:flex, который перебивает
    UA-стиль атрибута [hidden] (та же грабля, что у mghl — см. ~9082).
@@ -9602,7 +9575,6 @@ margin-top: var(--space-4);
   min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
 }
 #bt-wait { justify-content: center; padding-top: var(--space-6); }
-/* Результат: шапка сверху, кнопки прижаты вниз (margin-top:auto у actions). */
 
 /* Интерстишл «Соперник найден» */
 .bt-found {
@@ -9956,22 +9928,6 @@ margin-top: var(--space-4);
 }
 #bt-assign .tm-primary-btn { margin-top: var(--space-2); }
 
-/* Результат: раскладка героев с позициями */
-.bt-result-picks { display: flex; gap: 3px; justify-content: center; margin: var(--space-1) 0; min-width: 0; }
-.bt-result-hero { position: relative; flex: 1 1 0; min-width: 0; max-width: 36px; }
-.bt-result-hero img {
-  width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
-  border-radius: 3px; background: var(--bg-elevated); display: block;
-}
-.bt-result-hero i {
-  position: absolute; right: 1px; bottom: 1px;
-  font-style: normal; font-family: var(--font-mono);
-  font-size: 8px; font-weight: var(--font-bold); line-height: 1;
-  color: #fff; background: rgba(0, 0, 0, 0.7);
-  padding: 1px 3px; border-radius: 2px;
-}
-.bt-result-pen { color: var(--negative); }
-
 /* ── «Битва драфтов»: фикс кнопок ── */
 
 /* Базовый .tm-ghost-btn — ТЕКСТОВАЯ кнопка без рамки/заливки (см. ~7622).
@@ -9988,8 +9944,8 @@ margin-top: var(--space-4);
 #page-draft-battle .tm-ghost-btn:active {
   border-color: var(--border-strong);
 }
-/* Где кнопка одна в колонке — на всю ширину */
-#bt-wait .tm-ghost-btn, #bt-result .tm-ghost-btn, #bt-help .tm-ghost-btn,
+/* Где кнопка одна в колонке — на всю ширину (результат — свой ряд-флекс) */
+#bt-wait .tm-ghost-btn, #bt-help .tm-ghost-btn,
 .bt-assign-wait .tm-ghost-btn { width: 100%; }
 
 /* ── «Битва драфтов»: мобильный полиш (вылеты за экран, иконки позиций) ── */
@@ -10007,11 +9963,6 @@ margin-top: var(--space-4);
   opacity: 0.65;
 }
 .bt-pos-btn--active img { opacity: 1; }
-
-/* Узкие телефоны: карточки результата в столбик — читается без сжатия */
-@media (max-width: 359px) {
-  .bt-result-scores { grid-template-columns: minmax(0, 1fr); }
-}
 
 /* ── «Битва драфтов»: счётчик онлайна (меню + поиск) ── */
 .bt-online {
@@ -10057,42 +10008,5 @@ margin-top: var(--space-4);
   background: rgba(0, 0, 0, 0.72); padding: 1px 3px; border-radius: 2px;
 }
 
-/* ── Панель «Контрпики» ── */
-.bt-rv-mu { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: var(--space-4); }
-.bt-rv-mu-team { display: flex; flex-direction: column; gap: var(--space-2); }
-.bt-rv-mu-cap {
-  font-size: var(--text-xs); font-weight: var(--font-semibold);
-  text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary);
-}
-.bt-rv-mu-team--opp .bt-rv-mu-cap { color: var(--negative); }
-.bt-rv-mu-team--me .bt-rv-mu-cap { color: var(--positive); }
+/* Ряд героев команды (используется протоколом результата). */
 .bt-rv-heroes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
-/* Клэш матчапа: дуэльная полоса + словесный вердикт. */
-.bt-rv-mu-clash { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: 100%; }
-.bt-rv-mu-verdict {
-  font-size: var(--text-sm); font-weight: var(--font-semibold);
-  color: var(--text-secondary); min-height: 18px; text-align: center;
-}
-.bt-rv-mu-verdict.is-win { color: var(--positive); }
-.bt-rv-mu-verdict.is-lose { color: var(--negative); }
-
-/* ── Панель «Синергия» (две команды, крупно, сравнение) ── */
-.bt-rv-syn {
-  width: 100%; max-width: 360px;
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
-  transition: border-color 0.3s ease, background 0.3s ease;
-}
-.bt-rv-syn.is-lead {
-  border-color: color-mix(in oklch, var(--accent) 50%, var(--border-subtle));
-  background: color-mix(in oklch, var(--accent) 7%, var(--bg-surface));
-}
-.bt-rv-syn-cap {
-  align-self: flex-start;
-  font-size: var(--text-2xs); color: var(--text-tertiary);
-  text-transform: uppercase; letter-spacing: 0.08em;
-}
-.bt-rv-syn .bt-rv-heroes { gap: var(--space-2); }
