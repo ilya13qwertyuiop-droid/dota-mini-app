@@ -1412,11 +1412,24 @@
 
         window.btSetMode = function (m) {
             _bt.mode = (m === 'ap') ? 'ap' : 'cm';
+            // Персист: постоянный игрок «Без банов» не переключает каждый заход.
+            try { localStorage.setItem('bt_mode', _bt.mode); } catch (e) {}
             var cm = document.getElementById('bt-mode-cm');
             var ap = document.getElementById('bt-mode-ap');
-            if (cm) cm.classList.toggle('bt-mode-btn--active', _bt.mode === 'cm');
-            if (ap) ap.classList.toggle('bt-mode-btn--active', _bt.mode === 'ap');
+            [[cm, 'cm'], [ap, 'ap']].forEach(function (pair) {
+                var el = pair[0], key = pair[1];
+                if (!el) return;
+                var on = (_bt.mode === key);
+                el.classList.toggle('bt-mode-btn--active', on);
+                // radiogroup: скринридер должен слышать выбранный режим.
+                el.setAttribute('aria-checked', on ? 'true' : 'false');
+            });
         };
+        // Восстановление режима прошлой сессии (до первого рендера меню).
+        try {
+            var _btSavedMode = localStorage.getItem('bt_mode');
+            if (_btSavedMode === 'ap' || _btSavedMode === 'cm') btSetMode(_btSavedMode);
+        } catch (e) {}
 
         async function _btPost(path, body) {
             var r = await apiFetch(window.API_BASE_URL + path, {
@@ -1647,21 +1660,30 @@
             try {
                 var r = await apiFetch(window.API_BASE_URL + '/battle/history?token='
                     + encodeURIComponent(_btTok()) + '&limit=20');
+                if (!r.ok) throw new Error('history ' + r.status);
                 var d = await r.json();
                 var battles = (d && d.battles) || [];
                 wrap.hidden = false;
                 list.innerHTML = '';
                 if (!battles.length) {
+                    // Пустое состояние — CTA, а не констатация.
                     var empty = document.createElement('div');
                     empty.className = 'bt-history-empty';
-                    empty.textContent = 'Ещё нет сыгранных битв';
+                    empty.textContent = 'Сыграй первую битву — она появится здесь';
                     list.appendChild(empty);
                     return;
                 }
                 battles.forEach(function (b) { list.appendChild(_btHistoryRow(b)); });
             } catch (e) {
-                // история необязательна — если не загрузилась, прячем секцию
-                wrap.hidden = true;
+                // Не прячем молча (иначе юзер решит, что истории «нет вообще»).
+                wrap.hidden = false;
+                list.innerHTML = '';
+                var err = document.createElement('button');
+                err.type = 'button';
+                err.className = 'bt-history-empty bt-history-retry';
+                err.textContent = 'История не загрузилась · Повторить';
+                err.onclick = function () { btRenderHistory(); };
+                list.appendChild(err);
             }
         }
         window.btRenderHistory = btRenderHistory;
@@ -1795,28 +1817,58 @@
             try {
                 var r = await apiFetch(window.API_BASE_URL + '/battle/profile?token='
                     + encodeURIComponent(_btTok()));
+                if (!r.ok) throw new Error('profile ' + r.status);
                 var d = await r.json();
                 _bt.profile = d;
                 _bt.wasCalibrating = !!d.calibrating;
                 _btFillRankCard(d);
                 card.hidden = false;
-            } catch (e) { card.hidden = true; }
+            } catch (e) {
+                // Не прячем молча: строка с повтором вместо «у тебя нет рейтинга».
+                card.hidden = false;
+                var name = document.getElementById('bt-rankcard-name');
+                var sub = document.getElementById('bt-rankcard-sub');
+                var rating = document.getElementById('bt-rankcard-rating');
+                var dots = document.getElementById('bt-rankcard-dots');
+                if (name) name.textContent = 'Рейтинг не загрузился';
+                if (sub) sub.textContent = 'Тапни, чтобы повторить';
+                if (rating) rating.textContent = '';
+                if (dots) dots.hidden = true;
+                card.onclick = function () {
+                    card.onclick = function () { btHelpOpen(); };
+                    btRenderRank();
+                };
+            }
         }
         window.btRenderRank = btRenderRank;
 
         function _btFillRankCard(d) {
+            var card = document.getElementById('bt-rankcard');
+            if (card) card.onclick = function () { btHelpOpen(); };   // после retry-режима
             var img = document.getElementById('bt-rankcard-img');
             var name = document.getElementById('bt-rankcard-name');
             var sub = document.getElementById('bt-rankcard-sub');
             var rating = document.getElementById('bt-rankcard-rating');
             var badge = document.getElementById('bt-rankcard-badge');
+            var dots = document.getElementById('bt-rankcard-dots');
             if (img) { img.style.visibility = ''; img.src = _btRankImg(d.rank_key); }
             if (badge) badge.classList.toggle('bt-rankcard-badge--cal', !!d.calibrating);
             if (d.calibrating) {
-                // На калибровке ранг скрыт — отдельный бейдж и прогресс.
-                if (name) name.textContent = 'Калибровка';
-                if (sub) sub.textContent = d.games_played + ' / ' + d.calibration_total + ' боёв';
+                // Калибровка — герой первого экрана: прогресс-точки боёв +
+                // обещание награды (посвящение перестаёт быть сюрпризом).
+                var played = d.games_played || 0;
+                var total = d.calibration_total || 5;
+                if (name) name.textContent = 'Калибровка · бой ' + Math.min(played + 1, total) + ' из ' + total;
+                if (sub) sub.textContent = 'Сыграй ' + total + ' боёв — узнаешь свой ранг';
                 if (rating) rating.textContent = '';
+                if (dots) {
+                    dots.hidden = false;
+                    var dh = '';
+                    for (var i = 0; i < total; i++) {
+                        dh += '<i class="bt-dot' + (i < played ? ' bt-dot--on' : '') + '"></i>';
+                    }
+                    dots.innerHTML = dh;
+                }
             } else {
                 if (name) name.textContent = d.rank_name;
                 if (sub) {
@@ -1824,7 +1876,11 @@
                         ? 'до повышения: ' + Math.max(0, d.next_rank_at - d.rating)
                         : 'высший ранг';
                 }
-                if (rating) rating.textContent = d.rating;
+                if (rating) {
+                    rating.textContent = d.rating;
+                    rating.setAttribute('aria-label', d.rating + ' MMR');
+                }
+                if (dots) { dots.hidden = true; dots.innerHTML = ''; }
             }
         }
 

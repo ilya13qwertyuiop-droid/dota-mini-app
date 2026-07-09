@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=237" />
+    <link rel="stylesheet" href="styles.css?v=238" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -632,6 +632,11 @@
             <p><b>Позиции.</b> После драфта — 30 секунд на расстановку своих героев
             по позициям 1-5. Соперник её не видит. Герой не на своей позиции
             штрафует драфт.</p>
+            <p><b>Рейтинг.</b> Первые 5 боёв — калибровка: сыграй их, и получишь
+            ранг и MMR. Дальше победы добавляют MMR, поражения отнимают —
+            чем сильнее соперник, тем больше цена боя. Ранги: Пешка →
+            Предвестник → Избранный → Владыка → Вечный. Бои с ботом рейтинг
+            не меняют — это тренировка.</p>
           </div>
           <button type="button" class="tm-ghost-btn" onclick="btHelpClose()">Понятно</button>
         </div>
@@ -668,19 +673,22 @@
             </div>
           </div>
 
-          <!-- Рейтинговая карточка: ранг + MMR ИЛИ прогресс калибровки.
-               Картинки рангов — /images/ranks/<key>.png (key из бэка:
-               pawn/harbinger/chosen/overlord/eternal/calibration). -->
-          <div class="bt-rankcard" id="bt-rankcard" hidden>
-            <div class="bt-rankcard-badge" id="bt-rankcard-badge">
+          <!-- Рейтинговая карточка: ранг + MMR ИЛИ прогресс калибровки
+               («герой» первого экрана новичка: точки боёв + обещание ранга).
+               Тап открывает справку — это button. Картинки рангов —
+               /images/ranks/<key>.png (pawn/…/eternal/calibration). -->
+          <button type="button" class="bt-rankcard" id="bt-rankcard" hidden
+                  onclick="btHelpOpen()" aria-label="Рейтинг — открыть справку">
+            <span class="bt-rankcard-badge" id="bt-rankcard-badge">
               <img id="bt-rankcard-img" alt="" onerror="this.style.visibility='hidden'">
-            </div>
-            <div class="bt-rankcard-main">
-              <div class="bt-rankcard-name" id="bt-rankcard-name">—</div>
-              <div class="bt-rankcard-sub" id="bt-rankcard-sub"></div>
-            </div>
-            <div class="bt-rankcard-rating" id="bt-rankcard-rating"></div>
-          </div>
+            </span>
+            <span class="bt-rankcard-main">
+              <span class="bt-rankcard-name" id="bt-rankcard-name">—</span>
+              <span class="bt-rankcard-sub" id="bt-rankcard-sub"></span>
+              <span class="bt-rankcard-dots" id="bt-rankcard-dots" hidden aria-hidden="true"></span>
+            </span>
+            <span class="bt-rankcard-rating" id="bt-rankcard-rating"></span>
+          </button>
 
           <!-- Онлайн в режиме: участники активных битв (ищут + играют) -->
           <div class="bt-online" id="bt-online-menu" hidden>
@@ -688,15 +696,12 @@
             <span class="bt-online-text" id="bt-online-menu-text"></span>
           </div>
 
+          <!-- Режим: горизонтальный сегмент (детали режимов — в справке «?») -->
           <div class="bt-mode-seg" role="radiogroup" aria-label="Режим драфта">
-            <button type="button" class="bt-mode-btn bt-mode-btn--active" id="bt-mode-cm" onclick="btSetMode('cm')">
-              <span class="bt-mode-name">С банами</span>
-              <span class="bt-mode-sub">14 банов + 10 пиков</span>
-            </button>
-            <button type="button" class="bt-mode-btn" id="bt-mode-ap" onclick="btSetMode('ap')">
-              <span class="bt-mode-name">Без банов</span>
-              <span class="bt-mode-sub">Только 10 пиков</span>
-            </button>
+            <button type="button" class="bt-mode-btn bt-mode-btn--active" id="bt-mode-cm"
+                    role="radio" aria-checked="true" onclick="btSetMode('cm')">С банами</button>
+            <button type="button" class="bt-mode-btn" id="bt-mode-ap"
+                    role="radio" aria-checked="false" onclick="btSetMode('ap')">Без банов</button>
           </div>
 
           <button type="button" class="tm-primary-btn bt-menu-primary" onclick="btQueue()">Найти соперника</button>
@@ -1805,6 +1810,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=291"></script>
+    <script defer src="script.js?v=292"></script>
   </body>
 </html>

@@ -9338,24 +9338,48 @@ margin-top: var(--space-4);
 
 /* ── Меню ── */
 #bt-menu { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
-.bt-mode-seg { display: flex; flex-direction: column; gap: var(--space-2); }
-.bt-mode-btn {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: var(--space-3) var(--space-4);
+/* Режим — горизонтальный сегмент одной строкой (детали режимов в справке):
+   CTA «Найти соперника» получает воздух и доминирует. Выбранность — заливкой,
+   не только рамкой (различимо при любом контрасте). */
+.bt-mode-seg {
+  display: flex; gap: 4px;
+  padding: 3px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
-  text-align: left; cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.bt-mode-btn {
+  flex: 1; min-height: 44px;
+  border: none; border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm); font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .bt-mode-btn--active {
-  border-color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 8%, var(--bg-surface));
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
-.bt-mode-name { font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary); }
-.bt-mode-sub { font-size: var(--text-xs); color: var(--text-tertiary); }
-.bt-menu-primary { margin-top: var(--space-2); }
+/* CTA: чуть темнее фон ради AA-контраста белого текста (глобальный accent
+   даёт ~4.0:1 при 15px) + гарантированная высота. hover тоже фиксируем —
+   иначе глобальный .tm-primary-btn:hover вернёт светлый фон. */
+.bt-menu-primary,
+.bt-menu-primary:hover {
+  margin-top: var(--space-2);
+  min-height: 48px;
+  background: color-mix(in srgb, var(--accent) 82%, #000);
+  font-weight: var(--font-bold);
+}
+
+/* 44px-хит-зоны для 32px-кнопок шапки (визуал не меняем): «?» — единственный
+   вход в справку, промах = потерянный onboarding. У .tm-back-btn/.mghl-head-lb
+   нет своих ::after — расширение безопасно для всех экранов. */
+.tm-back-btn, .mghl-head-lb { position: relative; }
+.tm-back-btn::after, .mghl-head-lb::after {
+  content: ''; position: absolute; inset: -6px;
+}
 .bt-menu-row { display: flex; }
 .bt-menu-row .tm-ghost-btn { flex: 1; }
 .bt-rules { font-size: var(--text-xs); color: var(--text-tertiary); line-height: var(--leading-normal); margin-top: var(--space-2); }
@@ -9719,7 +9743,9 @@ margin-top: var(--space-4);
 }
 .bt-resume-txt { font-size: var(--text-sm); color: var(--text-primary); line-height: var(--leading-normal); }
 .bt-resume-actions { display: flex; gap: var(--space-2); }
-.bt-resume-actions .tm-primary-btn, .bt-resume-actions .tm-ghost-btn { flex: 1; padding: 9px 0; }
+.bt-resume-actions .tm-primary-btn, .bt-resume-actions .tm-ghost-btn {
+  flex: 1; min-height: 44px; padding: 9px 0; margin: 0;   /* 44px тач-таргет */
+}
 
 /* Активная сторона драфта + аватары */
 .bt-side {
@@ -9769,24 +9795,23 @@ margin-top: var(--space-4);
 .bt-history-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .bt-history-empty {
   padding: var(--space-6) var(--space-3); text-align: center;
-  font-size: var(--text-sm); color: var(--text-tertiary);
+  font-size: var(--text-sm); color: var(--text-secondary);   /* AA: tertiary 2.6:1 */
   border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);
 }
+.bt-history-retry { width: 100%; background: transparent; cursor: pointer; }
+/* Исход строки несут текст «Победа/Поражение» и его цвет — цветная кромка
+   border-left убрана (анти-паттерн side-stripe, информация дублировалась). */
 .bt-hist-row {
   display: flex; align-items: center; gap: var(--space-3);
   width: 100%; text-align: left;
   padding: var(--space-3);
   border: 1px solid var(--border-subtle);
-  border-left-width: 3px;
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .bt-hist-row:active { background: var(--bg-hover); }
-.bt-hist-row--win  { border-left-color: var(--success, #3db87a); }
-.bt-hist-row--loss { border-left-color: var(--danger, #e5534b); }
-.bt-hist-row--draw { border-left-color: var(--border-strong); }
 .bt-hist-av {
   flex: 0 0 auto; width: 38px; height: 38px; border-radius: 999px;
   overflow: hidden; display: flex; align-items: center; justify-content: center;
@@ -9808,7 +9833,7 @@ margin-top: var(--space-4);
   color: var(--text-primary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bt-hist-meta { font-size: var(--text-2xs); color: var(--text-tertiary); }
+.bt-hist-meta { font-size: var(--text-xs); color: var(--text-secondary); }   /* AA + 12px */
 .bt-hist-right {
   flex: 0 0 auto;
   display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
@@ -9818,8 +9843,8 @@ margin-top: var(--space-4);
 .bt-hist-row--loss .bt-hist-outcome { color: var(--danger, #e5534b); }
 .bt-hist-row--draw .bt-hist-outcome { color: var(--text-secondary); }
 .bt-hist-score {
-  font-family: var(--font-mono); font-size: var(--text-2xs);
-  color: var(--text-tertiary);
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  color: var(--text-secondary);   /* AA */
 }
 .bt-hist-rating {
   font-family: var(--font-mono); font-size: var(--text-2xs);
@@ -9829,13 +9854,21 @@ margin-top: var(--space-4);
 .bt-hist-rating.is-down { color: var(--danger, #e5534b); }
 
 /* Рейтинговая карточка в меню: ранг-бейдж + MMR ИЛИ прогресс калибровки */
+/* Карточка — <button> (тап открывает справку о рейтинге): сбрасываем
+   UA-стили кнопки, сохраняя прежний вид. */
 .bt-rankcard {
   display: flex; align-items: center; gap: var(--space-3);
+  width: 100%;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
+  font: inherit; color: inherit; text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease;
 }
+.bt-rankcard:active { border-color: var(--border-strong); }
 .bt-rankcard-badge {
   flex: 0 0 auto; width: 48px; height: 48px;
   display: flex; align-items: center; justify-content: center;
@@ -9850,7 +9883,14 @@ margin-top: var(--space-4);
   font-size: var(--text-base); font-weight: var(--font-semibold);
   color: var(--text-primary);
 }
-.bt-rankcard-sub { font-size: var(--text-2xs); color: var(--text-tertiary); }
+.bt-rankcard-sub { font-size: var(--text-xs); color: var(--text-secondary); }   /* AA + 12px */
+/* Прогресс-точки калибровки: сыгранные бои — заполненные. */
+.bt-rankcard-dots { display: flex; gap: 5px; margin-top: 4px; }
+.bt-rankcard-dots .bt-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+}
+.bt-rankcard-dots .bt-dot--on { background: var(--accent); border-color: var(--accent); }
 .bt-rankcard-rating {
   flex: 0 0 auto;
   font-family: var(--font-mono); font-size: var(--text-2xl);
