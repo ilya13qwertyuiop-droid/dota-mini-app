@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 import httpx
 from datetime import datetime, timezone
@@ -4648,13 +4649,9 @@ def _bt_tick(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     return changed
 
 
-def _bt_send_match_push(host_id, guest_id, code: str) -> None:
-    """Пуш «соперник найден» с кнопкой-входом обоим участникам живого матча.
-
-    Sync httpx (вызывается из def-эндпоинтов очереди/входа — те живут в
-    threadpool, блокирующий POST там не трогает event loop). Best-effort:
-    любая ошибка проглатывается. Тот, кто свернул апп в ожидании, получит
-    пуш в чат бота; тот, кто онлайн, и так увидит матч через long-poll."""
+def _bt_send_match_push_sync(host_id, guest_id, code: str) -> None:
+    """Тело пуша «соперник найден» (sync httpx, до ~8с на два Telegram-вызова).
+    Выполняется ТОЛЬКО в отдельном daemon-потоке — см. _bt_send_match_push."""
     if not BOT_TOKEN:
         return
     deep = f"{_TM_MINI_APP_URL}?battle={code}" if _TM_MINI_APP_URL else None
@@ -4675,6 +4672,24 @@ def _bt_send_match_push(host_id, guest_id, code: str) -> None:
                 client.post(url, json={**payload_base, "chat_id": chat_id})
         except Exception as e:
             logger.warning("[battle] match push to %s failed: %s", chat_id, e)
+
+
+def _bt_send_match_push(host_id, guest_id, code: str) -> None:
+    """Пуш «соперник найден» обоим участникам — fire-and-forget daemon-поток.
+
+    Раньше sync httpx выполнялся прямо в вызывающем потоке: из /queue это
+    блокировало воркер Starlette-threadpool'а, а из ленивого матчера
+    (_bt_try_live_match ← _bt_poll_read ← asyncio.to_thread) — процесс-глобальный
+    executor, общий для ВСЕХ to_thread-вызовов приложения. При деградации
+    Telegram API (до ~8с на пару вызовов) это стопорило самый горячий путь
+    (/battle/events). Отдельный короткоживущий поток изолирует пуш полностью;
+    best-effort-семантика не меняется."""
+    threading.Thread(
+        target=_bt_send_match_push_sync,
+        args=(host_id, guest_id, code),
+        daemon=True,
+        name="bt-match-push",
+    ).start()
 
 
 def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
@@ -4883,6 +4898,9 @@ class BattleStartReq(BaseModel):
 class BattleCodeReq(BaseModel):
     token: str
     code: str
+    # 'cancel_search' — отмена с экрана поиска: при гонке с матчером НЕ форфейт
+    # (см. api_battle_leave). Отсутствует = явная сдача/обычный leave.
+    intent: str | None = None
 
 
 class BattleActionReq(BaseModel):
@@ -5239,7 +5257,13 @@ def api_battle_positions(data: BattlePositionsReq, db: Session = Depends(get_db)
 
 @app.post("/api/battle/leave")
 def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
-    """waiting/searching → отмена; drafting → форфейт (победа соперника)."""
+    """waiting/searching → отмена; drafting → форфейт (победа соперника).
+
+    intent='cancel_search' (кнопка «Отменить» экрана поиска): если к моменту
+    захвата лока комнату УЖЕ сматчили (другой воркер успел первым — /queue или
+    ленивый матчер), отмена НЕ превращается в форфейт со штрафом рейтинга —
+    возвращаем «матч начался», фронт входит в бой. Форфейт — только явная
+    сдача из драфта (кнопка-флаг с confirm, intent отсутствует)."""
     uid = _tm_require_user(token=data.token)
     battle = _bt_get_battle(db, data.code, for_update=True)
     role = _bt_role(battle, uid)
@@ -5252,6 +5276,10 @@ def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
         db.commit()
         _bt_notify(battle.id)
         return {"ok": True, "status": "abandoned"}
+
+    if data.intent == "cancel_search" and battle.status in ("drafting", "assigning"):
+        db.commit()   # отпустить лок; битву не трогаем
+        return {"ok": False, "status": battle.status, "matched": True}
 
     if battle.status in ("drafting", "assigning"):
         battle.status = "finished"
