@@ -9499,39 +9499,43 @@ margin-top: var(--space-4);
    путь класса не получает — всё видно сразу). Сюжет: драфты (~2с) →
    синергия → контрпики → позиции → ИТОГ + вердикт. Тап — сразу финал. ── */
 
+/* ВАЖНО: transition объявлен ТОЛЬКО на видимом состоянии. Если повесить его
+   на скрытое, добавление --seq анимировало бы ГАШЕНИЕ уже видимого контента
+   (вспышка вердикта-спойлера + моргание значений на старте секвенции). */
+
 /* Драфты въезжают с противоположных вертикалей, второй — с задержкой. */
-.bt-proto--seq .bt-proto-team {
-  opacity: 0; transform: translateY(16px);
+.bt-proto--seq .bt-proto-team { opacity: 0; transform: translateY(16px); }
+.bt-proto--seq .bt-proto-team:last-child { transform: translateY(-16px); }
+.bt-proto--seq.bt-proto--teams-in .bt-proto-team {
+  opacity: 1; transform: none;
   transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.bt-proto--seq .bt-proto-team:last-child { transform: translateY(-16px); }
-.bt-proto--seq.bt-proto--teams-in .bt-proto-team { opacity: 1; transform: none; }
-.bt-proto--seq.bt-proto--teams-in .bt-proto-team:last-child { transition-delay: 0.18s; }
+.bt-proto--seq.bt-proto--teams-in .bt-proto-team:last-child { transition-delay: 0.15s; }
 
 /* Строки протокола: сначала метка по центру, затем значения по одному. */
-.bt-proto--seq .bt-proto-row {
-  opacity: 0;
+.bt-proto--seq .bt-proto-row { opacity: 0; }
+.bt-proto--seq .bt-proto-row.is-in {
+  opacity: 1;
   transition: opacity 0.35s ease-out;
 }
-.bt-proto--seq .bt-proto-row.is-in { opacity: 1; }
-.bt-proto--seq .bt-proto-val {
-  opacity: 0; transform: translateY(8px);
+.bt-proto--seq .bt-proto-val { opacity: 0; transform: translateY(8px); }
+.bt-proto--seq .bt-proto-val.is-vin {
+  opacity: 1; transform: none;
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.bt-proto--seq .bt-proto-val.is-vin { opacity: 1; transform: none; }
 
 /* Шапка (вердикт+рейтинг) и кнопки — только на кульминации. */
 .bt-proto--seq .bt-proto-head,
 .bt-proto--seq .bt-res-actions {
   opacity: 0; transform: translateY(10px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .bt-proto--seq.bt-proto--final-in .bt-proto-head,
 .bt-proto--seq.bt-proto--final-in .bt-res-actions {
   opacity: 1; transform: none;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .bt-proto--seq.bt-proto--final-in .bt-proto-verdict {
   animation: btVerdictIn 0.55s cubic-bezier(0.16, 1, 0.3, 1);
@@ -9614,10 +9618,17 @@ margin-top: var(--space-4);
 
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
 
-/* Действия: компактный ряд, не стопка гигантов. */
+/* Действия: компактный ряд, ОДИНАКОВЫЕ по размеру кнопки (у ghost есть
+   1px-рамка и свой паддинг из scoped-правила — фиксируем высоту обеим). */
 .bt-res-actions { display: flex; gap: var(--space-3); width: 100%; }
 .bt-res-actions .tm-primary-btn,
-.bt-res-actions .tm-ghost-btn { flex: 1; width: auto; max-width: none; }
+.bt-res-actions .tm-ghost-btn {
+  flex: 1; width: auto; max-width: none;
+  height: 48px; padding: 0 var(--space-4);
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
+  font-size: var(--text-base);
+}
 
 /* КРИТИЧНО: у bt-экранов задан display:flex, который перебивает
    UA-стиль атрибута [hidden] (та же грабля, что у mghl — см. ~9082).

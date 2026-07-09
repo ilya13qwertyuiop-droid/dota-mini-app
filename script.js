@@ -1614,8 +1614,10 @@
                 _btStopTimer();
                 _btStopAssignTimer();
                 _btStopPolling();
+                // Сначала рендер В СКРЫТОМ контейнере, потом показ — иначе на
+                // кадр виден прошлый/дефолтный контент (спойлер вердикта).
+                _btRenderResult(st);
                 _btShow('bt-result');
-                _btRenderResult(st);     // шапка-вердикт + вкладки; хаптика внутри
                 // Живой бой мог завершить калибровку — проверяем для посвящения.
                 if (!_bt.historyView) _btCheckGraduation();
             } else { // abandoned
@@ -2557,20 +2559,20 @@
                 }, at);
             }
 
-            // 1) Драфты въезжают (~2с сцена героев)
+            // 1) Драфты въезжают (~1с сцена героев)
             T(function () { proto.classList.add('bt-proto--teams-in'); }, 80);
             // 2) Чья сторона — тихие колонки-подписи, затем строки-акты
-            stageRow('caps', 1900, true);
-            stageRow('syn', 2100);
-            stageRow('mu', 3400);
-            stageRow('pos', 4700);
+            stageRow('caps', 950, true);
+            stageRow('syn', 1100);
+            stageRow('mu', 2300);
+            stageRow('pos', 3450);
             // 3) Кульминация: итог + вердикт + рейтинг + кнопки, хаптика исхода
             T(function () {
                 proto.classList.add('bt-proto--final-in');
                 _bt.protoSeqActive = false;
                 _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
-            }, 5800);
-            stageRow('total', 5800, true);
+            }, 4300);
+            stageRow('total', 4300, true);
         }
 
         // Тап по экрану во время монтажа — сразу к финалу (ре-рендер instant;
