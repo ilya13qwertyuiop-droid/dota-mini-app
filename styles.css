@@ -9625,6 +9625,7 @@ margin-top: var(--space-4);
 .bt-res-actions .tm-ghost-btn {
   flex: 1; width: auto; max-width: none;
   height: 48px; padding: 0 var(--space-4);
+  margin: 0;   /* у глобального .tm-primary-btn есть margin-bottom — он и кривил ряд */
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box;
   font-size: var(--text-base);
