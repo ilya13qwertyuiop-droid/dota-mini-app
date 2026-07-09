@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=233" />
+    <link rel="stylesheet" href="styles.css?v=234" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -804,10 +804,10 @@
              Акты контрпиков/синергии анимируются GSAP по очереди, затем —
              финальный экран с метриками и вердиктом. -->
         <!-- Результат: «протокол матча» — киберспортивный скорборд.
-             Одна композиция без вкладок: вердикт → два драфта КРУПНО (герои —
-             звёзды экрана) → таблица-протокол без рамок (значения по бокам,
-             метки по центру, победившее значение — вес+цвет) → действия.
-             Монтаж: каскад блоков (CSS, .bt-proto--in), из истории — мгновенно. -->
+             Поэтапное раскрытие (саспенс: итог неизвестен до счёта): драфты →
+             синергия → контрпики → позиции → ИТОГ + вердикт (кульминация).
+             Управляет JS классами .bt-proto--seq/--teams-in/--final-in +
+             .is-in/.is-vin на строках; тап — сразу финал; история — мгновенно. -->
         <div id="bt-result" hidden>
           <div class="bt-proto" id="bt-proto">
             <div class="bt-proto-head">
@@ -1802,6 +1802,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=286"></script>
+    <script defer src="script.js?v=287"></script>
   </body>
 </html>

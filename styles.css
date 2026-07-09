@@ -9494,18 +9494,58 @@ margin-top: var(--space-4);
   display: flex; flex-direction: column;
   gap: var(--space-6);
 }
-.bt-proto > * {
-  opacity: 0; transform: translateY(12px);
-  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+
+/* ── Поэтапное раскрытие (--seq ставит JS только на живой монтаж; instant-
+   путь класса не получает — всё видно сразу). Сюжет: драфты (~2с) →
+   синергия → контрпики → позиции → ИТОГ + вердикт. Тап — сразу финал. ── */
+
+/* Драфты въезжают с противоположных вертикалей, второй — с задержкой. */
+.bt-proto--seq .bt-proto-team {
+  opacity: 0; transform: translateY(16px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.bt-proto--in > * { opacity: 1; transform: none; }
-.bt-proto--in > :nth-child(2) { transition-delay: 0.1s; }
-.bt-proto--in > :nth-child(3) { transition-delay: 0.18s; }
-.bt-proto--in > :nth-child(4) { transition-delay: 0.26s; }
-.bt-proto--fast > * { transition: none; }
+.bt-proto--seq .bt-proto-team:last-child { transform: translateY(-16px); }
+.bt-proto--seq.bt-proto--teams-in .bt-proto-team { opacity: 1; transform: none; }
+.bt-proto--seq.bt-proto--teams-in .bt-proto-team:last-child { transition-delay: 0.18s; }
+
+/* Строки протокола: сначала метка по центру, затем значения по одному. */
+.bt-proto--seq .bt-proto-row {
+  opacity: 0;
+  transition: opacity 0.35s ease-out;
+}
+.bt-proto--seq .bt-proto-row.is-in { opacity: 1; }
+.bt-proto--seq .bt-proto-val {
+  opacity: 0; transform: translateY(8px);
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-proto--seq .bt-proto-val.is-vin { opacity: 1; transform: none; }
+
+/* Шапка (вердикт+рейтинг) и кнопки — только на кульминации. */
+.bt-proto--seq .bt-proto-head,
+.bt-proto--seq .bt-res-actions {
+  opacity: 0; transform: translateY(10px);
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-proto--seq.bt-proto--final-in .bt-proto-head,
+.bt-proto--seq.bt-proto--final-in .bt-res-actions {
+  opacity: 1; transform: none;
+}
+.bt-proto--seq.bt-proto--final-in .bt-proto-verdict {
+  animation: btVerdictIn 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes btVerdictIn {
+  from { transform: scale(0.92); }
+  to   { transform: none; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .bt-proto > * { transition: none; opacity: 1; transform: none; }
+  .bt-proto--seq .bt-proto-team, .bt-proto--seq .bt-proto-row,
+  .bt-proto--seq .bt-proto-val, .bt-proto--seq .bt-proto-head,
+  .bt-proto--seq .bt-res-actions {
+    transition: none; opacity: 1; transform: none; animation: none;
+  }
 }
 
 .bt-proto-head {
@@ -9546,14 +9586,31 @@ margin-top: var(--space-4);
 }
 .bt-proto-val {
   font-family: var(--font-mono); font-size: var(--text-lg);
-  font-weight: var(--font-regular, 400); color: var(--text-tertiary);
+  font-weight: var(--font-regular, 400); color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 .bt-proto-val:first-child { text-align: left; }
 .bt-proto-val:last-child { text-align: right; }
-.bt-proto-val.is-lead { color: var(--text-primary); font-weight: var(--font-bold); }
-.bt-proto-row--total { padding: 0 0 14px; }
+/* Исход строки: победившее значение — зелёное и жирное, проигравшее —
+   приглушённо-красное. Ничья в строке — оба нейтральные. */
+.bt-proto-val.is-win { color: var(--positive); font-weight: var(--font-bold); }
+.bt-proto-val.is-lose { color: var(--negative); opacity: 0.75; }
+/* Итог — кульминация: крупнее и внизу таблицы. */
+.bt-proto-row--total { padding: 14px 0 0; }
 .bt-proto-row--total .bt-proto-val { font-size: var(--text-3xl); font-weight: var(--font-bold); }
+.bt-proto-row--total .bt-proto-val.is-lose { opacity: 0.6; }
+/* Шапка колонок: чья сторона — левая всегда твоя. */
+.bt-proto-row--caps { padding: 4px 0; }
+.bt-proto-cap {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-proto-cap:last-child { text-align: right; }
+/* Позиции без штрафов — тихая строка вместо нулей. */
+.bt-proto-row--flat { display: flex; justify-content: center; }
+.bt-proto-poszero { font-size: var(--text-xs); color: var(--text-tertiary); }
 
 .bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
 

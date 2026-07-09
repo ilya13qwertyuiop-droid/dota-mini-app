@@ -1341,8 +1341,11 @@
                 return;
             }
             // Уходим со страницы: висящий таймер интерстишла не должен позже
-            // дёргать _btShow (скролл чужого экрана).
+            // дёргать _btShow (скролл чужого экрана), а таймеры монтажа
+            // результата — вибрировать на чужом экране.
             if (_bt.foundTimer) { clearTimeout(_bt.foundTimer); _bt.foundTimer = null; }
+            _btClearReveal();
+            _bt.protoSeqActive = false;
             // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
             // просто уводит на список игр — вернуться можно тем же входом.
             _btStopOnline();
@@ -2388,24 +2391,31 @@
             }).join('');
         }
 
-        // Строка протокола: значения по бокам, метка по центру.
-        function _btProtoRowHtml(label, meVal, oppVal, isTotal) {
+        // Строка протокола: значения по бокам, метка по центру. win/lose —
+        // цвет исхода строки (победившее зелёное, проигравшее приглушённо-красное);
+        // data-val хранит финальное число для count-up при поэтапном раскрытии.
+        function _btProtoRowHtml(key, label, meVal, oppVal, isTotal) {
             var m = Math.round(meVal || 0), o = Math.round(oppVal || 0);
-            return '<div class="bt-proto-row' + (isTotal ? ' bt-proto-row--total' : '') + '">' +
-                '<b class="bt-proto-val' + (m > o ? ' is-lead' : '') + '"' +
-                    (isTotal ? ' id="bt-proto-total-me"' : '') + '>' + m + '</b>' +
+            function cls(v, other) {
+                return v > other ? ' is-win' : v < other ? ' is-lose' : '';
+            }
+            return '<div class="bt-proto-row' + (isTotal ? ' bt-proto-row--total' : '') +
+                '" data-key="' + key + '">' +
+                '<b class="bt-proto-val' + cls(m, o) + '" data-val="' + m + '">' + m + '</b>' +
                 '<span class="bt-proto-label">' + _mghlEsc(label) + '</span>' +
-                '<b class="bt-proto-val' + (o > m ? ' is-lead' : '') + '"' +
-                    (isTotal ? ' id="bt-proto-total-opp"' : '') + '>' + o + '</b>' +
+                '<b class="bt-proto-val' + cls(o, m) + '" data-val="' + o + '">' + o + '</b>' +
             '</div>';
         }
 
-        function _btRenderResult(st) {
+        function _btRenderResult(st, forceInstant) {
             _btClearReveal();
+            _bt.protoSeqActive = false;
             // Снапшот флага калибровки В МОМЕНТ входа в результат (F1-фикс):
             // живой _bt.wasCalibrating может сбросить _btCheckGraduation раньше
             // ухода с экрана — медаль в чипе рейтинга читает только снапшот.
-            _bt.resultMedalCal = !!_bt.wasCalibrating;
+            // При ре-рендере скипом (forceInstant) снапшот НЕ обновляем — иначе
+            // graduation, успевший за время монтажа, слил бы настоящий ранг.
+            if (!forceInstant) _bt.resultMedalCal = !!_bt.wasCalibrating;
             var me = _btMyRole(), opp = _btOppRole();
             var r = st.result || {};
             var isForfeit = !!r.forfeit;
@@ -2476,37 +2486,108 @@
             var teams = document.getElementById('bt-proto-teams');
             if (teams) teams.hidden = !hasSides;
 
-            // Протокол: итог (крупно) + компоненты. Форфейт — таблицы нет.
+            // Протокол — сюжет сверху вниз: чья сторона (caps) → синергия →
+            // контрпики → позиции → ИТОГ (кульминация, последним). Нулевые
+            // позиции у обоих — строка «Все герои на своих позициях» без чисел.
             var table = document.getElementById('bt-proto-table');
+            var penMe = Math.round(pens[me] || 0), penOpp = Math.round(pens[opp] || 0);
             if (table) {
                 if (hasSides && meFinal != null && oppFinal != null) {
                     table.hidden = false;
+                    var oppCap = (st[opp] && st[opp].name) || 'Соперник';
+                    var posRow = (penMe === 0 && penOpp === 0)
+                        ? '<div class="bt-proto-row bt-proto-row--flat" data-key="pos">' +
+                              '<span class="bt-proto-poszero">Все герои на своих позициях</span>' +
+                          '</div>'
+                        : _btProtoRowHtml('pos', 'Позиции', penMe, penOpp, false);
                     table.innerHTML =
-                        _btProtoRowHtml('Итог', meFinal, oppFinal, true) +
-                        _btProtoRowHtml('Синергия', r[me].synergy_score, r[opp].synergy_score) +
-                        _btProtoRowHtml('Контрпики', r[me].matchup_score, r[opp].matchup_score) +
-                        _btProtoRowHtml('Позиции', pens[me] || 0, pens[opp] || 0);
+                        '<div class="bt-proto-row bt-proto-row--caps" data-key="caps">' +
+                            '<b class="bt-proto-cap">Ты</b><span></span>' +
+                            '<b class="bt-proto-cap">' + _mghlEsc(oppCap) + '</b>' +
+                        '</div>' +
+                        _btProtoRowHtml('syn', 'Синергия', r[me].synergy_score, r[opp].synergy_score, false) +
+                        _btProtoRowHtml('mu', 'Контрпики', r[me].matchup_score, r[opp].matchup_score, false) +
+                        posRow +
+                        _btProtoRowHtml('total', 'Итог', meFinal, oppFinal, true);
                 } else {
                     table.hidden = true;
                     table.innerHTML = '';
                 }
             }
 
-            // Монтаж: каскад блоков (~0.5с суммарно). История/reduced — мгновенно.
-            var instant = _bt.historyView || _btReduceMotion();
+            // ── Монтаж: поэтапное раскрытие (саспенс настоящий — итог битвы
+            // игрок не знает, пока счёт не показан). Драфты → синергия →
+            // контрпики → позиции → итог+вердикт. Тап по экрану — сразу финал.
+            // История / reduced-motion / скип — всё мгновенно (без --seq).
             var proto = document.getElementById('bt-proto');
+            var instant = forceInstant || _bt.historyView || _btReduceMotion();
+            var canSeq = !instant && table && !table.hidden && !isForfeit;
             if (proto) {
-                proto.classList.remove('bt-proto--in');
-                proto.classList.toggle('bt-proto--fast', instant);
-                void proto.offsetWidth;   // рестарт transition
-                proto.classList.add('bt-proto--in');
+                proto.classList.remove('bt-proto--seq', 'bt-proto--teams-in', 'bt-proto--final-in');
             }
-            // Единственный тикер экрана: итоговый счёт набегает.
-            if (!instant && meFinal != null && oppFinal != null) {
-                _btCountUp(document.getElementById('bt-proto-total-me'), 0, meFinal);
-                _btCountUp(document.getElementById('bt-proto-total-opp'), 0, oppFinal);
+            if (!canSeq) {
+                _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
+                return;
             }
-            _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
+
+            _bt.protoSeqActive = true;
+            proto.classList.add('bt-proto--seq');
+            function T(fn, ms) { _bt.revealTimers.push(setTimeout(fn, ms)); }
+            // Раскрытие строки: метка по центру → проигравшее значение
+            // (приглушённое) → победившее (ярко), числа набегают.
+            function stageRow(key, at, noHaptic) {
+                T(function () {
+                    var row = table.querySelector('[data-key="' + key + '"]');
+                    if (!row) return;
+                    row.classList.add('is-in');
+                    if (!noHaptic) _mghlHaptic('tap');
+                    var vals = row.querySelectorAll('.bt-proto-val');
+                    if (!vals.length) return;
+                    var first = vals[0], second = vals[1];
+                    // Проигравшее — первым, победившее — вторым (кульминация строки).
+                    if (first.classList.contains('is-win') || second.classList.contains('is-lose')) {
+                        first = vals[1]; second = vals[0];
+                    }
+                    [first, second].forEach(function (el, i) {
+                        T(function () {
+                            el.classList.add('is-vin');
+                            _btCountUp(el, 0, parseInt(el.getAttribute('data-val'), 10) || 0);
+                        }, 280 + i * 380);
+                    });
+                }, at);
+            }
+
+            // 1) Драфты въезжают (~2с сцена героев)
+            T(function () { proto.classList.add('bt-proto--teams-in'); }, 80);
+            // 2) Чья сторона — тихие колонки-подписи, затем строки-акты
+            stageRow('caps', 1900, true);
+            stageRow('syn', 2100);
+            stageRow('mu', 3400);
+            stageRow('pos', 4700);
+            // 3) Кульминация: итог + вердикт + рейтинг + кнопки, хаптика исхода
+            T(function () {
+                proto.classList.add('bt-proto--final-in');
+                _bt.protoSeqActive = false;
+                _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
+            }, 5800);
+            stageRow('total', 5800, true);
+        }
+
+        // Тап по экрану во время монтажа — сразу к финалу (ре-рендер instant;
+        // отслеживаемые таймеры чистит _btClearReveal внутри рендера).
+        if (!window._btProtoSkipBound) {
+            window._btProtoSkipBound = true;
+            var _btResEl = document.getElementById('bt-result');
+            if (_btResEl) {
+                _btResEl.addEventListener('click', function (e) {
+                    if (!_bt.protoSeqActive) return;
+                    if (e.target.closest('button')) return;
+                    _bt.protoSeqActive = false;
+                    if (_bt.state && _bt.state.status === 'finished') {
+                        _btRenderResult(_bt.state, true);
+                    }
+                });
+            }
         }
 
 
