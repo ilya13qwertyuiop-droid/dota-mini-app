@@ -1325,11 +1325,24 @@
                 _btStopPolling();
                 _bt.historyView = false;
                 _bt.code = null; _bt.state = null;
-                _btClearReveal(); _bt.revealActive = false;
+                _btClearReveal();
                 _btShow('bt-menu');
                 btRenderHistory();
                 return;
             }
+            // Калибровка завершилась этим боем, а юзер уходит «Назад» мимо
+            // кнопок результата — посвящение не теряем, показываем сейчас.
+            if (_bt.pendingReveal && _bt.screen === 'bt-result') {
+                var p = _bt.pendingReveal; _bt.pendingReveal = null;
+                _btStopPolling();
+                _bt.code = null; _bt.state = null;
+                _btClearReveal();
+                _btShowRankReveal(p);
+                return;
+            }
+            // Уходим со страницы: висящий таймер интерстишла не должен позже
+            // дёргать _btShow (скролл чужого экрана).
+            if (_bt.foundTimer) { clearTimeout(_bt.foundTimer); _bt.foundTimer = null; }
             // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
             // просто уводит на список игр — вернуться можно тем же входом.
             _btStopOnline();
@@ -1351,6 +1364,12 @@
             // незавершённой битвы доедет асинхронно.
             var banner0 = document.getElementById('bt-resume');
             if (banner0) banner0.hidden = true;
+            // Недоигранное посвящение (ушёл «Назад» из другого места) — сперва оно.
+            if (_bt.pendingReveal) {
+                var pr = _bt.pendingReveal; _bt.pendingReveal = null;
+                _btShowRankReveal(pr);
+                return;
+            }
             _btShow('bt-menu');
             btRenderHistory();   // лента истории догружается асинхронно
             btRenderRank();      // рейтинговая карточка догружается асинхронно
@@ -1438,44 +1457,77 @@
         };
 
         function _btEnter(code, fromHistory) {
+            // Смена битвы = перезапуск цикла: единственный long-poll не должен
+            // молча «переехать» на другой code (pollGen убьёт старый цикл).
+            if (_bt.polling) _btStopPolling();
             _bt.code = code;
             _bt.state = null;
             _bt.assignOrder = null;   // раскладка прошлой битвы не наследуется
             _bt.selHero = null;
-            // Просмотр из истории: результат показываем сразу финалом (без актов),
-            // «назад» возвращает в меню битвы. См. _btRenderResult / btBack.
+            // Просмотр из истории: результат показываем сразу (без пересчёта
+            // счёта), «назад» возвращает в меню битвы. См. _btRenderResult / btBack.
             _bt.historyView = !!fromHistory;
             _btStartPolling();
         }
 
         // ── Long polling ───────────────────────────────────────────────────
+        // pollGen — поколение цикла: перезапуск (смена битвы в _btEnter)
+        // инкрементит его, и старый цикл, очнувшись от await, тихо умирает —
+        // без этого abort→catch→continue давал бы ДВА конкурентных цикла.
         function _btStartPolling() {
             if (_bt.polling) return;
             _bt.polling = true;
-            _btPollLoop();
+            _bt.pollGen = (_bt.pollGen || 0) + 1;
+            _btPollLoop(_bt.pollGen);
         }
         function _btStopPolling() {
             _bt.polling = false;
             if (_bt.abort) { try { _bt.abort.abort(); } catch (e) {} _bt.abort = null; }
         }
-        async function _btPollLoop() {
-            while (_bt.polling && _bt.code) {
+        async function _btPollLoop(gen) {
+            var errStreak = 0;
+            while (_bt.polling && _bt.code && gen === _bt.pollGen) {
                 var since = (_bt.state && _bt.state.version) || 0;
                 try {
-                    _bt.abort = (typeof AbortController === 'function') ? new AbortController() : null;
-                    var r = await apiFetch(
-                        window.API_BASE_URL + '/battle/events?token=' + encodeURIComponent(_btTok()) +
-                        '&code=' + encodeURIComponent(_bt.code) + '&since=' + since,
-                        _bt.abort ? { signal: _bt.abort.signal } : {}
-                    );
-                    if (r.status === 404) { _btStopPolling(); _btShow('bt-menu'); return; }
+                    var ac = (typeof AbortController === 'function') ? new AbortController() : null;
+                    _bt.abort = ac;
+                    // Вотчдог: мёртвый TCP (смена сети в кармане) иначе вешает
+                    // await навечно — visibilitychange не всегда стреляет в WebView.
+                    var watchdog = ac ? setTimeout(function () {
+                        try { ac.abort(); } catch (e) {}
+                    }, 35000) : null;
+                    var r;
+                    try {
+                        r = await apiFetch(
+                            window.API_BASE_URL + '/battle/events?token=' + encodeURIComponent(_btTok()) +
+                            '&code=' + encodeURIComponent(_bt.code) + '&since=' + since,
+                            ac ? { signal: ac.signal } : {}
+                        );
+                    } finally {
+                        if (watchdog) clearTimeout(watchdog);
+                    }
+                    if (gen !== _bt.pollGen) return;   // цикл перезапущен другой битвой
+                    if (r.status === 404) {
+                        // Комнаты больше нет — код мёртв, чистим, чтобы
+                        // visibilitychange не ре-поллил его вечно.
+                        _btStopPolling();
+                        _bt.code = null; _bt.state = null;
+                        _btShow('bt-menu');
+                        return;
+                    }
                     if (!r.ok) throw new Error('events ' + r.status);
                     var d = await r.json();
+                    if (gen !== _bt.pollGen) return;
+                    errStreak = 0;
                     if (d && d.version && d.version > since) _btApply(d);
                     // changed:false → сразу следующий цикл (heartbeat)
                 } catch (e) {
-                    if (!_bt.polling) return;       // остановлены намеренно
-                    await new Promise(function (res) { setTimeout(res, 2000); });
+                    if (!_bt.polling || gen !== _bt.pollGen) return;   // остановлены намеренно
+                    // Экспоненциальный backoff: не молотим сервер при лежащей
+                    // сети/авторизации (2с → 4с → 8с → 15с, сброс при успехе).
+                    errStreak += 1;
+                    var delay = Math.min(15000, 2000 * Math.pow(2, Math.min(errStreak - 1, 3)));
+                    await new Promise(function (res) { setTimeout(res, delay); });
                 }
             }
         }
@@ -1490,7 +1542,13 @@
                 } else {
                     var page = document.getElementById('page-draft-battle');
                     if (!(page && page.classList.contains('active'))) return;
-                    if (_bt.code) _btStartPolling();
+                    // Ре-поллим только живые статусы: finished/abandoned не
+                    // изменятся никогда — вечный полл впустую. !state = только
+                    // вошли (состояние ещё не прочитано) — поллим.
+                    var stStatus = _bt.state && _bt.state.status;
+                    var alive = !stStatus ||
+                        ['searching', 'waiting', 'drafting', 'assigning'].indexOf(stStatus) !== -1;
+                    if (_bt.code && alive) _btStartPolling();
                     // Онлайн возобновляем, если открыт экран меню/поиска.
                     var menu = document.getElementById('bt-menu');
                     var wait = document.getElementById('bt-wait');
@@ -1526,9 +1584,13 @@
                     // Интерстишл держим до старта таймера первого хода
                     // (серверный отсчёт starts_in_ms): драфт открывается ровно
                     // в момент, когда время реально начинает гореть.
+                    // Таймер отслеживаемый: уход со страницы его чистит (btBack),
+                    // иначе он стрелял бы scrollTo(0,0) на чужом экране.
                     var holdMs = Math.max(1800,
                         (st.current && st.current.starts_in_ms) || 0);
-                    setTimeout(function () {
+                    if (_bt.foundTimer) clearTimeout(_bt.foundTimer);
+                    _bt.foundTimer = setTimeout(function () {
+                        _bt.foundTimer = null;
                         var f = document.getElementById('bt-found');
                         if (f && !f.hidden && _bt.state && _bt.state.status === 'drafting') {
                             _btShow('bt-draft');
@@ -1549,14 +1611,13 @@
                 _btStopTimer();
                 _btStopAssignTimer();
                 _btStopPolling();
-                _btShow('bt-result');     // контейнер виден до запуска актов
-                _btRenderResult(st);
+                _btShow('bt-result');
+                _btRenderResult(st);     // шапка-вердикт + вкладки; хаптика внутри
                 // Живой бой мог завершить калибровку — проверяем для посвящения.
                 if (!_bt.historyView) _btCheckGraduation();
-                // Хаптику вердикта даёт сам разбор (applyVerdict) в кульминации,
-                // здесь не дублируем — иначе вибрация бьёт сразу, до раскрытия.
             } else { // abandoned
                 _btStopTimer();
+                _btStopAssignTimer();   // defensive: сегодня abandoned из assigning недостижим
                 _btStopPolling();
                 // Ленивый матчер слил нашу searching-комнату с чужой: сервер
                 // оставил указатель moved_to — перепрыгиваем в боевую комнату.
@@ -1699,6 +1760,14 @@
         // завершённой битвы сразу отдаёт finished → _btRenderResult).
         function _btOpenHistory(code) {
             if (!code) return;
+            // Живая битва идёт (полл активен) — не даём истории молча
+            // перехватить единственный цикл и осиротить тикающий таймер.
+            var st = _bt.state;
+            var live = st && (st.status === 'drafting' || st.status === 'assigning');
+            if (_bt.polling && live && !_bt.historyView) {
+                if (typeof showToast === 'function') showToast('Сначала заверши текущую битву.');
+                return;
+            }
             if (typeof _mghlHaptic === 'function') _mghlHaptic('tap');
             _btEnter(code, true);
         }
@@ -1786,7 +1855,15 @@
         }
 
         window.btCancelWait = async function () {
-            try { await _btPost('/battle/leave', { code: _bt.code }); } catch (e) {}
+            // intent: если комнату УЖЕ сматчили (гонка с матчером), сервер НЕ
+            // засчитает форфейт, а ответит matched — остаёмся в бою.
+            var d = null;
+            try { d = await _btPost('/battle/leave', { code: _bt.code, intent: 'cancel_search' }); }
+            catch (e) {}
+            if (d && d.matched) {
+                if (typeof showToast === 'function') showToast('Соперник найден — драфт начинается!');
+                return;   // полл жив, состояние drafting доедет само
+            }
             _btStopPolling();
             _bt.code = null;
             _btShow('bt-menu');
@@ -2339,20 +2416,11 @@
             return '';
         }
 
-        // ── Результат: кинематографичный разбор по актам ───────────────────
-        // PvP-адаптация (не копия тренировки, где разбираешь свой драфт против
-        // ботов): здесь два живых драфта ПРОТИВОСТОЯТ, потому акты построены на
-        // сравнении сторон — Контрпики (перетягивание), Синергия (чья команда
-        // сыграннее), Вердикт. GSAP + sleep/skip — тот же паттерн, что у
-        // showDrafterResult. Тап по экрану или «Пропустить» — сразу к финалу.
-        var _btRvSkip = false;
-
-        function _btRvSleep(ms) {
-            return new Promise(function (resolve) {
-                if (_btRvSkip) { resolve(); return; }
-                _bt.revealTimers.push(setTimeout(resolve, ms));
-            });
-        }
+        // ── Результат: шапка-вердикт + вкладки разбора ──────────────────────
+        // Ответ (кто победил, счёт, рейтинг) — сразу в шапке; разбор разложен
+        // ПО ПРОСТРАНСТВУ вкладками Сводка/Контрпики/Синергия, а не по времени
+        // (GSAP-акты выпилены: противоречили restrained-intensity принципам и
+        // держали floating-кнопку «Пропустить» — источник бага F3).
         function _btRvHeroesHtml(ids, posMap) {
             var arr = (ids || []).slice();
             if (posMap) arr.sort(function (x, y) {
@@ -2367,279 +2435,66 @@
                 '</span>';
             }).join('');
         }
-        function _btRvSkipBtn(on) {
-            var b = document.getElementById('bt-rv-skip');
-            if (!on) { if (b) b.remove(); return; }
-            if (b) return;
-            b = document.createElement('button');
-            b.id = 'bt-rv-skip';
-            b.className = 'dr-skip-btn';   // единый язык со скипом тренировки
-            b.textContent = 'Пропустить';
-            b.addEventListener('click', function () {
-                if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
+        // Переключение вкладки разбора (Сводка / Контрпики / Синергия).
+        window.btResultTab = function (tab) {
+            ['summary', 'matchup', 'synergy'].forEach(function (t) {
+                var btn = document.querySelector('#bt-res-tabs [data-tab="' + t + '"]');
+                if (btn) {
+                    btn.classList.toggle('bt-res-tab--active', t === tab);
+                    btn.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+                }
+                var pane = document.getElementById('bt-res-pane-' + t);
+                if (pane) pane.hidden = (t !== tab);
             });
-            document.documentElement.appendChild(b);
-            b.style.opacity = '0';
-            setTimeout(function () {
-                b.style.transition = 'opacity 0.35s ease-out'; b.style.opacity = '1';
-            }, 400);
-        }
+        };
 
         function _btRenderResult(st) {
             _btClearReveal();
-            _btRvSkip = false;
-            _bt.revealTimers = [];
-            // Снапшот флага калибровки В МОМЕНТ входа в результат: пока играют
-            // GSAP-акты (~5.6с), _btCheckGraduation успевает сбросить живой
-            // _bt.wasCalibrating — и медаль настоящего ранга просочилась бы на
-            // финал ДО церемонии посвящения. Все пути (_btShowFinal из актов,
-            // instant, skip) читают только этот снапшот.
+            // Снапшот флага калибровки В МОМЕНТ входа в результат (F1-фикс):
+            // ответ /battle/profile из _btCheckGraduation может сбросить живой
+            // _bt.wasCalibrating раньше ухода с экрана — медаль в чипе рейтинга
+            // читает только снапшот, настоящий ранг раскрывает посвящение.
             _bt.resultMedalCal = !!_bt.wasCalibrating;
             var me = _btMyRole(), opp = _btOppRole();
             var r = st.result || {};
             var isForfeit = !!r.forfeit;
             var posMaps = r.positions || {};
-
-            ['bt-rv-matchup', 'bt-rv-synergy', 'bt-rv-final'].forEach(function (id) {
-                var e = document.getElementById(id); if (e) e.hidden = true;
-            });
-
-            // Финальный экран наполняем контекстом заранее (имена/герои).
-            var oppNameEl = document.getElementById('bt-result-opp-name');
-            if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
-            _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
-            _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
-
-            // Просмотр из истории / форфейт / нет компонентов / reduced-motion —
-            // без актов, сразу финал (пики + числовой счёт + вердикт).
-            if (_bt.historyView || isForfeit || !r[me] || !r[opp] || _btReduceMotion()) {
-                _btShowFinal(st, me, opp, true);
-                _bt.revealActive = false;
-                return;
-            }
-
-            _bt.revealActive = true;
-            _bt.revealFinalize = function () {
-                if (_btRvSkip) return;
-                _btRvSkip = true;
-                _btClearReveal();
-                try { gsap.globalTimeline.clear(); } catch (e) {}
-                _btRvSkipBtn(false);
-                ['bt-rv-matchup', 'bt-rv-synergy'].forEach(function (id) {
-                    var e = document.getElementById(id);
-                    if (e) { e.hidden = true; gsap.set(e, { clearProps: 'opacity' }); }
-                });
-                _btShowFinal(st, me, opp, true);
-                _bt.revealActive = false;
-            };
-
-            _btRvSkipBtn(true);
-            _btPlayActs(st, me, opp, r, posMaps);
-        }
-
-        async function _btPlayActs(st, me, opp, r, posMaps) {
-            try {
-                await _btActMatchup(st, me, opp, r, posMaps);
-                if (_btRvSkip) return;
-                await _btActSynergy(st, me, opp, r);
-                if (_btRvSkip) return;
-                _btRvSkipBtn(false);
-                _btShowFinal(st, me, opp, false);
-                _bt.revealActive = false;
-            } catch (e) {
-                // Любой сбой анимации не должен оставить игрока без результата.
-                if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
-            }
-        }
-
-        // АКТ 1 · КОНТРПИКИ — драфты въезжают навстречу, «перетягивание»
-        // склоняется к тому, чей матчап сильнее (антисимметрично, сумма = 50).
-        async function _btActMatchup(st, me, opp, r, posMaps) {
-            var scr = document.getElementById('bt-rv-matchup');
-            if (!scr) return;
-            var oppName = document.getElementById('bt-rv-mu-opp-name');
-            if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
-            var meH = document.getElementById('bt-rv-mu-me-heroes');
-            var oppH = document.getElementById('bt-rv-mu-opp-heroes');
-            if (meH) meH.innerHTML = _btRvHeroesHtml(r[me].ally_ids, posMaps[me]);
-            if (oppH) oppH.innerHTML = _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]);
-
-            var meMu = r[me].matchup_score || 0, oppMu = r[opp].matchup_score || 0;
-            // Компоненты в [0,50]; нормируем длину полос к самому сильному из
-            // двух, чтобы перевес читался крупно (а не как ±6% от центра).
-            var maxMu = Math.max(meMu, oppMu, 1);
-            var mePct = Math.max(4, meMu / maxMu * 100);
-            var oppPct = Math.max(4, oppMu / maxMu * 100);
-            var meFill = document.getElementById('bt-rv-mu-me-fill');
-            var oppFill = document.getElementById('bt-rv-mu-opp-fill');
-            var meValEl = document.getElementById('bt-rv-mu-me-val');
-            var oppValEl = document.getElementById('bt-rv-mu-opp-val');
-            var verdictEl = document.getElementById('bt-rv-mu-verdict');
-            var meTeam = scr.querySelector('.bt-rv-mu-team--me');
-            var oppTeam = scr.querySelector('.bt-rv-mu-team--opp');
-            var label = scr.querySelector('.bt-rv-label');
-
-            scr.hidden = false;
-            gsap.set(scr, { opacity: 1 });
-            gsap.set(label, { opacity: 0, y: -8 });
-            gsap.set(oppTeam, { opacity: 0, y: -28 });
-            gsap.set(meTeam, { opacity: 0, y: 28 });
-            gsap.set([meFill, oppFill], { width: '0%' });
-            if (meValEl) meValEl.textContent = '0';
-            if (oppValEl) oppValEl.textContent = '0';
-            if (verdictEl) { verdictEl.textContent = ''; verdictEl.className = 'bt-rv-mu-verdict'; }
-
-            gsap.to(label, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
-            gsap.to(oppTeam, { opacity: 1, y: 0, duration: 0.55, delay: 0.1, ease: 'power3.out' });
-            gsap.to(meTeam, { opacity: 1, y: 0, duration: 0.55, delay: 0.2, ease: 'power3.out' });
-            await _btRvSleep(900);
-            if (_btRvSkip) return;
-
-            // Полосы растут из центра навстречу, числа набегают.
-            gsap.to(meFill, { width: mePct.toFixed(1) + '%', duration: 0.9, ease: 'power2.out' });
-            gsap.to(oppFill, { width: oppPct.toFixed(1) + '%', duration: 0.9, ease: 'power2.out' });
-            var cm = { v: 0 }, co = { v: 0 };
-            gsap.to(cm, { v: meMu, duration: 0.9, ease: 'power2.out',
-                onUpdate: function () { if (meValEl) meValEl.textContent = _btFmt1(cm.v); } });
-            gsap.to(co, { v: oppMu, duration: 0.9, ease: 'power2.out',
-                onUpdate: function () { if (oppValEl) oppValEl.textContent = _btFmt1(co.v); } });
-
-            var diff = meMu - oppMu;
-            if (verdictEl) {
-                if (Math.abs(diff) < 0.5) { verdictEl.textContent = 'Контрпики равны'; }
-                else if (diff > 0) { verdictEl.textContent = 'Твой драфт контрит сильнее'; verdictEl.classList.add('is-win'); }
-                else { verdictEl.textContent = 'Соперник контрит сильнее'; verdictEl.classList.add('is-lose'); }
-                gsap.fromTo(verdictEl, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.5, delay: 0.7, ease: 'power2.out' });
-            }
-            _mghlHaptic('tap');
-            await _btRvSleep(2000);
-            if (_btRvSkip) return;
-
-            gsap.to(scr, { opacity: 0, duration: 0.32, ease: 'power2.in' });
-            await _btRvSleep(360);
-            scr.hidden = true;
-        }
-
-        // АКТ 2 · СИНЕРГИЯ — две команды цепочками, связи вспыхивают, число
-        // синергии набегает. Сравнение: чья команда сыграннее.
-        async function _btActSynergy(st, me, opp, r) {
-            var scr = document.getElementById('bt-rv-synergy');
-            if (!scr) return;
-            function heroesHtml(res) {
-                return (res.ally_ids || []).map(function (id) {
-                    return '<span class="bt-rv-hero"><img src="' + _mghlEsc(_mghlImg(id)) +
-                        '" alt="" title="' + _mghlEsc(_mghlName(id)) +
-                        '" onerror="this.style.visibility=\'hidden\'"></span>';
-                }).join('');
-            }
-            function rowHtml(res, name) {
-                return '<div class="bt-rv-syn-cap">' + _mghlEsc(name) + '</div>' +
-                    '<div class="bt-rv-heroes">' + heroesHtml(res) + '</div>' +
-                    '<div class="bt-rv-syn-val" data-target="' + (res.synergy_score || 0) + '">0</div>';
-            }
-            var meRow = document.getElementById('bt-rv-syn-me');
-            var oppRow = document.getElementById('bt-rv-syn-opp');
-            if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда');
-            if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник');
-            var label = scr.querySelector('.bt-rv-label');
-
-            scr.hidden = false;
-            gsap.set(scr, { opacity: 1 });
-            gsap.set(label, { opacity: 0, y: -8 });
-            gsap.set([meRow, oppRow], { opacity: 0, y: 18 });
-            gsap.to(label, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
-            gsap.to([meRow, oppRow], { opacity: 1, y: 0, duration: 0.55, stagger: 0.12, delay: 0.1, ease: 'power3.out' });
-            await _btRvSleep(620);
-            if (_btRvSkip) return;
-
-            // Иконки «оживают» по очереди + крупное число синергии набегает.
-            [meRow, oppRow].forEach(function (row, ri) {
-                if (!row) return;
-                var heroes = row.querySelectorAll('.bt-rv-hero');
-                gsap.fromTo(heroes, { opacity: 0.35, scale: 0.85 },
-                    { opacity: 1, scale: 1, duration: 0.4, stagger: 0.07, delay: 0.1 + ri * 0.1, ease: 'power2.out' });
-                var valEl = row.querySelector('.bt-rv-syn-val');
-                if (valEl) {
-                    var target = parseFloat(valEl.getAttribute('data-target')) || 0;
-                    var c = { v: 0 };
-                    gsap.to(c, {
-                        v: target, duration: 1.0, delay: 0.25 + ri * 0.1, ease: 'power2.out',
-                        onUpdate: function () { valEl.textContent = _btFmt1(c.v); },
-                    });
-                }
-            });
-            // Подсветка сыграннее: чья синергия выше.
-            var meSyn = r[me].synergy_score || 0, oppSyn = r[opp].synergy_score || 0;
-            if (meRow) meRow.classList.toggle('is-lead', meSyn >= oppSyn);
-            if (oppRow) oppRow.classList.toggle('is-lead', oppSyn > meSyn);
-            _mghlHaptic('tap');
-            await _btRvSleep(2100);
-            if (_btRvSkip) return;
-
-            gsap.to(scr, { opacity: 0, duration: 0.32, ease: 'power2.in' });
-            await _btRvSleep(360);
-            scr.hidden = true;
-        }
-
-        // ФИНАЛ — метрики собираются, вердикт появляется последним.
-        function _btShowFinal(st, me, opp, instant) {
-            var r = st.result || {};
             var finals = r.final || {};
             var pens = r.penalties || {};
-            var isForfeit = !!r.forfeit;
-            var scr = document.getElementById('bt-rv-final');
-            if (scr) scr.hidden = false;
-
-            var verdict = document.getElementById('bt-result-verdict');
-            var note = document.getElementById('bt-result-note');
-            var meScoreEl = document.getElementById('bt-result-me-score');
-            var oppScoreEl = document.getElementById('bt-result-opp-score');
-            var meRows = document.getElementById('bt-result-me-rows');
-            var oppRows = document.getElementById('bt-result-opp-rows');
-            var meCard = document.getElementById('bt-result-me');
-            var oppCard = document.getElementById('bt-result-opp');
 
             var meFinal = (finals[me] != null) ? finals[me]
                 : (r[me] && r[me].total_score != null ? r[me].total_score : null);
             var oppFinal = (finals[opp] != null) ? finals[opp]
                 : (r[opp] && r[opp].total_score != null ? r[opp].total_score : null);
 
-            function applyVerdict() {
-                if (verdict) {
-                    verdict.textContent = st.winner === 'draw' ? 'Ничья'
-                        : st.winner === me ? 'Победа!' : 'Поражение';
-                    verdict.className = 'bt-result-verdict bt-result-verdict--show' +
-                        (st.winner === me ? ' bt-result-verdict--win'
-                         : st.winner === 'draw' ? '' : ' bt-result-verdict--lose');
-                }
-                if (meCard) meCard.classList.toggle('bt-result-card--win', st.winner === me);
-                if (oppCard) oppCard.classList.toggle('bt-result-card--win', st.winner === opp);
-                _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
-            }
-            function applyNote() {
-                if (!note) return;
-                if (isForfeit) {
-                    note.textContent = (r.forfeit === me)
-                        ? 'Ты сдался — победа присуждена сопернику.' : 'Соперник сдался.';
-                    note.hidden = false; return;
-                }
-                var km = _btKeyMoment(r[me]);
-                if (km) { note.textContent = km; note.hidden = false; } else note.hidden = true;
+            // ── Шапка: вердикт + счёт + рейтинг + заметка — ответ сразу ──
+            var verdict = document.getElementById('bt-result-verdict');
+            if (verdict) {
+                verdict.textContent = st.winner === 'draw' ? 'Ничья'
+                    : st.winner === me ? 'Победа!' : 'Поражение';
+                verdict.className = 'bt-result-verdict' +
+                    (st.winner === me ? ' bt-result-verdict--win'
+                     : st.winner === 'draw' ? '' : ' bt-result-verdict--lose');
             }
 
-            _btFillRows(meRows, r[me], pens[me]);
-            _btFillRows(oppRows, r[opp], pens[opp]);
+            var instant = _bt.historyView || _btReduceMotion();
+            function setScore(el, v) {
+                if (!el) return;
+                if (v == null) { el.textContent = '—'; return; }
+                if (instant) { el.textContent = _btFmt1(v); return; }
+                // Единственная «живая» деталь шапки: счёт коротко набегает.
+                el.textContent = '0';
+                _btCountUp(el, 0, v);
+            }
+            setScore(document.getElementById('bt-res-score-me'), meFinal);
+            setScore(document.getElementById('bt-res-score-opp'), oppFinal);
 
-            // Изменение рейтинга за бой (живой бой со снимком; бот/нет данных —
-            // скрыто). Ранг тут не светим — на калибровке его раскроет посвящение.
+            // Изменение рейтинга за бой (живой бой со снимком; бот — скрыто).
             var ratEl = document.getElementById('bt-result-rating');
             if (ratEl) {
                 var rt = st.rating;
                 if (rt && typeof rt.delta === 'number') {
                     var sign = rt.delta >= 0 ? '+' : '';
-                    // На калибровке настоящий ранг не палим — медаль «Калибровка».
-                    // ТОЛЬКО снапшот из _btRenderResult: живой _bt.wasCalibrating к
-                    // этому моменту мог сбросить _btCheckGraduation (см. F1-фикс).
                     var medalKey = _bt.resultMedalCal ? 'calibration' : rt.rank_key;
                     ratEl.innerHTML = '';
                     if (medalKey) {
@@ -2658,40 +2513,114 @@
                 }
             }
 
-            if (instant || _btReduceMotion()) {
-                if (meScoreEl) meScoreEl.textContent = meFinal != null ? _btFmt1(meFinal) : '—';
-                if (oppScoreEl) oppScoreEl.textContent = oppFinal != null ? _btFmt1(oppFinal) : '—';
-                applyVerdict(); applyNote();
-                return;
+            var note = document.getElementById('bt-result-note');
+            if (note) {
+                if (isForfeit) {
+                    note.textContent = (r.forfeit === me)
+                        ? 'Ты сдался — победа присуждена сопернику.' : 'Соперник сдался.';
+                    note.hidden = false;
+                } else {
+                    var km = _btKeyMoment(r[me]);
+                    if (km) { note.textContent = km; note.hidden = false; }
+                    else note.hidden = true;
+                }
             }
 
-            // Лёгкая кульминация: большие числа собираются, затем вердикт.
-            if (verdict) verdict.className = 'bt-result-verdict';
-            if (note) note.hidden = true;
-            if (meScoreEl) meScoreEl.textContent = '0';
-            if (oppScoreEl) oppScoreEl.textContent = '0';
-            _btCountUp(meScoreEl, 0, meFinal != null ? meFinal : 0);
-            _btCountUp(oppScoreEl, 0, oppFinal != null ? oppFinal : 0);
-            _bt.revealTimers.push(setTimeout(function () { applyVerdict(); }, 750));
-            _bt.revealTimers.push(setTimeout(function () { applyNote(); }, 1050));
+            // ── Вкладка «Сводка»: пики по позициям + строки разбора ──
+            var oppNameEl = document.getElementById('bt-result-opp-name');
+            if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            _btFillHeroes('bt-result-me-heroes', r[me], posMaps[me]);
+            _btFillHeroes('bt-result-opp-heroes', r[opp], posMaps[opp]);
+            _btFillRows(document.getElementById('bt-result-me-rows'), r[me], pens[me]);
+            _btFillRows(document.getElementById('bt-result-opp-rows'), r[opp], pens[opp]);
+            var meCard = document.getElementById('bt-result-me');
+            var oppCard = document.getElementById('bt-result-opp');
+            if (meCard) meCard.classList.toggle('bt-result-card--win', st.winner === me);
+            if (oppCard) oppCard.classList.toggle('bt-result-card--win', st.winner === opp);
+
+            // ── Вкладки: разбор есть только при обеих сторонах (не форфейт) ──
+            var hasBreakdown = !isForfeit && !!(r[me] && r[opp]);
+            var tabs = document.getElementById('bt-res-tabs');
+            if (tabs) tabs.hidden = !hasBreakdown;
+            btResultTab('summary');   // каждый вход — со Сводки
+            if (hasBreakdown) {
+                _btFillMatchupPane(st, me, opp, r, posMaps);
+                _btFillSynergyPane(st, me, opp, r);
+            } else {
+                // Форфейт: сравнивать нечего — только шапка (+пустая сводка прячется).
+                var sumPane = document.getElementById('bt-res-pane-summary');
+                if (sumPane) sumPane.hidden = !(r[me] || r[opp]);
+            }
+
+            // Каскад появления шапки — перезапуск CSS-анимации (~250мс).
+            var head = document.getElementById('bt-res-head');
+            if (head) {
+                head.classList.remove('bt-res-head--in');
+                void head.offsetWidth;
+                head.classList.add('bt-res-head--in');
+            }
+            _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
         }
 
-        // Тап по экрану результата во время разбора — пропустить к финалу.
-        if (!window._btResultSkipBound) {
-            window._btResultSkipBound = true;
-            var resultEl = document.getElementById('bt-result');
-            if (resultEl) {
-                resultEl.addEventListener('click', function (e) {
-                    if (!_bt.revealActive) return;
-                    if (e.target.closest('button')) return;
-                    if (typeof _bt.revealFinalize === 'function') _bt.revealFinalize();
-                });
+        // Панель «Контрпики»: то же противостояние, что было актом, — статично.
+        function _btFillMatchupPane(st, me, opp, r, posMaps) {
+            var oppName = document.getElementById('bt-rv-mu-opp-name');
+            if (oppName) oppName.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            var meH = document.getElementById('bt-rv-mu-me-heroes');
+            var oppH = document.getElementById('bt-rv-mu-opp-heroes');
+            if (meH) meH.innerHTML = _btRvHeroesHtml(r[me].ally_ids, posMaps[me]);
+            if (oppH) oppH.innerHTML = _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]);
+
+            var meMu = r[me].matchup_score || 0, oppMu = r[opp].matchup_score || 0;
+            // Компоненты в [0,50]; нормируем длину полос к сильнейшему из двух,
+            // чтобы перевес читался крупно (а не как ±6% от центра).
+            var maxMu = Math.max(meMu, oppMu, 1);
+            var meFill = document.getElementById('bt-rv-mu-me-fill');
+            var oppFill = document.getElementById('bt-rv-mu-opp-fill');
+            if (meFill) meFill.style.width = Math.max(4, meMu / maxMu * 100).toFixed(1) + '%';
+            if (oppFill) oppFill.style.width = Math.max(4, oppMu / maxMu * 100).toFixed(1) + '%';
+            var meValEl = document.getElementById('bt-rv-mu-me-val');
+            var oppValEl = document.getElementById('bt-rv-mu-opp-val');
+            if (meValEl) meValEl.textContent = _btFmt1(meMu);
+            if (oppValEl) oppValEl.textContent = _btFmt1(oppMu);
+
+            var verdictEl = document.getElementById('bt-rv-mu-verdict');
+            if (verdictEl) {
+                var diff = meMu - oppMu;
+                verdictEl.className = 'bt-rv-mu-verdict';
+                if (Math.abs(diff) < 0.5) { verdictEl.textContent = 'Контрпики равны'; }
+                else if (diff > 0) { verdictEl.textContent = 'Твой драфт контрит сильнее'; verdictEl.classList.add('is-win'); }
+                else { verdictEl.textContent = 'Соперник контрит сильнее'; verdictEl.classList.add('is-lose'); }
             }
+        }
+
+        // Панель «Синергия»: чья команда сыграннее (значения сразу, без набега).
+        function _btFillSynergyPane(st, me, opp, r) {
+            function heroesHtml(res) {
+                return (res.ally_ids || []).map(function (id) {
+                    return '<span class="bt-rv-hero"><img src="' + _mghlEsc(_mghlImg(id)) +
+                        '" alt="" title="' + _mghlEsc(_mghlName(id)) +
+                        '" onerror="this.style.visibility=\'hidden\'"></span>';
+                }).join('');
+            }
+            function rowHtml(res, name) {
+                return '<div class="bt-rv-syn-cap">' + _mghlEsc(name) + '</div>' +
+                    '<div class="bt-rv-heroes">' + heroesHtml(res) + '</div>' +
+                    '<div class="bt-rv-syn-val">' + _btFmt1(res.synergy_score || 0) + '</div>';
+            }
+            var meRow = document.getElementById('bt-rv-syn-me');
+            var oppRow = document.getElementById('bt-rv-syn-opp');
+            if (meRow) meRow.innerHTML = rowHtml(r[me], 'Твоя команда');
+            if (oppRow) oppRow.innerHTML = rowHtml(r[opp], (st[opp] && st[opp].name) || 'Соперник');
+            // Подсветка сыграннее: чья синергия выше.
+            var meSyn = r[me].synergy_score || 0, oppSyn = r[opp].synergy_score || 0;
+            if (meRow) meRow.classList.toggle('is-lead', meSyn >= oppSyn);
+            if (oppRow) oppRow.classList.toggle('is-lead', oppSyn > meSyn);
         }
 
 
         window.btRematch = function () {
-            _btClearReveal(); _bt.revealActive = false;
+            _btClearReveal();
             _bt.historyView = false;
             _bt.pendingReveal = null;   // посвящение пропускаем при «Ещё раз»
             _bt.code = null; _bt.state = null;
@@ -2699,7 +2628,7 @@
             btQueue();
         };
         window.btToMenu = function () {
-            _btClearReveal(); _bt.revealActive = false;
+            _btClearReveal();
             _bt.historyView = false;
             // Если этим боем завершилась калибровка — сперва посвящение.
             if (_bt.pendingReveal) {

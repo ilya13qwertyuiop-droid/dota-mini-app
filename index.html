@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=230" />
+    <link rel="stylesheet" href="styles.css?v=231" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -803,11 +803,52 @@
         <!-- Результат: кинематографичный разбор по актам (см. _btRenderResult).
              Акты контрпиков/синергии анимируются GSAP по очереди, затем —
              финальный экран с метриками и вердиктом. -->
+        <!-- Результат: шапка-вердикт (ответ сразу) + вкладки разбора.
+             Никакой поэтапной драматургии: контент разложен по пространству
+             (сегменты), а не по времени. Каскад появления шапки — CSS. -->
         <div id="bt-result" hidden>
 
-          <!-- АКТ 1 · КОНТРПИКИ (противостояние драфтов) -->
-          <div id="bt-rv-matchup" class="bt-rv-screen" hidden>
-            <div class="bt-rv-label">Контрпики</div>
+          <!-- Шапка: вердикт, счёт, рейтинг, ключевой момент -->
+          <div class="bt-res-head" id="bt-res-head">
+            <div class="bt-result-verdict" id="bt-result-verdict">Победа!</div>
+            <div class="bt-res-score" aria-label="Счёт битвы">
+              <span class="bt-res-score-num is-me" id="bt-res-score-me">0</span>
+              <span class="bt-res-score-sep">:</span>
+              <span class="bt-res-score-num is-opp" id="bt-res-score-opp">0</span>
+            </div>
+            <!-- Изменение рейтинга за бой (живой бой; на боте скрыто) -->
+            <div class="bt-result-rating" id="bt-result-rating" hidden></div>
+            <div class="bt-result-note" id="bt-result-note" hidden></div>
+          </div>
+
+          <!-- Сегменты разбора (при форфейте скрыты — сравнивать нечего) -->
+          <div class="bt-res-tabs" id="bt-res-tabs" role="tablist" aria-label="Разбор битвы" hidden>
+            <button type="button" class="bt-res-tab bt-res-tab--active" role="tab"
+                    data-tab="summary" onclick="btResultTab('summary')">Сводка</button>
+            <button type="button" class="bt-res-tab" role="tab"
+                    data-tab="matchup" onclick="btResultTab('matchup')">Контрпики</button>
+            <button type="button" class="bt-res-tab" role="tab"
+                    data-tab="synergy" onclick="btResultTab('synergy')">Синергия</button>
+          </div>
+
+          <!-- СВОДКА: пики по позициям + строки разбора обеих сторон -->
+          <div class="bt-res-pane" id="bt-res-pane-summary" hidden>
+            <div class="bt-result-scores">
+              <div class="bt-result-card" id="bt-result-me">
+                <div class="bt-result-card-name">Ты</div>
+                <div class="bt-result-picks" id="bt-result-me-heroes"></div>
+                <div class="bt-result-card-rows" id="bt-result-me-rows"></div>
+              </div>
+              <div class="bt-result-card" id="bt-result-opp">
+                <div class="bt-result-card-name" id="bt-result-opp-name">Соперник</div>
+                <div class="bt-result-picks" id="bt-result-opp-heroes"></div>
+                <div class="bt-result-card-rows" id="bt-result-opp-rows"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- КОНТРПИКИ: противостояние (статично, без анимации въезда) -->
+          <div class="bt-res-pane" id="bt-res-pane-matchup" hidden>
             <div class="bt-rv-mu">
               <div class="bt-rv-mu-team bt-rv-mu-team--opp">
                 <div class="bt-rv-mu-cap" id="bt-rv-mu-opp-name">Соперник</div>
@@ -836,33 +877,13 @@
             </div>
           </div>
 
-          <!-- АКТ 2 · СИНЕРГИЯ (чья команда сыграннее) -->
-          <div id="bt-rv-synergy" class="bt-rv-screen" hidden>
-            <div class="bt-rv-label">Синергия команд</div>
+          <!-- СИНЕРГИЯ: чья команда сыграннее -->
+          <div class="bt-res-pane" id="bt-res-pane-synergy" hidden>
             <div class="bt-rv-syn" id="bt-rv-syn-me"></div>
             <div class="bt-rv-syn" id="bt-rv-syn-opp"></div>
           </div>
 
-          <!-- ФИНАЛ · метрики + вердикт -->
-          <div id="bt-rv-final" class="bt-rv-screen" hidden>
-            <div class="bt-result-verdict" id="bt-result-verdict">Победа!</div>
-            <div class="bt-result-scores">
-              <div class="bt-result-card" id="bt-result-me">
-                <div class="bt-result-card-name">Ты</div>
-                <div class="bt-result-card-score" id="bt-result-me-score">0</div>
-                <div class="bt-result-picks" id="bt-result-me-heroes"></div>
-                <div class="bt-result-card-rows" id="bt-result-me-rows"></div>
-              </div>
-              <div class="bt-result-card" id="bt-result-opp">
-                <div class="bt-result-card-name" id="bt-result-opp-name">Соперник</div>
-                <div class="bt-result-card-score" id="bt-result-opp-score">0</div>
-                <div class="bt-result-picks" id="bt-result-opp-heroes"></div>
-                <div class="bt-result-card-rows" id="bt-result-opp-rows"></div>
-              </div>
-            </div>
-            <div class="bt-result-note" id="bt-result-note" hidden></div>
-            <!-- Изменение рейтинга за бой (живой бой; на калибровке/боте скрыто) -->
-            <div class="bt-result-rating" id="bt-result-rating" hidden></div>
+          <div class="bt-res-actions">
             <button type="button" class="tm-primary-btn" onclick="btRematch()">Ещё раз</button>
             <button type="button" class="tm-ghost-btn" onclick="btToMenu()">В меню</button>
           </div>
@@ -1829,6 +1850,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=283"></script>
+    <script defer src="script.js?v=284"></script>
   </body>
 </html>
