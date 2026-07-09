@@ -9643,6 +9643,49 @@ margin-top: var(--space-4);
 .bt-proto-row--flat { display: flex; justify-content: center; }
 .bt-proto-poszero { font-size: var(--text-xs); color: var(--text-tertiary); }
 
+/* Пилюля-«островок» поиска: фиксирована сверху приложения, видна когда поиск
+   (или начавшийся матч) идёт вне экрана ожидания. Статичный элемент разметки;
+   [hidden]-правило обязательно — display:inline-flex перебил бы UA-hidden. */
+.bt-search-pill {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%; transform: translateX(-50%);
+  z-index: 1300;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary);
+  font-size: var(--text-xs); font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  animation: btPillIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-search-pill[hidden] { display: none !important; }
+@keyframes btPillIn {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.bt-search-pill .bt-pill-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--accent);
+  animation: btPillPulse 1.6s ease-in-out infinite;
+}
+@keyframes btPillPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+/* Матч начался — пилюля «живая»: зелёная точка и кромка. */
+.bt-search-pill--live { border-color: var(--positive); }
+.bt-search-pill--live .bt-pill-dot { background: var(--positive); animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .bt-search-pill { animation: none; }
+  .bt-search-pill .bt-pill-dot { animation: none; }
+}
+
 /* Пустой результат поиска в гриде драфта: стилизованное состояние на всю
    ширину грида вместо голого текста. */
 .bt-grid-empty {
@@ -9942,12 +9985,66 @@ margin-top: var(--space-4);
   font-size: var(--text-xl); font-weight: var(--font-bold);
   color: var(--text-primary); letter-spacing: var(--tracking-tight);
 }
-.bt-help-body { display: flex; flex-direction: column; gap: var(--space-3); }
-.bt-help-body p {
+.bt-help-lead {
   margin: 0; font-size: var(--text-sm); color: var(--text-secondary);
   line-height: var(--leading-relaxed);
 }
-.bt-help-body b { color: var(--text-primary); }
+
+/* Правила — définition-сетка: термин слева капсом, описание справа,
+   хэрлайны между строками. Структура вместо стены текста. */
+.bt-help-list { display: flex; flex-direction: column; }
+.bt-help-item {
+  display: grid; grid-template-columns: 88px 1fr;
+  column-gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+.bt-help-item + .bt-help-item { border-top: 1px solid var(--border-subtle); }
+.bt-help-term {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--accent);
+  padding-top: 2px;
+}
+.bt-help-desc {
+  font-size: var(--text-sm); color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+/* Плашка рангов: вся лестница с медалями и порогами MMR. */
+.bt-help-ranks {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.bt-help-ranks-title {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+}
+.bt-ranks-row {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.bt-rank-item {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 0; text-align: center;
+}
+.bt-rank-item img { width: 40px; height: 40px; object-fit: contain; }
+.bt-rank-nm {
+  font-size: 10px; font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.bt-rank-thr {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-secondary);
+}
+.bt-help-ranks-note {
+  margin: 0; font-size: var(--text-xs); color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
 #bt-help .tm-ghost-btn { margin-top: auto; }
 
 /* Поиск + кнопка каталога */
@@ -10110,6 +10207,8 @@ margin-top: var(--space-4);
 .bt-online {
   display: inline-flex; align-items: center; gap: var(--space-2);
   align-self: center;
+  margin-left: auto; margin-right: auto;   /* центр при любом родителе */
+  width: fit-content;
   padding: 5px 12px;
   border-radius: 999px;
   border: 1px solid var(--border-subtle);

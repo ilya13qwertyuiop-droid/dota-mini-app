@@ -1246,9 +1246,14 @@
             else _btStopOnline();
             // Каждая смена состояния — с чистого листа: иначе переход
             // «нашли соперника → драфт» происходит ниже линии прокрутки
-            // и выглядит так, будто ничего не случилось.
-            try { window.scrollTo({ top: 0, behavior: 'instant' }); }
-            catch (e) { window.scrollTo(0, 0); }
+            // и выглядит так, будто ничего не случилось. Скроллим ТОЛЬКО если
+            // страница битвы активна: полл может сменить состояние, пока юзер
+            // читает другую вкладку (пилюля-островок) — не дёргаем его экран.
+            var pageEl = document.getElementById('page-draft-battle');
+            if (pageEl && pageEl.classList.contains('active')) {
+                try { window.scrollTo({ top: 0, behavior: 'instant' }); }
+                catch (e) { window.scrollTo(0, 0); }
+            }
         }
 
         // Полноэкранный интерстишл «Соперник найден» (haptic + пауза), затем драфт.
@@ -1328,6 +1333,13 @@
                 _btClearReveal();
                 _btShow('bt-menu');
                 btRenderHistory();
+                return;
+            }
+            // «Назад» с экрана поиска — на главный экран битвы, НЕ на список
+            // мини-игр. Поиск продолжается (полл жив) — сверху появится
+            // пилюля-островок (_btPillUpdate).
+            if (_bt.screen === 'bt-wait') {
+                _btShow('bt-menu');
                 return;
             }
             // Калибровка завершилась этим боем, а юзер уходит «Назад» мимо
@@ -1454,6 +1466,7 @@
         }
 
         window.btQueue = async function () {
+            _bt.searchStartedAt = Date.now();   // таймер пилюли — с момента тапа
             _btShowWaitOptimistic('Ищем соперника…');
             try {
                 var d = await _btPost('/battle/queue', { mode: _bt.mode });
@@ -1486,6 +1499,57 @@
             _btStartPolling();
         }
 
+        // ── Пилюля-«островок» поиска ────────────────────────────────────────
+        // Плавающая пилюля сверху приложения: поиск (или начавшийся драфт)
+        // идёт, а юзер ушёл с экрана ожидания — таймер напоминает о поиске,
+        // тап возвращает в битву. Самозалечивание: каждый тик сверяется с
+        // РЕАЛЬНЫМ состоянием — не searching/не в бою → скрыта (урок F3:
+        // ничего плавающего без владельца).
+        function _btPillUpdate() {
+            var pill = document.getElementById('bt-search-pill');
+            if (!pill) return;
+            var st = _bt.state;
+            var status = st && st.status;
+            var page = document.getElementById('page-draft-battle');
+            var onBattlePage = !!(page && page.classList.contains('active'));
+            var searching = _bt.polling && status === 'searching';
+            var inBattle = _bt.polling && (status === 'drafting' || status === 'assigning');
+            var show = (searching && (!onBattlePage || _bt.screen !== 'bt-wait'))
+                    || (inBattle && !onBattlePage);
+            if (!show) { pill.hidden = true; return; }
+            var txt = pill.querySelector('.bt-pill-text');
+            if (searching) {
+                var secs = Math.max(0, Math.floor((Date.now() - (_bt.searchStartedAt || Date.now())) / 1000));
+                var mm = Math.floor(secs / 60), ss = ('0' + (secs % 60)).slice(-2);
+                if (txt) txt.textContent = 'Ищем соперника · ' + mm + ':' + ss;
+                pill.classList.remove('bt-search-pill--live');
+            } else {
+                // Матч начался, пока юзер гулял — таймер хода уже горит.
+                if (txt) txt.textContent = 'Соперник найден — вернись!';
+                pill.classList.add('bt-search-pill--live');
+            }
+            pill.hidden = false;
+        }
+        function _btPillStart() {
+            if (_bt.pillInt) return;
+            _bt.pillInt = setInterval(_btPillUpdate, 1000);
+            _btPillUpdate();
+        }
+        function _btPillStop() {
+            if (_bt.pillInt) { clearInterval(_bt.pillInt); _bt.pillInt = null; }
+            var pill = document.getElementById('bt-search-pill');
+            if (pill) pill.hidden = true;
+        }
+        // Тап по пилюле — обратно в битву, на актуальный экран состояния.
+        window.btPillOpen = function () {
+            switchPage('draft-battle');
+            var s = _bt.state && _bt.state.status;
+            if (s === 'drafting') _btShow('bt-draft');
+            else if (s === 'assigning') _btShow('bt-assign');
+            else _btShow('bt-wait');
+            _btPillUpdate();
+        };
+
         // ── Long polling ───────────────────────────────────────────────────
         // pollGen — поколение цикла: перезапуск (смена битвы в _btEnter)
         // инкрементит его, и старый цикл, очнувшись от await, тихо умирает —
@@ -1494,11 +1558,13 @@
             if (_bt.polling) return;
             _bt.polling = true;
             _bt.pollGen = (_bt.pollGen || 0) + 1;
+            _btPillStart();   // пилюля живёт ровно пока жив полл
             _btPollLoop(_bt.pollGen);
         }
         function _btStopPolling() {
             _bt.polling = false;
             if (_bt.abort) { try { _bt.abort.abort(); } catch (e) {} _bt.abort = null; }
+            _btPillStop();
         }
         async function _btPollLoop(gen) {
             var errStreak = 0;
@@ -1579,6 +1645,13 @@
             var prevStatus = prev && prev.status;
             var prevActor = prev && prev.current && prev.current.actor;
             _bt.state = st;
+            // Таймер пилюли: старт при входе в searching, сброс при выходе.
+            if (st.status === 'searching') {
+                if (!_bt.searchStartedAt) _bt.searchStartedAt = Date.now();
+            } else {
+                _bt.searchStartedAt = null;
+            }
+            _btPillUpdate();
             if (st.status === 'searching' || st.status === 'waiting') {
                 _btRenderWait(st);
                 _btShow('bt-wait');
@@ -1747,7 +1820,8 @@
             var score = document.createElement('div');
             score.className = 'bt-hist-score';
             if (b.your_score != null && b.opp_score != null) {
-                score.textContent = b.your_score + ' : ' + b.opp_score;
+                // Целые — как на экране результата (дробные «очки» не показываем).
+                score.textContent = Math.round(b.your_score) + ' : ' + Math.round(b.opp_score);
             } else if (b.forfeit) {
                 score.textContent = (b.outcome === 'win') ? 'соперник сдался' : 'сдача';
             } else {

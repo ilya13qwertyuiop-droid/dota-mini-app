@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=238" />
+    <link rel="stylesheet" href="styles.css?v=239" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -617,27 +617,76 @@
           </button>
         </div>
 
-        <!-- Справка о режиме (кнопка «?» в шапке — как в Пати) -->
+        <!-- Справка (кнопка «?» / тап по ранг-карточке). Структура вместо
+             стены текста: лид → правила définition-сеткой → плашка рангов
+             с медалями и порогами MMR. -->
         <div id="bt-help" hidden>
           <div class="bt-help-title">Как работает «Битва драфтов»</div>
-          <div class="bt-help-body">
-            <p>Два игрока драфтят друг против друга в реальном времени. Система
-            сравнивает итоговые драфты по синергиям и контрпикам и называет победителя.</p>
-            <p><b>Режимы.</b> «С банами» — 14 банов и 10 пиков. «Без банов» —
-            только 10 пиков.</p>
-            <p><b>Время.</b> Бан — 20 секунд, пик — 25. Сверх этого у каждого игрока
-            есть 2 минуты дополнительного времени на всю партию, как в турнирной Доте.
-            Кончилось и оно — система сделает ход за тебя.</p>
-            <p><b>Герои.</b> Взятый или забаненный герой недоступен обоим игрокам.</p>
-            <p><b>Позиции.</b> После драфта — 30 секунд на расстановку своих героев
-            по позициям 1-5. Соперник её не видит. Герой не на своей позиции
-            штрафует драфт.</p>
-            <p><b>Рейтинг.</b> Первые 5 боёв — калибровка: сыграй их, и получишь
-            ранг и MMR. Дальше победы добавляют MMR, поражения отнимают —
-            чем сильнее соперник, тем больше цена боя. Ранги: Пешка →
-            Предвестник → Избранный → Владыка → Вечный. Бои с ботом рейтинг
+          <p class="bt-help-lead">Два игрока драфтят друг против друга в реальном
+          времени. Система сравнивает драфты по синергиям, контрпикам и мете —
+          и называет победителя.</p>
+
+          <div class="bt-help-list">
+            <div class="bt-help-item">
+              <div class="bt-help-term">Режимы</div>
+              <div class="bt-help-desc">«С банами» — 14 банов и 10 пиков.
+                «Без банов» — только 10 пиков.</div>
+            </div>
+            <div class="bt-help-item">
+              <div class="bt-help-term">Время</div>
+              <div class="bt-help-desc">Бан — 20 секунд, пик — 25. Сверх — 2 минуты
+                резерва на всю партию, как в турнирной Доте. Кончился и он —
+                система сходит за тебя.</div>
+            </div>
+            <div class="bt-help-item">
+              <div class="bt-help-term">Герои</div>
+              <div class="bt-help-desc">Взятый или забаненный герой недоступен
+                обоим игрокам.</div>
+            </div>
+            <div class="bt-help-item">
+              <div class="bt-help-term">Позиции</div>
+              <div class="bt-help-desc">После драфта — 30 секунд на расстановку
+                героев по позициям 1–5. Соперник её не видит. Герой не на своей
+                позиции штрафует драфт.</div>
+            </div>
+          </div>
+
+          <!-- Плашка рангов: вся лестница с медалями и порогами MMR -->
+          <div class="bt-help-ranks">
+            <div class="bt-help-ranks-title">Ранги</div>
+            <div class="bt-ranks-row">
+              <div class="bt-rank-item">
+                <img src="/images/ranks/pawn.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Пешка</span>
+                <span class="bt-rank-thr">0+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="/images/ranks/harbinger.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Предвестник</span>
+                <span class="bt-rank-thr">1000+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="/images/ranks/chosen.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Избранный</span>
+                <span class="bt-rank-thr">2200+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="/images/ranks/overlord.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Владыка</span>
+                <span class="bt-rank-thr">3800+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="/images/ranks/eternal.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Вечный</span>
+                <span class="bt-rank-thr">6000+</span>
+              </div>
+            </div>
+            <p class="bt-help-ranks-note">Первые 5 боёв — калибровка: сыграй их
+            и получишь ранг и MMR. Победы добавляют MMR, поражения отнимают —
+            чем сильнее соперник, тем выше цена боя. Бои с ботом рейтинг
             не меняют — это тренировка.</p>
           </div>
+
           <button type="button" class="tm-ghost-btn" onclick="btHelpClose()">Понятно</button>
         </div>
 
@@ -1725,6 +1774,16 @@
       </div>
 
       <!-- Нижняя навигация -->
+      <!-- «Островок» поиска битвы: плавающая пилюля сверху, видна когда поиск
+           соперника (или начавшийся драфт) идёт, а юзер ушёл с экрана ожидания.
+           Статичный элемент (не создаётся JS), показ/текст — _btPillUpdate,
+           самозалечивается тиком (состояние не searching → скрыта). -->
+      <button type="button" id="bt-search-pill" class="bt-search-pill" hidden
+              onclick="btPillOpen()">
+        <span class="bt-pill-dot" aria-hidden="true"></span>
+        <span class="bt-pill-text">Ищем соперника…</span>
+      </button>
+
       <!-- Floating dock: один плавающий glass-бар с 4 разделами.
            Главная/Профиль — прямой переход. Играть/Инструменты — открывают
            всплывающее мини-меню (#dock-menu) над доком с двумя фичами. -->
@@ -1810,6 +1869,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=292"></script>
+    <script defer src="script.js?v=293"></script>
   </body>
 </html>
