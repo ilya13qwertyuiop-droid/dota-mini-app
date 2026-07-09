@@ -3878,7 +3878,11 @@ _BT_WAITING_TTL_MIN = int(os.environ.get("BT_WAITING_TTL_MIN", "10"))
 _BT_DEAD_GRACE_SEC = int(os.environ.get("BT_DEAD_GRACE_SEC", "120"))
 _BT_SWEEP_INTERVAL_SEC = 60.0   # период фоновой уборки брошенных битв
 _BT_MODES = ("cm", "ap")
-_BT_ACTIVE_STATUSES = ("searching", "waiting", "drafting", "assigning")
+# 'waiting' (легаси приватных комнат) исключён из активных: сервер такие
+# строки больше не создаёт, а редкую древнюю добьёт sweep — она не должна
+# блокировать «ты уже в активной битве». Ветки чтения ('waiting','searching')
+# в timeouts/leave/sweep оставлены как дешёвая страховка чтения старых строк.
+_BT_ACTIVE_STATUSES = ("searching", "drafting", "assigning")
 # Позиционный штраф (стадия расстановки): доля матчей героя на назначенной
 # позиции < 5% → −2 балла, < 15% → −1, иначе 0. Источник долей — dota_builds.
 _BT_POS_HARD_SHARE = 0.05
@@ -4192,6 +4196,10 @@ _BT_K_ESTABLISHED = 96        # K после калибровки — стаби
 _BT_CALIBRATION_GAMES = 5     # сколько живых боёв длится калибровка (холодный старт; потом 10)
 _BT_MARGIN_MIN = 0.5          # множитель за разгром: ничейный счёт → меньше
 _BT_MARGIN_MAX = 1.5          #                      разгром → больше
+# Потолок сдвига за ОДИН бой: K=400 × разгром 1.5 при матче «любой с любым»
+# (окно снято после 25с) теоретически даёт ±600 — один такой бой ломает
+# доверие к числам. Клэмп держит худший случай в рамках здравого смысла.
+_BT_RATING_DELTA_MAX = 350
 
 # Ранги: (нижний порог рейтинга, ключ-ассет, отображаемое имя). По возрастанию.
 # Пороги — гипотеза; подвинем по реальному распределению (один список — одна правка).
@@ -4229,9 +4237,11 @@ def _bt_margin_mult(my_final, opp_final) -> float:
 
 
 def _bt_rating_delta(my_rating, opp_rating, score: float, k: int, margin: float) -> int:
-    """Изменение рейтинга за бой. score: 1 победа / 0.5 ничья / 0 поражение."""
+    """Изменение рейтинга за бой (клэмп ±_BT_RATING_DELTA_MAX).
+    score: 1 победа / 0.5 ничья / 0 поражение."""
     expected = _bt_expected(my_rating, opp_rating)
-    return round(k * margin * (score - expected))
+    delta = round(k * margin * (score - expected))
+    return max(-_BT_RATING_DELTA_MAX, min(_BT_RATING_DELTA_MAX, delta))
 
 
 def _bt_apply_floor(rating: int) -> int:
@@ -5254,6 +5264,68 @@ def api_battle_profile(token: str, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/battle/leaderboard")
+def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
+    """Топ-25 по MMR битвы среди откалибровавшихся (games >= калибровки),
+    забаненные исключены. you — место вызывающего среди established (на
+    калибровке места нет — фронт показывает прогресс вместо позиции)."""
+    uid = _tm_require_user(token=token)
+    banned = set(get_banned_user_ids())
+
+    rows = (
+        db.query(
+            DBUserProfile.user_id,
+            DBUserProfile.battle_rating,
+            DBUserProfile.battle_games_played,
+            DBUserProfile.settings,
+        )
+        .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
+        .order_by(DBUserProfile.battle_rating.desc(), DBUserProfile.user_id)
+        .limit(200)
+        .all()
+    )
+    rows = [r for r in rows if r.user_id not in banned]
+
+    top = []
+    for r in rows[:25]:
+        s = r.settings or {}
+        rating = r.battle_rating if r.battle_rating is not None else _BT_RATING_BASE
+        top.append({
+            "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
+            "photo_url": s.get("photo_url"),
+            "rank_key": _bt_public_rank_key(rating, r.battle_games_played),
+            "rating": rating,
+            "you": r.user_id == uid,
+        })
+
+    me = (
+        db.query(DBUserProfile.battle_rating, DBUserProfile.battle_games_played)
+        .filter(DBUserProfile.user_id == uid)
+        .first()
+    )
+    my_rating = (me.battle_rating if me and me.battle_rating is not None else _BT_RATING_BASE)
+    my_games = (me.battle_games_played if me and me.battle_games_played is not None else 0)
+    you = {
+        "rating": my_rating,
+        "rank_key": _bt_public_rank_key(my_rating, my_games),
+        "calibrating": _bt_is_calibrating(my_games),
+        "games_played": my_games,
+        "calibration_total": _BT_CALIBRATION_GAMES,
+        "rank": None,
+    }
+    if not you["calibrating"] and uid not in banned:
+        # Место = сколько established строго выше + 1 (среди незабаненных).
+        higher = (
+            db.query(DBUserProfile.user_id, DBUserProfile.battle_rating)
+            .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
+            .filter(DBUserProfile.battle_rating > my_rating)
+            .all()
+        )
+        you["rank"] = sum(1 for h in higher if h.user_id not in banned) + 1
+
+    return {"top": top, "you": you, "total": len(rows)}
+
+
 @app.post("/api/battle/action")
 def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
     """Ход (пик или бан — тип диктует последовательность)."""
@@ -5599,15 +5671,58 @@ def _bt_sweep_stale_battles() -> int:
     return total
 
 
+# Ретеншен: раз в сутки чистим старьё. abandoned-строки истории не нужны;
+# у finished журнал ходов не нужен (разбор из истории читает result JSON,
+# а не draft_battle_actions — сами finished-строки храним, это история).
+_BT_RETENTION_DAYS = 30
+_BT_RETENTION_INTERVAL_SEC = 24 * 3600.0
+
+
+def _bt_retention_pass() -> None:
+    cutoff = _bt_now() - _tm_timedelta(days=_BT_RETENTION_DAYS)
+    with SessionLocal() as session:
+        r1 = session.execute(
+            text(
+                """
+                DELETE FROM draft_battle_actions
+                WHERE battle_id IN (
+                    SELECT id FROM draft_battles
+                    WHERE status IN ('finished', 'abandoned')
+                      AND created_at < :cutoff
+                )
+                """
+            ),
+            {"cutoff": cutoff},
+        )
+        r2 = session.execute(
+            text(
+                "DELETE FROM draft_battles "
+                "WHERE status = 'abandoned' AND created_at < :cutoff"
+            ),
+            {"cutoff": cutoff},
+        )
+        session.commit()
+        n1, n2 = (r1.rowcount or 0), (r2.rowcount or 0)
+    if n1 or n2:
+        logger.info("[bt_sweep] retention: %d actions, %d abandoned battles purged", n1, n2)
+
+
 async def _bt_sweep_loop() -> None:
     """Вечный цикл уборки. Ошибка одного прохода не валит цикл."""
     # Джиттер старта: несколько воркеров не бьют в БД синхронно.
     await asyncio.sleep(random.uniform(0.0, _BT_SWEEP_INTERVAL_SEC))
+    last_retention = 0.0
     while True:
         try:
             await asyncio.to_thread(_bt_sweep_stale_battles)
         except Exception as e:
             logger.warning("[bt_sweep] pass failed: %s", e)
+        if time.monotonic() - last_retention >= _BT_RETENTION_INTERVAL_SEC:
+            last_retention = time.monotonic()
+            try:
+                await asyncio.to_thread(_bt_retention_pass)
+            except Exception as e:
+                logger.warning("[bt_sweep] retention failed: %s", e)
         await asyncio.sleep(_BT_SWEEP_INTERVAL_SEC)
 
 
