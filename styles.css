@@ -9380,6 +9380,10 @@ margin-top: var(--space-4);
 .tm-back-btn::after, .mghl-head-lb::after {
   content: ''; position: absolute; inset: -6px;
 }
+/* Несколько кнопок в шапке (трофей + «?»): margin-left:auto оставляем только
+   ПЕРВОЙ (прижимает группу вправо); у остальных два auto делили бы свободное
+   место пополам — кнопка повисала посередине шапки. */
+.tm-page-head .mghl-head-lb + .mghl-head-lb { margin-left: 0; }
 .bt-menu-row { display: flex; }
 .bt-menu-row .tm-ghost-btn { flex: 1; }
 .bt-rules { font-size: var(--text-xs); color: var(--text-tertiary); line-height: var(--leading-normal); margin-top: var(--space-2); }
