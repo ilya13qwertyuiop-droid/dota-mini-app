@@ -457,10 +457,18 @@ def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
     if not db_profile.settings:
         db_profile.settings = {}
 
-    db_profile.settings["username"] = data.username
-    db_profile.settings["first_name"] = data.first_name
-    db_profile.settings["last_name"] = data.last_name
-    db_profile.settings["photo_url"] = data.photo_url
+    # НЕ затираем существующие значения пустыми: Telegram WebApp не всегда
+    # отдаёт username/фото в initDataUnsafe (приватность/клиент) — раньше
+    # приходящий null стирал валидный username, сохранённый на /start, и
+    # пуши «Пати» уходили без контакта.
+    if data.username:
+        db_profile.settings["username"] = data.username
+    if data.first_name:
+        db_profile.settings["first_name"] = data.first_name
+    if data.last_name:
+        db_profile.settings["last_name"] = data.last_name
+    if data.photo_url:
+        db_profile.settings["photo_url"] = data.photo_url
     flag_modified(db_profile, "settings")
 
     db.commit()
@@ -2232,6 +2240,34 @@ def _tm_html_safe(value: str | None) -> str:
     return _html.escape(value or "", quote=False)
 
 
+async def _tm_fetch_fresh_tg(user_id: int) -> dict | None:
+    """Живые данные юзера из Telegram (getChat): актуальный username/имя.
+
+    Кэш в user_profiles.settings протухает (username пишется только на /start
+    и может быть затёрт клиентом без username в initDataUnsafe) — а пуш
+    «запрос принят» без контакта бесполезен. getChat работает для любого, кто
+    стартовал бота (оба участника — стартовали, иначе пуш не дошёл бы).
+    Best-effort: любая ошибка → None, зовущий падает на кэш из БД."""
+    if not BOT_TOKEN:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            r = await client.get(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/getChat",
+                params={"chat_id": user_id},
+            )
+        if r.status_code != 200:
+            return None
+        result = (r.json() or {}).get("result") or {}
+        return {
+            "username": (result.get("username") or "").strip(),
+            "first_name": (result.get("first_name") or "").strip(),
+        }
+    except Exception as e:
+        logger.warning("[tm_notify] getChat %s failed: %s", user_id, e)
+        return None
+
+
 async def _tm_send_bot_message(
     chat_id: int,
     text: str,
@@ -2804,15 +2840,42 @@ async def api_teammates_request_respond(
     # Поэтому статус НЕ трогаем.
 
     if accepted:
-        # Подтягиваем имена / usernames обоих участников.
+        # Подтягиваем имена / usernames обоих участников. Кэш settings может
+        # протухнуть или быть затёртым (см. save_telegram_data) — поэтому
+        # СНАЧАЛА живой getChat из Telegram, кэш — фолбэк.
         settings_map = _tm_load_user_settings(db, [from_id, to_id])
         from_s = settings_map.get(from_id) or {}
         to_s   = settings_map.get(to_id)   or {}
 
-        from_name = (from_s.get("first_name") or "").strip() or "тиммейт"
-        to_name   = (to_s.get("first_name")   or "").strip() or "тиммейт"
-        from_uname = (from_s.get("username") or "").lstrip("@").strip()
-        to_uname   = (to_s.get("username")   or "").lstrip("@").strip()
+        fresh_from = await _tm_fetch_fresh_tg(from_id) or {}
+        fresh_to = await _tm_fetch_fresh_tg(to_id) or {}
+
+        from_name = (fresh_from.get("first_name") or from_s.get("first_name") or "").strip() or "тиммейт"
+        to_name   = (fresh_to.get("first_name") or to_s.get("first_name") or "").strip() or "тиммейт"
+        from_uname = (fresh_from.get("username") or from_s.get("username") or "").lstrip("@").strip()
+        to_uname   = (fresh_to.get("username") or to_s.get("username") or "").lstrip("@").strip()
+
+        # Self-heal кэша: свежие непустые значения — обратно в settings, чтобы
+        # лента/карточки тоже показывали актуальный контакт.
+        try:
+            for uid_heal, fresh in ((from_id, fresh_from), (to_id, fresh_to)):
+                if not fresh:
+                    continue
+                prof = db.query(DBUserProfile).filter(DBUserProfile.user_id == uid_heal).first()
+                if not prof:
+                    continue
+                changed = False
+                s = prof.settings or {}
+                for k in ("username", "first_name"):
+                    if fresh.get(k) and s.get(k) != fresh[k]:
+                        s[k] = fresh[k]
+                        changed = True
+                if changed:
+                    prof.settings = s
+                    flag_modified(prof, "settings")
+            db.commit()
+        except Exception as e:
+            logger.warning("[tm_notify] settings self-heal failed: %s", e)
 
         # Ключевое: tg://user?id=N открывает чат с пользователем НЕЗАВИСИМО
         # от наличия у него username. Раньше при отсутствии @ хвост вообще
