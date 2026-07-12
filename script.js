@@ -545,8 +545,8 @@
         // Содержимое popover-меню для разделов с двумя фичами.
         var _DOCK_MENU = {
             play: [
-                // Флагман — первым и напрямую (2 тапа из любого места).
-                { label: 'Битва драфтов', page: 'draft-battle', icon: 'ph-sword' },
+                // Флагман — первым, напрямую и с плашкой NEW.
+                { label: 'Битва драфтов', page: 'draft-battle', icon: 'ph-sword', badge: 'NEW' },
                 { label: 'Пати',  page: 'teammates', icon: 'ph-users-three' },
                 { label: 'Мини-игры', page: 'quiz',  icon: 'ph-puzzle-piece' },
             ],
@@ -570,9 +570,12 @@
             var currentId = (document.querySelector('.page.active') || {}).id || '';
             m.innerHTML = items.map(function (it) {
                 var active = ('page-' + it.page) === currentId ? ' active' : '';
+                var badge = it.badge
+                    ? '<span class="dock-menu__new">' + it.badge + '</span>' : '';
                 return '<button type="button" class="dock-menu__item' + active + '" ' +
                     'role="menuitem" onclick="_dockMenuGo(\'' + it.page + '\')">' +
                     '<i class="ph ' + it.icon + '" aria-hidden="true"></i>' + it.label +
+                    badge +
                     '</button>';
             }).join('');
             m.hidden = false;

@@ -1207,6 +1207,17 @@ transform: translateY(-1px);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
+/* Плашка NEW у пункта меню: янтарь (семантика «внимание/ранг» проекта),
+   тихая тонировка вместо заливки — привлекает, не крича. */
+.dock-menu__new {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px; font-weight: var(--font-bold);
+  letter-spacing: 0.08em;
+  color: var(--warning, #d29922);
+  background: color-mix(in oklch, var(--warning, #d29922) 14%, transparent);
+}
 .dock-menu__item i {
   font-size: 19px;
   line-height: 1;
