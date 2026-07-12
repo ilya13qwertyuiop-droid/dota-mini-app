@@ -2847,8 +2847,21 @@ async def api_teammates_request_respond(
         from_s = settings_map.get(from_id) or {}
         to_s   = settings_map.get(to_id)   or {}
 
-        fresh_from = await _tm_fetch_fresh_tg(from_id) or {}
-        fresh_to = await _tm_fetch_fresh_tg(to_id) or {}
+        _fr, _to = await asyncio.gather(
+            _tm_fetch_fresh_tg(from_id), _tm_fetch_fresh_tg(to_id)
+        )
+        fresh_from = _fr or {}
+        fresh_to = _to or {}
+        # Диагностика причин «пропавших username»: фиксируем расхождение
+        # живых данных с кэшем — по логам видно, протухание это или затирание.
+        for _uid, _fresh, _cached in (
+            (from_id, fresh_from, from_s), (to_id, fresh_to, to_s),
+        ):
+            if _fresh and (_fresh.get("username") or "") != (_cached.get("username") or ""):
+                logger.info(
+                    "[tm_notify] stale username for %s: cached=%r fresh=%r",
+                    _uid, _cached.get("username"), _fresh.get("username"),
+                )
 
         from_name = (fresh_from.get("first_name") or from_s.get("first_name") or "").strip() or "тиммейт"
         to_name   = (fresh_to.get("first_name") or to_s.get("first_name") or "").strip() or "тиммейт"
