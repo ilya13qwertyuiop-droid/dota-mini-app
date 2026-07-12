@@ -1367,81 +1367,194 @@
             switchPage('quiz');
         };
 
-        // ── Топ игроков (кнопка-трофей в шапке меню) ────────────────────────
+        // ── Топ игроков: лестница рангов секциями ───────────────────────────
+        // Единый источник лестницы на фронте (зеркалит _BT_RANKS бэкенда).
+        // Сверху вниз — от престижа: структура списка и есть онбординг рангов.
+        var _BT_RANK_TIERS = [
+            { key: 'eternal',   name: 'Вечный',      thr: 6000 },
+            { key: 'overlord',  name: 'Владыка',     thr: 3800 },
+            { key: 'chosen',    name: 'Избранный',   thr: 2200 },
+            { key: 'harbinger', name: 'Предвестник', thr: 1000 },
+            { key: 'pawn',      name: 'Пешка',       thr: 0 },
+        ];
+
+        // Каркас лестницы рендерится МГНОВЕННО из констант (он же скелетон);
+        // данные доезжают в секции. Пустая секция не исчезает — зовёт наверх.
+        function _btLbSkeleton(ladder) {
+            ladder.innerHTML = '';
+            _BT_RANK_TIERS.forEach(function (t) {
+                var sec = document.createElement('section');
+                sec.className = 'bt-lbr-sec';
+                sec.setAttribute('data-tier', t.key);
+                sec.innerHTML =
+                    '<header class="bt-lbr-head">' +
+                        '<img class="bt-lbr-medal" src="' + _btRankImg(t.key) + '" alt="" ' +
+                            'onerror="this.style.visibility=\'hidden\'">' +
+                        '<span class="bt-lbr-name">' + _mghlEsc(t.name) + '</span>' +
+                        '<span class="bt-lbr-thr">' + t.thr + '+</span>' +
+                    '</header>' +
+                    '<div class="bt-lbr-body"></div>';
+                ladder.appendChild(sec);
+            });
+        }
+
+        function _btLbEmptyRow(tier) {
+            var el = document.createElement('div');
+            el.className = 'bt-lbr-empty';
+            el.textContent = (tier.key === 'eternal' || tier.key === 'overlord')
+                ? 'пока никого — займи первым'
+                : 'пока никого';
+            return el;
+        }
+
         window.btLbOpen = async function () {
             _btShow('bt-lb');
-            var list = document.getElementById('bt-lb-list');
+            var ladder = document.getElementById('bt-lb-ladder');
             var meBar = document.getElementById('bt-lb-me');
-            if (!list) return;
-            list.innerHTML = '<div class="bt-history-empty">Загружаем…</div>';
+            if (!ladder) return;
+            _btLbSkeleton(ladder);
+            // Каскад входа секций — перезапуск CSS-анимации.
+            ladder.classList.remove('bt-lb-ladder--in');
+            void ladder.offsetWidth;
+            ladder.classList.add('bt-lb-ladder--in');
             if (meBar) meBar.hidden = true;
+
             try {
                 var r = await apiFetch(window.API_BASE_URL + '/battle/leaderboard?token='
                     + encodeURIComponent(_btTok()));
                 if (!r.ok) throw new Error('lb ' + r.status);
                 var d = await r.json();
                 var top = (d && d.top) || [];
-                list.innerHTML = '';
-                if (!top.length) {
-                    var empty = document.createElement('div');
-                    empty.className = 'bt-history-empty';
-                    empty.textContent = 'Пока никто не откалибровался — стань первым';
-                    list.appendChild(empty);
-                } else {
-                    top.forEach(function (p, i) { list.appendChild(_btLbRow(i + 1, p)); });
-                }
-                // «Твоё место»: вне топа — позиция; на калибровке — прогресс.
-                var you = d && d.you;
-                if (meBar && you) {
-                    var inTop = top.some(function (p) { return p.you; });
-                    if (you.calibrating) {
-                        meBar.textContent = 'Калибровка ' + (you.games_played || 0) +
-                            ' / ' + (you.calibration_total || 5) +
-                            ' — место появится после неё';
-                        meBar.hidden = false;
-                    } else if (!inTop && you.rank != null) {
-                        meBar.innerHTML = '';
-                        meBar.appendChild(_btLbRow(you.rank, {
-                            name: 'Ты', rank_key: you.rank_key,
-                            rating: you.rating, you: true,
-                        }));
-                        meBar.hidden = false;
+
+                // Раскладываем по секциям через rank_key игрока.
+                var byTier = {};
+                top.forEach(function (p, i) {
+                    var k = p.rank_key || 'pawn';
+                    (byTier[k] = byTier[k] || []).push({ place: i + 1, p: p });
+                });
+                _BT_RANK_TIERS.forEach(function (t) {
+                    var body = ladder.querySelector('[data-tier="' + t.key + '"] .bt-lbr-body');
+                    if (!body) return;
+                    body.innerHTML = '';
+                    var items = byTier[t.key] || [];
+                    if (!items.length) {
+                        body.appendChild(_btLbEmptyRow(t));
+                        return;
                     }
-                }
+                    items.forEach(function (it) {
+                        body.appendChild(_btLbRow(it.place, it.p));
+                    });
+                });
+
+                if (meBar) _btLbFillMeBar(meBar, d && d.you);
             } catch (e) {
-                list.innerHTML = '';
-                var err = document.createElement('button');
-                err.type = 'button';
-                err.className = 'bt-history-empty bt-history-retry';
-                err.textContent = 'Топ не загрузился · Повторить';
-                err.onclick = function () { btLbOpen(); };
-                list.appendChild(err);
+                // Каркас остаётся витриной даже при ошибке: секции получают
+                // свои «пока никого», retry — в верхнюю.
+                _BT_RANK_TIERS.forEach(function (t, i) {
+                    var body = ladder.querySelector('[data-tier="' + t.key + '"] .bt-lbr-body');
+                    if (!body) return;
+                    body.innerHTML = '';
+                    if (i === 0) {
+                        var err = document.createElement('button');
+                        err.type = 'button';
+                        err.className = 'bt-history-empty bt-history-retry';
+                        err.textContent = 'Топ не загрузился · Повторить';
+                        err.onclick = function () { btLbOpen(); };
+                        body.appendChild(err);
+                    } else {
+                        body.appendChild(_btLbEmptyRow(t));
+                    }
+                });
             }
         };
 
         function _btLbRow(place, p) {
             var row = document.createElement('div');
-            row.className = 'bt-lb-row' + (p.you ? ' bt-lb-row--you' : '');
+            row.className = 'bt-lb-row' + (p.you ? ' bt-lb-row--you' : '') +
+                (place <= 3 ? ' bt-lb-row--top3' : '');
             var num = document.createElement('span');
             num.className = 'bt-lb-num';
             num.textContent = place;
             row.appendChild(num);
-            if (p.rank_key) {
-                var medal = document.createElement('img');
-                medal.className = 'bt-lb-medal';
-                medal.src = _btRankImg(p.rank_key); medal.alt = '';
-                medal.onerror = function () { this.hidden = true; };
-                row.appendChild(medal);
+            // Аватар: фото или инициал (медаль уже есть в заголовке секции).
+            var av = document.createElement('span');
+            av.className = 'bt-lb-av';
+            if (p.photo_url) {
+                var img = document.createElement('img');
+                img.src = p.photo_url; img.alt = '';
+                img.onerror = function () {
+                    if (this.parentNode) {
+                        this.parentNode.textContent =
+                            (p.name || '·').trim().charAt(0).toUpperCase() || '·';
+                    }
+                };
+                av.appendChild(img);
+            } else {
+                av.textContent = (p.name || '·').trim().charAt(0).toUpperCase() || '·';
             }
+            row.appendChild(av);
             var nm = document.createElement('span');
             nm.className = 'bt-lb-name';
-            nm.textContent = p.name || 'Игрок';
+            nm.textContent = p.you ? (p.name || 'Игрок') + ' — ты' : (p.name || 'Игрок');
             row.appendChild(nm);
             var mmr = document.createElement('b');
             mmr.className = 'bt-lb-mmr';
             mmr.textContent = p.rating;
             row.appendChild(mmr);
             return row;
+        }
+
+        // Стики-бар «ты»: место + медаль + MMR + дистанция до следующего ранга.
+        // На калибровке — прогресс-точки вместо места. Тап — справка о рангах.
+        function _btLbFillMeBar(meBar, you) {
+            if (!you) { meBar.hidden = true; return; }
+            meBar.innerHTML = '';
+            if (you.calibrating) {
+                var played = you.games_played || 0;
+                var total = you.calibration_total || 5;
+                var dots = document.createElement('span');
+                dots.className = 'bt-lb-dots';
+                var dh = '';
+                for (var i = 0; i < total; i++) {
+                    dh += '<i class="bt-dot' + (i < played ? ' bt-dot--on' : '') + '"></i>';
+                }
+                dots.innerHTML = dh;
+                meBar.appendChild(dots);
+                var t = document.createElement('span');
+                t.className = 'bt-lb-me-txt';
+                t.textContent = 'Калибровка ' + played + ' / ' + total +
+                    ' — место появится после неё';
+                meBar.appendChild(t);
+                meBar.hidden = false;
+                return;
+            }
+            var num = document.createElement('span');
+            num.className = 'bt-lb-num';
+            num.textContent = (you.rank != null) ? '#' + you.rank : '—';
+            meBar.appendChild(num);
+            if (you.rank_key) {
+                var medal = document.createElement('img');
+                medal.className = 'bt-lb-medal';
+                medal.src = _btRankImg(you.rank_key); medal.alt = '';
+                medal.onerror = function () { this.hidden = true; };
+                meBar.appendChild(medal);
+            }
+            var mmr = document.createElement('b');
+            mmr.className = 'bt-lb-mmr';
+            mmr.textContent = you.rating;
+            meBar.appendChild(mmr);
+            // Дистанция до следующего ранга — из фронтовой лестницы.
+            var next = null;
+            for (var j = _BT_RANK_TIERS.length - 1; j >= 0; j--) {
+                if (_BT_RANK_TIERS[j].thr > you.rating) { next = _BT_RANK_TIERS[j]; break; }
+            }
+            var tail = document.createElement('span');
+            tail.className = 'bt-lb-me-txt';
+            tail.textContent = next
+                ? 'до ранга «' + next.name + '» — ' + (next.thr - you.rating)
+                : 'высший ранг';
+            meBar.appendChild(tail);
+            meBar.hidden = false;
         }
 
         // ── Справка о режиме (кнопка «?» в шапке) ──────────────────────────

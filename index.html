@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=241" />
+    <link rel="stylesheet" href="styles.css?v=242" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -693,12 +693,14 @@
           <button type="button" class="tm-ghost-btn" onclick="btHelpClose()">Понятно</button>
         </div>
 
-        <!-- Топ игроков по MMR (кнопка-трофей в шапке). Наполняется btLbOpen. -->
+        <!-- Топ игроков: лестница рангов секциями (Вечный → Пешка), каркас
+             постоянен даже при пустом пуле — структура и есть онбординг.
+             Внизу — стики-бар «ты». Наполняется btLbOpen (_BT_RANK_TIERS). -->
         <div id="bt-lb" hidden>
           <div class="bt-lb-title">Топ игроков</div>
-          <div class="bt-lb-list" id="bt-lb-list"></div>
-          <!-- Твоё место (если вне топа) или прогресс калибровки -->
-          <div class="bt-lb-me" id="bt-lb-me" hidden></div>
+          <div class="bt-lb-ladder" id="bt-lb-ladder"></div>
+          <button type="button" class="bt-lb-mebar" id="bt-lb-me" hidden
+                  onclick="btHelpOpen()" aria-label="Твоё место — открыть справку о рангах"></button>
         </div>
 
         <!-- Полноэкранный интерстишл «Соперник найден» -->
@@ -1880,6 +1882,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=295"></script>
+    <script defer src="script.js?v=296"></script>
   </body>
 </html>
