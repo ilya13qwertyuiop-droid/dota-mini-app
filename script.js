@@ -545,6 +545,8 @@
         // Содержимое popover-меню для разделов с двумя фичами.
         var _DOCK_MENU = {
             play: [
+                // Флагман — первым и напрямую (2 тапа из любого места).
+                { label: 'Битва драфтов', page: 'draft-battle', icon: 'ph-sword' },
                 { label: 'Пати',  page: 'teammates', icon: 'ph-users-three' },
                 { label: 'Мини-игры', page: 'quiz',  icon: 'ph-puzzle-piece' },
             ],
@@ -588,9 +590,14 @@
             m.style.bottom = (window.innerHeight - dockTop + 12) + 'px';
         }
 
-        // Тап по пункту меню → переход + закрытие.
+        // Тап по пункту меню → переход + закрытие. Битва — через свой вход
+        // (switchPage + btInit: карточка ранга/история/resume-баннер).
         window._dockMenuGo = function (page) {
             _closeDockMenu();
+            if (page === 'draft-battle' && typeof goToDraftBattle === 'function') {
+                goToDraftBattle();
+                return;
+            }
             switchPage(page);
         };
 
@@ -2065,12 +2072,17 @@
         // завершённой битвы сразу отдаёт finished → _btRenderResult).
         function _btOpenHistory(code) {
             if (!code) return;
-            // Живая битва идёт (полл активен) — не даём истории молча
-            // перехватить единственный цикл и осиротить тикающий таймер.
+            // Живая битва/поиск идёт (полл активен) — не даём истории молча
+            // перехватить единственный цикл: осиротеет таймер или поиск.
             var st = _bt.state;
             var live = st && (st.status === 'drafting' || st.status === 'assigning');
+            var searching = st && st.status === 'searching';
             if (_bt.polling && live && !_bt.historyView) {
                 if (typeof showToast === 'function') showToast('Сначала заверши текущую битву.');
+                return;
+            }
+            if (_bt.polling && searching && !_bt.historyView) {
+                if (typeof showToast === 'function') showToast('Идёт поиск соперника — отмени его или дождись матча.');
                 return;
             }
             if (typeof _mghlHaptic === 'function') _mghlHaptic('tap');
