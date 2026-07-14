@@ -191,6 +191,73 @@ def init_stats_tables() -> None:
             conn.execute(text(ddl))
             logger.info("[stats_db] Migration applied: added %s to draft_results", col_name)
 
+    # Migration 8b: add host/guest_positions to draft_battles (стадия
+    # расстановки позиций, alembic 0018). Самовосстановление для случая,
+    # когда таблицу создал create_all предыдущего деплоя (ещё без этих
+    # колонок), а alembic upgrade не прогнали: без них ЛЮБОЙ ORM-SELECT
+    # battle-эндпоинтов падает UndefinedColumn → 500. Таблица к этому
+    # моменту существует — create_all выше создаёт её на свежих БД сразу
+    # с колонками, и тогда ALTER не выполняется вовсе.
+    for col_name, ddl in [
+        ("host_positions",  "ALTER TABLE draft_battles ADD COLUMN host_positions JSON"),
+        ("guest_positions", "ALTER TABLE draft_battles ADD COLUMN guest_positions JSON"),
+    ]:
+        with engine.begin() as conn:
+            if _column_exists(conn, "draft_battles", col_name):
+                continue
+            conn.execute(text(ddl))
+            logger.info("[stats_db] Migration applied: added %s to draft_battles", col_name)
+
+    # is_bot — отдельно: boolean DEFAULT кросс-БД (PG: false, SQLite: 0).
+    # NOT NULL с дефолтом, чтобы ALTER на непустой таблице не падал.
+    with engine.begin() as conn:
+        if not _column_exists(conn, "draft_battles", "is_bot"):
+            _bool_default = "0" if conn.dialect.name == "sqlite" else "false"
+            conn.execute(text(
+                "ALTER TABLE draft_battles ADD COLUMN is_bot BOOLEAN NOT NULL "
+                f"DEFAULT {_bool_default}"
+            ))
+            logger.info("[stats_db] Migration applied: added is_bot to draft_battles")
+
+    # Migration 8c: задел под рейтинг битв (alembic 0020). Снимок рейтинга
+    # обеих сторон на draft_battles (nullable) + рейтинг игрока на user_profiles
+    # (NOT NULL DEFAULT 1000). Самовосстановление для тех же случаев, что 8b.
+    for col_name in (
+        "host_rating_before", "host_rating_after",
+        "guest_rating_before", "guest_rating_after",
+    ):
+        with engine.begin() as conn:
+            if _column_exists(conn, "draft_battles", col_name):
+                continue
+            conn.execute(text(
+                f"ALTER TABLE draft_battles ADD COLUMN {col_name} INTEGER"
+            ))
+            logger.info("[stats_db] Migration applied: added %s to draft_battles", col_name)
+    with engine.begin() as conn:
+        if not _column_exists(conn, "user_profiles", "battle_rating"):
+            conn.execute(text(
+                "ALTER TABLE user_profiles ADD COLUMN battle_rating INTEGER "
+                "NOT NULL DEFAULT 1000"
+            ))
+            logger.info("[stats_db] Migration applied: added battle_rating to user_profiles")
+
+    # Migration 8d: счётчик живых боёв (состояние калибровки, alembic 0021).
+    with engine.begin() as conn:
+        if not _column_exists(conn, "user_profiles", "battle_games_played"):
+            conn.execute(text(
+                "ALTER TABLE user_profiles ADD COLUMN battle_games_played INTEGER "
+                "NOT NULL DEFAULT 0"
+            ))
+            logger.info("[stats_db] Migration applied: added battle_games_played to user_profiles")
+
+    # Migration 8e: индекс лидерборда битвы (alembic 0022). IF NOT EXISTS —
+    # кросс-БД идемпотентно (PG и SQLite поддерживают).
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_user_profiles_battle_lb "
+            "ON user_profiles (battle_games_played, battle_rating)"
+        ))
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 import httpx
 from datetime import datetime, timezone
@@ -173,6 +174,7 @@ from pydantic import BaseModel
 
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -455,10 +457,18 @@ def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
     if not db_profile.settings:
         db_profile.settings = {}
 
-    db_profile.settings["username"] = data.username
-    db_profile.settings["first_name"] = data.first_name
-    db_profile.settings["last_name"] = data.last_name
-    db_profile.settings["photo_url"] = data.photo_url
+    # НЕ затираем существующие значения пустыми: Telegram WebApp не всегда
+    # отдаёт username/фото в initDataUnsafe (приватность/клиент) — раньше
+    # приходящий null стирал валидный username, сохранённый на /start, и
+    # пуши «Пати» уходили без контакта.
+    if data.username:
+        db_profile.settings["username"] = data.username
+    if data.first_name:
+        db_profile.settings["first_name"] = data.first_name
+    if data.last_name:
+        db_profile.settings["last_name"] = data.last_name
+    if data.photo_url:
+        db_profile.settings["photo_url"] = data.photo_url
     flag_modified(db_profile, "settings")
 
     db.commit()
@@ -1759,6 +1769,8 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_hub_tools",
     # Мини-игры.
     "page_minigame_hl",
+    # PvP-драфтер «Битва драфтов».
+    "page_draft_battle",
     # Клик по кнопке «Поддержать» на главном экране (goToDonate в script.js).
     "support_click",
 })
@@ -2226,6 +2238,34 @@ def _tm_html_safe(value: str | None) -> str:
     """
     import html as _html
     return _html.escape(value or "", quote=False)
+
+
+async def _tm_fetch_fresh_tg(user_id: int) -> dict | None:
+    """Живые данные юзера из Telegram (getChat): актуальный username/имя.
+
+    Кэш в user_profiles.settings протухает (username пишется только на /start
+    и может быть затёрт клиентом без username в initDataUnsafe) — а пуш
+    «запрос принят» без контакта бесполезен. getChat работает для любого, кто
+    стартовал бота (оба участника — стартовали, иначе пуш не дошёл бы).
+    Best-effort: любая ошибка → None, зовущий падает на кэш из БД."""
+    if not BOT_TOKEN:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            r = await client.get(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/getChat",
+                params={"chat_id": user_id},
+            )
+        if r.status_code != 200:
+            return None
+        result = (r.json() or {}).get("result") or {}
+        return {
+            "username": (result.get("username") or "").strip(),
+            "first_name": (result.get("first_name") or "").strip(),
+        }
+    except Exception as e:
+        logger.warning("[tm_notify] getChat %s failed: %s", user_id, e)
+        return None
 
 
 async def _tm_send_bot_message(
@@ -2800,15 +2840,55 @@ async def api_teammates_request_respond(
     # Поэтому статус НЕ трогаем.
 
     if accepted:
-        # Подтягиваем имена / usernames обоих участников.
+        # Подтягиваем имена / usernames обоих участников. Кэш settings может
+        # протухнуть или быть затёртым (см. save_telegram_data) — поэтому
+        # СНАЧАЛА живой getChat из Telegram, кэш — фолбэк.
         settings_map = _tm_load_user_settings(db, [from_id, to_id])
         from_s = settings_map.get(from_id) or {}
         to_s   = settings_map.get(to_id)   or {}
 
-        from_name = (from_s.get("first_name") or "").strip() or "тиммейт"
-        to_name   = (to_s.get("first_name")   or "").strip() or "тиммейт"
-        from_uname = (from_s.get("username") or "").lstrip("@").strip()
-        to_uname   = (to_s.get("username")   or "").lstrip("@").strip()
+        _fr, _to = await asyncio.gather(
+            _tm_fetch_fresh_tg(from_id), _tm_fetch_fresh_tg(to_id)
+        )
+        fresh_from = _fr or {}
+        fresh_to = _to or {}
+        # Диагностика причин «пропавших username»: фиксируем расхождение
+        # живых данных с кэшем — по логам видно, протухание это или затирание.
+        for _uid, _fresh, _cached in (
+            (from_id, fresh_from, from_s), (to_id, fresh_to, to_s),
+        ):
+            if _fresh and (_fresh.get("username") or "") != (_cached.get("username") or ""):
+                logger.info(
+                    "[tm_notify] stale username for %s: cached=%r fresh=%r",
+                    _uid, _cached.get("username"), _fresh.get("username"),
+                )
+
+        from_name = (fresh_from.get("first_name") or from_s.get("first_name") or "").strip() or "тиммейт"
+        to_name   = (fresh_to.get("first_name") or to_s.get("first_name") or "").strip() or "тиммейт"
+        from_uname = (fresh_from.get("username") or from_s.get("username") or "").lstrip("@").strip()
+        to_uname   = (fresh_to.get("username") or to_s.get("username") or "").lstrip("@").strip()
+
+        # Self-heal кэша: свежие непустые значения — обратно в settings, чтобы
+        # лента/карточки тоже показывали актуальный контакт.
+        try:
+            for uid_heal, fresh in ((from_id, fresh_from), (to_id, fresh_to)):
+                if not fresh:
+                    continue
+                prof = db.query(DBUserProfile).filter(DBUserProfile.user_id == uid_heal).first()
+                if not prof:
+                    continue
+                changed = False
+                s = prof.settings or {}
+                for k in ("username", "first_name"):
+                    if fresh.get(k) and s.get(k) != fresh[k]:
+                        s[k] = fresh[k]
+                        changed = True
+                if changed:
+                    prof.settings = s
+                    flag_modified(prof, "settings")
+            db.commit()
+        except Exception as e:
+            logger.warning("[tm_notify] settings self-heal failed: %s", e)
 
         # Ключевое: tg://user?id=N открывает чат с пользователем НЕЗАВИСИМО
         # от наличия у него username. Раньше при отсутствии @ хвост вообще
@@ -3831,3 +3911,1897 @@ def api_teammates_lobbies_history(
             continue
         items.append(_tm_serialize_lobby(db, lobby, slots_by_lobby.get(lid, [])))
     return {"items": items}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  «Битва драфтов» — PvP-драфтер в реальном времени
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Архитектура (анализ транспорта — в истории проекта):
+#   • Состояние битвы только в PG (draft_battles + draft_battle_actions),
+#     воркеры stateless — игроки могут попадать на разные воркеры.
+#   • Доставка событий: long polling с версионным курсором (/battle/events)
+#     + PG LISTEN/NOTIFY как межворкерная шина (backend/battle_bus.py).
+#   • Время считает ТОЛЬКО сервер: deadline_at в БД; просрочка исполняется
+#     ЛЕНИВО любым чтением/действием (висящие long-poll'ы сами будят таймауты
+#     по дедлайну) — фоновый тикер не нужен.
+#   • Мутации — def (threadpool, sync-сессии); /battle/events — async def
+#     (реальные await шины), в БД ходит через asyncio.to_thread.
+
+from types import SimpleNamespace as _BTEntry  # noqa: E402
+
+from backend.database import SessionLocal  # noqa: E402
+from backend.battle_bus import notify_battle_changed as _bt_notify  # noqa: E402
+from backend.battle_bus import wait_for_change as _bt_wait  # noqa: E402
+from backend.models import (  # noqa: E402
+    DraftBattle as DBDraftBattle,
+    DraftBattleAction as DBDraftBattleAction,
+)
+
+_BT_BAN_MS = 20_000          # основное время на бан
+_BT_PICK_MS = 25_000         # основное время на пик
+_BT_RESERVE_MS = 120_000     # доп. время на игрока на всю партию (как в CM)
+_BT_ASSIGN_MS = 30_000       # общий таймер стадии расстановки позиций
+# Стартовый отсчёт: таймер ПЕРВОГО хода начинает тикать через столько мс после
+# матча — покрывает доставку матча второму игроку (его полл) + интерстишл.
+_BT_START_COUNTDOWN_MS = 4_000
+_BT_MAX_HOLD_SECONDS = 25.0  # удержание long-poll (< nginx proxy_read_timeout 60s)
+# Протухание комнат в waiting/searching (env — тот же ключ, что раньше читал
+# sweep в teammates_notifier; уборка теперь живёт здесь, см. _bt_sweep_loop).
+_BT_WAITING_TTL_MIN = int(os.environ.get("BT_WAITING_TTL_MIN", "10"))
+# drafting/assigning, чей дедлайн просрочен БОЛЕЕ чем на это — оба игрока ушли
+# (активный поллинг исполняет просрочку максимум за один hold-цикл ~25с).
+_BT_DEAD_GRACE_SEC = int(os.environ.get("BT_DEAD_GRACE_SEC", "120"))
+_BT_SWEEP_INTERVAL_SEC = 60.0   # период фоновой уборки брошенных битв
+_BT_MODES = ("cm", "ap")
+# 'waiting' (легаси приватных комнат) исключён из активных: сервер такие
+# строки больше не создаёт, а редкую древнюю добьёт sweep — она не должна
+# блокировать «ты уже в активной битве». Ветки чтения ('waiting','searching')
+# в timeouts/leave/sweep оставлены как дешёвая страховка чтения старых строк.
+_BT_ACTIVE_STATUSES = ("searching", "drafting", "assigning")
+# Позиционный штраф (стадия расстановки): доля матчей героя на назначенной
+# позиции < 5% → −2 балла, < 15% → −1, иначе 0. Источник долей — dota_builds.
+_BT_POS_HARD_SHARE = 0.05
+_BT_POS_SOFT_SHARE = 0.15
+_BT_POS_HARD_PENALTY = 2.0
+_BT_POS_SOFT_PENALTY = 1.0
+
+# Последовательности ходов. Роли: 'F' — команда первого пика, 'S' — вторая.
+# 'cm' — фазовая структура Captains Mode 7.34 (14 банов + 10 пиков; баны
+# 3-2-2 у F / 4-1-2 у S, пики 1-3-1; S выбивает 4 героев до первого пика).
+# Точный внутрифазовый порядок Valve не документирован — внутри фаз змейка,
+# согласованная с этими свойствами. Правится в одном месте.
+_BT_SEQ_CM: list[tuple[str, str]] = [
+    # Ban phase 1 — F×3, S×4
+    ("F", "ban"), ("S", "ban"), ("S", "ban"), ("F", "ban"),
+    ("S", "ban"), ("S", "ban"), ("F", "ban"),
+    # Pick phase 1 — 1-1
+    ("F", "pick"), ("S", "pick"),
+    # Ban phase 2 — S×1, F×2
+    ("S", "ban"), ("F", "ban"), ("F", "ban"),
+    # Pick phase 2 — 3-3 (продолжение змейки)
+    ("S", "pick"), ("F", "pick"), ("F", "pick"),
+    ("S", "pick"), ("S", "pick"), ("F", "pick"),
+    # Ban phase 3 — 2-2
+    ("F", "ban"), ("S", "ban"), ("F", "ban"), ("S", "ban"),
+    # Pick phase 3 — 1-1
+    ("F", "pick"), ("S", "pick"),
+]
+# 'ap' — без банов: 10 пиков чистой змейкой (та же пик-последовательность,
+# что получается в 'cm', — оценки режимов сопоставимы).
+_BT_SEQ_AP: list[tuple[str, str]] = [
+    ("F", "pick"), ("S", "pick"), ("S", "pick"), ("F", "pick"), ("F", "pick"),
+    ("S", "pick"), ("S", "pick"), ("F", "pick"), ("F", "pick"), ("S", "pick"),
+]
+_BT_SEQUENCES = {"cm": _BT_SEQ_CM, "ap": _BT_SEQ_AP}
+
+# Инвайт-код: без визуально похожих символов (0/O, 1/I/L).
+_BT_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+# Объединённый мета-пул для авто-ходов по таймауту.
+_BT_META_POOL: frozenset[int] = frozenset(
+    h for pool in _DRAFT_POOLS_BY_POS.values() for h in pool
+)
+
+_bt_known_heroes_cache: "frozenset[int] | None" = None
+
+
+def _bt_known_heroes() -> frozenset[int]:
+    """Валидные hero_id = ключи hero_matchups.json (источник скоринга)."""
+    global _bt_known_heroes_cache
+    if _bt_known_heroes_cache is None:
+        data = _load_hero_matchups_file() or {}
+        ids = set()
+        for k in data.keys():
+            try:
+                ids.add(int(k))
+            except (TypeError, ValueError):
+                continue
+        _bt_known_heroes_cache = frozenset(ids) or _BT_META_POOL
+    return _bt_known_heroes_cache
+
+
+def _bt_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _bt_log(event: str, *user_ids: int) -> None:
+    """Серверная аналитика воронки битвы. Пишется на бэке (а не с фронта),
+    чтобы события не терялись, когда игрок закрыл апп. log_event сам глотает
+    ошибки (на dev-SQLite BigInteger PK не автоинкрементит — молча no-op,
+    на PG — ок). Воронка: battle_queue → battle_start → battle_finish,
+    battle_forfeit — отвал."""
+    from backend.db import log_event as _log_event
+    for uid in user_ids:
+        if uid is not None:
+            _log_event(event, uid)
+
+
+def _bt_aware(dt):
+    """SQLite (dev) возвращает naive datetime — нормализуем к UTC-aware,
+    чтобы сравнения с _bt_now() работали кросс-БД."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _bt_new_code(db: Session) -> str:
+    import secrets as _secrets
+    for _ in range(20):
+        code = "".join(_secrets.choice(_BT_CODE_ALPHABET) for _ in range(6))
+        exists = db.query(DBDraftBattle.id).filter(DBDraftBattle.code == code).first()
+        if exists is None:
+            return code
+    raise HTTPException(status_code=500, detail="failed to allocate battle code")
+
+
+def _bt_role(battle: DBDraftBattle, user_id: int):
+    if battle.host_id == user_id:
+        return "host"
+    if battle.guest_id == user_id:
+        return "guest"
+    return None
+
+
+def _bt_actor_of(battle: DBDraftBattle, idx: int) -> str:
+    """Роль ('host'/'guest') актора хода idx по first_pick и последовательности."""
+    seq = _BT_SEQUENCES[battle.mode]
+    rel = seq[idx][0]   # 'F'/'S'
+    if battle.first_pick == "host":
+        return "host" if rel == "F" else "guest"
+    return "guest" if rel == "F" else "host"
+
+
+def _bt_base_ms(kind: str) -> int:
+    return _BT_BAN_MS if kind == "ban" else _BT_PICK_MS
+
+
+def _bt_reserve_ms(battle: DBDraftBattle, role: str) -> int:
+    return battle.host_reserve_ms if role == "host" else battle.guest_reserve_ms
+
+
+def _bt_set_reserve(battle: DBDraftBattle, role: str, value_ms: int) -> None:
+    if role == "host":
+        battle.host_reserve_ms = max(0, int(value_ms))
+    else:
+        battle.guest_reserve_ms = max(0, int(value_ms))
+
+
+def _bt_start_turn(battle: DBDraftBattle, now: datetime) -> None:
+    """Старт хода turn_index: дедлайн = базовое время + остаток резерва актора."""
+    seq = _BT_SEQUENCES[battle.mode]
+    if battle.turn_index >= len(seq):
+        return
+    actor = _bt_actor_of(battle, battle.turn_index)
+    kind = seq[battle.turn_index][1]
+    total_ms = _bt_base_ms(kind) + _bt_reserve_ms(battle, actor)
+    battle.turn_started_at = now
+    battle.deadline_at = now + _tm_timedelta(milliseconds=total_ms)
+
+
+def _bt_taken_ids(db: Session, battle_id: int) -> set:
+    rows = db.query(DBDraftBattleAction.hero_id).filter(
+        DBDraftBattleAction.battle_id == battle_id
+    ).all()
+    return {r[0] for r in rows}
+
+
+_bt_pos_shares_cache: "dict[int, dict[int, float]] | None" = None
+
+
+def _bt_pos_shares() -> dict:
+    """{hero_id: {pos: доля матчей героя на позиции}} из dota_builds.json."""
+    global _bt_pos_shares_cache
+    if _bt_pos_shares_cache is not None:
+        return _bt_pos_shares_cache
+    raw = _load_dota_builds_file() or {}
+    out: dict[int, dict[int, float]] = {}
+    for hid_str, positions in raw.items():
+        if not isinstance(positions, dict):
+            continue
+        try:
+            hid = int(hid_str)
+        except ValueError:
+            continue
+        per_pos: dict[int, int] = {}
+        for pk, pos_num in _DOTA_POS_URL_TO_NUM.items():
+            pd = positions.get(pk)
+            if isinstance(pd, dict):
+                per_pos[pos_num] = int(pd.get("num_matches") or 0)
+        total = sum(per_pos.values())
+        if total > 0:
+            out[hid] = {p: nm / total for p, nm in per_pos.items()}
+    _bt_pos_shares_cache = out
+    return out
+
+
+def _bt_position_penalty(positions: dict) -> float:
+    """Суммарный штраф за несоответствие героев позициям (отрицательный или 0).
+
+    positions: {hero_id(int|str): pos(int)}. Герои без данных о позициях
+    не штрафуются (бенефит сомнения — данные неполны, см. фидбек о флексах)."""
+    shares = _bt_pos_shares()
+    penalty = 0.0
+    for hid, pos in (positions or {}).items():
+        try:
+            hid_i, pos_i = int(hid), int(pos)
+        except (TypeError, ValueError):
+            continue
+        hero_shares = shares.get(hid_i)
+        if not hero_shares:
+            continue
+        share = hero_shares.get(pos_i, 0.0)
+        if share < _BT_POS_HARD_SHARE:
+            penalty -= _BT_POS_HARD_PENALTY
+        elif share < _BT_POS_SOFT_SHARE:
+            penalty -= _BT_POS_SOFT_PENALTY
+    return round(penalty, 1)
+
+
+# ── Мета-компонент (только битва, сольный драфтер НЕ трогаем) ────────────────
+# Формула и гейт — как у клиентского «Анализа» (_ANALYSIS_META_* в script.js):
+# за героя (win_rate на его позиции − 0.5) × SCALE, выборка < 200 матчей —
+# герой нейтрален. SCALE здесь 20 (в Анализе 10) — осознанный тюнинг под
+# целочисленный протокол результата: при 10 типичная сумма команды ±0.5–1.4
+# округлялась на экране в «0 : 0» и строка выглядела мёртвой. При 20 типичный
+# разброс ±1–3, максимум ~±6 — читаемо, но всё ещё приправа уровня позиционного
+# штрафа; синергия/контрпики остаются ядром счёта.
+_BT_META_MIN_MATCHES = 200
+_BT_META_CENTER = 0.5
+_BT_META_SCALE = 20.0
+
+_bt_meta_wr_cache: "dict[int, dict[int, tuple[float, int]]] | None" = None
+
+
+def _bt_meta_wr() -> dict:
+    """{hero_id: {pos: (win_rate, num_matches)}} из dota_builds.json
+    (тот же файл, что кормит позиционный штраф и пулы бота)."""
+    global _bt_meta_wr_cache
+    if _bt_meta_wr_cache is not None:
+        return _bt_meta_wr_cache
+    raw = _load_dota_builds_file() or {}
+    out: dict[int, dict[int, tuple]] = {}
+    for hid_str, positions in raw.items():
+        if not isinstance(positions, dict):
+            continue
+        try:
+            hid = int(hid_str)
+        except ValueError:
+            continue
+        per_pos: dict[int, tuple] = {}
+        for pk, pos_num in _DOTA_POS_URL_TO_NUM.items():
+            pd = positions.get(pk)
+            if isinstance(pd, dict) and pd.get("win_rate") is not None:
+                per_pos[pos_num] = (
+                    float(pd["win_rate"]), int(pd.get("num_matches") or 0)
+                )
+        if per_pos:
+            out[hid] = per_pos
+    _bt_meta_wr_cache = out
+    return out
+
+
+def _bt_meta_score(positions: dict) -> float:
+    """Метовость драфта: сумма отклонений позиционного винрейта пиков от 50%.
+
+    positions: {hero_id(int|str): pos(int)} — та же раскладка, что у штрафа.
+    Герой без данных / с малой выборкой — нейтрален (0), как в «Анализе»."""
+    wr_map = _bt_meta_wr()
+    score = 0.0
+    for hid, pos in (positions or {}).items():
+        try:
+            hid_i, pos_i = int(hid), int(pos)
+        except (TypeError, ValueError):
+            continue
+        per_pos = wr_map.get(hid_i)
+        if not per_pos:
+            continue
+        entry = per_pos.get(pos_i)
+        if not entry:
+            continue
+        wr, matches = entry
+        if matches < _BT_META_MIN_MATCHES:
+            continue
+        score += (wr - _BT_META_CENTER) * _BT_META_SCALE
+    return round(score, 1)
+
+
+def _bt_picks_of(db: Session, battle: DBDraftBattle, role: str) -> list:
+    rows = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .filter(DBDraftBattleAction.kind == "pick")
+        .filter(DBDraftBattleAction.actor == role)
+        .order_by(DBDraftBattleAction.idx)
+        .all()
+    )
+    return [r.hero_id for r in rows]
+
+
+def _bt_default_positions(pick_ids: list) -> dict:
+    """Фолбэк для не успевших расставить: позиции в порядке пика.
+    Нейтральный и предсказуемый (никакой «авто-меты» — решение игрока свято)."""
+    return {str(h): i + 1 for i, h in enumerate(pick_ids[:5])}
+
+
+def _bt_start_assign(battle: DBDraftBattle, now: datetime) -> None:
+    """Драфт окончен → стадия расстановки: общий таймер _BT_ASSIGN_MS."""
+    battle.status = "assigning"
+    battle.turn_started_at = None
+    battle.deadline_at = now + _tm_timedelta(milliseconds=_BT_ASSIGN_MS)
+    battle.last_action_at = now
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Рейтинг «Битвы драфтов» — Elo с адаптивным K и поправкой на разгром.
+#
+#  Считается ТОЛЬКО за бои с живым соперником (is_bot=False). Бот-бои не двигают
+#  рейтинг и не считаются в калибровку. Шкала намеренно крупная (дота-подобная):
+#  начинаешь у _BT_RATING_BASE, пол — _BT_RATING_FLOOR, потолка нет (на практике
+#  ограничен мастерством). Первые _BT_CALIBRATION_GAMES живых боёв — калибровка
+#  (большой K → быстрый поиск своего уровня; ранг скрыт за бейджем «Калибровка»).
+#
+#  Все числа — в одной таблице ниже, чтобы крутить тюнинг без поиска по коду.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BT_RATING_BASE = 1000        # стартовый рейтинг (внутренний; скрыт на калибровке)
+_BT_RATING_FLOOR = 0          # ниже не падает
+_BT_ELO_DIVISOR = 1600.0      # насколько разрыв рейтинга влияет на шансы (≈9:1 на 1600)
+_BT_K_CALIBRATION = 400       # K на калибровке — большие скачки
+_BT_K_ESTABLISHED = 96        # K после калибровки — стабильно (~±50 за равный бой)
+_BT_CALIBRATION_GAMES = 5     # сколько живых боёв длится калибровка (холодный старт; потом 10)
+_BT_MARGIN_MIN = 0.5          # множитель за разгром: ничейный счёт → меньше
+_BT_MARGIN_MAX = 1.5          #                      разгром → больше
+# Потолок сдвига за ОДИН бой: K=400 × разгром 1.5 при матче «любой с любым»
+# (окно снято после 25с) теоретически даёт ±600 — один такой бой ломает
+# доверие к числам. Клэмп держит худший случай в рамках здравого смысла.
+_BT_RATING_DELTA_MAX = 350
+
+# Ранги: (нижний порог рейтинга, ключ-ассет, отображаемое имя). По возрастанию.
+# Пороги — гипотеза; подвинем по реальному распределению (один список — одна правка).
+_BT_RANKS = [
+    (0,    "pawn",      "Пешка"),
+    (1000, "harbinger", "Предвестник"),
+    (2200, "chosen",    "Избранный"),
+    (3800, "overlord",  "Владыка"),
+    (6000, "eternal",   "Вечный"),
+]
+
+
+def _bt_expected(rating_a: float, rating_b: float) -> float:
+    """Ожидаемый счёт A против B по логистике Elo (0..1)."""
+    return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / _BT_ELO_DIVISOR))
+
+
+def _bt_k_factor(games_played: int) -> int:
+    """K по числу УЖЕ сыгранных живых боёв: калибровка → большой, иначе обычный."""
+    return _BT_K_CALIBRATION if games_played < _BT_CALIBRATION_GAMES else _BT_K_ESTABLISHED
+
+
+def _bt_margin_mult(my_final, opp_final) -> float:
+    """Множитель за разгром из счёта драфта: ничья-в-ничью → к минимуму, разгром
+    → к максимуму. При форфейте (счёта нет) — нейтральный 1.0."""
+    if my_final is None or opp_final is None:
+        return 1.0
+    total = (my_final or 0) + (opp_final or 0)
+    if total <= 0:
+        return 1.0
+    frac_gap = abs(my_final - opp_final) / total   # 0 (ничья) … 1 (всухую)
+    # Центр ~1.0 на «обычной» победе (~55:45, frac≈0.1), к краям — clamp.
+    m = 1.0 + (frac_gap - 0.1) * 1.67
+    return max(_BT_MARGIN_MIN, min(_BT_MARGIN_MAX, m))
+
+
+def _bt_rating_delta(my_rating, opp_rating, score: float, k: int, margin: float) -> int:
+    """Изменение рейтинга за бой (клэмп ±_BT_RATING_DELTA_MAX).
+    score: 1 победа / 0.5 ничья / 0 поражение."""
+    expected = _bt_expected(my_rating, opp_rating)
+    delta = round(k * margin * (score - expected))
+    return max(-_BT_RATING_DELTA_MAX, min(_BT_RATING_DELTA_MAX, delta))
+
+
+def _bt_apply_floor(rating: int) -> int:
+    return max(_BT_RATING_FLOOR, rating)
+
+
+def _bt_rank_for(rating: int) -> tuple:
+    """(ключ-ассет, имя) ранга по рейтингу."""
+    key, name = _BT_RANKS[0][1], _BT_RANKS[0][2]
+    for threshold, k, n in _BT_RANKS:
+        if rating >= threshold:
+            key, name = k, n
+        else:
+            break
+    return key, name
+
+
+def _bt_is_calibrating(games_played: int) -> bool:
+    return games_played < _BT_CALIBRATION_GAMES
+
+
+def _bt_public_rank_key(rating, games_played) -> str:
+    """Публичный ключ медали игрока: на калибровке настоящий ранг не палим."""
+    if _bt_is_calibrating(games_played or 0):
+        return "calibration"
+    return _bt_rank_for(rating if rating is not None else _BT_RATING_BASE)[0]
+
+
+# Подбор по рейтингу: окно расширяется по времени ожидания (чем дольше ждёт —
+# тем шире берёт, чтобы никто не застрял в очереди навечно).
+_BT_MATCH_WINDOW_NEAR = 800    # свежий кандидат — только близкий по рейтингу
+_BT_MATCH_WINDOW_MID = 2000    # подождал — окно шире
+_BT_MATCH_WIDEN_1_SEC = 10
+_BT_MATCH_WIDEN_2_SEC = 25
+_BT_MATCH_SCAN_LIMIT = 20      # сколько кандидатов осматриваем за раз
+# Тест-режим (staging): BT_MATCH_ANY=1 полностью выключает окно рейтинга —
+# любые два игрока матчатся сразу. На проде НЕ ставить.
+_BT_MATCH_ANY = os.environ.get("BT_MATCH_ANY", "0") == "1"
+
+
+def _bt_match_window(wait_seconds: float):
+    """Допустимый разрыв рейтинга для игрока, ждущего wait_seconds.
+    None = любой (ждёт давно → берём кого угодно)."""
+    if _BT_MATCH_ANY:
+        return None
+    if wait_seconds < _BT_MATCH_WIDEN_1_SEC:
+        return _BT_MATCH_WINDOW_NEAR
+    if wait_seconds < _BT_MATCH_WIDEN_2_SEC:
+        return _BT_MATCH_WINDOW_MID
+    return None
+
+
+def _bt_player_rating(db: Session, user_id: int) -> int:
+    """Текущий боевой рейтинг игрока (или база, если профиля/значения нет)."""
+    r = (
+        db.query(DBUserProfile.battle_rating)
+        .filter(DBUserProfile.user_id == user_id)
+        .scalar()
+    )
+    return r if r is not None else _BT_RATING_BASE
+
+
+def _bt_apply_ratings(db: Session, battle: DBDraftBattle) -> None:
+    """Пересчёт рейтинга обеих сторон по итогу боя. Пишет снимок в
+    draft_battles.*_rating_before/after, обновляет user_profiles.battle_rating и
+    battle_games_played. Идемпотентно (повторный вызов — no-op).
+
+    Только живые бои: бот (is_bot) и бои без живого гостя рейтинг не трогают.
+    Счёт сторон берётся из battle.winner (победа/ничья), разгром — из result.final
+    (при форфейте final нет → нейтральный множитель). Каждый игрок калибруется
+    независимо: K зависит от ЕГО battle_games_played до этого боя."""
+    if battle.host_rating_after is not None:
+        return   # уже применяли (двойная финализация/форфейт-гонка)
+    if battle.is_bot or battle.guest_id is None:
+        return   # бот/нет живого гостя — рейтинг не меняем
+
+    profiles = {
+        p.user_id: p
+        for p in db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id.in_([battle.host_id, battle.guest_id]))
+        .with_for_update()
+        .all()
+    }
+    host_p = profiles.get(battle.host_id)
+    guest_p = profiles.get(battle.guest_id)
+    if host_p is None or guest_p is None:
+        return   # без обоих профилей рейтинг не считаем (страховка)
+
+    host_r = host_p.battle_rating if host_p.battle_rating is not None else _BT_RATING_BASE
+    guest_r = guest_p.battle_rating if guest_p.battle_rating is not None else _BT_RATING_BASE
+    host_games = host_p.battle_games_played or 0
+    guest_games = guest_p.battle_games_played or 0
+
+    if battle.winner == "host":
+        host_score, guest_score = 1.0, 0.0
+    elif battle.winner == "guest":
+        host_score, guest_score = 0.0, 1.0
+    else:
+        host_score, guest_score = 0.5, 0.5
+
+    final = (battle.result or {}).get("final") or {}
+    host_margin = _bt_margin_mult(final.get("host"), final.get("guest"))
+    guest_margin = _bt_margin_mult(final.get("guest"), final.get("host"))
+
+    host_delta = _bt_rating_delta(host_r, guest_r, host_score,
+                                  _bt_k_factor(host_games), host_margin)
+    guest_delta = _bt_rating_delta(guest_r, host_r, guest_score,
+                                   _bt_k_factor(guest_games), guest_margin)
+
+    host_new = _bt_apply_floor(host_r + host_delta)
+    guest_new = _bt_apply_floor(guest_r + guest_delta)
+
+    battle.host_rating_before, battle.host_rating_after = host_r, host_new
+    battle.guest_rating_before, battle.guest_rating_after = guest_r, guest_new
+    host_p.battle_rating = host_new
+    guest_p.battle_rating = guest_new
+    host_p.battle_games_played = host_games + 1
+    guest_p.battle_games_played = guest_games + 1
+
+
+def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
+    """Обе раскладки готовы (или таймер стадии вышел): счёт через
+    compute_draft_score (этап 0) + позиционный штраф каждой стороне."""
+    host_picks = _bt_picks_of(db, battle, "host")
+    guest_picks = _bt_picks_of(db, battle, "guest")
+
+    host_pos = battle.host_positions or _bt_default_positions(host_picks)
+    guest_pos = battle.guest_positions or _bt_default_positions(guest_picks)
+
+    def _entries(ids, pos_map):
+        return [
+            _BTEntry(hero_id=h, position="pos " + str(pos_map.get(str(h), i + 1)))
+            for i, h in enumerate(ids)
+        ]
+
+    host_res = compute_draft_score(_entries(host_picks, host_pos), _entries(guest_picks, guest_pos))
+    guest_res = compute_draft_score(_entries(guest_picks, guest_pos), _entries(host_picks, host_pos))
+
+    host_pen = _bt_position_penalty(host_pos)
+    guest_pen = _bt_position_penalty(guest_pos)
+    # Мета-компонент (battle-only): метовость пиков на их позициях.
+    host_meta = _bt_meta_score(host_pos)
+    guest_meta = _bt_meta_score(guest_pos)
+    host_final = round(max(0.0, host_res["total_score"] + host_pen + host_meta), 1)
+    guest_final = round(max(0.0, guest_res["total_score"] + guest_pen + guest_meta), 1)
+
+    if host_final > guest_final:
+        battle.winner = "host"
+    elif guest_final > host_final:
+        battle.winner = "guest"
+    else:
+        battle.winner = "draw"
+    battle.result = {
+        "host": host_res,
+        "guest": guest_res,
+        "penalties": {"host": host_pen, "guest": guest_pen},
+        # Метовость (нет у битв до этого деплоя — фронт рендерит строку условно).
+        "meta": {"host": host_meta, "guest": guest_meta},
+        "final": {"host": host_final, "guest": guest_final},
+        # Раскладки вскрываются обоим только здесь, после финала.
+        "positions": {"host": host_pos, "guest": guest_pos},
+    }
+    battle.status = "finished"
+    battle.finished_at = now
+    battle.deadline_at = None
+    battle.turn_started_at = None
+    # Рейтинг — до лога: пишет снимок в *_rating_*, двигает battle_rating
+    # обоих (живой бой; бот — no-op). Идемпотентно по host_rating_after.
+    _bt_apply_ratings(db, battle)
+    # Один раз на битву: финализация ставит status='finished', повторные
+    # _bt_apply_timeouts в эту ветку уже не входят.
+    _bt_log("battle_finish", battle.host_id, battle.guest_id)
+
+
+def _bt_insert_action(
+    db: Session, battle: DBDraftBattle, actor: str, kind: str,
+    hero_id: int, is_auto: bool, now: datetime,
+) -> None:
+    """Один ход: запись в журнал (PK (battle_id, idx) отсекает гонку двойного
+    хода), продвижение указателя, старт следующего хода или финализация."""
+    db.add(DBDraftBattleAction(
+        battle_id=battle.id, idx=battle.turn_index,
+        actor=actor, kind=kind, hero_id=hero_id,
+        is_auto=is_auto, created_at=now,
+    ))
+    battle.turn_index += 1
+    battle.last_action_at = now
+    battle.state_version += 1
+    if battle.turn_index >= len(_BT_SEQUENCES[battle.mode]):
+        # Драфт окончен — НЕ финализируем сразу: стадия расстановки позиций.
+        _bt_start_assign(battle, now)
+    else:
+        _bt_start_turn(battle, now)
+
+
+def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
+    """Авто-ход по таймауту: случайный незанятый герой из мета-пула."""
+    taken = _bt_taken_ids(db, battle.id)
+    pool = list(_BT_META_POOL - taken) or list(_bt_known_heroes() - taken)
+    return random.choice(pool)
+
+
+def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Ленивое исполнение просрочек. Возвращает True, если что-то изменилось.
+
+    drafting: каждый просроченный ход — резерв актора сгорает (дедлайн включал
+    его целиком), авто-ход из мета-пула. Цикл догоняет цепочку просрочек,
+    если оба игрока отсутствовали.
+    waiting/searching: протухание комнаты по TTL.
+    """
+    changed = False
+    if battle.status in ("waiting", "searching"):
+        created = _bt_aware(battle.created_at)
+        if created and now - created > _tm_timedelta(minutes=_BT_WAITING_TTL_MIN):
+            battle.status = "abandoned"
+            battle.state_version += 1
+            changed = True
+        return changed
+
+    # Стадия расстановки: общий таймер вышел → не успевшие получают раскладку
+    # «в порядке пика», финализируем.
+    if battle.status == "assigning":
+        if battle.deadline_at is not None and now >= _bt_aware(battle.deadline_at):
+            _bt_finalize(db, battle, now)
+            battle.state_version += 1
+            changed = True
+        return changed
+
+    while (
+        battle.status == "drafting"
+        and battle.deadline_at is not None
+        and now >= _bt_aware(battle.deadline_at)
+    ):
+        actor = _bt_actor_of(battle, battle.turn_index)
+        kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
+        _bt_set_reserve(battle, actor, 0)
+        hero_id = _bt_auto_hero(db, battle)
+        # Ход стартует от момента истёкшего дедлайна, не от now: при догоне
+        # цепочки каждый следующий авто-ход отсчитывается честно.
+        moment = _bt_aware(battle.deadline_at)
+        _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+        changed = True
+
+    # Авто-цепочка могла довести до стадии расстановки, чей дедлайн тоже уже
+    # в прошлом (оба игрока отсутствовали) — дожимаем финализацию сразу.
+    if (
+        battle.status == "assigning"
+        and battle.deadline_at is not None
+        and now >= _bt_aware(battle.deadline_at)
+    ):
+        _bt_finalize(db, battle, now)
+        battle.state_version += 1
+        changed = True
+    return changed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Бот-соперник (подсаживается, когда живой не нашёлся за таймаут поиска).
+#
+#  Намеренно НЕ оптимальный: знает все числа из hero_matchups.json, но играет
+#  «средне» — из подходящих по позиции кандидатов берёт не топ, а середину
+#  (см. _BT_BOT_SKILL_*). Иначе обыграть бота невозможно и нет азарта. При этом
+#  позиционно грамотен — пикает героев на их реальные позиции (не ловит штраф).
+#  Роль бота всегда 'guest' (host = инициатор поиска, человек). Ходит лениво
+#  на сервере: при чтении/поллинге, отстояв «думалку» _bt_think_ms.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BT_BOT_FALLBACK_SEC = 40        # сколько ищем живого, прежде чем подсадить бота
+_BT_BOT_THINK_MIN_MS = 1200      # «думалка» бота на ход — нижняя граница
+_BT_BOT_THINK_MAX_MS = 2800      # верхняя граница (детерминир. по ходу)
+# Притупление: из кандидатов, отсортированных по силе убыв., бот берёт срез
+# [SKILL_LO, SKILL_HI] перцентиля — т.е. крепкую середину, а не лучшее.
+_BT_BOT_SKILL_LO = 0.30
+_BT_BOT_SKILL_HI = 0.70
+# Позиционная логика: кандидат на позицию — герой, играющий там не реже этого
+# (та же планка, что soft-порог позиционного штрафа → бот штраф не ловит).
+_BT_BOT_POS_MIN_SHARE = 0.15
+# Порядок, в котором бот закрывает позиции (кор-роли раньше — их важнее
+# застолбить, пока пул не разобран).
+_BT_BOT_POS_ORDER = (2, 1, 3, 4, 5)
+
+_bt_bot_pos_pool_cache: "dict[int, list[int]] | None" = None
+
+
+def _bt_bot_pos_pool() -> dict:
+    """{pos: [hero_id, ...]} — кто играбелен на позиции (share >= порога).
+    Только известные герои (есть в hero_matchups.json → есть чем скорить)."""
+    global _bt_bot_pos_pool_cache
+    if _bt_bot_pos_pool_cache is not None:
+        return _bt_bot_pos_pool_cache
+    shares = _bt_pos_shares()
+    known = _bt_known_heroes()
+    out: dict[int, list[int]] = {p: [] for p in (1, 2, 3, 4, 5)}
+    for hid, per_pos in shares.items():
+        if hid not in known:
+            continue
+        for pos, share in per_pos.items():
+            if share >= _BT_BOT_POS_MIN_SHARE:
+                out[pos].append(hid)
+    # Фолбэк для пустой позиции (нет данных) — мета-пул.
+    for pos in out:
+        if not out[pos]:
+            out[pos] = [h for h in _BT_META_POOL if h in known] or list(known)
+    _bt_bot_pos_pool_cache = out
+    return out
+
+
+def _bt_pair_val(matchups: dict, mapkey: str, a: int, b: int) -> float:
+    return float((matchups.get(str(a)) or {}).get(mapkey, {})
+                 .get(str(b), {}).get("synergy", 0.0))
+
+
+def _bt_bot_cand_value(matchups: dict, cand: int,
+                       ally: list, enemy: list) -> float:
+    """Ценность кандидата для бота: синергия с союзниками (симметризовано) +
+    матчап против врагов (антисимметрично) — та же арифметика, что
+    compute_draft_score, но инкрементально по уже сделанным пикам."""
+    val = 0.0
+    for a in ally:
+        val += (_bt_pair_val(matchups, "with", cand, a)
+                + _bt_pair_val(matchups, "with", a, cand)) / 2
+    for e in enemy:
+        val += (_bt_pair_val(matchups, "vs", cand, e)
+                - _bt_pair_val(matchups, "vs", e, cand)) / 2
+    return val
+
+
+def _bt_bot_picks_so_far(db: Session, battle: DBDraftBattle):
+    """(ally=пики бота, enemy=пики человека, taken=все занятые id, bot_positions)."""
+    actions = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .all()
+    )
+    taken = {a.hero_id for a in actions}
+    ally = [a.hero_id for a in actions if a.kind == "pick" and a.actor == "guest"]
+    enemy = [a.hero_id for a in actions if a.kind == "pick" and a.actor == "host"]
+    return ally, enemy, taken
+
+
+def _bt_bot_choose_pick(db: Session, battle: DBDraftBattle) -> tuple:
+    """Возвращает (hero_id, pos): притуплённый выбор героя на ещё не закрытую
+    ботом позицию. Бот = guest, его позиции копятся в guest_positions."""
+    matchups = _load_hero_matchups_file() or {}
+    ally, enemy, taken = _bt_bot_picks_so_far(db, battle)
+    bot_pos = battle.guest_positions or {}
+    used_positions = set(int(p) for p in bot_pos.values())
+
+    pos_pool = _bt_bot_pos_pool()
+    target_pos = next((p for p in _BT_BOT_POS_ORDER if p not in used_positions),
+                      None)
+    if target_pos is None:   # все 5 заняты (не должно случиться) — любой свободный
+        target_pos = 1
+
+    cands = [h for h in pos_pool.get(target_pos, []) if h not in taken]
+    if not cands:   # позиция вычерпана банами — берём любого свободного известного
+        cands = [h for h in _bt_known_heroes() if h not in taken]
+    if not cands:
+        cands = [h for h in _BT_META_POOL if h not in taken] or [next(iter(_bt_known_heroes()))]
+
+    # Сортируем по ценности убыв. и берём из СРЕДНЕГО среза (притупление).
+    scored = sorted(cands, key=lambda h: _bt_bot_cand_value(matchups, h, ally, enemy),
+                    reverse=True)
+    n = len(scored)
+    lo = int(n * _BT_BOT_SKILL_LO)
+    hi = max(lo + 1, int(n * _BT_BOT_SKILL_HI))
+    mid_slice = scored[lo:hi] or scored
+    return random.choice(mid_slice), target_pos
+
+
+def _bt_bot_choose_ban(db: Session, battle: DBDraftBattle) -> int:
+    """Бан бота — простой: случайный незанятый из мета-пула (бан-фаза слабо
+    влияет на счёт, переусложнять незачем)."""
+    _ally, _enemy, taken = _bt_bot_picks_so_far(db, battle)
+    pool = [h for h in _BT_META_POOL if h not in taken] or \
+           [h for h in _bt_known_heroes() if h not in taken]
+    return random.choice(pool) if pool else next(iter(_bt_known_heroes()))
+
+
+def _bt_think_ms(battle: DBDraftBattle, idx: int) -> int:
+    """Детерминированная «думалка» бота на ход idx (стабильна между чтениями,
+    иначе момент хода прыгал бы)."""
+    h = (int(battle.id) * 131 + idx * 977) % 1000
+    span = _BT_BOT_THINK_MAX_MS - _BT_BOT_THINK_MIN_MS
+    return _BT_BOT_THINK_MIN_MS + h * span // 1000
+
+
+def _bt_bot_due(battle: DBDraftBattle, now: datetime):
+    """Если сейчас ход бота и он «надумал» — момент, когда ход должен исполниться
+    (turn_started + думалка). Иначе None. Второй элемент — сколько ещё ждать (с)."""
+    if not battle.is_bot or battle.status != "drafting":
+        return None, None
+    seq = _BT_SEQUENCES[battle.mode]
+    if battle.turn_index >= len(seq):
+        return None, None
+    if _bt_actor_of(battle, battle.turn_index) != "guest":
+        return None, None
+    started = _bt_aware(battle.turn_started_at)
+    if started is None:
+        return None, None
+    think = _bt_think_ms(battle, battle.turn_index)
+    due_at = started + _tm_timedelta(milliseconds=think)
+    if now >= due_at:
+        return due_at, 0.0
+    return None, (due_at - now).total_seconds()
+
+
+def _bt_apply_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Лениво исполняет «надуманные» ходы бота (pick/ban). True, если сходил."""
+    if not battle.is_bot:
+        return False
+    changed = False
+    seq = _BT_SEQUENCES[battle.mode]
+    while (
+        battle.status == "drafting"
+        and battle.turn_index < len(seq)
+        and _bt_actor_of(battle, battle.turn_index) == "guest"
+    ):
+        due_at, _wait = _bt_bot_due(battle, now)
+        if due_at is None:
+            break   # бот ещё думает
+        kind = seq[battle.turn_index][1]
+        if kind == "pick":
+            hero_id, pos = _bt_bot_choose_pick(db, battle)
+        else:
+            hero_id, pos = _bt_bot_choose_ban(db, battle), None
+        try:
+            # Ход стартует от момента «надумывания», не от now — честный отсчёт
+            # при догоне цепочки ходов бота (напр. SS подряд).
+            _bt_insert_action(db, battle, "guest", kind, hero_id, False, due_at)
+        except IntegrityError:
+            # Другой воркер уже сходил за бота на этот idx — откатываемся.
+            db.rollback()
+            return changed
+        if kind == "pick":
+            gp = dict(battle.guest_positions or {})
+            gp[str(hero_id)] = pos
+            battle.guest_positions = gp   # реассайн → SQLAlchemy увидит JSON-change
+        changed = True
+    return changed
+
+
+def _bt_tick_pending(battle: DBDraftBattle, now: datetime) -> bool:
+    """Чистый предикат: «есть ли что исполнять в _bt_tick?» — зеркалит условия
+    _bt_apply_timeouts + _bt_bot_due БЕЗ побочных эффектов и БЕЗ обращений к БД.
+
+    Используется для double-checked locking в _bt_tick: сначала дешёвая проверка
+    на нелоченном снимке (99% поллов — false, ни одного лока), и повторная —
+    на свежей строке после FOR UPDATE. Пере-срабатывание безвредно (после лока
+    решает настоящая логика), недо-срабатывание опасно (застрявшие таймауты) —
+    поэтому условия тупо повторяют мутирующие ветки, без оптимизаций."""
+    if battle.status in ("waiting", "searching"):
+        created = _bt_aware(battle.created_at)
+        return bool(
+            created and now - created > _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+        )
+    if battle.status in ("drafting", "assigning"):
+        deadline = _bt_aware(battle.deadline_at)
+        if deadline is not None and now >= deadline:
+            return True
+        due_at, _wait = _bt_bot_due(battle, now)
+        return due_at is not None
+    return False
+
+
+def _bt_tick(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Единая «прокрутка» состояния: просрочки таймеров + ходы бота, до
+    фикс-точки. Заменяет прямые вызовы _bt_apply_timeouts в эндпоинтах/поллинге.
+
+    Гонко-безопасность (двойная финализация / lost-update): read-пути
+    (/battle/events, /battle/state, /battle/active) читают битву обычным
+    SELECT'ом. Мутировать на основе такого снимка нельзя — параллельный
+    /battle/positions мог уже финализировать битву, и мы бы перезаписали его
+    результат фолбэк-позициями и наложили второй Elo-сдвиг. Поэтому:
+      1) дешёвый предикат на нелоченном снимке — обычно false, лока нет;
+      2) сработал → db.refresh(with_for_update=True): ре-SELECT строки ПОД
+         ЛОКОМ с перезаписью in-memory состояния (именно refresh — обычный
+         query вернул бы тот же identity-mapped объект со старыми атрибутами);
+      3) повторная проверка предиката на свежей строке — если другой воркер
+         уже всё исполнил (finished), выходим без изменений.
+    Пишущие эндпоинты и так держат FOR UPDATE — для них refresh это повторный
+    SELECT в той же транзакции, дедлока нет."""
+    if not _bt_tick_pending(battle, now):
+        return False
+    db.refresh(battle, with_for_update=True)
+    if not _bt_tick_pending(battle, now):
+        return False
+    changed = False
+    for _ in range(len(_BT_SEQUENCES[battle.mode]) + 2):
+        c1 = _bt_apply_timeouts(db, battle, now)
+        c2 = _bt_apply_bot_moves(db, battle, now)
+        changed = changed or c1 or c2
+        if not (c1 or c2):
+            break
+    return changed
+
+
+def _bt_send_match_push_sync(host_id, guest_id, code: str) -> None:
+    """Тело пуша «соперник найден» (sync httpx, до ~8с на два Telegram-вызова).
+    Выполняется ТОЛЬКО в отдельном daemon-потоке — см. _bt_send_match_push."""
+    if not BOT_TOKEN:
+        return
+    deep = f"{_TM_MINI_APP_URL}?battle={code}" if _TM_MINI_APP_URL else None
+    payload_base = {
+        "text": "⚔️ Соперник найден! Заходи в «Битву драфтов» — драфт уже идёт.",
+        "disable_web_page_preview": True,
+    }
+    if deep:
+        payload_base["reply_markup"] = {
+            "inline_keyboard": [[{"text": "Открыть битву", "web_app": {"url": deep}}]]
+        }
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    for chat_id in (host_id, guest_id):
+        if chat_id is None:
+            continue
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                client.post(url, json={**payload_base, "chat_id": chat_id})
+        except Exception as e:
+            logger.warning("[battle] match push to %s failed: %s", chat_id, e)
+
+
+def _bt_send_match_push(host_id, guest_id, code: str) -> None:
+    """Пуш «соперник найден» обоим участникам — fire-and-forget daemon-поток.
+
+    Раньше sync httpx выполнялся прямо в вызывающем потоке: из /queue это
+    блокировало воркер Starlette-threadpool'а, а из ленивого матчера
+    (_bt_try_live_match ← _bt_poll_read ← asyncio.to_thread) — процесс-глобальный
+    executor, общий для ВСЕХ to_thread-вызовов приложения. При деградации
+    Telegram API (до ~8с на пару вызовов) это стопорило самый горячий путь
+    (/battle/events). Отдельный короткоживущий поток изолирует пуш полностью;
+    best-effort-семантика не меняется."""
+    threading.Thread(
+        target=_bt_send_match_push_sync,
+        args=(host_id, guest_id, code),
+        daemon=True,
+        name="bt-match-push",
+    ).start()
+
+
+def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
+    """Подсадка бота в зависшую searching-комнату. guest_id остаётся NULL.
+    Стартовый отсчёт — как у живого матча (интерстишл не ест время игрока)."""
+    battle.is_bot = True
+    battle.status = "drafting"
+    battle.first_pick = random.choice(("host", "guest"))
+    battle.turn_index = 0
+    battle.started_at = now
+    battle.last_action_at = now
+    battle.state_version += 1
+    _bt_start_turn(battle, now + _tm_timedelta(milliseconds=_BT_START_COUNTDOWN_MS))
+    _bt_log("battle_start", battle.host_id)
+    _bt_log("battle_vs_bot", battle.host_id)
+
+
+def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime) -> dict:
+    seq = _BT_SEQUENCES[battle.mode]
+    actions = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .order_by(DBDraftBattleAction.idx)
+        .all()
+    )
+
+    ids = [battle.host_id] + ([battle.guest_id] if battle.guest_id else [])
+    settings = _tm_load_user_settings(db, ids)
+    # Ранг-медаль каждого игрока (на калибровке — 'calibration', ранг не палим).
+    rank_rows = {
+        r.user_id: (r.battle_rating, r.battle_games_played)
+        for r in db.query(
+            DBUserProfile.user_id,
+            DBUserProfile.battle_rating,
+            DBUserProfile.battle_games_played,
+        ).filter(DBUserProfile.user_id.in_(ids)).all()
+    }
+
+    def _rank_key_of(uid):
+        rating, games = rank_rows.get(uid, (None, 0))
+        return _bt_public_rank_key(rating, games)
+
+    def _player(uid):
+        if uid is None:
+            return None
+        s = settings.get(uid) or {}
+        return {
+            "user_id": uid,
+            "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
+            "photo_url": s.get("photo_url"),
+            "rank_key": _rank_key_of(uid),
+        }
+
+    # Бот занимает место гостя (guest_id NULL): отдаём его как «игрока-бота».
+    # Медали у бота нет (rank_key None) — фронт её просто не рисует.
+    def _guest_player():
+        if battle.is_bot:
+            return {"user_id": None, "name": "Бот", "photo_url": None,
+                    "is_bot": True, "rank_key": None}
+        return _player(battle.guest_id)
+
+    # Стадия расстановки: общий таймер + кто уже отправил. Раскладка — ТОЛЬКО
+    # своя (приватность до финала).
+    assign = None
+    if battle.status == "assigning":
+        deadline = _bt_aware(battle.deadline_at)
+        remaining = max(0, int((deadline - now).total_seconds() * 1000)) if deadline else 0
+        my_pos = None
+        if viewer_role == "host":
+            my_pos = battle.host_positions
+        elif viewer_role == "guest":
+            my_pos = battle.guest_positions
+        assign = {
+            "remaining_ms": remaining,
+            "you_submitted": bool(my_pos),
+            "opponent_submitted": bool(
+                battle.guest_positions if viewer_role == "host" else battle.host_positions
+            ),
+            "your_positions": my_pos,
+        }
+
+    current = None
+    if battle.status == "drafting" and battle.turn_index < len(seq):
+        actor = _bt_actor_of(battle, battle.turn_index)
+        kind = seq[battle.turn_index][1]
+        base_ms = _bt_base_ms(kind)
+        started = _bt_aware(battle.turn_started_at)
+        deadline = _bt_aware(battle.deadline_at)
+        # Стартовый отсчёт: turn_started_at может быть в будущем (первый ход
+        # после матча). До старта elapsed=0 (время не горит), а в total
+        # отсчёт не включаем — фронт получает «останется на момент старта».
+        starts_in = max(0, int((started - now).total_seconds() * 1000)) if started else 0
+        elapsed_ms = max(0, int((now - started).total_seconds() * 1000)) if started else 0
+        total_remaining = max(0, int((deadline - now).total_seconds() * 1000) - starts_in) if deadline else 0
+        main_remaining = max(0, base_ms - elapsed_ms)
+        # Остаток резерва актора С УЧЁТОМ уже горящего на этом ходе.
+        reserve_now = min(_bt_reserve_ms(battle, actor),
+                          max(0, total_remaining - main_remaining))
+        current = {
+            "actor": actor,
+            "kind": kind,
+            "starts_in_ms": starts_in,
+            "main_remaining_ms": main_remaining,
+            "reserve_remaining_ms": reserve_now,
+            "total_remaining_ms": total_remaining,
+        }
+
+    # Изменение рейтинга «тебя» за этот бой — для «+N» на экране результата.
+    # Только завершённый живой бой со снимком (бот рейтинг не двигает).
+    you_rating = None
+    if (
+        viewer_role in ("host", "guest")
+        and battle.status == "finished"
+        and not battle.is_bot
+    ):
+        before = getattr(battle, viewer_role + "_rating_before")
+        after = getattr(battle, viewer_role + "_rating_after")
+        if after is not None and before is not None:
+            rk_key, rk_name = _bt_rank_for(after)
+            you_rating = {
+                "before": before,
+                "after": after,
+                "delta": after - before,
+                "rank_key": rk_key,
+                "rank_name": rk_name,
+            }
+
+    return {
+        "version": battle.state_version,
+        "code": battle.code,
+        "mode": battle.mode,
+        "status": battle.status,
+        "you": viewer_role,
+        "vs_bot": bool(battle.is_bot),
+        "first_pick": battle.first_pick,
+        "host": _player(battle.host_id),
+        "guest": _guest_player(),
+        "reserves": {
+            "host_ms": battle.host_reserve_ms,
+            "guest_ms": battle.guest_reserve_ms,
+        },
+        "turn_index": battle.turn_index,
+        "sequence": [{"actor_rel": a, "kind": k} for a, k in seq],
+        "current": current,
+        "assign": assign,
+        "actions": [
+            {"idx": a.idx, "actor": a.actor, "kind": a.kind,
+             "hero_id": a.hero_id, "is_auto": bool(a.is_auto)}
+            for a in actions
+        ],
+        "winner": battle.winner,
+        "result": battle.result,
+        "rating": you_rating,
+    }
+
+
+def _bt_get_battle(db: Session, code: str, for_update: bool = False) -> DBDraftBattle:
+    q = db.query(DBDraftBattle).filter(DBDraftBattle.code == code.strip().upper())
+    if for_update:
+        q = q.with_for_update()
+    battle = q.first()
+    if battle is None:
+        raise HTTPException(status_code=404, detail="battle not found")
+    return battle
+
+
+def _bt_active_battle(db: Session, user_id: int):
+    return (
+        db.query(DBDraftBattle)
+        .filter(
+            (DBDraftBattle.host_id == user_id) | (DBDraftBattle.guest_id == user_id)
+        )
+        .filter(DBDraftBattle.status.in_(_BT_ACTIVE_STATUSES))
+        .order_by(DBDraftBattle.id.desc())
+        .first()
+    )
+
+
+def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> None:
+    """Гость закреплён — жеребьёвка и первый ход (со стартовым отсчётом).
+
+    Таймер первого хода стартует через _BT_START_COUNTDOWN_MS, а не сразу:
+    матч исполняет ОДИН из игроков, второй узнаёт о нём своим поллом + оба
+    смотрят интерстишл «Соперник найден» — без отсчёта эти секунды сгорали у
+    первого пикера ещё до того, как он видел драфт."""
+    battle.guest_id = guest_id
+    battle.status = "drafting"
+    battle.first_pick = random.choice(("host", "guest"))
+    battle.turn_index = 0
+    battle.started_at = now
+    battle.last_action_at = now
+    battle.state_version += 1
+    _bt_start_turn(battle, now + _tm_timedelta(milliseconds=_BT_START_COUNTDOWN_MS))
+    _bt_log("battle_start", battle.host_id, guest_id)
+
+
+# ── Pydantic ────────────────────────────────────────────────────────────────
+
+class BattleStartReq(BaseModel):
+    token: str
+    mode: str = "cm"          # 'cm' (с банами) / 'ap' (без банов)
+
+
+class BattleCodeReq(BaseModel):
+    token: str
+    code: str
+    # 'cancel_search' — отмена с экрана поиска: при гонке с матчером НЕ форфейт
+    # (см. api_battle_leave). Отсутствует = явная сдача/обычный leave.
+    intent: str | None = None
+
+
+class BattleActionReq(BaseModel):
+    token: str
+    code: str
+    hero_id: int
+
+
+# ── Эндпоинты ───────────────────────────────────────────────────────────────
+
+_bt_online_cache = {"n": 0, "at": 0.0}
+_BT_ONLINE_TTL = 8.0   # счётчику онлайна секундная свежесть не нужна
+
+
+@app.get("/api/battle/online")
+def api_battle_online(token: str, db: Session = Depends(get_db)):
+    """Сколько человек сейчас «в Битве драфтов»: участники активных битв —
+    ищущие соперника (searching/waiting) + играющие (drafting/assigning).
+
+    Кеш в памяти процесса на _BT_ONLINE_TTL: счётчик дёргается поллингом с
+    экранов меню/поиска, точность до пары секунд не нужна. Расхождение между
+    4 воркерами безвредно (число приблизительное). Считается честно — без
+    накрутки: один человек = одна активная битва (инвариант), UNION дедупит."""
+    _tm_require_user(token=token)
+    now = time.time()
+    if now - _bt_online_cache["at"] < _BT_ONLINE_TTL:
+        return {"online": _bt_online_cache["n"]}
+    row = db.execute(text(
+        """
+        SELECT COUNT(*) FROM (
+            SELECT host_id AS uid FROM draft_battles
+                WHERE status IN ('searching', 'waiting', 'drafting', 'assigning')
+            UNION
+            SELECT guest_id AS uid FROM draft_battles
+                WHERE status IN ('drafting', 'assigning') AND guest_id IS NOT NULL
+        ) t
+        """
+    )).fetchone()
+    n = int(row[0]) if row else 0
+    _bt_online_cache["n"] = n
+    _bt_online_cache["at"] = now
+    return {"online": n}
+
+
+@app.get("/api/battle/active")
+def api_battle_active(token: str, db: Session = Depends(get_db)):
+    """Активная битва юзера (для resume при входе в раздел) или null."""
+    uid = _tm_require_user(token=token)
+    battle = _bt_active_battle(db, uid)
+    if battle is None:
+        return {"code": None}
+    now = _bt_now()
+    if _bt_tick(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+        if battle.status not in _BT_ACTIVE_STATUSES:
+            return {"code": None}
+    return {"code": battle.code, "status": battle.status, "mode": battle.mode}
+
+
+@app.post("/api/battle/queue")
+def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
+    """Быстрый матч: атомарно забираем чужую searching-комнату того же режима
+    или встаём в очередь своей. Гонка двух воркеров решается row-lock'ом
+    (FOR UPDATE SKIP LOCKED на PG; dev-SQLite однопроцессный)."""
+    uid = _tm_require_user(token=data.token)
+    if data.mode not in _BT_MODES:
+        raise HTTPException(status_code=422, detail="invalid mode")
+
+    existing = _bt_active_battle(db, uid)
+    if existing is not None:
+        return {
+            "code": existing.code,
+            "status": existing.status,
+            "matched": existing.status == "drafting",
+        }
+
+    # Намерение играть (existing уже отсеян выше — это не resume).
+    _bt_log("battle_queue", uid)
+
+    now = _bt_now()
+    ttl_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+    # Подбор по рейтингу: осматриваем самых давно ждущих первыми (у них окно
+    # шире — расширяется по их времени ожидания), берём первого в допуске.
+    my_rating = _bt_player_rating(db, uid)
+    scan = (
+        db.query(DBDraftBattle)
+        .filter(DBDraftBattle.status == "searching")
+        .filter(DBDraftBattle.mode == data.mode)
+        .filter(DBDraftBattle.host_id != uid)
+        .filter(DBDraftBattle.created_at >= ttl_cutoff)
+        .order_by(DBDraftBattle.created_at)   # дольше всех ждущие — первыми
+        .with_for_update(skip_locked=True)
+        .limit(_BT_MATCH_SCAN_LIMIT)
+        .all()
+    )
+    host_ratings: dict[int, int] = {}
+    if scan:
+        for hid, hr in (
+            db.query(DBUserProfile.user_id, DBUserProfile.battle_rating)
+            .filter(DBUserProfile.user_id.in_([c.host_id for c in scan]))
+            .all()
+        ):
+            host_ratings[hid] = hr if hr is not None else _BT_RATING_BASE
+
+    candidate = None
+    for c in scan:
+        cand_rating = host_ratings.get(c.host_id, _BT_RATING_BASE)
+        created = _bt_aware(c.created_at)
+        wait = (now - created).total_seconds() if created else 0.0
+        window = _bt_match_window(wait)
+        if window is None or abs(my_rating - cand_rating) <= window:
+            candidate = c
+            break
+
+    if candidate is not None:
+        _bt_start_battle(candidate, uid, now)
+        host_id, guest_id, code = candidate.host_id, uid, candidate.code
+        db.commit()
+        _bt_notify(candidate.id)
+        _bt_send_match_push(host_id, guest_id, code)
+        return {"code": code, "status": "drafting", "matched": True}
+
+    battle = DBDraftBattle(
+        code=_bt_new_code(db), mode=data.mode, status="searching",
+        host_id=uid, host_reserve_ms=_BT_RESERVE_MS, guest_reserve_ms=_BT_RESERVE_MS,
+        created_at=now,
+    )
+    db.add(battle)
+    db.commit()
+    return {"code": battle.code, "status": "searching", "matched": False}
+
+
+@app.post("/api/battle/join")
+def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
+    """Вход по коду — теперь только RESUME уже своей битвы.
+
+    Приватные комнаты (создать код → отдать другу) убраны: единственный путь к
+    сопернику — быстрый поиск (/battle/queue). Сюда попадают лишь по deep-link
+    `?battle=КОД` из пуша «соперник найден» — игрок к этому моменту уже
+    участник пары (queue проставил host/guest), так что это resume, не claim.
+    Чужой код (не участник) → 409: присоединиться к чужой битве больше нельзя."""
+    uid = _tm_require_user(token=data.token)
+    code = (data.code or "").strip().upper()
+    battle = _bt_get_battle(db, code)
+
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Войти можно только через быстрый поиск соперника.",
+        )
+    return {"code": battle.code, "status": battle.status, "you": role}
+
+
+@app.get("/api/battle/history")
+def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db)):
+    """Последние завершённые битвы игрока — лента истории на экране меню.
+
+    Отдаёт компактную строку на битву (исход, счёт, соперник, дата + снимок
+    рейтинга — пока NULL, задел под этап рейтинга). Полный разбор открывается
+    тапом по строке: фронт переоткрывает результат через /battle/state по code.
+    Бот-битвы включены (на холодном старте это большинство партий) с пометкой."""
+    uid = _tm_require_user(token=token)
+    limit = max(1, min(int(limit), 50))
+
+    rows = (
+        db.query(DBDraftBattle)
+        .filter(DBDraftBattle.status == "finished")
+        .filter((DBDraftBattle.host_id == uid) | (DBDraftBattle.guest_id == uid))
+        .order_by(DBDraftBattle.finished_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Резолвим имена/аватары/ранги живых соперников батчем.
+    opp_ids = []
+    for b in rows:
+        opp_id = b.guest_id if b.host_id == uid else b.host_id
+        if opp_id:
+            opp_ids.append(opp_id)
+    settings = _tm_load_user_settings(db, opp_ids) if opp_ids else {}
+    opp_ranks: dict[int, str] = {}
+    if opp_ids:
+        for r_uid, r_rating, r_games in (
+            db.query(
+                DBUserProfile.user_id,
+                DBUserProfile.battle_rating,
+                DBUserProfile.battle_games_played,
+            ).filter(DBUserProfile.user_id.in_(opp_ids)).all()
+        ):
+            opp_ranks[r_uid] = _bt_public_rank_key(r_rating, r_games)
+
+    out = []
+    for b in rows:
+        my_role = "host" if b.host_id == uid else "guest"
+        opp_role = "guest" if my_role == "host" else "host"
+        vs_bot = bool(b.is_bot and opp_role == "guest")
+
+        if vs_bot:
+            opponent = {"name": "Бот", "photo_url": None, "is_bot": True,
+                        "rank_key": None}
+        else:
+            opp_id = b.guest_id if my_role == "host" else b.host_id
+            s = settings.get(opp_id) or {}
+            opponent = {
+                "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
+                "photo_url": s.get("photo_url"),
+                "is_bot": False,
+                "rank_key": opp_ranks.get(opp_id),
+            }
+
+        res = b.result or {}
+        final = res.get("final") or {}
+        forfeit_role = res.get("forfeit")  # роль сдавшегося, если форфейт
+
+        if b.winner == "draw":
+            outcome = "draw"
+        elif b.winner == my_role:
+            outcome = "win"
+        elif b.winner in ("host", "guest"):
+            outcome = "loss"
+        else:
+            outcome = "draw"
+
+        out.append({
+            "code": b.code,
+            "mode": b.mode,
+            "finished_at": b.finished_at.isoformat() if b.finished_at else None,
+            "opponent": opponent,
+            "vs_bot": vs_bot,
+            "outcome": outcome,
+            "forfeit": forfeit_role is not None,
+            "your_score": final.get(my_role),
+            "opp_score": final.get(opp_role),
+            "rating_before": getattr(b, f"{my_role}_rating_before", None),
+            "rating_after": getattr(b, f"{my_role}_rating_after", None),
+        })
+
+    return {"battles": out}
+
+
+@app.get("/api/battle/profile")
+def api_battle_profile(token: str, db: Session = Depends(get_db)):
+    """Рейтинговый профиль игрока для меню битвы: текущий рейтинг, ранг и
+    состояние калибровки. На калибровке ранг отдаём как «Калибровка» (отдельный
+    бейдж, не Пешка) — фронт решает, показывать ли число."""
+    uid = _tm_require_user(token=token)
+    p = (
+        db.query(DBUserProfile.battle_rating, DBUserProfile.battle_games_played)
+        .filter(DBUserProfile.user_id == uid)
+        .first()
+    )
+    rating = (p.battle_rating if p and p.battle_rating is not None else _BT_RATING_BASE)
+    games = (p.battle_games_played if p and p.battle_games_played is not None else 0)
+    calibrating = _bt_is_calibrating(games)
+    key, name = _bt_rank_for(rating)
+
+    next_rank_at = None
+    for threshold, _k, _n in _BT_RANKS:
+        if threshold > rating:
+            next_rank_at = threshold
+            break
+
+    return {
+        "rating": rating,
+        "rank_key": "calibration" if calibrating else key,
+        "rank_name": "Калибровка" if calibrating else name,
+        "calibrating": calibrating,
+        "games_played": games,
+        "calibration_total": _BT_CALIBRATION_GAMES,
+        "next_rank_at": next_rank_at,
+    }
+
+
+@app.get("/api/battle/leaderboard")
+def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
+    """Топ-25 по MMR битвы среди откалибровавшихся (games >= калибровки),
+    забаненные исключены. you — место вызывающего среди established (на
+    калибровке места нет — фронт показывает прогресс вместо позиции)."""
+    uid = _tm_require_user(token=token)
+    banned = set(get_banned_user_ids())
+
+    rows = (
+        db.query(
+            DBUserProfile.user_id,
+            DBUserProfile.battle_rating,
+            DBUserProfile.battle_games_played,
+            DBUserProfile.settings,
+        )
+        .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
+        .order_by(DBUserProfile.battle_rating.desc(), DBUserProfile.user_id)
+        .limit(200)
+        .all()
+    )
+    rows = [r for r in rows if r.user_id not in banned]
+
+    top = []
+    for r in rows[:25]:
+        s = r.settings or {}
+        rating = r.battle_rating if r.battle_rating is not None else _BT_RATING_BASE
+        top.append({
+            "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
+            "photo_url": s.get("photo_url"),
+            "rank_key": _bt_public_rank_key(rating, r.battle_games_played),
+            "rating": rating,
+            "you": r.user_id == uid,
+        })
+
+    me = (
+        db.query(DBUserProfile.battle_rating, DBUserProfile.battle_games_played)
+        .filter(DBUserProfile.user_id == uid)
+        .first()
+    )
+    my_rating = (me.battle_rating if me and me.battle_rating is not None else _BT_RATING_BASE)
+    my_games = (me.battle_games_played if me and me.battle_games_played is not None else 0)
+    you = {
+        "rating": my_rating,
+        "rank_key": _bt_public_rank_key(my_rating, my_games),
+        "calibrating": _bt_is_calibrating(my_games),
+        "games_played": my_games,
+        "calibration_total": _BT_CALIBRATION_GAMES,
+        "rank": None,
+    }
+    if not you["calibrating"] and uid not in banned:
+        # Место = сколько established строго выше + 1 (среди незабаненных).
+        higher = (
+            db.query(DBUserProfile.user_id, DBUserProfile.battle_rating)
+            .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
+            .filter(DBUserProfile.battle_rating > my_rating)
+            .all()
+        )
+        you["rank"] = sum(1 for h in higher if h.user_id not in banned) + 1
+
+    return {"top": top, "you": you, "total": len(rows)}
+
+
+@app.post("/api/battle/action")
+def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
+    """Ход (пик или бан — тип диктует последовательность)."""
+    uid = _tm_require_user(token=data.token)
+    battle = _bt_get_battle(db, data.code, for_update=True)
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(status_code=403, detail="not a participant")
+
+    now = _bt_now()
+    if _bt_tick(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+        # Состояние ушло — клиент перечитает; его клик уже неактуален.
+        raise HTTPException(status_code=409, detail="Ход истёк по таймеру.")
+
+    if battle.status != "drafting":
+        raise HTTPException(status_code=409, detail="Битва не в фазе драфта.")
+    if _bt_actor_of(battle, battle.turn_index) != role:
+        raise HTTPException(status_code=409, detail="Сейчас ход соперника.")
+    if data.hero_id not in _bt_known_heroes():
+        raise HTTPException(status_code=422, detail="unknown hero_id")
+    if data.hero_id in _bt_taken_ids(db, battle.id):
+        raise HTTPException(status_code=409, detail="Этот герой уже занят.")
+
+    kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
+    # Списание резерва: всё, что сверх базового времени хода.
+    started = _bt_aware(battle.turn_started_at)
+    if started is not None:
+        overflow_ms = int((now - started).total_seconds() * 1000) - _bt_base_ms(kind)
+        if overflow_ms > 0:
+            _bt_set_reserve(battle, role, _bt_reserve_ms(battle, role) - overflow_ms)
+
+    _bt_insert_action(db, battle, role, kind, data.hero_id, False, now)
+    db.commit()
+    _bt_notify(battle.id)
+    return _bt_serialize(db, battle, role, now)
+
+
+class BattlePositionsReq(BaseModel):
+    token: str
+    code: str
+    positions: dict[str, int]   # {hero_id(str): pos(1..5)}
+
+
+@app.post("/api/battle/positions")
+def api_battle_positions(data: BattlePositionsReq, db: Session = Depends(get_db)):
+    """Стадия расстановки: игрок отправляет раскладку СВОИХ пиков по позициям.
+
+    Перезапись разрешена, пока стадия не закрыта. Обе раскладки на месте →
+    немедленная финализация (не ждём таймер). Раскладка валидируется жёстко:
+    ровно свои 5 героев, позиции 1-5 без повторов."""
+    uid = _tm_require_user(token=data.token)
+    battle = _bt_get_battle(db, data.code, for_update=True)
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(status_code=403, detail="not a participant")
+
+    now = _bt_now()
+    if _bt_tick(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+        raise HTTPException(status_code=409, detail="Время расстановки вышло.")
+    if battle.status != "assigning":
+        raise HTTPException(status_code=409, detail="Сейчас не стадия расстановки.")
+
+    my_picks = _bt_picks_of(db, battle, role)
+    try:
+        pos_map = {str(int(k)): int(v) for k, v in (data.positions or {}).items()}
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="bad positions payload")
+    if set(pos_map.keys()) != {str(h) for h in my_picks}:
+        raise HTTPException(status_code=422, detail="positions must cover exactly your picks")
+    if sorted(pos_map.values()) != list(range(1, len(my_picks) + 1)):
+        raise HTTPException(status_code=422, detail="each position 1..5 must be used exactly once")
+
+    if role == "host":
+        battle.host_positions = pos_map
+    else:
+        battle.guest_positions = pos_map
+    battle.state_version += 1
+    battle.last_action_at = now
+
+    if battle.host_positions and battle.guest_positions:
+        _bt_finalize(db, battle, now)
+
+    db.commit()
+    _bt_notify(battle.id)
+    return _bt_serialize(db, battle, role, now)
+
+
+@app.post("/api/battle/leave")
+def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
+    """waiting/searching → отмена; drafting → форфейт (победа соперника).
+
+    intent='cancel_search' (кнопка «Отменить» экрана поиска): если к моменту
+    захвата лока комнату УЖЕ сматчили (другой воркер успел первым — /queue или
+    ленивый матчер), отмена НЕ превращается в форфейт со штрафом рейтинга —
+    возвращаем «матч начался», фронт входит в бой. Форфейт — только явная
+    сдача из драфта (кнопка-флаг с confirm, intent отсутствует)."""
+    uid = _tm_require_user(token=data.token)
+    battle = _bt_get_battle(db, data.code, for_update=True)
+    role = _bt_role(battle, uid)
+    if role is None:
+        raise HTTPException(status_code=403, detail="not a participant")
+
+    if battle.status in ("waiting", "searching"):
+        battle.status = "abandoned"
+        battle.state_version += 1
+        db.commit()
+        _bt_notify(battle.id)
+        return {"ok": True, "status": "abandoned"}
+
+    if data.intent == "cancel_search" and battle.status in ("drafting", "assigning"):
+        db.commit()   # отпустить лок; битву не трогаем
+        return {"ok": False, "status": battle.status, "matched": True}
+
+    if battle.status in ("drafting", "assigning"):
+        battle.status = "finished"
+        battle.winner = "guest" if role == "host" else "host"
+        battle.result = {"forfeit": role}
+        battle.finished_at = _bt_now()
+        battle.deadline_at = None
+        # Форфейт штрафует рейтингом так же, как обычное поражение (без счёта →
+        # нейтральный множитель за разгром). Иначе рейтинг можно «сберечь» сдачей.
+        _bt_apply_ratings(db, battle)
+        battle.state_version += 1
+        db.commit()
+        _bt_notify(battle.id)
+        _bt_log("battle_forfeit", uid)   # отвал из воронки (сдался посреди боя)
+        return {"ok": True, "status": "finished", "winner": battle.winner}
+
+    return {"ok": True, "status": battle.status}
+
+
+@app.get("/api/battle/state")
+def api_battle_state(token: str, code: str, db: Session = Depends(get_db)):
+    """Разовое чтение состояния (вход на экран / резюм после сна WebView)."""
+    uid = _tm_require_user(token=token)
+    battle = _bt_get_battle(db, code)
+    now = _bt_now()
+    if _bt_tick(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+    return _bt_serialize(db, battle, _bt_role(battle, uid), now)
+
+
+def _bt_try_live_match(db: Session, code: str, now: datetime) -> bool:
+    """Ленивый матчер из long-poll'а searching-комнаты.
+
+    Без него два игрока, вставшие в очередь в РАЗНОЕ время, могли не сматчиться
+    никогда: подбор происходил только в момент POST /queue, и если кандидат не
+    прошёл по окну рейтинга — второй создавал свою комнату, обе просто поллились
+    (окно «расширялось» без исполнителя), и через 40с оба получали ботов.
+
+    Окно — по МАКСИМАЛЬНОМУ ожиданию из двух комнат: раз обе ждут, самая
+    терпеливая расширяет допуск за обоих. Боевой становится ПОЛЛЯЩАЯСЯ комната
+    (её хост увидит драфт этим же поллом); комната кандидата помечается
+    abandoned с result={'moved_to': code} — его фронт сам перепрыгнет.
+
+    Гонки: своя комната FOR UPDATE, кандидаты FOR UPDATE SKIP LOCKED (встречный
+    воркер просто пропустит уже залоченную строку — дедлока нет; /queue и /leave
+    лочат те же строки). Возвращает True, если матч состоялся."""
+    mine = _bt_get_battle(db, code, for_update=True)
+    if mine.status != "searching" or mine.is_bot:
+        db.commit()   # отпустить лок
+        return False
+    my_created = _bt_aware(mine.created_at)
+    my_wait = (now - my_created).total_seconds() if my_created else 0.0
+    my_rating = _bt_player_rating(db, mine.host_id)
+    ttl_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+
+    cands = (
+        db.query(DBDraftBattle)
+        .filter(DBDraftBattle.status == "searching")
+        .filter(DBDraftBattle.mode == mine.mode)
+        .filter(DBDraftBattle.id != mine.id)
+        .filter(DBDraftBattle.host_id != mine.host_id)
+        .filter(DBDraftBattle.created_at >= ttl_cutoff)
+        .order_by(DBDraftBattle.created_at)
+        .with_for_update(skip_locked=True)
+        .limit(_BT_MATCH_SCAN_LIMIT)
+        .all()
+    )
+    if not cands:
+        db.commit()
+        return False
+    ratings: dict[int, int] = {}
+    for hid, hr in (
+        db.query(DBUserProfile.user_id, DBUserProfile.battle_rating)
+        .filter(DBUserProfile.user_id.in_([c.host_id for c in cands]))
+        .all()
+    ):
+        ratings[hid] = hr if hr is not None else _BT_RATING_BASE
+
+    for c in cands:
+        c_created = _bt_aware(c.created_at)
+        c_wait = (now - c_created).total_seconds() if c_created else 0.0
+        window = _bt_match_window(max(my_wait, c_wait))
+        cand_rating = ratings.get(c.host_id, _BT_RATING_BASE)
+        if window is not None and abs(my_rating - cand_rating) > window:
+            continue
+        _bt_start_battle(mine, c.host_id, now)
+        c.status = "abandoned"
+        c.result = {"moved_to": mine.code}
+        c.state_version += 1
+        host_id, guest_id, bcode = mine.host_id, c.host_id, mine.code
+        mine_id, cand_id = mine.id, c.id
+        db.commit()
+        _bt_notify(mine_id)
+        _bt_notify(cand_id)
+        _bt_send_match_push(host_id, guest_id, bcode)
+        return True
+
+    db.commit()   # никого в допуске — отпустить локи
+    return False
+
+
+def _bt_poll_read(code: str, user_id: int, since: int):
+    """Один шаг long-poll'а (выполняется в threadpool): применить ленивые
+    таймауты, отдать состояние если version > since, иначе (battle_id, сколько
+    секунд можно спать до ближайшего дедлайна)."""
+    with SessionLocal() as db:
+        battle = _bt_get_battle(db, code)
+        now = _bt_now()
+        # Ленивый live-матч: пока комната ждёт в searching, каждый полл пробует
+        # спарить её с другой ждущей (окно по max-ожиданию). Живой соперник
+        # всегда в приоритете над бот-фоллбэком ниже.
+        if battle.status == "searching" and not battle.is_bot:
+            if _bt_try_live_match(db, code, now):
+                battle = _bt_get_battle(db, code)
+        # Бот-фолбэк: searching висит дольше таймаута и юзер всё ещё ждёт (раз
+        # поллит) → подсаживаем бота. Перечитываем с FOR UPDATE и перепроверяем
+        # статус — живой соперник мог занять комнату параллельно (тогда no-op).
+        if (
+            battle.status == "searching"
+            and not battle.is_bot
+            and battle.created_at is not None
+            and (now - _bt_aware(battle.created_at)).total_seconds() >= _BT_BOT_FALLBACK_SEC
+        ):
+            locked = _bt_get_battle(db, code, for_update=True)
+            if locked.status == "searching" and not locked.is_bot:
+                _bt_start_battle_vs_bot(locked, now)
+                db.commit()
+                _bt_notify(locked.id)
+                battle = locked
+        if _bt_tick(db, battle, now):
+            db.commit()
+            _bt_notify(battle.id)
+        if battle.state_version > since:
+            return _bt_serialize(db, battle, _bt_role(battle, user_id), now), battle.id, 0.0
+        wait_s = _BT_MAX_HOLD_SECONDS
+        if battle.status == "drafting" and battle.deadline_at is not None:
+            wait_s = max(0.05, (_bt_aware(battle.deadline_at) - now).total_seconds())
+            # Ход бота: проснуться к моменту, когда он «надумает», чтобы сходить.
+            _due, bot_wait = _bt_bot_due(battle, now)
+            if bot_wait is not None:
+                wait_s = min(wait_s, max(0.05, bot_wait))
+        elif battle.status == "searching" and not battle.is_bot:
+            # Спим не дольше, чем до момента подсадки бота.
+            if battle.created_at is not None:
+                left = _BT_BOT_FALLBACK_SEC - (now - _bt_aware(battle.created_at)).total_seconds()
+                wait_s = min(wait_s, max(0.5, left))
+        return None, battle.id, wait_s
+
+
+@app.get("/api/battle/events")
+async def api_battle_events(token: str, code: str, since: int = 0):
+    """Long polling: висим до изменения состояния (version > since), дедлайна
+    текущего хода или _BT_MAX_HOLD_SECONDS. async def с реальными await —
+    висящие запросы НЕ занимают threadpool; БД — через to_thread."""
+    uid = await asyncio.to_thread(get_user_id_by_token, token)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    deadline = time.monotonic() + _BT_MAX_HOLD_SECONDS
+    while True:
+        payload, battle_id, wait_s = await asyncio.to_thread(_bt_poll_read, code, uid, since)
+        if payload is not None:
+            return payload
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {"changed": False, "version": since}
+        await _bt_wait(battle_id, min(wait_s, remaining))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  «Битва драфтов»: фоновая уборка брошенных битв.
+#
+#  Состояние битвы живёт в БД, просрочки исполняются ЛЕНИВО — любым чтением
+#  (long-poll соперника / заход на экран). Пока хотя бы один игрок поллит, всё
+#  движется само. Но если ОБА ушли, никто не читает → строка застревает:
+#    • searching/waiting — комната-зомби копится в БД;
+#    • drafting/assigning — /battle/active вернёт её юзеру и НЕ пустит в новую.
+#
+#  Раньше sweep жил в teammates_notifier — и на окружениях без этого процесса
+#  (staging) зомби не подметались вовсе. Уборка — часть домена битвы, поэтому
+#  переехала сюда: работает в каждом окружении, где крутится API. При
+#  нескольких uvicorn-воркерах задача запускается в каждом — это безопасно:
+#  идемпотентный bulk-UPDATE по индексированному status, «лишние» воркеры
+#  получают rowcount=0; джиттер разводит их по времени.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _bt_sweep_stale_battles() -> int:
+    """Метит брошенные битвы как 'abandoned'. Возвращает число затронутых строк.
+
+    Bulk-UPDATE без уведомлений: участников уже нет (на то они и брошенные).
+    Редкий завис-поллер сам отвалится по hold-таймауту и перечитает abandoned."""
+    now = _bt_now()
+    waiting_cutoff = now - _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+    dead_cutoff = now - _tm_timedelta(seconds=_BT_DEAD_GRACE_SEC)
+    with SessionLocal() as session:
+        # 1) Комнаты, в которые никто не зашёл.
+        r1 = session.execute(
+            text(
+                """
+                UPDATE draft_battles
+                SET status = 'abandoned', state_version = state_version + 1
+                WHERE status IN ('searching', 'waiting')
+                  AND created_at < :cutoff
+                """
+            ),
+            {"cutoff": waiting_cutoff},
+        )
+        # 2) Битвы, брошенные посреди драфта/расстановки (никто не поллит).
+        r2 = session.execute(
+            text(
+                """
+                UPDATE draft_battles
+                SET status = 'abandoned', state_version = state_version + 1
+                WHERE status IN ('drafting', 'assigning')
+                  AND deadline_at IS NOT NULL
+                  AND deadline_at < :cutoff
+                """
+            ),
+            {"cutoff": dead_cutoff},
+        )
+        session.commit()
+        total = (r1.rowcount or 0) + (r2.rowcount or 0)
+    if total:
+        logger.info("[bt_sweep] swept %d stale battle(s) → abandoned", total)
+    return total
+
+
+# Ретеншен: раз в сутки чистим старьё. abandoned-строки истории не нужны;
+# у finished журнал ходов не нужен (разбор из истории читает result JSON,
+# а не draft_battle_actions — сами finished-строки храним, это история).
+_BT_RETENTION_DAYS = 30
+_BT_RETENTION_INTERVAL_SEC = 24 * 3600.0
+
+
+def _bt_retention_pass() -> None:
+    cutoff = _bt_now() - _tm_timedelta(days=_BT_RETENTION_DAYS)
+    with SessionLocal() as session:
+        r1 = session.execute(
+            text(
+                """
+                DELETE FROM draft_battle_actions
+                WHERE battle_id IN (
+                    SELECT id FROM draft_battles
+                    WHERE status IN ('finished', 'abandoned')
+                      AND created_at < :cutoff
+                )
+                """
+            ),
+            {"cutoff": cutoff},
+        )
+        r2 = session.execute(
+            text(
+                "DELETE FROM draft_battles "
+                "WHERE status = 'abandoned' AND created_at < :cutoff"
+            ),
+            {"cutoff": cutoff},
+        )
+        session.commit()
+        n1, n2 = (r1.rowcount or 0), (r2.rowcount or 0)
+    if n1 or n2:
+        logger.info("[bt_sweep] retention: %d actions, %d abandoned battles purged", n1, n2)
+
+
+async def _bt_sweep_loop() -> None:
+    """Вечный цикл уборки. Ошибка одного прохода не валит цикл."""
+    # Джиттер старта: несколько воркеров не бьют в БД синхронно.
+    await asyncio.sleep(random.uniform(0.0, _BT_SWEEP_INTERVAL_SEC))
+    last_retention = 0.0
+    while True:
+        try:
+            await asyncio.to_thread(_bt_sweep_stale_battles)
+        except Exception as e:
+            logger.warning("[bt_sweep] pass failed: %s", e)
+        if time.monotonic() - last_retention >= _BT_RETENTION_INTERVAL_SEC:
+            last_retention = time.monotonic()
+            try:
+                await asyncio.to_thread(_bt_retention_pass)
+            except Exception as e:
+                logger.warning("[bt_sweep] retention failed: %s", e)
+        await asyncio.sleep(_BT_SWEEP_INTERVAL_SEC)
+
+
+@app.on_event("startup")
+async def _bt_start_sweep_task() -> None:
+    asyncio.create_task(_bt_sweep_loop())

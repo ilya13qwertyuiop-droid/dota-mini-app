@@ -67,6 +67,24 @@ class UserProfile(Base):
     )
     # Opt-in flag for Dota 2 news broadcast (toggled via /news bot command)
     notify_news = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Рейтинг игрока в «Битве драфтов» (Elo, _BT_RATING_BASE). Меняется только
+    # за бои с живым соперником; бот-бои не влияют. Пол — _BT_RATING_FLOOR (0).
+    battle_rating = Column(
+        Integer, nullable=False, default=1000, server_default="1000"
+    )
+    # Сколько ЖИВЫХ боёв завершено (бот-бои не считаются). Первые
+    # _BT_CALIBRATION_GAMES — калибровка (большой K, ранг скрыт). Дешёвое
+    # состояние калибровки без подсчёта строк draft_battles на каждый чих.
+    battle_games_played = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+    __table_args__ = (
+        # Лидерборд битвы: WHERE battle_games_played >= N ORDER BY battle_rating
+        # DESC — без индекса это seq scan+sort по всей user_profiles на каждый
+        # вход в топ (имя = имени в миграции 0022, конвенция 0015/0016).
+        Index("ix_user_profiles_battle_lb", "battle_games_played", "battle_rating"),
+    )
 
     quiz_results = relationship(
         "QuizResult", back_populates="user", cascade="all, delete-orphan"
@@ -656,6 +674,107 @@ class TeammateLobbySlot(Base):
         index=True,
     )
     joined_at = Column(DateTime(timezone=True), nullable=True)
+
+
+# ─── «Битва драфтов» (PvP-драфтер) ────────────────────────────────────────
+
+
+class DraftBattle(Base):
+    """Комната PvP-драфта. Единственный источник истины о состоянии партии —
+    эта строка + журнал ходов draft_battle_actions; воркеры stateless.
+
+    status lifecycle:
+      searching — в очереди быстрого матча (виден матчеру своего mode)
+      waiting   — ЛЕГАСИ: приватная комната по коду (механика убрана; новые
+                  не создаются, ветки чтения/sweep оставлены для старых строк)
+      drafting  — драфт идёт
+      finished  — завершена (result заполнен; при форфейте result.forfeit)
+      abandoned — протухла в waiting/searching или отменена хостом
+
+    Оптимистичная блокировка: каждое изменение инкрементит state_version;
+    long-poll клиенты ждут version > since. Время хода считает ТОЛЬКО сервер:
+    deadline_at = старт хода + базовое время (бан 20с / пик 25с) + остаток
+    резерва актора (2 мин на игрока на партию, как bonus time в CM).
+    Просроченный дедлайн исполняется лениво (любое чтение/действие) —
+    фоновый тикер не нужен.
+    """
+    __tablename__ = "draft_battles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Короткий инвайт-код (без 0/O/1/I). Уникален среди всех битв.
+    code = Column(String(8), nullable=False, unique=True, index=True)
+    # 'cm' — с банами (14 банов + 10 пиков, фазы CM 7.34); 'ap' — только 10 пиков.
+    mode = Column(String(8), nullable=False)
+    status = Column(String(12), nullable=False, default="waiting", index=True)
+    host_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True
+    )
+    guest_id = Column(
+        BigInteger, ForeignKey("user_profiles.user_id"), nullable=True, index=True
+    )
+    # Соперник — ИИ-бот (подсаживается, когда живой не нашёлся за таймаут
+    # поиска). guest_id при этом NULL; роль бота — всегда 'guest'. Бот ходит
+    # лениво на сервере (см. _bt_apply_bot_moves). В онлайн-счётчик не идёт.
+    is_bot = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Кто ходит первым ('host'/'guest') — жеребьёвка при старте драфта.
+    first_pick = Column(String(5), nullable=True)
+    turn_index = Column(SmallInteger, nullable=False, default=0)
+    state_version = Column(Integer, nullable=False, default=1)
+    turn_started_at = Column(DateTime(timezone=True), nullable=True)
+    deadline_at = Column(DateTime(timezone=True), nullable=True)
+    # Остаток дополнительного времени, миллисекунды (см. _BT_RESERVE_MS).
+    host_reserve_ms = Column(Integer, nullable=False, default=120000)
+    guest_reserve_ms = Column(Integer, nullable=False, default=120000)
+    # Стадия расстановки (status='assigning'): каждый игрок приватно
+    # раскладывает своих 5 героев по позициям 1-5. {hero_id(str): pos(int)}.
+    # NULL = ещё не отправил. Сопернику НЕ сериализуется до финала.
+    host_positions = Column(JSON, nullable=True)
+    guest_positions = Column(JSON, nullable=True)
+    # Финал: {'host': {...compute_draft_score...}, 'guest': {...}, 'penalties',
+    # 'final', 'positions'} или {'forfeit': role}.
+    result = Column(JSON, nullable=True)
+    winner = Column(String(5), nullable=True)   # 'host'/'guest'/'draw'
+    # Снимок рейтинга обеих сторон на момент финализации (задел под рейтинг).
+    # NULL, пока пересчёт рейтинга не включён; история показывает «до → после».
+    host_rating_before = Column(Integer, nullable=True)
+    host_rating_after = Column(Integer, nullable=True)
+    guest_rating_before = Column(Integer, nullable=True)
+    guest_rating_after = Column(Integer, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    last_action_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        # Матчер очереди: WHERE status='searching' AND mode=... ORDER BY id.
+        Index("ix_draft_battles_status_mode", "status", "mode"),
+    )
+
+
+class DraftBattleAction(Base):
+    """Журнал ходов битвы — источник истины по пикам/банам.
+
+    PK (battle_id, idx) даёт атомарную защиту от двойного хода на один слот
+    последовательности (та же идея, что (lobby_id, position) у слотов лобби):
+    конкурентная вставка того же idx падает по уникальности, гонка исключена.
+    """
+    __tablename__ = "draft_battle_actions"
+
+    battle_id = Column(
+        Integer, ForeignKey("draft_battles.id"), primary_key=True
+    )
+    idx = Column(SmallInteger, primary_key=True)   # 0..len(sequence)-1
+    actor = Column(String(5), nullable=False)      # 'host'/'guest'
+    kind = Column(String(4), nullable=False)       # 'pick'/'ban'
+    hero_id = Column(Integer, nullable=False)
+    is_auto = Column(Boolean, nullable=False, default=False)  # таймаут-автоход
+    created_at = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 # ─── Bot-editable text templates ──────────────────────────────────────────

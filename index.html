@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=213" />
+    <link rel="stylesheet" href="styles.css?v=244" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -243,7 +243,7 @@
           </div>
 
           <button type="button" class="donate-cta" onclick="openDonationAlerts()">Задонатить</button>
-          <div class="donate-note">Откроется Tribute</div>
+          <div class="donate-note">Откроется Donation Alerts</div>
         </div>
       </div>
 
@@ -256,12 +256,21 @@
             <p>Угадывай, проверяй чутьё, узнавай свой стиль</p>
           </div>
 
-          <!-- Флагман: feature-карточка (вся тапабельна), единственный primary на экране -->
+          <!-- Флагман: PvP «Битва драфтов» -->
+          <button type="button" class="mg-feature" onclick="goToDraftBattle()">
+            <span class="mg-feature-head">
+              <span class="mg-feature-ic"><i class="ph ph-sword" aria-hidden="true"></i></span>
+              <span class="mg-feature-title">Битва драфтов</span>
+              <span class="card-tag">PvP</span>
+            </span>
+            <span class="mg-feature-desc">Драфт один на один в реальном времени: баны, пики, таймер как в турнирной Доте. Система оценит оба драфта и назовёт победителя.</span>
+            <span class="mg-feature-cta">Сразиться →</span>
+          </button>
+
           <button type="button" class="mg-feature" onclick="goToMinigameHL()">
             <span class="mg-feature-head">
               <span class="mg-feature-ic"><i class="ph ph-scales" aria-hidden="true"></i></span>
               <span class="mg-feature-title">Больше / Меньше</span>
-              <span class="card-tag">NEW</span>
             </span>
             <span class="mg-feature-desc">Угадай, у кого из двух героев показатель больше — по матчам, убийствам или смертям. Серия без права на ошибку: сколько продержишься?</span>
             <span class="mg-feature-cta">Играть →</span>
@@ -593,6 +602,327 @@
         </div>
       </div>
 
+      <!-- «Битва драфтов» — PvP-драфт в реальном времени (long polling) -->
+      <div id="page-draft-battle" class="page">
+        <div class="tm-page-head">
+          <button type="button" class="tm-back-btn" onclick="btBack()" aria-label="Назад">
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="tm-page-title">Битва драфтов</div>
+          <button type="button" class="mghl-head-lb" id="bt-lb-btn" onclick="btLbOpen()" aria-label="Топ игроков">
+            <i class="ph ph-trophy" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="mghl-head-lb" id="bt-help-btn" onclick="btHelpOpen()" aria-label="Справка о режиме">
+            <i class="ph ph-question" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="mghl-head-lb" id="bt-leave-btn" onclick="btLeave()" aria-label="Покинуть битву" hidden>
+            <i class="ph ph-flag" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <!-- Справка (кнопка «?» / тап по ранг-карточке). Структура вместо
+             стены текста: лид → правила définition-сеткой → плашка рангов
+             с медалями и порогами MMR. -->
+        <div id="bt-help" hidden>
+          <div class="bt-help-title">Как работает «Битва драфтов»</div>
+          <p class="bt-help-lead">Два игрока драфтят друг против друга в реальном
+          времени. Система сравнивает драфты по синергиям, контрпикам и мете —
+          и называет победителя.</p>
+
+          <div class="bt-help-list">
+            <div class="bt-help-item">
+              <div class="bt-help-term">Режимы</div>
+              <div class="bt-help-desc">«С банами» — 14 банов и 10 пиков.
+                «Без банов» — только 10 пиков.</div>
+            </div>
+            <div class="bt-help-item">
+              <div class="bt-help-term">Время</div>
+              <div class="bt-help-desc">Бан — 20 секунд, пик — 25. Сверх — 2 минуты
+                резерва на всю партию, как в турнирной Доте. Кончился и он —
+                система сходит за тебя.</div>
+            </div>
+            <div class="bt-help-item">
+              <div class="bt-help-term">Герои</div>
+              <div class="bt-help-desc">Взятый или забаненный герой недоступен
+                обоим игрокам.</div>
+            </div>
+            <div class="bt-help-item">
+              <div class="bt-help-term">Позиции</div>
+              <div class="bt-help-desc">После драфта — 30 секунд на расстановку
+                героев по позициям 1–5. Соперник её не видит. Герой не на своей
+                позиции штрафует драфт.</div>
+            </div>
+          </div>
+
+          <!-- Плашка рангов: вся лестница с медалями и порогами MMR -->
+          <div class="bt-help-ranks">
+            <div class="bt-help-ranks-title">Ранги</div>
+            <div class="bt-ranks-row">
+              <div class="bt-rank-item">
+                <img src="images/ranks/pawn.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Пешка</span>
+                <span class="bt-rank-thr">0+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="images/ranks/harbinger.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Предвестник</span>
+                <span class="bt-rank-thr">1000+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="images/ranks/chosen.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Избранный</span>
+                <span class="bt-rank-thr">2200+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="images/ranks/overlord.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Владыка</span>
+                <span class="bt-rank-thr">3800+</span>
+              </div>
+              <div class="bt-rank-item">
+                <img src="images/ranks/eternal.png" alt="" onerror="this.style.visibility='hidden'">
+                <span class="bt-rank-nm">Вечный</span>
+                <span class="bt-rank-thr">6000+</span>
+              </div>
+            </div>
+            <p class="bt-help-ranks-note">Первые 5 боёв — калибровка: сыграй их
+            и получишь ранг и MMR. Победы добавляют MMR, поражения отнимают —
+            чем сильнее соперник, тем выше цена боя. Бои с ботом рейтинг
+            не меняют — это тренировка.</p>
+          </div>
+
+          <button type="button" class="tm-ghost-btn" onclick="btHelpClose()">Понятно</button>
+        </div>
+
+        <!-- Топ игроков: лестница рангов секциями (Вечный → Пешка), каркас
+             постоянен даже при пустом пуле — структура и есть онбординг.
+             Внизу — стики-бар «ты». Наполняется btLbOpen (_BT_RANK_TIERS). -->
+        <div id="bt-lb" hidden>
+          <div class="bt-lb-title">Топ игроков</div>
+          <div class="bt-lb-ladder" id="bt-lb-ladder"></div>
+          <button type="button" class="bt-lb-mebar" id="bt-lb-me" hidden
+                  onclick="btHelpOpen()" aria-label="Твоё место — открыть справку о рангах"></button>
+        </div>
+
+        <!-- Полноэкранный интерстишл «Соперник найден» -->
+        <div id="bt-found" class="bt-found" hidden>
+          <div class="bt-found-label" id="bt-found-label">Соперник найден</div>
+          <div class="bt-found-vs">
+            <div class="bt-found-player">
+              <img id="bt-found-me-av" class="bt-found-av" alt="" onerror="this.style.visibility='hidden'">
+              <span id="bt-found-me-name"></span>
+              <img id="bt-found-me-rank" class="bt-found-rank" alt="" hidden
+                   onerror="this.hidden=true">
+            </div>
+            <span class="bt-found-x">VS</span>
+            <div class="bt-found-player">
+              <img id="bt-found-opp-av" class="bt-found-av" alt="" onerror="this.style.visibility='hidden'">
+              <span id="bt-found-opp-name"></span>
+              <img id="bt-found-opp-rank" class="bt-found-rank" alt="" hidden
+                   onerror="this.hidden=true">
+            </div>
+          </div>
+          <div class="bt-found-sub" id="bt-found-sub">Драфт начинается…</div>
+        </div>
+
+        <!-- Меню: режим + способ матчинга -->
+        <div id="bt-menu" hidden>
+          <!-- Баннер незавершённой битвы: вместо молчаливого авто-входа -->
+          <div id="bt-resume" class="bt-resume" hidden>
+            <div class="bt-resume-txt" id="bt-resume-txt"></div>
+            <div class="bt-resume-actions">
+              <button type="button" class="tm-primary-btn" onclick="btResumeYes()">Продолжить</button>
+              <button type="button" class="tm-ghost-btn" onclick="btResumeNo()">Отменить</button>
+            </div>
+          </div>
+
+          <!-- Рейтинговая карточка: ранг + MMR ИЛИ прогресс калибровки
+               («герой» первого экрана новичка: точки боёв + обещание ранга).
+               Тап открывает справку — это button. Картинки рангов —
+               /images/ranks/<key>.png (pawn/…/eternal/calibration). -->
+          <button type="button" class="bt-rankcard" id="bt-rankcard" hidden
+                  onclick="btHelpOpen()" aria-label="Рейтинг — открыть справку">
+            <span class="bt-rankcard-badge" id="bt-rankcard-badge">
+              <img id="bt-rankcard-img" alt="" onerror="this.style.visibility='hidden'">
+            </span>
+            <span class="bt-rankcard-main">
+              <span class="bt-rankcard-name" id="bt-rankcard-name">—</span>
+              <span class="bt-rankcard-sub" id="bt-rankcard-sub"></span>
+              <span class="bt-rankcard-dots" id="bt-rankcard-dots" hidden aria-hidden="true"></span>
+            </span>
+            <span class="bt-rankcard-rating" id="bt-rankcard-rating"></span>
+          </button>
+
+          <!-- Онлайн в режиме: участники активных битв (ищут + играют) -->
+          <div class="bt-online" id="bt-online-menu" hidden>
+            <span class="bt-online-dot" aria-hidden="true"></span>
+            <span class="bt-online-text" id="bt-online-menu-text"></span>
+          </div>
+
+          <!-- Режим: горизонтальный сегмент (детали режимов — в справке «?») -->
+          <div class="bt-mode-seg" role="radiogroup" aria-label="Режим драфта">
+            <button type="button" class="bt-mode-btn bt-mode-btn--active" id="bt-mode-cm"
+                    role="radio" aria-checked="true" onclick="btSetMode('cm')">С банами</button>
+            <button type="button" class="bt-mode-btn" id="bt-mode-ap"
+                    role="radio" aria-checked="false" onclick="btSetMode('ap')">Без банов</button>
+          </div>
+
+          <button type="button" class="tm-primary-btn bt-menu-primary" onclick="btQueue()">Найти соперника</button>
+
+          <!-- История битв: лента завершённых партий (тап → разбор результата).
+               Строка: аватар + имя с медалью ранга + режим·дата | исход,
+               счёт, MMR-чип. Наполняется btRenderHistory из /api/battle/history. -->
+          <div class="bt-history" id="bt-history" hidden>
+            <div class="bt-history-head">
+              <span class="bt-history-title">История битв</span>
+            </div>
+            <div class="bt-history-list" id="bt-history-list"></div>
+          </div>
+        </div>
+
+        <!-- Ожидание: поиск соперника (быстрый матч) -->
+        <div id="bt-wait" hidden>
+          <div class="bt-wait-spinner" aria-hidden="true"></div>
+          <div class="bt-wait-title" id="bt-wait-title">Ищем соперника…</div>
+          <div class="bt-online" id="bt-online-wait" hidden>
+            <span class="bt-online-dot" aria-hidden="true"></span>
+            <span class="bt-online-text" id="bt-online-wait-text"></span>
+          </div>
+          <button type="button" class="tm-ghost-btn" onclick="btCancelWait()">Отменить</button>
+        </div>
+
+        <!-- Драфт -->
+        <div id="bt-draft" hidden>
+          <!-- Соперник -->
+          <div class="bt-side bt-side--opp" id="bt-side-opp">
+            <div class="bt-side-head">
+              <img id="bt-opp-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
+              <img id="bt-opp-rank" class="bt-side-rank" alt="" hidden onerror="this.hidden=true">
+              <span class="bt-side-name" id="bt-opp-name">Соперник</span>
+              <span class="bt-side-reserve" id="bt-opp-reserve"></span>
+            </div>
+            <div class="bt-picks" id="bt-opp-picks"></div>
+            <div class="bt-bans" id="bt-opp-bans"></div>
+          </div>
+
+          <!-- Полоса таймера -->
+          <div class="bt-timer" id="bt-timer">
+            <div class="bt-timer-turn" id="bt-timer-turn">Ход</div>
+            <div class="bt-timer-clock" id="bt-timer-clock">25</div>
+            <div class="bt-timer-bar"><div class="bt-timer-fill" id="bt-timer-fill"></div></div>
+            <div class="bt-timer-sub" id="bt-timer-sub"></div>
+          </div>
+
+          <!-- Ты — структура зеркальна сопернику: имя сверху, пики, баны -->
+          <div class="bt-side bt-side--me" id="bt-side-me">
+            <div class="bt-side-head">
+              <img id="bt-me-avatar" class="bt-side-av" alt="" onerror="this.style.visibility='hidden'">
+              <img id="bt-me-rank" class="bt-side-rank" alt="" hidden onerror="this.hidden=true">
+              <span class="bt-side-name" id="bt-me-name">Ты</span>
+              <span class="bt-side-reserve" id="bt-me-reserve"></span>
+            </div>
+            <div class="bt-picks" id="bt-me-picks"></div>
+            <div class="bt-bans" id="bt-me-bans"></div>
+          </div>
+
+          <!-- Грид героев: поиск + каталог + фильтр по позициям -->
+          <div class="bt-search-row">
+            <input type="text" id="bt-search" class="bt-search" placeholder="Найти героя"
+                   autocomplete="off" oninput="btRenderGrid()">
+            <button type="button" class="bt-catalog-btn" id="bt-grid-catalog-btn"
+                    onclick="btOpenCatalog()" aria-label="Открыть каталог героев">
+              <i class="ph ph-squares-four" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="bt-pos-row" id="bt-pos-row">
+            <button type="button" class="bt-pos-btn bt-pos-btn--active" data-pos="0">Все</button>
+            <button type="button" class="bt-pos-btn" data-pos="1" aria-label="Позиция 1"><img src="images/positions/pos_1.png" alt="" onerror="this.replaceWith('1')"></button>
+            <button type="button" class="bt-pos-btn" data-pos="2" aria-label="Позиция 2"><img src="images/positions/pos_2.png" alt="" onerror="this.replaceWith('2')"></button>
+            <button type="button" class="bt-pos-btn" data-pos="3" aria-label="Позиция 3"><img src="images/positions/pos_3.png" alt="" onerror="this.replaceWith('3')"></button>
+            <button type="button" class="bt-pos-btn" data-pos="4" aria-label="Позиция 4"><img src="images/positions/pos_4.png" alt="" onerror="this.replaceWith('4')"></button>
+            <button type="button" class="bt-pos-btn" data-pos="5" aria-label="Позиция 5"><img src="images/positions/pos_5.png" alt="" onerror="this.replaceWith('5')"></button>
+          </div>
+          <div class="bt-grid" id="bt-grid"></div>
+
+          <!-- Подтверждение хода -->
+          <div class="bt-confirm" id="bt-confirm" hidden>
+            <img id="bt-confirm-img" alt="">
+            <span class="bt-confirm-name" id="bt-confirm-name"></span>
+            <button type="button" class="tm-primary-btn bt-confirm-btn" id="bt-confirm-btn" onclick="btConfirm()">Пикнуть</button>
+          </div>
+        </div>
+
+        <!-- Стадия расстановки: каждый приватно раскладывает пики по позициям -->
+        <div id="bt-assign" hidden>
+          <div class="bt-assign-head">
+            <div class="bt-assign-title">Расставь героев по позициям</div>
+            <div class="bt-assign-timer" id="bt-assign-timer">30</div>
+          </div>
+          <div class="bt-assign-sub">Перетаскивай героев, чтобы изменить порядок.
+            Соперник не видит твою расстановку.</div>
+          <div class="bt-assign-list" id="bt-assign-list"></div>
+          <button type="button" class="tm-primary-btn" id="bt-assign-submit" onclick="btAssignSubmit()">Готово</button>
+          <div class="bt-assign-wait" id="bt-assign-wait" hidden>
+            <span id="bt-assign-wait-txt">Расстановка отправлена. Ждём соперника…</span>
+            <button type="button" class="tm-ghost-btn" onclick="btAssignEdit()">Изменить</button>
+          </div>
+        </div>
+
+        <!-- Результат: кинематографичный разбор по актам (см. _btRenderResult).
+             Акты контрпиков/синергии анимируются GSAP по очереди, затем —
+             финальный экран с метриками и вердиктом. -->
+        <!-- Результат: «протокол матча» — киберспортивный скорборд.
+             Поэтапное раскрытие (саспенс: итог неизвестен до счёта): драфты →
+             синергия → контрпики → позиции → ИТОГ + вердикт (кульминация).
+             Управляет JS классами .bt-proto--seq/--teams-in/--final-in +
+             .is-in/.is-vin на строках; тап — сразу финал; история — мгновенно. -->
+        <div id="bt-result" hidden>
+          <div class="bt-proto" id="bt-proto">
+            <div class="bt-proto-head">
+              <div class="bt-proto-verdict" id="bt-result-verdict">Победа!</div>
+              <!-- Изменение рейтинга за бой (живой бой; на боте скрыто) -->
+              <div class="bt-result-rating" id="bt-result-rating" hidden></div>
+              <div class="bt-result-note" id="bt-result-note" hidden></div>
+            </div>
+
+            <div class="bt-proto-teams" id="bt-proto-teams">
+              <div class="bt-proto-team">
+                <div class="bt-proto-team-name is-me">Ты</div>
+                <div class="bt-rv-heroes" id="bt-proto-me-heroes"></div>
+              </div>
+              <div class="bt-proto-team">
+                <div class="bt-proto-team-name" id="bt-proto-opp-cap">
+                  <img id="bt-proto-opp-medal" class="bt-side-rank" alt="" hidden
+                       onerror="this.hidden=true">
+                  <span id="bt-proto-opp-name">Соперник</span>
+                </div>
+                <div class="bt-rv-heroes" id="bt-proto-opp-heroes"></div>
+              </div>
+            </div>
+
+            <div class="bt-proto-table" id="bt-proto-table"></div>
+
+            <div class="bt-res-actions">
+              <button type="button" class="tm-primary-btn" onclick="btRematch()">Ещё раз</button>
+              <button type="button" class="tm-ghost-btn" onclick="btToMenu()">В меню</button>
+            </div>
+
+            <!-- Подсказка скипа: видима только во время секвенции (CSS) -->
+            <div class="bt-proto-skiphint" aria-hidden="true">тап — пропустить</div>
+          </div>
+        </div>
+
+        <!-- Посвящение: калибровка пройдена — раскрываем заработанный ранг -->
+        <div id="bt-rank-reveal" class="bt-found" hidden>
+          <div class="bt-found-label">Калибровка пройдена</div>
+          <div class="bt-reveal-badge">
+            <img id="bt-reveal-img" alt="" onerror="this.style.visibility='hidden'">
+          </div>
+          <div class="bt-reveal-rank" id="bt-reveal-rank">—</div>
+          <div class="bt-found-sub" id="bt-reveal-sub"></div>
+          <button type="button" class="tm-primary-btn" onclick="btRevealClose()">Открыть</button>
+        </div>
+      </div>
+
       <!-- Страница драфтера -->
       <div id="page-drafter" class="page">
 
@@ -668,19 +998,19 @@
             </div>
             <div class="drafter-pos-filters" id="drafter-pos-filters">
               <button class="drafter-pos-btn" data-pos="1" onclick="setDrafterPosFilter(1)">
-                <img class="drafter-pos-btn-icon" src="/images/positions/pos_1.png" alt="1" aria-hidden="true">
+                <img class="drafter-pos-btn-icon" src="images/positions/pos_1.png" alt="1" aria-hidden="true">
               </button>
               <button class="drafter-pos-btn" data-pos="2" onclick="setDrafterPosFilter(2)">
-                <img class="drafter-pos-btn-icon" src="/images/positions/pos_2.png" alt="2" aria-hidden="true">
+                <img class="drafter-pos-btn-icon" src="images/positions/pos_2.png" alt="2" aria-hidden="true">
               </button>
               <button class="drafter-pos-btn" data-pos="3" onclick="setDrafterPosFilter(3)">
-                <img class="drafter-pos-btn-icon" src="/images/positions/pos_3.png" alt="3" aria-hidden="true">
+                <img class="drafter-pos-btn-icon" src="images/positions/pos_3.png" alt="3" aria-hidden="true">
               </button>
               <button class="drafter-pos-btn" data-pos="4" onclick="setDrafterPosFilter(4)">
-                <img class="drafter-pos-btn-icon" src="/images/positions/pos_4.png" alt="4" aria-hidden="true">
+                <img class="drafter-pos-btn-icon" src="images/positions/pos_4.png" alt="4" aria-hidden="true">
               </button>
               <button class="drafter-pos-btn" data-pos="5" onclick="setDrafterPosFilter(5)">
-                <img class="drafter-pos-btn-icon" src="/images/positions/pos_5.png" alt="5" aria-hidden="true">
+                <img class="drafter-pos-btn-icon" src="images/positions/pos_5.png" alt="5" aria-hidden="true">
               </button>
             </div>
             <div class="drafter-hero-grid" id="drafter-hero-grid"></div>
@@ -1200,11 +1530,11 @@
             <div class="tm-form-row">
               <div class="tm-form-label">Позиции</div>
               <div class="tm-positions" id="tm-positions">
-                <button type="button" class="tm-position-btn" data-pos="1" onclick="tmTogglePos(1, this)"><img src="/images/positions/pos_1.png" alt="1"></button>
-                <button type="button" class="tm-position-btn" data-pos="2" onclick="tmTogglePos(2, this)"><img src="/images/positions/pos_2.png" alt="2"></button>
-                <button type="button" class="tm-position-btn" data-pos="3" onclick="tmTogglePos(3, this)"><img src="/images/positions/pos_3.png" alt="3"></button>
-                <button type="button" class="tm-position-btn" data-pos="4" onclick="tmTogglePos(4, this)"><img src="/images/positions/pos_4.png" alt="4"></button>
-                <button type="button" class="tm-position-btn" data-pos="5" onclick="tmTogglePos(5, this)"><img src="/images/positions/pos_5.png" alt="5"></button>
+                <button type="button" class="tm-position-btn" data-pos="1" onclick="tmTogglePos(1, this)"><img src="images/positions/pos_1.png" alt="1"></button>
+                <button type="button" class="tm-position-btn" data-pos="2" onclick="tmTogglePos(2, this)"><img src="images/positions/pos_2.png" alt="2"></button>
+                <button type="button" class="tm-position-btn" data-pos="3" onclick="tmTogglePos(3, this)"><img src="images/positions/pos_3.png" alt="3"></button>
+                <button type="button" class="tm-position-btn" data-pos="4" onclick="tmTogglePos(4, this)"><img src="images/positions/pos_4.png" alt="4"></button>
+                <button type="button" class="tm-position-btn" data-pos="5" onclick="tmTogglePos(5, this)"><img src="images/positions/pos_5.png" alt="5"></button>
               </div>
             </div>
 
@@ -1457,6 +1787,16 @@
       </div>
 
       <!-- Нижняя навигация -->
+      <!-- «Островок» поиска битвы: плавающая пилюля сверху, видна когда поиск
+           соперника (или начавшийся драфт) идёт, а юзер ушёл с экрана ожидания.
+           Статичный элемент (не создаётся JS), показ/текст — _btPillUpdate,
+           самозалечивается тиком (состояние не searching → скрыта). -->
+      <button type="button" id="bt-search-pill" class="bt-search-pill" hidden
+              onclick="btPillOpen()">
+        <span class="bt-pill-dot" aria-hidden="true"></span>
+        <span class="bt-pill-text">Ищем соперника…</span>
+      </button>
+
       <!-- Floating dock: один плавающий glass-бар с 4 разделами.
            Главная/Профиль — прямой переход. Играть/Инструменты — открывают
            всплывающее мини-меню (#dock-menu) над доком с двумя фичами. -->
@@ -1542,6 +1882,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=264"></script>
+    <script defer src="script.js?v=299"></script>
   </body>
 </html>

@@ -441,6 +441,12 @@ async def process_expired_lobbies() -> int:
     return expired_count
 
 
+# «Битва драфтов»: sweep брошенных битв ПЕРЕЕХАЛ в api.py (_bt_sweep_loop,
+# фоновая задача каждого uvicorn-воркера). Причина: notifier запущен не на
+# всех окружениях (staging), и зомби-битвы там не подметались; уборка — часть
+# домена битвы и должна работать везде, где крутится API.
+
+
 async def _send_simple_message(
     client: httpx.AsyncClient, chat_id: int, text_str: str,
 ) -> bool:
@@ -521,8 +527,8 @@ async def run_loop() -> None:
         # Heartbeat: лог КАЖДОГО цикла — иначе при пустой выборке (нормальный
         # рабочий случай) воркер молчит часами и кажется зависшим.
         logger.info(
-            "[tm_notifier] cycle #%d: reviews=%d lobbies_expired=%d (%.2fs); "
-            "next poll in %ds",
+            "[tm_notifier] cycle #%d: reviews=%d lobbies_expired=%d "
+            "(%.2fs); next poll in %ds",
             cycle, n_reviews, n_lobbies, elapsed, POLL_INTERVAL_SECONDS,
         )
         await asyncio.sleep(POLL_INTERVAL_SECONDS)

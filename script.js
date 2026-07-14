@@ -528,6 +528,7 @@
             teammates: 'play',
             quiz: 'play',
             'minigame-hl': 'play',
+            'draft-battle': 'play',
             'teammate-review': 'play',
             drafter: 'tools',
             database: 'tools',
@@ -544,6 +545,8 @@
         // Содержимое popover-меню для разделов с двумя фичами.
         var _DOCK_MENU = {
             play: [
+                // Флагман — первым, напрямую и с плашкой NEW.
+                { label: 'Битва драфтов', page: 'draft-battle', icon: 'ph-sword', badge: 'NEW' },
                 { label: 'Пати',  page: 'teammates', icon: 'ph-users-three' },
                 { label: 'Мини-игры', page: 'quiz',  icon: 'ph-puzzle-piece' },
             ],
@@ -567,9 +570,12 @@
             var currentId = (document.querySelector('.page.active') || {}).id || '';
             m.innerHTML = items.map(function (it) {
                 var active = ('page-' + it.page) === currentId ? ' active' : '';
+                var badge = it.badge
+                    ? '<span class="dock-menu__new">' + it.badge + '</span>' : '';
                 return '<button type="button" class="dock-menu__item' + active + '" ' +
                     'role="menuitem" onclick="_dockMenuGo(\'' + it.page + '\')">' +
                     '<i class="ph ' + it.icon + '" aria-hidden="true"></i>' + it.label +
+                    badge +
                     '</button>';
             }).join('');
             m.hidden = false;
@@ -587,9 +593,14 @@
             m.style.bottom = (window.innerHeight - dockTop + 12) + 'px';
         }
 
-        // Тап по пункту меню → переход + закрытие.
+        // Тап по пункту меню → переход + закрытие. Битва — через свой вход
+        // (switchPage + btInit: карточка ранга/история/resume-баннер).
         window._dockMenuGo = function (page) {
             _closeDockMenu();
+            if (page === 'draft-battle' && typeof goToDraftBattle === 'function') {
+                goToDraftBattle();
+                return;
+            }
             switchPage(page);
         };
 
@@ -1209,6 +1220,1795 @@
             }
             list.innerHTML = rows || '<div class="mghl-msg">Пока пусто — будь первым!</div>';
         }
+
+
+        // ── «Битва драфтов» — PvP-драфт в реальном времени ────────────────
+        // Транспорт: long polling /api/battle/events с версионным курсором.
+        // Время считает СЕРВЕР: ответ несёт remaining_ms, клиент только
+        // тикает отрисовку от якоря (Date.now() на момент ответа).
+        var _bt = {
+            mode: 'cm',           // выбранный режим в меню
+            code: null,           // код текущей битвы
+            state: null,          // последний payload
+            polling: false,
+            abort: null,          // AbortController текущего long-poll'а
+            selHero: null,        // выбранный в гриде герой (до подтверждения)
+            timerInt: null,
+            anchor: null,         // {at, main, total} для отрисовки таймера
+        };
+
+        function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
+        function _btShow(screen) {
+            if (screen !== 'bt-help') _bt.screen = screen;   // для возврата из справки
+            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help', 'bt-rank-reveal', 'bt-lb'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.hidden = (id !== screen);
+            });
+            var leave = document.getElementById('bt-leave-btn');
+            if (leave) leave.hidden = !(screen === 'bt-draft' || screen === 'bt-assign');
+            // «?» и трофей — только в меню: во время поиска/драфта/результата
+            // шапке достаточно контекстных действий (сдаться/назад).
+            var help = document.getElementById('bt-help-btn');
+            if (help) help.hidden = (screen !== 'bt-menu');
+            var lbBtn = document.getElementById('bt-lb-btn');
+            if (lbBtn) lbBtn.hidden = (screen !== 'bt-menu');
+            // Онлайн-счётчик поллим только на меню/поиске, где он показан.
+            if (screen === 'bt-menu' || screen === 'bt-wait') _btStartOnline();
+            else _btStopOnline();
+            // Каждая смена состояния — с чистого листа: иначе переход
+            // «нашли соперника → драфт» происходит ниже линии прокрутки
+            // и выглядит так, будто ничего не случилось. Скроллим ТОЛЬКО если
+            // страница битвы активна: полл может сменить состояние, пока юзер
+            // читает другую вкладку (пилюля-островок) — не дёргаем его экран.
+            var pageEl = document.getElementById('page-draft-battle');
+            if (pageEl && pageEl.classList.contains('active')) {
+                try { window.scrollTo({ top: 0, behavior: 'instant' }); }
+                catch (e) { window.scrollTo(0, 0); }
+            }
+        }
+
+        // Полноэкранный интерстишл «Соперник найден» (haptic + пауза), затем драфт.
+        function _btShowFound(st, label, sub) {
+            var me = st.you || 'host';
+            var opp = me === 'host' ? 'guest' : 'host';
+            var mp = st[me] || {}, op = st[opp] || {};
+            var set = function (id, txt) {
+                var el = document.getElementById(id); if (el) el.textContent = txt;
+            };
+            set('bt-found-label', label);
+            set('bt-found-me-name', mp.name || 'Ты');
+            set('bt-found-opp-name', op.name || 'Соперник');
+            set('bt-found-sub', sub);
+            var meAv = document.getElementById('bt-found-me-av');
+            var opAv = document.getElementById('bt-found-opp-av');
+            if (meAv) { meAv.src = mp.photo_url || ''; meAv.style.visibility = mp.photo_url ? '' : 'hidden'; }
+            if (opAv) { opAv.src = op.photo_url || ''; opAv.style.visibility = op.photo_url ? '' : 'hidden'; }
+            _btSetRankMedal('bt-found-me-rank', mp.rank_key);
+            _btSetRankMedal('bt-found-opp-rank', op.rank_key);
+            _btShow('bt-found');
+            _mghlHaptic('milestone');
+        }
+        function _btMyRole() { return (_bt.state && _bt.state.you) || null; }
+        function _btOppRole() { return _btMyRole() === 'host' ? 'guest' : 'host'; }
+
+        // ── Онлайн-счётчик: участники активных битв (ищут + играют) ────────
+        // Опрашиваем /battle/online раз в _BT_ONLINE_POLL_MS, пока открыт
+        // экран меню или поиска. Сервер кеширует на 8с — нагрузка копеечная.
+        var _BT_ONLINE_POLL_MS = 10000;
+        function _btPlural(n) {
+            var a = Math.abs(n) % 100, b = n % 10;
+            if (a > 10 && a < 20) return 'человек';
+            if (b === 1) return 'человек';
+            if (b >= 2 && b <= 4) return 'человека';
+            return 'человек';
+        }
+        async function _btFetchOnline() {
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/online?token=' + encodeURIComponent(_btTok()));
+                if (!r.ok) return;
+                var d = await r.json();
+                var n = (d && d.online) || 0;
+                var txt = n + ' ' + _btPlural(n) + ' в игре';
+                ['bt-online-menu', 'bt-online-wait'].forEach(function (boxId) {
+                    var box = document.getElementById(boxId);
+                    var tEl = document.getElementById(boxId + '-text');
+                    if (tEl) tEl.textContent = txt;
+                    if (box) box.hidden = false;
+                });
+            } catch (e) { /* счётчик необязателен — молчим */ }
+        }
+        function _btStartOnline() {
+            _btFetchOnline();
+            if (_bt.onlineInt) return;
+            _bt.onlineInt = setInterval(_btFetchOnline, _BT_ONLINE_POLL_MS);
+        }
+        function _btStopOnline() {
+            if (_bt.onlineInt) { clearInterval(_bt.onlineInt); _bt.onlineInt = null; }
+        }
+
+        window.goToDraftBattle = function () {
+            switchPage('draft-battle');
+            btInit();
+        };
+
+        window.btBack = function () {
+            // Из справки «назад» возвращает на прежний экран битвы.
+            var help = document.getElementById('bt-help');
+            if (help && !help.hidden) { btHelpClose(); return; }
+            // Из топа — в меню битвы.
+            if (_bt.screen === 'bt-lb') { _btShow('bt-menu'); return; }
+            // Просмотр матча из истории: «назад» возвращает в меню битвы (к ленте
+            // истории), а не выкидывает на список мини-игр.
+            if (_bt.historyView && _bt.screen === 'bt-result') {
+                _btStopPolling();
+                _bt.historyView = false;
+                _bt.code = null; _bt.state = null;
+                _btClearReveal();
+                _btShow('bt-menu');
+                btRenderHistory();
+                return;
+            }
+            // «Назад» с экрана поиска — на главный экран битвы, НЕ на список
+            // мини-игр. Поиск продолжается (полл жив) — сверху появится
+            // пилюля-островок (_btPillUpdate).
+            if (_bt.screen === 'bt-wait') {
+                _btShow('bt-menu');
+                return;
+            }
+            // Калибровка завершилась этим боем, а юзер уходит «Назад» мимо
+            // кнопок результата — посвящение не теряем, показываем сейчас.
+            if (_bt.pendingReveal && _bt.screen === 'bt-result') {
+                var p = _bt.pendingReveal; _bt.pendingReveal = null;
+                _btStopPolling();
+                _bt.code = null; _bt.state = null;
+                _btClearReveal();
+                _btShowRankReveal(p);
+                return;
+            }
+            // Уходим со страницы: висящий таймер интерстишла не должен позже
+            // дёргать _btShow (скролл чужого экрана), а таймеры монтажа
+            // результата — вибрировать на чужом экране.
+            if (_bt.foundTimer) { clearTimeout(_bt.foundTimer); _bt.foundTimer = null; }
+            _btClearReveal();
+            _bt.protoSeqActive = false;
+            // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
+            // просто уводит на список игр — вернуться можно тем же входом.
+            _btStopOnline();
+            switchPage('quiz');
+        };
+
+        // ── Топ игроков: лестница рангов секциями ───────────────────────────
+        // Единый источник лестницы на фронте (зеркалит _BT_RANKS бэкенда).
+        // Сверху вниз — от престижа: структура списка и есть онбординг рангов.
+        var _BT_RANK_TIERS = [
+            { key: 'eternal',   name: 'Вечный',      thr: 6000 },
+            { key: 'overlord',  name: 'Владыка',     thr: 3800 },
+            { key: 'chosen',    name: 'Избранный',   thr: 2200 },
+            { key: 'harbinger', name: 'Предвестник', thr: 1000 },
+            { key: 'pawn',      name: 'Пешка',       thr: 0 },
+        ];
+
+        // Каркас лестницы рендерится МГНОВЕННО из констант (он же скелетон);
+        // данные доезжают в секции. Пустая секция не исчезает — зовёт наверх.
+        function _btLbSkeleton(ladder) {
+            ladder.innerHTML = '';
+            _BT_RANK_TIERS.forEach(function (t) {
+                var sec = document.createElement('section');
+                sec.className = 'bt-lbr-sec';
+                sec.setAttribute('data-tier', t.key);
+                sec.innerHTML =
+                    '<header class="bt-lbr-head">' +
+                        '<img class="bt-lbr-medal" src="' + _btRankImg(t.key) + '" alt="" ' +
+                            'onerror="this.style.visibility=\'hidden\'">' +
+                        '<span class="bt-lbr-name">' + _mghlEsc(t.name) + '</span>' +
+                        '<span class="bt-lbr-thr">' + t.thr + '+</span>' +
+                    '</header>' +
+                    '<div class="bt-lbr-body"></div>';
+                ladder.appendChild(sec);
+            });
+        }
+
+        function _btLbEmptyRow(tier) {
+            var el = document.createElement('div');
+            el.className = 'bt-lbr-empty';
+            el.textContent = (tier.key === 'eternal' || tier.key === 'overlord')
+                ? 'пока никого — займи первым'
+                : 'пока никого';
+            return el;
+        }
+
+        window.btLbOpen = async function () {
+            _btShow('bt-lb');
+            var ladder = document.getElementById('bt-lb-ladder');
+            var meBar = document.getElementById('bt-lb-me');
+            if (!ladder) return;
+            _btLbSkeleton(ladder);
+            // Каскад входа секций — перезапуск CSS-анимации.
+            ladder.classList.remove('bt-lb-ladder--in');
+            void ladder.offsetWidth;
+            ladder.classList.add('bt-lb-ladder--in');
+            if (meBar) meBar.hidden = true;
+
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/leaderboard?token='
+                    + encodeURIComponent(_btTok()));
+                if (!r.ok) throw new Error('lb ' + r.status);
+                var d = await r.json();
+                var top = (d && d.top) || [];
+
+                // Раскладываем по секциям через rank_key игрока.
+                var byTier = {};
+                top.forEach(function (p, i) {
+                    var k = p.rank_key || 'pawn';
+                    (byTier[k] = byTier[k] || []).push({ place: i + 1, p: p });
+                });
+                _BT_RANK_TIERS.forEach(function (t) {
+                    var body = ladder.querySelector('[data-tier="' + t.key + '"] .bt-lbr-body');
+                    if (!body) return;
+                    body.innerHTML = '';
+                    var items = byTier[t.key] || [];
+                    if (!items.length) {
+                        body.appendChild(_btLbEmptyRow(t));
+                        return;
+                    }
+                    items.forEach(function (it) {
+                        body.appendChild(_btLbRow(it.place, it.p));
+                    });
+                });
+
+                if (meBar) _btLbFillMeBar(meBar, d && d.you);
+            } catch (e) {
+                // Каркас остаётся витриной даже при ошибке: секции получают
+                // свои «пока никого», retry — в верхнюю.
+                _BT_RANK_TIERS.forEach(function (t, i) {
+                    var body = ladder.querySelector('[data-tier="' + t.key + '"] .bt-lbr-body');
+                    if (!body) return;
+                    body.innerHTML = '';
+                    if (i === 0) {
+                        var err = document.createElement('button');
+                        err.type = 'button';
+                        err.className = 'bt-history-empty bt-history-retry';
+                        err.textContent = 'Топ не загрузился · Повторить';
+                        err.onclick = function () { btLbOpen(); };
+                        body.appendChild(err);
+                    } else {
+                        body.appendChild(_btLbEmptyRow(t));
+                    }
+                });
+            }
+        };
+
+        function _btLbRow(place, p) {
+            var row = document.createElement('div');
+            row.className = 'bt-lb-row' + (p.you ? ' bt-lb-row--you' : '') +
+                (place <= 3 ? ' bt-lb-row--top3' : '');
+            var num = document.createElement('span');
+            num.className = 'bt-lb-num';
+            num.textContent = place;
+            row.appendChild(num);
+            // Аватар: фото или инициал (медаль уже есть в заголовке секции).
+            var av = document.createElement('span');
+            av.className = 'bt-lb-av';
+            if (p.photo_url) {
+                var img = document.createElement('img');
+                img.src = p.photo_url; img.alt = '';
+                img.onerror = function () {
+                    if (this.parentNode) {
+                        this.parentNode.textContent =
+                            (p.name || '·').trim().charAt(0).toUpperCase() || '·';
+                    }
+                };
+                av.appendChild(img);
+            } else {
+                av.textContent = (p.name || '·').trim().charAt(0).toUpperCase() || '·';
+            }
+            row.appendChild(av);
+            var nm = document.createElement('span');
+            nm.className = 'bt-lb-name';
+            nm.textContent = p.you ? (p.name || 'Игрок') + ' — ты' : (p.name || 'Игрок');
+            row.appendChild(nm);
+            var mmr = document.createElement('b');
+            mmr.className = 'bt-lb-mmr';
+            mmr.textContent = p.rating;
+            row.appendChild(mmr);
+            return row;
+        }
+
+        // Стики-бар «ты»: место + медаль + MMR + дистанция до следующего ранга.
+        // На калибровке — прогресс-точки вместо места. Тап — справка о рангах.
+        function _btLbFillMeBar(meBar, you) {
+            if (!you) { meBar.hidden = true; return; }
+            meBar.innerHTML = '';
+            if (you.calibrating) {
+                var played = you.games_played || 0;
+                var total = you.calibration_total || 5;
+                var dots = document.createElement('span');
+                dots.className = 'bt-lb-dots';
+                var dh = '';
+                for (var i = 0; i < total; i++) {
+                    dh += '<i class="bt-dot' + (i < played ? ' bt-dot--on' : '') + '"></i>';
+                }
+                dots.innerHTML = dh;
+                meBar.appendChild(dots);
+                var t = document.createElement('span');
+                t.className = 'bt-lb-me-txt';
+                t.textContent = 'Калибровка ' + played + ' / ' + total +
+                    ' — место появится после неё';
+                meBar.appendChild(t);
+                meBar.hidden = false;
+                return;
+            }
+            var num = document.createElement('span');
+            num.className = 'bt-lb-num';
+            num.textContent = (you.rank != null) ? '#' + you.rank : '—';
+            meBar.appendChild(num);
+            if (you.rank_key) {
+                var medal = document.createElement('img');
+                medal.className = 'bt-lb-medal';
+                medal.src = _btRankImg(you.rank_key); medal.alt = '';
+                medal.onerror = function () { this.hidden = true; };
+                meBar.appendChild(medal);
+            }
+            var mmr = document.createElement('b');
+            mmr.className = 'bt-lb-mmr';
+            mmr.textContent = you.rating;
+            meBar.appendChild(mmr);
+            // Дистанция до следующего ранга — из фронтовой лестницы.
+            var next = null;
+            for (var j = _BT_RANK_TIERS.length - 1; j >= 0; j--) {
+                if (_BT_RANK_TIERS[j].thr > you.rating) { next = _BT_RANK_TIERS[j]; break; }
+            }
+            var tail = document.createElement('span');
+            tail.className = 'bt-lb-me-txt';
+            tail.textContent = next
+                ? 'до ранга «' + next.name + '» — ' + (next.thr - you.rating)
+                : 'высший ранг';
+            meBar.appendChild(tail);
+            meBar.hidden = false;
+        }
+
+        // ── Справка о режиме (кнопка «?» в шапке) ──────────────────────────
+        window.btHelpOpen = function () {
+            var current = _bt.screen || 'bt-menu';
+            _bt.helpReturn = current;
+            _btShow('bt-help');
+        };
+        window.btHelpClose = function () {
+            _btShow(_bt.helpReturn || 'bt-menu');
+        };
+
+        async function btInit() {
+            // Меню — сразу (без пустого экрана на время запроса); баннер
+            // незавершённой битвы доедет асинхронно.
+            var banner0 = document.getElementById('bt-resume');
+            if (banner0) banner0.hidden = true;
+            // Недоигранное посвящение (ушёл «Назад» из другого места) — сперва оно.
+            if (_bt.pendingReveal) {
+                var pr = _bt.pendingReveal; _bt.pendingReveal = null;
+                _btShowRankReveal(pr);
+                return;
+            }
+            _btShow('bt-menu');
+            btRenderHistory();   // лента истории догружается асинхронно
+            btRenderRank();      // рейтинговая карточка догружается асинхронно
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(_btTok()));
+                var d = await r.json();
+                if (d && d.code) {
+                    if (d.status === 'drafting') {
+                        // Драфт уже идёт — таймер тикает, входим немедленно.
+                        _btEnter(d.code);
+                        return;
+                    }
+                    // Старый поиск: НЕ входим молча («игра началась сама» —
+                    // худший сюрприз). Показываем меню с баннером.
+                    _bt.resumeCode = d.code;
+                    var txtEl = document.getElementById('bt-resume-txt');
+                    if (txtEl) txtEl.textContent = 'Поиск соперника ещё активен с прошлого захода.';
+                    var banner = document.getElementById('bt-resume');
+                    if (banner) banner.hidden = false;
+                }
+            } catch (e) { /* меню всё равно покажем */ }
+            _btShow('bt-menu');
+        }
+
+        window.btResumeYes = function () {
+            var banner = document.getElementById('bt-resume');
+            if (banner) banner.hidden = true;
+            if (_bt.resumeCode) _btEnter(_bt.resumeCode);
+        };
+        window.btResumeNo = async function () {
+            var banner = document.getElementById('bt-resume');
+            if (banner) banner.hidden = true;
+            var code = _bt.resumeCode;
+            _bt.resumeCode = null;
+            if (code) { try { await _btPost('/battle/leave', { code: code }); } catch (e) {} }
+        };
+
+        window.btSetMode = function (m) {
+            _bt.mode = (m === 'ap') ? 'ap' : 'cm';
+            // Персист: постоянный игрок «Без банов» не переключает каждый заход.
+            try { localStorage.setItem('bt_mode', _bt.mode); } catch (e) {}
+            var cm = document.getElementById('bt-mode-cm');
+            var ap = document.getElementById('bt-mode-ap');
+            [[cm, 'cm'], [ap, 'ap']].forEach(function (pair) {
+                var el = pair[0], key = pair[1];
+                if (!el) return;
+                var on = (_bt.mode === key);
+                el.classList.toggle('bt-mode-btn--active', on);
+                // radiogroup: скринридер должен слышать выбранный режим.
+                el.setAttribute('aria-checked', on ? 'true' : 'false');
+            });
+        };
+        // Восстановление режима прошлой сессии (до первого рендера меню).
+        try {
+            var _btSavedMode = localStorage.getItem('bt_mode');
+            if (_btSavedMode === 'ap' || _btSavedMode === 'cm') btSetMode(_btSavedMode);
+        } catch (e) {}
+
+        async function _btPost(path, body) {
+            var r = await apiFetch(window.API_BASE_URL + path, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({ token: _btTok() }, body || {})),
+            });
+            var d = null;
+            try { d = await r.json(); } catch (e) { /* пустое тело */ }
+            if (!r.ok) {
+                var msg = (d && d.detail) ? String(d.detail) : ('Ошибка ' + r.status);
+                throw new Error(msg);
+            }
+            return d;
+        }
+
+        // Мгновенный отклик: экран ожидания показываем В МОМЕНТ нажатия,
+        // не дожидаясь ответа сервера — иначе непонятно, началось ли что-то.
+        function _btShowWaitOptimistic(title) {
+            var t = document.getElementById('bt-wait-title');
+            if (t) t.textContent = title;
+            _btShow('bt-wait');
+        }
+
+        window.btQueue = async function () {
+            _bt.searchStartedAt = Date.now();   // таймер пилюли — с момента тапа
+            _btShowWaitOptimistic('Ищем соперника…');
+            try {
+                var d = await _btPost('/battle/queue', { mode: _bt.mode });
+                _btEnter(d.code);
+            } catch (e) {
+                _btShow('bt-menu');
+                if (typeof showToast === 'function') showToast(e.message);
+            }
+        };
+        // Вход по коду — только resume своей битвы (deep-link `?battle=` из
+        // пуша «соперник найден»). Приватных комнат больше нет.
+        window.btJoinByCode = async function (code) {
+            try {
+                var d = await _btPost('/battle/join', { code: code });
+                _btEnter(d.code);
+            } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+        };
+
+        function _btEnter(code, fromHistory) {
+            // Смена битвы = перезапуск цикла: единственный long-poll не должен
+            // молча «переехать» на другой code (pollGen убьёт старый цикл).
+            if (_bt.polling) _btStopPolling();
+            _bt.code = code;
+            _bt.state = null;
+            _bt.assignOrder = null;   // раскладка прошлой битвы не наследуется
+            _bt.selHero = null;
+            // Просмотр из истории: результат показываем сразу (без пересчёта
+            // счёта), «назад» возвращает в меню битвы. См. _btRenderResult / btBack.
+            _bt.historyView = !!fromHistory;
+            _btStartPolling();
+        }
+
+        // ── Пилюля-«островок» поиска ────────────────────────────────────────
+        // Плавающая пилюля сверху приложения: поиск (или начавшийся драфт)
+        // идёт, а юзер ушёл с экрана ожидания — таймер напоминает о поиске,
+        // тап возвращает в битву. Самозалечивание: каждый тик сверяется с
+        // РЕАЛЬНЫМ состоянием — не searching/не в бою → скрыта (урок F3:
+        // ничего плавающего без владельца).
+        function _btPillUpdate() {
+            var pill = document.getElementById('bt-search-pill');
+            if (!pill) return;
+            var st = _bt.state;
+            var status = st && st.status;
+            var page = document.getElementById('page-draft-battle');
+            var onBattlePage = !!(page && page.classList.contains('active'));
+            var searching = _bt.polling && status === 'searching';
+            var inBattle = _bt.polling && (status === 'drafting' || status === 'assigning');
+            var show = (searching && (!onBattlePage || _bt.screen !== 'bt-wait'))
+                    || (inBattle && !onBattlePage);
+            if (!show) { pill.hidden = true; return; }
+            var txt = pill.querySelector('.bt-pill-text');
+            if (searching) {
+                var secs = Math.max(0, Math.floor((Date.now() - (_bt.searchStartedAt || Date.now())) / 1000));
+                var mm = Math.floor(secs / 60), ss = ('0' + (secs % 60)).slice(-2);
+                if (txt) txt.textContent = 'Ищем соперника · ' + mm + ':' + ss;
+                pill.classList.remove('bt-search-pill--live');
+            } else {
+                // Матч начался, пока юзер гулял — таймер хода уже горит.
+                if (txt) txt.textContent = 'Соперник найден — вернись!';
+                pill.classList.add('bt-search-pill--live');
+            }
+            pill.hidden = false;
+        }
+        function _btPillStart() {
+            if (_bt.pillInt) return;
+            _bt.pillInt = setInterval(_btPillUpdate, 1000);
+            _btPillUpdate();
+        }
+        function _btPillStop() {
+            if (_bt.pillInt) { clearInterval(_bt.pillInt); _bt.pillInt = null; }
+            var pill = document.getElementById('bt-search-pill');
+            if (pill) pill.hidden = true;
+        }
+        // Тап по пилюле — обратно в битву, на актуальный экран состояния.
+        window.btPillOpen = function () {
+            switchPage('draft-battle');
+            var s = _bt.state && _bt.state.status;
+            if (s === 'drafting') _btShow('bt-draft');
+            else if (s === 'assigning') _btShow('bt-assign');
+            else _btShow('bt-wait');
+            _btPillUpdate();
+        };
+
+        // ── Long polling ───────────────────────────────────────────────────
+        // pollGen — поколение цикла: перезапуск (смена битвы в _btEnter)
+        // инкрементит его, и старый цикл, очнувшись от await, тихо умирает —
+        // без этого abort→catch→continue давал бы ДВА конкурентных цикла.
+        function _btStartPolling() {
+            if (_bt.polling) return;
+            _bt.polling = true;
+            _bt.pollGen = (_bt.pollGen || 0) + 1;
+            _btPillStart();   // пилюля живёт ровно пока жив полл
+            _btPollLoop(_bt.pollGen);
+        }
+        function _btStopPolling() {
+            _bt.polling = false;
+            if (_bt.abort) { try { _bt.abort.abort(); } catch (e) {} _bt.abort = null; }
+            _btPillStop();
+        }
+        async function _btPollLoop(gen) {
+            var errStreak = 0;
+            while (_bt.polling && _bt.code && gen === _bt.pollGen) {
+                var since = (_bt.state && _bt.state.version) || 0;
+                try {
+                    var ac = (typeof AbortController === 'function') ? new AbortController() : null;
+                    _bt.abort = ac;
+                    // Вотчдог: мёртвый TCP (смена сети в кармане) иначе вешает
+                    // await навечно — visibilitychange не всегда стреляет в WebView.
+                    var watchdog = ac ? setTimeout(function () {
+                        try { ac.abort(); } catch (e) {}
+                    }, 35000) : null;
+                    var r;
+                    try {
+                        r = await apiFetch(
+                            window.API_BASE_URL + '/battle/events?token=' + encodeURIComponent(_btTok()) +
+                            '&code=' + encodeURIComponent(_bt.code) + '&since=' + since,
+                            ac ? { signal: ac.signal } : {}
+                        );
+                    } finally {
+                        if (watchdog) clearTimeout(watchdog);
+                    }
+                    if (gen !== _bt.pollGen) return;   // цикл перезапущен другой битвой
+                    if (r.status === 404) {
+                        // Комнаты больше нет — код мёртв, чистим, чтобы
+                        // visibilitychange не ре-поллил его вечно.
+                        _btStopPolling();
+                        _bt.code = null; _bt.state = null;
+                        _btShow('bt-menu');
+                        return;
+                    }
+                    if (!r.ok) throw new Error('events ' + r.status);
+                    var d = await r.json();
+                    if (gen !== _bt.pollGen) return;
+                    errStreak = 0;
+                    if (d && d.version && d.version > since) _btApply(d);
+                    // changed:false → сразу следующий цикл (heartbeat)
+                } catch (e) {
+                    if (!_bt.polling || gen !== _bt.pollGen) return;   // остановлены намеренно
+                    // Экспоненциальный backoff: не молотим сервер при лежащей
+                    // сети/авторизации (2с → 4с → 8с → 15с, сброс при успехе).
+                    errStreak += 1;
+                    var delay = Math.min(15000, 2000 * Math.pow(2, Math.min(errStreak - 1, 3)));
+                    await new Promise(function (res) { setTimeout(res, delay); });
+                }
+            }
+        }
+
+        // Усыпление WebView: поллинг стоп; при возврате — мгновенный догон.
+        if (!window._btVisBound) {
+            window._btVisBound = true;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') {
+                    _btStopPolling();
+                    _btStopOnline();
+                } else {
+                    var page = document.getElementById('page-draft-battle');
+                    if (!(page && page.classList.contains('active'))) return;
+                    // Ре-поллим только живые статусы: finished/abandoned не
+                    // изменятся никогда — вечный полл впустую. !state = только
+                    // вошли (состояние ещё не прочитано) — поллим.
+                    var stStatus = _bt.state && _bt.state.status;
+                    var alive = !stStatus ||
+                        ['searching', 'drafting', 'assigning'].indexOf(stStatus) !== -1;
+                    if (_bt.code && alive) _btStartPolling();
+                    // Онлайн возобновляем, если открыт экран меню/поиска.
+                    var menu = document.getElementById('bt-menu');
+                    var wait = document.getElementById('bt-wait');
+                    if ((menu && !menu.hidden) || (wait && !wait.hidden)) _btStartOnline();
+                }
+            });
+        }
+
+        // ── Применение состояния ──────────────────────────────────────────
+        function _btApply(st) {
+            var prev = _bt.state;
+            var prevStatus = prev && prev.status;
+            var prevActor = prev && prev.current && prev.current.actor;
+            _bt.state = st;
+            // Таймер пилюли: старт при входе в searching, сброс при выходе.
+            if (st.status === 'searching') {
+                if (!_bt.searchStartedAt) _bt.searchStartedAt = Date.now();
+            } else {
+                _bt.searchStartedAt = null;
+            }
+            _btPillUpdate();
+            if (st.status === 'searching') {
+                _btRenderWait(st);
+                _btShow('bt-wait');
+            } else if (st.status === 'drafting') {
+                _btRenderDraft(st);
+                // Матч только что нашёлся (или вернулись в идущую битву) —
+                // полноэкранный интерстишл с хаптикой, потом драфт.
+                // Без него старт выглядит как «ничего не произошло».
+                if (prevStatus !== 'drafting') {
+                    var resumed = (prevStatus == null && st.turn_index > 0);
+                    var label = resumed ? 'Битва продолжается'
+                              : st.vs_bot ? 'Игра против бота'
+                              : 'Соперник найден';
+                    _btShowFound(
+                        st,
+                        label,
+                        resumed ? 'Возвращаемся к драфту…' : 'Драфт начинается…'
+                    );
+                    // Интерстишл держим до старта таймера первого хода
+                    // (серверный отсчёт starts_in_ms): драфт открывается ровно
+                    // в момент, когда время реально начинает гореть.
+                    // Таймер отслеживаемый: уход со страницы его чистит (btBack),
+                    // иначе он стрелял бы scrollTo(0,0) на чужом экране.
+                    var holdMs = Math.max(1800,
+                        (st.current && st.current.starts_in_ms) || 0);
+                    if (_bt.foundTimer) clearTimeout(_bt.foundTimer);
+                    _bt.foundTimer = setTimeout(function () {
+                        _bt.foundTimer = null;
+                        var f = document.getElementById('bt-found');
+                        if (f && !f.hidden && _bt.state && _bt.state.status === 'drafting') {
+                            _btShow('bt-draft');
+                        }
+                    }, holdMs);
+                } else {
+                    _btShow('bt-draft');
+                    // Ход перешёл к тебе — тактильный сигнал (экран мог быть не в фокусе глаз).
+                    var nowActor = st.current && st.current.actor;
+                    if (nowActor === _btMyRole() && prevActor !== nowActor) _mghlHaptic('tap');
+                }
+            } else if (st.status === 'assigning') {
+                _btStopTimer();
+                _btRenderAssign(st);
+                _btShow('bt-assign');
+                if (prevStatus === 'drafting') _mghlHaptic('milestone');
+            } else if (st.status === 'finished') {
+                _btStopTimer();
+                _btStopAssignTimer();
+                _btStopPolling();
+                // Сначала рендер В СКРЫТОМ контейнере, потом показ — иначе на
+                // кадр виден прошлый/дефолтный контент (спойлер вердикта).
+                _btRenderResult(st);
+                _btShow('bt-result');
+                // Живой бой мог завершить калибровку — проверяем для посвящения.
+                if (!_bt.historyView) _btCheckGraduation();
+            } else { // abandoned
+                _btStopTimer();
+                _btStopAssignTimer();   // defensive: сегодня abandoned из assigning недостижим
+                _btStopPolling();
+                // Ленивый матчер слил нашу searching-комнату с чужой: сервер
+                // оставил указатель moved_to — перепрыгиваем в боевую комнату.
+                var mv = st.result && st.result.moved_to;
+                if (mv) { _btEnter(mv); return; }
+                _bt.code = null;
+                _btShow('bt-menu');
+                if (typeof showToast === 'function') showToast('Комната закрыта.');
+            }
+        }
+
+        function _btRenderWait(st) {
+            var title = document.getElementById('bt-wait-title');
+            if (title) title.textContent = 'Ищем соперника…';
+        }
+
+        // ── История битв (лента в меню) ────────────────────────────────────
+        async function btRenderHistory() {
+            var wrap = document.getElementById('bt-history');
+            var list = document.getElementById('bt-history-list');
+            if (!wrap || !list) return;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/history?token='
+                    + encodeURIComponent(_btTok()) + '&limit=20');
+                if (!r.ok) throw new Error('history ' + r.status);
+                var d = await r.json();
+                var battles = (d && d.battles) || [];
+                wrap.hidden = false;
+                list.innerHTML = '';
+                if (!battles.length) {
+                    // Пустое состояние — CTA, а не констатация.
+                    var empty = document.createElement('div');
+                    empty.className = 'bt-history-empty';
+                    empty.textContent = 'Сыграй первую битву — она появится здесь';
+                    list.appendChild(empty);
+                    return;
+                }
+                battles.forEach(function (b) { list.appendChild(_btHistoryRow(b)); });
+            } catch (e) {
+                // Не прячем молча (иначе юзер решит, что истории «нет вообще»).
+                wrap.hidden = false;
+                list.innerHTML = '';
+                var err = document.createElement('button');
+                err.type = 'button';
+                err.className = 'bt-history-empty bt-history-retry';
+                err.textContent = 'История не загрузилась · Повторить';
+                err.onclick = function () { btRenderHistory(); };
+                list.appendChild(err);
+            }
+        }
+        window.btRenderHistory = btRenderHistory;
+
+        // Заглушка-инициал для аватара (нет фото / битый URL) — span с буквой.
+        function _btAvatarInitial(name) {
+            var s = (name || '').trim();
+            var sp = document.createElement('span');
+            sp.className = 'bt-hist-initial';
+            sp.textContent = s ? s.charAt(0).toUpperCase() : '·';
+            return sp;
+        }
+
+        function _btHistoryRow(b) {
+            var opp = b.opponent || {};
+            var row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'bt-hist-row bt-hist-row--' + (b.outcome || 'draw');
+            row.onclick = function () { _btOpenHistory(b.code); };
+
+            // Аватар соперника: бот → робот; фото → img (с фоллбэком на инициал,
+            // если URL протух/битый); нет фото → инициал имени (как в тиммейтах).
+            var av = document.createElement('div');
+            av.className = 'bt-hist-av';
+            if (opp.is_bot) {
+                av.classList.add('bt-hist-av--bot');
+                av.innerHTML = '<i class="ph ph-robot" aria-hidden="true"></i>';
+            } else if (opp.photo_url) {
+                var img = document.createElement('img');
+                img.src = opp.photo_url; img.alt = '';
+                img.onerror = function () {
+                    if (this.parentNode) this.parentNode.replaceChild(
+                        _btAvatarInitial(opp.name), this);
+                };
+                av.appendChild(img);
+            } else {
+                av.appendChild(_btAvatarInitial(opp.name));
+            }
+
+            // Центр: имя + медаль ранга соперника + (режим · дата).
+            var mid = document.createElement('div');
+            mid.className = 'bt-hist-mid';
+            var nm = document.createElement('div');
+            nm.className = 'bt-hist-name';
+            var nmTxt = document.createElement('span');
+            nmTxt.className = 'bt-hist-name-txt';
+            nmTxt.textContent = opp.name || 'Игрок';
+            nm.appendChild(nmTxt);
+            if (opp.rank_key) {
+                var medal = document.createElement('img');
+                medal.className = 'bt-side-rank';   // те же 18px, что в драфте
+                medal.src = _btRankImg(opp.rank_key); medal.alt = '';
+                medal.onerror = function () { this.hidden = true; };
+                nm.appendChild(medal);
+            }
+            var meta = document.createElement('div');
+            meta.className = 'bt-hist-meta';
+            var modeTag = (b.mode === 'ap') ? 'Без банов' : 'С банами';
+            meta.textContent = modeTag + ' · ' + _btFmtDate(b.finished_at);
+            mid.appendChild(nm); mid.appendChild(meta);
+
+            // Право: исход + счёт + (задел) изменение рейтинга.
+            var right = document.createElement('div');
+            right.className = 'bt-hist-right';
+            var chip = document.createElement('div');
+            chip.className = 'bt-hist-outcome';
+            chip.textContent = (b.outcome === 'win') ? 'Победа'
+                             : (b.outcome === 'loss') ? 'Поражение' : 'Ничья';
+            right.appendChild(chip);
+
+            var score = document.createElement('div');
+            score.className = 'bt-hist-score';
+            if (b.your_score != null && b.opp_score != null) {
+                // Целые — как на экране результата (дробные «очки» не показываем).
+                score.textContent = Math.round(b.your_score) + ' : ' + Math.round(b.opp_score);
+            } else if (b.forfeit) {
+                score.textContent = (b.outcome === 'win') ? 'соперник сдался' : 'сдача';
+            } else {
+                score.textContent = '—';
+            }
+            right.appendChild(score);
+
+            // MMR-чип: подписанный пилл «+51 MMR» — отдельная сущность, а не
+            // третье голое число рядом со счётом (иначе каша из значений).
+            if (b.rating_after != null && b.rating_before != null) {
+                var delta = b.rating_after - b.rating_before;
+                var rc = document.createElement('div');
+                rc.className = 'bt-hist-mmr ' + (delta >= 0 ? 'is-up' : 'is-down');
+                rc.textContent = (delta >= 0 ? '+' : '') + delta + ' MMR';
+                right.appendChild(rc);
+            }
+
+            row.appendChild(av); row.appendChild(mid); row.appendChild(right);
+            return row;
+        }
+
+        function _btFmtDate(iso) {
+            if (!iso) return '';
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            var now = new Date();
+            var hh = ('0' + d.getHours()).slice(-2);
+            var mm = ('0' + d.getMinutes()).slice(-2);
+            if (d.toDateString() === now.toDateString()) return 'сегодня ' + hh + ':' + mm;
+            var months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн',
+                          'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+            var s = d.getDate() + ' ' + months[d.getMonth()];
+            if (d.getFullYear() !== now.getFullYear()) s += ' ' + d.getFullYear();
+            return s;
+        }
+
+        // Тап по строке истории — переоткрываем разбор результата (poll
+        // завершённой битвы сразу отдаёт finished → _btRenderResult).
+        function _btOpenHistory(code) {
+            if (!code) return;
+            // Живая битва/поиск идёт (полл активен) — не даём истории молча
+            // перехватить единственный цикл: осиротеет таймер или поиск.
+            var st = _bt.state;
+            var live = st && (st.status === 'drafting' || st.status === 'assigning');
+            var searching = st && st.status === 'searching';
+            if (_bt.polling && live && !_bt.historyView) {
+                if (typeof showToast === 'function') showToast('Сначала заверши текущую битву.');
+                return;
+            }
+            if (_bt.polling && searching && !_bt.historyView) {
+                if (typeof showToast === 'function') showToast('Идёт поиск соперника — отмени его или дождись матча.');
+                return;
+            }
+            if (typeof _mghlHaptic === 'function') _mghlHaptic('tap');
+            _btEnter(code, true);
+        }
+
+        // ── Рейтинг / ранг (карточка в меню) ───────────────────────────────
+        function _btRankImg(key) { return 'images/ranks/' + key + '.png'; }
+
+        // Медаль ранга в произвольный <img>: нет ключа (бот) → прячем.
+        function _btSetRankMedal(imgId, key) {
+            var el = document.getElementById(imgId);
+            if (!el) return;
+            if (!key) { el.hidden = true; return; }
+            el.hidden = false;
+            el.src = _btRankImg(key);
+        }
+
+        async function btRenderRank() {
+            var card = document.getElementById('bt-rankcard');
+            if (!card) return;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/profile?token='
+                    + encodeURIComponent(_btTok()));
+                if (!r.ok) throw new Error('profile ' + r.status);
+                var d = await r.json();
+                _bt.profile = d;
+                _bt.wasCalibrating = !!d.calibrating;
+                _btFillRankCard(d);
+                card.hidden = false;
+            } catch (e) {
+                // Не прячем молча: строка с повтором вместо «у тебя нет рейтинга».
+                card.hidden = false;
+                var name = document.getElementById('bt-rankcard-name');
+                var sub = document.getElementById('bt-rankcard-sub');
+                var rating = document.getElementById('bt-rankcard-rating');
+                var dots = document.getElementById('bt-rankcard-dots');
+                if (name) name.textContent = 'Рейтинг не загрузился';
+                if (sub) sub.textContent = 'Тапни, чтобы повторить';
+                if (rating) rating.textContent = '';
+                if (dots) dots.hidden = true;
+                card.onclick = function () {
+                    card.onclick = function () { btHelpOpen(); };
+                    btRenderRank();
+                };
+            }
+        }
+        window.btRenderRank = btRenderRank;
+
+        function _btFillRankCard(d) {
+            var card = document.getElementById('bt-rankcard');
+            if (card) card.onclick = function () { btHelpOpen(); };   // после retry-режима
+            var img = document.getElementById('bt-rankcard-img');
+            var name = document.getElementById('bt-rankcard-name');
+            var sub = document.getElementById('bt-rankcard-sub');
+            var rating = document.getElementById('bt-rankcard-rating');
+            var badge = document.getElementById('bt-rankcard-badge');
+            var dots = document.getElementById('bt-rankcard-dots');
+            if (img) { img.style.visibility = ''; img.src = _btRankImg(d.rank_key); }
+            if (badge) badge.classList.toggle('bt-rankcard-badge--cal', !!d.calibrating);
+            if (d.calibrating) {
+                // Калибровка — герой первого экрана: прогресс-точки боёв +
+                // обещание награды (посвящение перестаёт быть сюрпризом).
+                var played = d.games_played || 0;
+                var total = d.calibration_total || 5;
+                if (name) name.textContent = 'Калибровка · бой ' + Math.min(played + 1, total) + ' из ' + total;
+                if (sub) sub.textContent = 'Сыграй ' + total + ' боёв — узнаешь свой ранг';
+                if (rating) rating.textContent = '';
+                if (dots) {
+                    dots.hidden = false;
+                    var dh = '';
+                    for (var i = 0; i < total; i++) {
+                        dh += '<i class="bt-dot' + (i < played ? ' bt-dot--on' : '') + '"></i>';
+                    }
+                    dots.innerHTML = dh;
+                }
+            } else {
+                if (name) name.textContent = d.rank_name;
+                if (sub) {
+                    sub.textContent = (d.next_rank_at != null)
+                        ? 'до повышения: ' + Math.max(0, d.next_rank_at - d.rating)
+                        : 'высший ранг';
+                }
+                if (rating) {
+                    rating.textContent = d.rating;
+                    rating.setAttribute('aria-label', d.rating + ' MMR');
+                }
+                if (dots) { dots.hidden = true; dots.innerHTML = ''; }
+            }
+        }
+
+        // Посвящение: калибровка пройдена — раскрываем заработанный ранг.
+        function _btShowRankReveal(p) {
+            var img = document.getElementById('bt-reveal-img');
+            var rank = document.getElementById('bt-reveal-rank');
+            var sub = document.getElementById('bt-reveal-sub');
+            if (img) { img.style.visibility = ''; img.src = _btRankImg(p.rank_key); }
+            if (rank) rank.textContent = p.rank_name;
+            if (sub) sub.textContent = p.rating + ' MMR';
+            // Полноэкранный скрин (как bt-found) — через _btShow, чтобы скрыть результат.
+            _btShow('bt-rank-reveal');
+            if (typeof _mghlHaptic === 'function') _mghlHaptic('milestone');
+        }
+        window.btRevealClose = function () {
+            var el = document.getElementById('bt-rank-reveal');
+            if (el) el.hidden = true;
+            _bt.code = null; _bt.state = null;
+            _btShow('bt-menu');
+            btRenderHistory(); btRenderRank();
+        };
+
+        // После живого боя проверяем: не завершилась ли калибровка этим боем.
+        async function _btCheckGraduation() {
+            if (!_bt.wasCalibrating) return;
+            try {
+                var r = await apiFetch(window.API_BASE_URL + '/battle/profile?token='
+                    + encodeURIComponent(_btTok()));
+                var d = await r.json();
+                if (!d.calibrating) { _bt.pendingReveal = d; _bt.wasCalibrating = false; }
+            } catch (e) { /* посвящение необязательно */ }
+        }
+
+        window.btCancelWait = async function () {
+            // intent: если комнату УЖЕ сматчили (гонка с матчером), сервер НЕ
+            // засчитает форфейт, а ответит matched — остаёмся в бою.
+            var d = null;
+            try { d = await _btPost('/battle/leave', { code: _bt.code, intent: 'cancel_search' }); }
+            catch (e) {}
+            if (d && d.matched) {
+                if (typeof showToast === 'function') showToast('Соперник найден — драфт начинается!');
+                return;   // полл жив, состояние drafting доедет само
+            }
+            _btStopPolling();
+            _bt.code = null;
+            _btShow('bt-menu');
+        };
+
+        window.btLeave = async function () {
+            var st = _bt.state;
+            if (st && st.status === 'drafting') {
+                if (!window.confirm('Сдаться? Сопернику засчитают победу.')) return;
+            }
+            try { await _btPost('/battle/leave', { code: _bt.code }); } catch (e) {}
+            // Финальное состояние придёт поллингом; на всякий случай дочитаем.
+            if (!_bt.polling) _btStartPolling();
+        };
+
+        // ── Драфт-экран ────────────────────────────────────────────────────
+        function _btFmtReserve(ms) {
+            var s = Math.max(0, Math.round(ms / 1000));
+            return '+' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        }
+
+        function _btRenderDraft(st) {
+            var me = _btMyRole(), opp = _btOppRole();
+            var mePlayer = st[me] || {}, oppPlayer = st[opp] || {};
+            var elOppName = document.getElementById('bt-opp-name');
+            if (elOppName) elOppName.textContent = oppPlayer.name || 'Соперник';
+            var elMeName = document.getElementById('bt-me-name');
+            if (elMeName) elMeName.textContent = mePlayer.name || 'Ты';
+            var elOppRes = document.getElementById('bt-opp-reserve');
+            if (elOppRes) elOppRes.textContent = _btFmtReserve(st.reserves[opp + '_ms']);
+            var elMeRes = document.getElementById('bt-me-reserve');
+            if (elMeRes) elMeRes.textContent = _btFmtReserve(st.reserves[me + '_ms']);
+            var meAv = document.getElementById('bt-me-avatar');
+            if (meAv) { meAv.src = mePlayer.photo_url || ''; meAv.style.visibility = mePlayer.photo_url ? '' : 'hidden'; }
+            var oppAv = document.getElementById('bt-opp-avatar');
+            if (oppAv) { oppAv.src = oppPlayer.photo_url || ''; oppAv.style.visibility = oppPlayer.photo_url ? '' : 'hidden'; }
+            _btSetRankMedal('bt-me-rank', mePlayer.rank_key);
+            _btSetRankMedal('bt-opp-rank', oppPlayer.rank_key);
+            // Активная сторона — подсветка панели (видно, чей ход, без чтения текста).
+            var curTurn = st.current;
+            var meSide = document.getElementById('bt-side-me');
+            var oppSide = document.getElementById('bt-side-opp');
+            if (meSide) meSide.classList.toggle('bt-side--active', !!(curTurn && curTurn.actor === me));
+            if (oppSide) oppSide.classList.toggle('bt-side--active', !!(curTurn && curTurn.actor === opp));
+
+            // Пики/баны по сторонам из журнала + пустые слоты по последовательности.
+            var picksTotal = {}, bansTotal = {};
+            st.sequence.forEach(function (s2, i) {
+                var role = (s2.actor_rel === 'F') === (st.first_pick === me) ? me : opp;
+                var bucket = (s2.kind === 'pick') ? picksTotal : bansTotal;
+                bucket[role] = (bucket[role] || 0) + 1;
+            });
+            var done = { pick: { host: [], guest: [] }, ban: { host: [], guest: [] } };
+            st.actions.forEach(function (a) { done[a.kind][a.actor].push(a); });
+
+            _btRenderSlots('bt-me-picks', done.pick[me], picksTotal[me] || 5, 'pick');
+            _btRenderSlots('bt-opp-picks', done.pick[opp], picksTotal[opp] || 5, 'pick');
+            _btRenderSlots('bt-me-bans', done.ban[me], bansTotal[me] || 0, 'ban');
+            _btRenderSlots('bt-opp-bans', done.ban[opp], bansTotal[opp] || 0, 'ban');
+
+            // Таймер-якорь.
+            var cur = st.current;
+            if (cur) {
+                _bt.anchor = {
+                    // Стартовый отсчёт: сервер мог назначить старт хода в будущем
+                    // (starts_in_ms) — сдвигаем якорь, до этого момента таймер
+                    // стоит на полном времени (см. clamp в _btTick).
+                    at: Date.now() + (cur.starts_in_ms || 0),
+                    main: cur.main_remaining_ms,
+                    total: cur.total_remaining_ms,
+                    kind: cur.kind,
+                    mine: cur.actor === me,
+                };
+                var turnEl = document.getElementById('bt-timer-turn');
+                if (turnEl) {
+                    turnEl.textContent = (cur.actor === me ? 'Твой ход — ' : 'Ход соперника — ') +
+                        (cur.kind === 'ban' ? 'бан' : 'пик');
+                }
+                var timerBox = document.getElementById('bt-timer');
+                if (timerBox) timerBox.classList.toggle('bt-timer--mine', cur.actor === me);
+                _btStartTimer();
+            }
+
+            // Сброс выбора, если герой стал недоступен или ход не наш.
+            var taken = {};
+            st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            if (_bt.selHero && (taken[_bt.selHero] || !cur || cur.actor !== me)) _bt.selHero = null;
+            _btRenderConfirm();
+            btRenderGrid();
+        }
+
+        function _btRenderSlots(elId, actions, total, kind) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            var html = '';
+            for (var i = 0; i < total; i++) {
+                var a = actions[i];
+                if (a) {
+                    html += '<span class="bt-slot bt-slot--' + kind + (a.is_auto ? ' bt-slot--auto' : '') + '">' +
+                        '<img src="' + _mghlEsc(_mghlImg(a.hero_id)) + '" alt="" ' +
+                        'title="' + _mghlEsc(_mghlName(a.hero_id)) + '" ' +
+                        'onerror="this.style.visibility=\'hidden\'"></span>';
+                } else {
+                    html += '<span class="bt-slot bt-slot--' + kind + ' bt-slot--empty"></span>';
+                }
+            }
+            el.innerHTML = html;
+        }
+
+        // ── Таймер (отрисовка от серверного якоря) ─────────────────────────
+        function _btStartTimer() {
+            if (_bt.timerInt) return;
+            _bt.timerInt = setInterval(_btTick, 200);
+            _btTick();
+        }
+        function _btStopTimer() {
+            if (_bt.timerInt) { clearInterval(_bt.timerInt); _bt.timerInt = null; }
+        }
+        function _btTick() {
+            var a = _bt.anchor;
+            var clock = document.getElementById('bt-timer-clock');
+            var sub = document.getElementById('bt-timer-sub');
+            if (!a || !clock) return;
+            // Якорь может быть в будущем (стартовый отсчёт) — до него время не горит.
+            var elapsed = Math.max(0, Date.now() - a.at);
+            var mainLeft = Math.max(0, a.main - elapsed);
+            var totalLeft = Math.max(0, a.total - elapsed);
+            var inReserve = (mainLeft <= 0 && totalLeft > 0);
+            clock.textContent = Math.ceil((inReserve ? totalLeft : mainLeft) / 1000);
+            clock.classList.toggle('bt-timer-clock--reserve', inReserve);
+            if (sub) sub.textContent = inReserve ? 'Дополнительное время' : '';
+            // Прогресс-полоса: доля оставшегося основного времени;
+            // в резерве — янтарная, от остатка на момент якоря.
+            var fill = document.getElementById('bt-timer-fill');
+            if (fill) {
+                var base = (a.kind === 'ban') ? 20000 : 25000;
+                var pct = inReserve
+                    ? (a.total > 0 ? totalLeft / a.total : 0)
+                    : (mainLeft / base);
+                fill.style.width = Math.max(0, Math.min(100, pct * 100)) + '%';
+                fill.classList.toggle('bt-timer-fill--reserve', inReserve);
+            }
+            // По нулю ничего не делаем сами: авто-ход исполнит сервер,
+            // обновление придёт поллингом.
+        }
+
+        // ── Позиционные фильтры грида ──────────────────────────────────────
+        // Источник — /api/draft/popularity (тот же, что у Анализа драфтера):
+        // герой попадает в Pos N, если играет там >= 15% своих матчей
+        // (порог как у _hero_valid_pos_nums на бэке).
+        function _btLoadPosSets() {
+            if (_bt.posSets || _bt.posLoading) return;
+            _bt.posLoading = true;
+            apiFetch(window.API_BASE_URL + '/draft/popularity')
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (pop) {
+                    if (!pop) return;
+                    var sets = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+                    Object.keys(pop).forEach(function (hidStr) {
+                        var h = pop[hidStr] || {};
+                        var total = h.total || 0;
+                        if (!total) return;
+                        var positions = h.positions || {};
+                        for (var p = 1; p <= 5; p++) {
+                            var pd = positions[String(p)];
+                            if (pd && (pd.matches || 0) / total >= 0.15) {
+                                sets[p][parseInt(hidStr, 10)] = true;
+                            }
+                        }
+                    });
+                    _bt.posSets = sets;
+                    btRenderGrid();
+                })
+                .catch(function () { _bt.posLoading = false; /* фильтры просто не активируются */ });
+        }
+
+        // Делегированный клик по чипам позиций.
+        if (!window._btPosBound) {
+            window._btPosBound = true;
+            document.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.bt-pos-btn');
+                if (!btn) return;
+                _bt.posFilter = parseInt(btn.getAttribute('data-pos'), 10) || 0;
+                document.querySelectorAll('#bt-pos-row .bt-pos-btn').forEach(function (b) {
+                    b.classList.toggle('bt-pos-btn--active',
+                        (parseInt(b.getAttribute('data-pos'), 10) || 0) === _bt.posFilter);
+                });
+                btRenderGrid();
+            });
+        }
+
+        // ── Полный каталог героев (общий компонент аппа) ───────────────────
+        window.btOpenCatalog = function () {
+            // Слушатели закрытия (крестик/фон/Escape) вешает initHeroesCatalog,
+            // которую обычно зовут страницы «Герои»/«Драфтер» при своей
+            // инициализации. Вход из битвы их минует — без этого вызова
+            // открытый каталог было НЕВОЗМОЖНО закрыть. Идемпотентно
+            // (внутри guard _heroesCatalogBound).
+            if (typeof initHeroesCatalog === 'function') initHeroesCatalog();
+            _catalogContext = 'battle';
+            openHeroesCatalog();
+        };
+        // Колбэк выбора из каталога (зовёт обработчик тайлов в renderHeroesCatalog).
+        window._btCatalogPick = function (hid) {
+            var st = _bt.state;
+            var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
+            if (!myTurn) { if (typeof showToast === 'function') showToast('Сейчас не твой ход'); return; }
+            var taken = {};
+            if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            if (taken[hid]) { if (typeof showToast === 'function') showToast('Этот герой уже занят'); return; }
+            _bt.selHero = hid;
+            _btRenderConfirm();
+            btRenderGrid();
+        };
+
+        // ── Грид героев ────────────────────────────────────────────────────
+        window.btRenderGrid = function () {
+            var grid = document.getElementById('bt-grid');
+            if (!grid || !window.dotaHeroIds) return;
+            _btLoadPosSets();
+            var st = _bt.state;
+            var taken = {};
+            if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
+            var q = (document.getElementById('bt-search') || {}).value || '';
+            q = q.trim().toLowerCase();
+            // Поиск ГЛАВНЕЕ фильтра позиций: с запросом ищем по всему пулу
+            // (иначе героя «не с той» вкладки не найти вовсе).
+            var posSet = (!q && _bt.posFilter && _bt.posSets) ? _bt.posSets[_bt.posFilter] : null;
+
+            var names = Object.keys(window.dotaHeroIds).sort();
+            var html = '';
+            for (var i = 0; i < names.length; i++) {
+                var name = names[i];
+                var hid = window.dotaHeroIds[name];
+                // Тот же матчер, что у драфтера: англ. имена + русские алиасы
+                // (_ANALYSIS_HERO_NAMES_RU), без учёта регистра.
+                if (q && !_analysisHeroMatchesQuery(hid, q)) continue;
+                if (posSet && !posSet[hid]) continue;
+                var isTaken = !!taken[hid];
+                var sel = (_bt.selHero === hid);
+                html += '<button type="button" class="bt-cell' +
+                    (isTaken ? ' bt-cell--taken' : '') + (sel ? ' bt-cell--sel' : '') + '" ' +
+                    'data-hid="' + hid + '"' + (isTaken || !myTurn ? ' disabled' : '') + '>' +
+                    '<img src="' + _mghlEsc(window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '') + '" ' +
+                    'alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
+                    '<span>' + _mghlEsc(name) + '</span></button>';
+            }
+            grid.innerHTML = html ||
+                '<div class="bt-grid-empty">' +
+                    '<i class="ph ph-magnifying-glass" aria-hidden="true"></i>' +
+                    '<span>Ничего не найдено</span>' +
+                '</div>';
+            grid.classList.toggle('bt-grid--waiting', !myTurn);
+        };
+
+        // Делегирование кликов по гриду — один слушатель на контейнер.
+        if (!window._btGridBound) {
+            window._btGridBound = true;
+            document.addEventListener('click', function (e) {
+                var cell = e.target && e.target.closest && e.target.closest('.bt-cell');
+                if (!cell || cell.disabled) return;
+                var hid = parseInt(cell.getAttribute('data-hid'), 10);
+                if (!hid) return;
+                _bt.selHero = (_bt.selHero === hid) ? null : hid;
+                _btRenderConfirm();
+                btRenderGrid();
+            });
+        }
+
+        function _btRenderConfirm() {
+            var bar = document.getElementById('bt-confirm');
+            if (!bar) return;
+            var st = _bt.state;
+            var cur = st && st.current;
+            if (!_bt.selHero || !cur || cur.actor !== _btMyRole()) { bar.hidden = true; return; }
+            document.getElementById('bt-confirm-img').src = _mghlImg(_bt.selHero);
+            document.getElementById('bt-confirm-name').textContent = _mghlName(_bt.selHero);
+            document.getElementById('bt-confirm-btn').textContent =
+                (cur.kind === 'ban' ? 'Забанить' : 'Пикнуть');
+            bar.hidden = false;
+        }
+
+        window.btConfirm = async function () {
+            var hid = _bt.selHero;
+            if (!hid) return;
+            var btn = document.getElementById('bt-confirm-btn');
+            if (btn) btn.disabled = true;
+            try {
+                var st = await _btPost('/battle/action', { code: _bt.code, hero_id: hid });
+                _bt.selHero = null;
+                // Чистим поиск после хода — игрок сразу вводит следующего героя,
+                // не стирая прошлый запрос вручную.
+                var search = document.getElementById('bt-search');
+                if (search) search.value = '';
+                if (st && st.version) _btApply(st);
+            } catch (e) {
+                if (typeof showToast === 'function') showToast(e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        };
+
+        // ── Стадия расстановки позиций ─────────────────────────────────────
+        // Раскладка локальная (assignOrder[i] = hero_id на позиции i+1).
+        // Герои перетаскиваются: зажал карточку, потянул — остальные слайдят,
+        // герой встаёт на новую позицию (move-with-shift, не swap). «Готово»
+        // шлёт на сервер; менять можно, пока стадия не закрыта.
+        function _btMyPickIds(st) {
+            var me = _btMyRole();
+            return (st.actions || [])
+                .filter(function (a) { return a.kind === 'pick' && a.actor === me; })
+                .map(function (a) { return a.hero_id; });
+        }
+
+        function _btRenderAssign(st) {
+            var a = st.assign || {};
+            // Инициализация раскладки: своя отправленная или порядок пика.
+            var picks = _btMyPickIds(st);
+            if (!_bt.assignOrder || _bt.assignOrder.length !== picks.length) {
+                var fromServer = a.your_positions;
+                if (fromServer) {
+                    var arr = new Array(picks.length);
+                    picks.forEach(function (hid) {
+                        var p = parseInt(fromServer[String(hid)], 10);
+                        if (p >= 1 && p <= picks.length) arr[p - 1] = hid;
+                    });
+                    _bt.assignOrder = arr.every(Boolean) ? arr : picks.slice();
+                } else {
+                    _bt.assignOrder = picks.slice();
+                }
+            }
+            _btDrawAssignList();
+
+            var submitted = !!a.you_submitted;
+            var btn = document.getElementById('bt-assign-submit');
+            if (btn) btn.hidden = submitted;
+            var wait = document.getElementById('bt-assign-wait');
+            if (wait) wait.hidden = !submitted;
+            var waitTxt = document.getElementById('bt-assign-wait-txt');
+            if (waitTxt) {
+                waitTxt.textContent = a.opponent_submitted
+                    ? 'Соперник готов. Финализируем…'
+                    : 'Расстановка отправлена. Ждём соперника…';
+            }
+            // Таймер стадии — общий, от серверного остатка.
+            _bt.assignAnchor = { at: Date.now(), remaining: a.remaining_ms || 0 };
+            _btStartAssignTimer();
+        }
+
+        function _btDrawAssignList() {
+            var list = document.getElementById('bt-assign-list');
+            if (!list) return;
+            var html = '';
+            (_bt.assignOrder || []).forEach(function (hid, i) {
+                html += '<div class="bt-assign-row" data-slot="' + i + '">' +
+                    '<span class="bt-assign-pos">Pos ' + (i + 1) + '</span>' +
+                    '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" draggable="false" onerror="this.style.visibility=\'hidden\'">' +
+                    '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + '</span>' +
+                    '<span class="bt-assign-grip" aria-hidden="true">⠿</span>' +
+                '</div>';
+            });
+            list.innerHTML = html;
+        }
+
+        // Drag-reorder на pointer events (touch + mouse). Делегируем pointerdown
+        // на стабильный контейнер списка; move/up — на document (палец может
+        // уйти за пределы строки). Перерисовка пересоздаёт строки — обработчик
+        // живёт на контейнере, переживает её.
+        var _btDrag = null;
+        function _btAssignRowH(list) {
+            // Шаг = высота строки + gap. Берём по двум первым строкам, иначе
+            // fallback по высоте одной + 8px (--space-2).
+            if (list.children.length >= 2) {
+                return list.children[1].getBoundingClientRect().top
+                     - list.children[0].getBoundingClientRect().top;
+            }
+            var first = list.children[0];
+            return first ? first.getBoundingClientRect().height + 8 : 1;
+        }
+        function _btDragMove(e) {
+            if (!_btDrag) return;
+            e.preventDefault();
+            var dy = (e.clientY != null ? e.clientY : 0) - _btDrag.startY;
+            if (Math.abs(dy) > 4) _btDrag.moved = true;
+            _btDrag.el.style.transform = 'translateY(' + dy + 'px)';
+            var rowH = _btDrag.rowH || 1;
+            var target = _btDrag.index + Math.round(dy / rowH);
+            target = Math.max(0, Math.min(_btDrag.children.length - 1, target));
+            if (target !== _btDrag.target) {
+                _btDrag.target = target;
+                // Слайд промежуточных строк, освобождая место под перетаскиваемую.
+                _btDrag.children.forEach(function (ch, i) {
+                    if (i === _btDrag.index) return;
+                    var shift = 0;
+                    if (_btDrag.index < target && i > _btDrag.index && i <= target) shift = -rowH;
+                    else if (_btDrag.index > target && i >= target && i < _btDrag.index) shift = rowH;
+                    ch.style.transform = shift ? ('translateY(' + shift + 'px)') : '';
+                });
+            }
+        }
+        function _btDragEnd() {
+            document.removeEventListener('pointermove', _btDragMove);
+            document.removeEventListener('pointerup', _btDragEnd);
+            document.removeEventListener('pointercancel', _btDragEnd);
+            if (!_btDrag) return;
+            var d = _btDrag; _btDrag = null;
+            d.el.classList.remove('bt-assign-row--dragging');
+            if (d.moved && d.target !== d.index) {
+                var arr = _bt.assignOrder;
+                var item = arr.splice(d.index, 1)[0];
+                arr.splice(d.target, 0, item);   // move-with-shift
+                _mghlHaptic('tap');
+            }
+            d.children.forEach(function (ch) { ch.style.transform = ''; });
+            _btDrawAssignList();   // перерисовка с обновлёнными метками Pos
+        }
+        if (!window._btAssignBound) {
+            window._btAssignBound = true;
+            var list = document.getElementById('bt-assign-list');
+            if (list) {
+                list.addEventListener('pointerdown', function (e) {
+                    var row = e.target && e.target.closest && e.target.closest('.bt-assign-row');
+                    if (!row || _btDrag) return;
+                    var children = Array.prototype.slice.call(list.children);
+                    var index = children.indexOf(row);
+                    if (index < 0) return;
+                    e.preventDefault();
+                    _btDrag = {
+                        index: index, target: index, startY: e.clientY,
+                        rowH: _btAssignRowH(list), el: row, children: children, moved: false,
+                    };
+                    row.classList.add('bt-assign-row--dragging');
+                    document.addEventListener('pointermove', _btDragMove, { passive: false });
+                    document.addEventListener('pointerup', _btDragEnd);
+                    document.addEventListener('pointercancel', _btDragEnd);
+                });
+            }
+        }
+
+        window.btAssignSubmit = async function () {
+            var positions = {};
+            (_bt.assignOrder || []).forEach(function (hid, i) { positions[String(hid)] = i + 1; });
+            var btn = document.getElementById('bt-assign-submit');
+            if (btn) btn.disabled = true;
+            try {
+                var st = await _btPost('/battle/positions', { code: _bt.code, positions: positions });
+                if (st && st.version) _btApply(st);
+            } catch (e) {
+                if (typeof showToast === 'function') showToast(e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        };
+        window.btAssignEdit = function () {
+            // Локально возвращаем редактор; повторный «Готово» перезапишет.
+            var btn = document.getElementById('bt-assign-submit');
+            if (btn) btn.hidden = false;
+            var wait = document.getElementById('bt-assign-wait');
+            if (wait) wait.hidden = true;
+        };
+
+        function _btStartAssignTimer() {
+            if (_bt.assignInt) return;
+            _bt.assignInt = setInterval(_btAssignTick, 250);
+            _btAssignTick();
+        }
+        function _btStopAssignTimer() {
+            if (_bt.assignInt) { clearInterval(_bt.assignInt); _bt.assignInt = null; }
+        }
+        function _btAssignTick() {
+            var a = _bt.assignAnchor;
+            var el = document.getElementById('bt-assign-timer');
+            if (!a || !el) return;
+            var left = Math.max(0, a.remaining - (Date.now() - a.at));
+            el.textContent = Math.ceil(left / 1000);
+            el.classList.toggle('bt-assign-timer--low', left < 10000);
+            // По нулю — сервер финализирует сам, придёт поллингом.
+        }
+
+        // ── Результат: пошаговый «разбор» с отложенным вердиктом ───────────
+        // Не бросаем итог в лицо — очки набегают по компонентам (синергия →
+        // контрпики → позиции → итог), вердикт появляется последним. Тап по
+        // экрану — пропустить. Reduced-motion — сразу финал.
+        function _btReduceMotion() {
+            return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        }
+        function _btClearReveal() {
+            (_bt.revealTimers || []).forEach(clearTimeout);
+            _bt.revealTimers = [];
+            // Поколение: уже запущенные rAF-тикеры count-up прекращаются, когда
+            // оно сменилось (иначе при skip они перезаписали бы финальное число).
+            _bt.revealGen = (_bt.revealGen || 0) + 1;
+        }
+        // Тикер ЦЕЛОГО числа: дробные «очки драфта» — внутренняя кухня модели,
+        // дотеру наружу показываем только целые (счёт, перевесы).
+        function _btCountUp(el, from, to) {
+            if (!el) return;
+            if (_btReduceMotion()) { el.textContent = String(Math.round(to)); return; }
+            var gen = _bt.revealGen || 0, dur = 600, t0 = null;
+            function step(ts) {
+                if ((_bt.revealGen || 0) !== gen) return;   // отменено новым разбором
+                if (t0 === null) t0 = ts;
+                var p = Math.min(1, (ts - t0) / dur);
+                var v = from + (to - from) * (1 - Math.pow(1 - p, 3));
+                el.textContent = String(Math.round(v));
+                if (p < 1) requestAnimationFrame(step);
+                else el.textContent = String(Math.round(to));
+            }
+            requestAnimationFrame(step);
+        }
+
+        // ── Результат: «протокол матча» ────────────────────────────────────
+        // Одна композиция без вкладок: вердикт → два драфта КРУПНО (герои —
+        // главный контент режима) → таблица-протокол без рамок. Победившее
+        // значение строки — вес + основной цвет; зелёный/красный оставлены
+        // вердикту и рейтингу (цвет только для смысла). Монтаж — CSS-каскад.
+        function _btRvHeroesHtml(ids, posMap) {
+            var arr = (ids || []).slice();
+            if (posMap) arr.sort(function (x, y) {
+                return (posMap[String(x)] || 9) - (posMap[String(y)] || 9);
+            });
+            return arr.map(function (id) {
+                var p = posMap ? posMap[String(id)] : null;
+                return '<span class="bt-rv-hero">' +
+                    '<img src="' + _mghlEsc(_mghlImg(id)) + '" alt="" ' +
+                    'title="' + _mghlEsc(_mghlName(id)) + '" onerror="this.style.visibility=\'hidden\'">' +
+                    (p ? '<i>' + p + '</i>' : '') +
+                '</span>';
+            }).join('');
+        }
+
+        // Строка протокола: значения по бокам, метка по центру. win/lose —
+        // цвет исхода строки (победившее зелёное, проигравшее приглушённо-красное);
+        // data-val хранит финальное число для count-up при поэтапном раскрытии.
+        function _btProtoRowHtml(key, label, meVal, oppVal, isTotal) {
+            var m = Math.round(meVal || 0), o = Math.round(oppVal || 0);
+            function cls(v, other) {
+                return v > other ? ' is-win' : v < other ? ' is-lose' : '';
+            }
+            return '<div class="bt-proto-row' + (isTotal ? ' bt-proto-row--total' : '') +
+                '" data-key="' + key + '">' +
+                '<b class="bt-proto-val' + cls(m, o) + '" data-val="' + m + '">' + m + '</b>' +
+                '<span class="bt-proto-label">' + _mghlEsc(label) + '</span>' +
+                '<b class="bt-proto-val' + cls(o, m) + '" data-val="' + o + '">' + o + '</b>' +
+            '</div>';
+        }
+
+        function _btRenderResult(st, forceInstant) {
+            _btClearReveal();
+            _bt.protoSeqActive = false;
+            // Снапшот флага калибровки В МОМЕНТ входа в результат (F1-фикс):
+            // живой _bt.wasCalibrating может сбросить _btCheckGraduation раньше
+            // ухода с экрана — медаль в чипе рейтинга читает только снапшот.
+            // При ре-рендере скипом (forceInstant) снапшот НЕ обновляем — иначе
+            // graduation, успевший за время монтажа, слил бы настоящий ранг.
+            if (!forceInstant) _bt.resultMedalCal = !!_bt.wasCalibrating;
+            var me = _btMyRole(), opp = _btOppRole();
+            var r = st.result || {};
+            var isForfeit = !!r.forfeit;
+            var posMaps = r.positions || {};
+            var finals = r.final || {};
+            var pens = r.penalties || {};
+
+            var meFinal = (finals[me] != null) ? finals[me]
+                : (r[me] && r[me].total_score != null ? r[me].total_score : null);
+            var oppFinal = (finals[opp] != null) ? finals[opp]
+                : (r[opp] && r[opp].total_score != null ? r[opp].total_score : null);
+
+            // Вердикт — сцена экрана: самый крупный элемент, цвет = смысл.
+            var verdict = document.getElementById('bt-result-verdict');
+            if (verdict) {
+                verdict.textContent = st.winner === 'draw' ? 'Ничья'
+                    : st.winner === me ? 'Победа!' : 'Поражение';
+                verdict.className = 'bt-proto-verdict' +
+                    (st.winner === me ? ' is-win'
+                     : st.winner === 'draw' ? '' : ' is-lose');
+            }
+
+            // Рейтинг за бой (живой бой со снимком; бот — скрыто).
+            var ratEl = document.getElementById('bt-result-rating');
+            if (ratEl) {
+                var rt = st.rating;
+                if (rt && typeof rt.delta === 'number') {
+                    var sign = rt.delta >= 0 ? '+' : '';
+                    var medalKey = _bt.resultMedalCal ? 'calibration' : rt.rank_key;
+                    ratEl.innerHTML = '';
+                    if (medalKey) {
+                        var medal = document.createElement('img');
+                        medal.className = 'bt-result-rating-medal';
+                        medal.src = _btRankImg(medalKey); medal.alt = '';
+                        medal.onerror = function () { this.hidden = true; };
+                        ratEl.appendChild(medal);
+                    }
+                    ratEl.appendChild(document.createTextNode(
+                        'Рейтинг ' + sign + rt.delta + ' · ' + rt.after));
+                    ratEl.className = 'bt-result-rating ' + (rt.delta >= 0 ? 'is-up' : 'is-down');
+                    ratEl.hidden = false;
+                } else {
+                    ratEl.hidden = true;
+                }
+            }
+
+            // note — только пояснение форфейта.
+            var note = document.getElementById('bt-result-note');
+            if (note) {
+                if (isForfeit) {
+                    note.textContent = (r.forfeit === me)
+                        ? 'Ты сдался.' : 'Соперник сдался.';
+                    note.hidden = false;
+                } else {
+                    note.hidden = true;
+                }
+            }
+
+            // Команды: пики крупно, свои — первыми; у соперника — медаль ранга.
+            var hasSides = !!(r[me] && r[opp]);
+            var oppNameEl = document.getElementById('bt-proto-opp-name');
+            if (oppNameEl) oppNameEl.textContent = (st[opp] && st[opp].name) || 'Соперник';
+            _btSetRankMedal('bt-proto-opp-medal', st[opp] && st[opp].rank_key);
+            var meH = document.getElementById('bt-proto-me-heroes');
+            var oppH = document.getElementById('bt-proto-opp-heroes');
+            if (meH) meH.innerHTML = hasSides ? _btRvHeroesHtml(r[me].ally_ids, posMaps[me]) : '';
+            if (oppH) oppH.innerHTML = hasSides ? _btRvHeroesHtml(r[opp].ally_ids, posMaps[opp]) : '';
+            var teams = document.getElementById('bt-proto-teams');
+            if (teams) teams.hidden = !hasSides;
+
+            // Протокол — сюжет сверху вниз: чья сторона (caps) → синергия →
+            // контрпики → позиции → ИТОГ (кульминация, последним). Нулевые
+            // позиции у обоих — строка «Все герои на своих позициях» без чисел.
+            var table = document.getElementById('bt-proto-table');
+            var penMe = Math.round(pens[me] || 0), penOpp = Math.round(pens[opp] || 0);
+            if (table) {
+                if (hasSides && meFinal != null && oppFinal != null) {
+                    table.hidden = false;
+                    var oppCap = (st[opp] && st[opp].name) || 'Соперник';
+                    var posRow = (penMe === 0 && penOpp === 0)
+                        ? '<div class="bt-proto-row bt-proto-row--flat" data-key="pos">' +
+                              '<span class="bt-proto-poszero">Все герои на своих позициях</span>' +
+                          '</div>'
+                        : _btProtoRowHtml('pos', 'Позиции', penMe, penOpp, false);
+                    // Метовость: у битв до её появления в result нет — строка условная.
+                    var metaRow = (r.meta && r.meta[me] != null && r.meta[opp] != null)
+                        ? _btProtoRowHtml('meta', 'Мета', r.meta[me], r.meta[opp], false)
+                        : '';
+                    table.innerHTML =
+                        '<div class="bt-proto-row bt-proto-row--caps" data-key="caps">' +
+                            '<b class="bt-proto-cap">Ты</b><span></span>' +
+                            '<b class="bt-proto-cap">' + _mghlEsc(oppCap) + '</b>' +
+                        '</div>' +
+                        _btProtoRowHtml('syn', 'Синергия', r[me].synergy_score, r[opp].synergy_score, false) +
+                        _btProtoRowHtml('mu', 'Контрпики', r[me].matchup_score, r[opp].matchup_score, false) +
+                        metaRow +
+                        posRow +
+                        _btProtoRowHtml('total', 'Итог', meFinal, oppFinal, true);
+                } else {
+                    table.hidden = true;
+                    table.innerHTML = '';
+                }
+            }
+
+            // ── Монтаж: поэтапное раскрытие (саспенс настоящий — итог битвы
+            // игрок не знает, пока счёт не показан). Драфты → синергия →
+            // контрпики → позиции → итог+вердикт. Тап по экрану — сразу финал.
+            // История / reduced-motion / скип — всё мгновенно (без --seq).
+            var proto = document.getElementById('bt-proto');
+            var instant = forceInstant || _bt.historyView || _btReduceMotion();
+            var canSeq = !instant && table && !table.hidden && !isForfeit;
+            if (proto) {
+                proto.classList.remove(
+                    'bt-proto--seq', 'bt-proto--teams-in', 'bt-proto--final-in',
+                    'bt-proto--guard'
+                );
+            }
+            if (!canSeq) {
+                _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
+                return;
+            }
+
+            _bt.protoSeqActive = true;
+            proto.classList.add('bt-proto--seq');
+            function T(fn, ms) { _bt.revealTimers.push(setTimeout(fn, ms)); }
+            // Раскрытие строки: метка по центру → проигравшее значение
+            // (приглушённое) → победившее (ярко), числа набегают.
+            function stageRow(key, at, noHaptic) {
+                T(function () {
+                    var row = table.querySelector('[data-key="' + key + '"]');
+                    if (!row) return;
+                    row.classList.add('is-in');
+                    if (!noHaptic) _mghlHaptic('tap');
+                    var vals = row.querySelectorAll('.bt-proto-val');
+                    if (!vals.length) return;
+                    var first = vals[0], second = vals[1];
+                    // Проигравшее — первым, победившее — вторым (кульминация строки).
+                    if (first.classList.contains('is-win') || second.classList.contains('is-lose')) {
+                        first = vals[1]; second = vals[0];
+                    }
+                    [first, second].forEach(function (el, i) {
+                        T(function () {
+                            el.classList.add('is-vin');
+                            _btCountUp(el, 0, parseInt(el.getAttribute('data-val'), 10) || 0);
+                        }, 280 + i * 380);
+                    });
+                }, at);
+            }
+
+            // 1) Драфты въезжают (~1с сцена героев)
+            T(function () { proto.classList.add('bt-proto--teams-in'); }, 80);
+            // 2) Чья сторона — тихие колонки-подписи, затем строки-акты.
+            // Расписание динамическое: строка «Мета» есть только у битв после
+            // её появления в result — акты идут по фактическим строкам.
+            stageRow('caps', 950, true);
+            var seqKeys = ['syn', 'mu', 'meta', 'pos'].filter(function (k) {
+                return !!table.querySelector('[data-key="' + k + '"]');
+            });
+            var stepMs = 1000;
+            seqKeys.forEach(function (k, i) {
+                stageRow(k, 1100 + i * stepMs);
+            });
+            // 3) Кульминация: итог + вердикт + рейтинг + кнопки, хаптика исхода
+            var finalAt = 1100 + seqKeys.length * stepMs;
+            T(function () {
+                proto.classList.add('bt-proto--final-in');
+                _bt.protoSeqActive = false;
+                _mghlHaptic(st.winner === me ? 'ok' : st.winner === 'draw' ? 'tap' : 'bad');
+            }, finalAt);
+            stageRow('total', finalAt, true);
+        }
+
+        // Тап по экрану во время монтажа — сразу к финалу (ре-рендер instant;
+        // отслеживаемые таймеры чистит _btClearReveal внутри рендера).
+        if (!window._btProtoSkipBound) {
+            window._btProtoSkipBound = true;
+            var _btResEl = document.getElementById('bt-result');
+            if (_btResEl) {
+                _btResEl.addEventListener('click', function (e) {
+                    if (!_bt.protoSeqActive) return;
+                    if (e.target.closest('button')) return;
+                    _bt.protoSeqActive = false;
+                    if (_bt.state && _bt.state.status === 'finished') {
+                        _btRenderResult(_bt.state, true);
+                        // Кнопки материализуются под пальцем скипа — глушим
+                        // тапы на 350мс, чтобы второй тап не улетел в очередь.
+                        var proto = document.getElementById('bt-proto');
+                        if (proto) {
+                            proto.classList.add('bt-proto--guard');
+                            _bt.revealTimers.push(setTimeout(function () {
+                                proto.classList.remove('bt-proto--guard');
+                            }, 350));
+                        }
+                    }
+                });
+            }
+        }
+
+
+        window.btRematch = function () {
+            _btClearReveal();
+            _bt.historyView = false;
+            _bt.pendingReveal = null;   // посвящение пропускаем при «Ещё раз»
+            _bt.code = null; _bt.state = null;
+            _btShow('bt-menu');
+            btQueue();
+        };
+        window.btToMenu = function () {
+            _btClearReveal();
+            _bt.historyView = false;
+            // Если этим боем завершилась калибровка — сперва посвящение.
+            if (_bt.pendingReveal) {
+                var p = _bt.pendingReveal; _bt.pendingReveal = null;
+                _btShowRankReveal(p);
+                return;
+            }
+            _bt.code = null; _bt.state = null;
+            _btShow('bt-menu');
+            btRenderHistory();   // только что сыгранная битва — в ленту
+            btRenderRank();      // рейтинг мог измениться
+        };
+
+        // Deep-link: ?battle=КОД — кнопка из пуша «соперник найден» (живой
+        // быстрый матч). Игрок уже участник пары → btJoinByCode = resume.
+        (function () {
+            var code = null;
+            try { code = new URLSearchParams(window.location.search).get('battle'); }
+            catch (e) { return; }
+            if (!code) return;
+            document.addEventListener('DOMContentLoaded', function () {
+                switchPage('draft-battle');
+                btJoinByCode(String(code).toUpperCase());
+            }, { once: true });
+        })();
 
 
         function backToQuizList() {
@@ -2735,11 +4535,11 @@ var _POSITION_LABELS = {
     'POSITION_5': 'Поддержка',
 };
 var _POSITION_IMG = {
-    'POSITION_1': '/images/positions/pos_1.png',
-    'POSITION_2': '/images/positions/pos_2.png',
-    'POSITION_3': '/images/positions/pos_3.png',
-    'POSITION_4': '/images/positions/pos_4.png',
-    'POSITION_5': '/images/positions/pos_5.png',
+    'POSITION_1': 'images/positions/pos_1.png',
+    'POSITION_2': 'images/positions/pos_2.png',
+    'POSITION_3': 'images/positions/pos_3.png',
+    'POSITION_4': 'images/positions/pos_4.png',
+    'POSITION_5': 'images/positions/pos_5.png',
 };
 // Прямые маппинги для ключей dota_builds (pos%20N)
 var _DOTA_POS_LABELS = {
@@ -2750,11 +4550,11 @@ var _DOTA_POS_LABELS = {
     'pos%205': 'Поддержка',
 };
 var _DOTA_POS_IMG = {
-    'pos%201': '/images/positions/pos_1.png',
-    'pos%202': '/images/positions/pos_2.png',
-    'pos%203': '/images/positions/pos_3.png',
-    'pos%204': '/images/positions/pos_4.png',
-    'pos%205': '/images/positions/pos_5.png',
+    'pos%201': 'images/positions/pos_1.png',
+    'pos%202': 'images/positions/pos_2.png',
+    'pos%203': 'images/positions/pos_3.png',
+    'pos%204': 'images/positions/pos_4.png',
+    'pos%205': 'images/positions/pos_5.png',
 };
 
 function _showBuildLoading() {
@@ -3768,11 +5568,11 @@ var _META_POS_LABELS = {
 };
 
 var _META_POS_IMG = {
-    'POSITION_1': '/images/positions/pos_1.png',
-    'POSITION_2': '/images/positions/pos_2.png',
-    'POSITION_3': '/images/positions/pos_3.png',
-    'POSITION_4': '/images/positions/pos_4.png',
-    'POSITION_5': '/images/positions/pos_5.png',
+    'POSITION_1': 'images/positions/pos_1.png',
+    'POSITION_2': 'images/positions/pos_2.png',
+    'POSITION_3': 'images/positions/pos_3.png',
+    'POSITION_4': 'images/positions/pos_4.png',
+    'POSITION_5': 'images/positions/pos_5.png',
 };
 
 var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
@@ -4215,6 +6015,14 @@ function renderHeroesCatalog() {
         tile.addEventListener('click', function () {
             var name = tile.getAttribute('data-hero-name');
             if (!name) return;
+            if (_catalogContext === 'battle') {
+                var bhid = window.dotaHeroIds && window.dotaHeroIds[name];
+                closeHeroesCatalog();
+                if (bhid && typeof window._btCatalogPick === 'function') {
+                    window._btCatalogPick(bhid);
+                }
+                return;
+            }
             if (_catalogContext === 'drafter') {
                 var hid = window.dotaHeroIds && window.dotaHeroIds[name];
                 if (!hid) { closeHeroesCatalog(); return; }
@@ -5427,7 +7235,7 @@ function _renderAnalysisSide(side) {
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = arr[i];
-        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
+        var posSrc = 'images/positions/pos_' + (i + 1) + '.png';
         var cls = 'drafter-slot analysis-slot analysis-slot--' + side;
         if (hero) cls += ' analysis-slot--filled drafter-slot--filled';
         if (isActiveSide && i === _analysisActiveSlot) cls += ' analysis-slot--active';
@@ -6078,7 +7886,7 @@ function _renderAllySlots() {
         var cls = 'drafter-slot drafter-slot--ally';
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
-        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
+        var posSrc = 'images/positions/pos_' + (i + 1) + '.png';
         html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -6117,10 +7925,10 @@ function _renderEnemySlots() {
             }
             var posNum = parseInt(String(hero.position || '').replace('pos ', ''), 10);
             if (posNum >= 1 && posNum <= 5) {
-                html += '<img src="/images/positions/pos_' + posNum + '.png" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
+                html += '<img src="images/positions/pos_' + posNum + '.png" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
             }
         } else {
-            html += '<img src="/images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
+            html += '<img src="images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
         }
         html += '</div>';
     }
@@ -7576,7 +9384,7 @@ function _drafterCommentText(c) {
             'onerror="this.style.display=\'none\'">';
     }
 
-    function _tmPosIcon(p) { return '/images/positions/pos_' + p + '.png'; }
+    function _tmPosIcon(p) { return 'images/positions/pos_' + p + '.png'; }
     function _tmEsc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
             return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];

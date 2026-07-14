@@ -1207,6 +1207,17 @@ transform: translateY(-1px);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
+/* Плашка NEW у пункта меню: янтарь (семантика «внимание/ранг» проекта),
+   тихая тонировка вместо заливки — привлекает, не крича. */
+.dock-menu__new {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px; font-weight: var(--font-bold);
+  letter-spacing: 0.08em;
+  color: var(--warning, #d29922);
+  background: color-mix(in oklch, var(--warning, #d29922) 14%, transparent);
+}
 .dock-menu__item i {
   font-size: 19px;
   line-height: 1;
@@ -9004,6 +9015,9 @@ margin-top: var(--space-4);
   border-color: color-mix(in oklch, var(--accent) 42%, var(--border-subtle));
 }
 .mg-feature:active { transform: scale(0.99); }
+/* Карточек-флагманов теперь больше одной — между ними обязателен отступ
+   (раньше ритм держался только на margin заголовка «Квизы» ниже). */
+.mg-feature + .mg-feature { margin-top: var(--space-3); }
 .mg-feature-head { display: flex; align-items: center; gap: var(--space-3); }
 .mg-feature-ic {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
@@ -9326,3 +9340,1067 @@ margin-top: var(--space-4);
 .mghl-lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--text-primary); }
 .mghl-lb-best { font-family: var(--font-mono); font-weight: var(--font-bold); color: var(--text-primary); flex-shrink: 0; }
 .mghl-lb .tm-ghost-btn { width: 100%; }
+
+/* ════════════════════════════════════════════════════════════════
+   «Битва драфтов» (page-draft-battle)
+   Переиспользует tm-page-head / tm-primary-btn / tm-ghost-btn /
+   mghl-head-lb; ниже — собственные элементы режима.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Меню ── */
+#bt-menu { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+/* Режим — горизонтальный сегмент одной строкой (детали режимов в справке):
+   CTA «Найти соперника» получает воздух и доминирует. Выбранность — заливкой,
+   не только рамкой (различимо при любом контрасте). */
+.bt-mode-seg {
+  display: flex; gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.bt-mode-btn {
+  flex: 1; min-height: 44px;
+  border: none; border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm); font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-mode-btn--active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+/* CTA: чуть темнее фон ради AA-контраста белого текста (глобальный accent
+   даёт ~4.0:1 при 15px) + гарантированная высота. hover тоже фиксируем —
+   иначе глобальный .tm-primary-btn:hover вернёт светлый фон. */
+.bt-menu-primary,
+.bt-menu-primary:hover {
+  margin-top: var(--space-2);
+  min-height: 48px;
+  background: color-mix(in srgb, var(--accent) 82%, #000);
+  font-weight: var(--font-bold);
+}
+
+/* 44px-хит-зоны для 32px-кнопок шапки (визуал не меняем): «?» — единственный
+   вход в справку, промах = потерянный onboarding. У .tm-back-btn/.mghl-head-lb
+   нет своих ::after — расширение безопасно для всех экранов. */
+.tm-back-btn, .mghl-head-lb { position: relative; }
+.tm-back-btn::after, .mghl-head-lb::after {
+  content: ''; position: absolute; inset: -6px;
+}
+/* Несколько кнопок в шапке (трофей + «?»): margin-left:auto оставляем только
+   ПЕРВОЙ (прижимает группу вправо); у остальных два auto делили бы свободное
+   место пополам — кнопка повисала посередине шапки. */
+.tm-page-head .mghl-head-lb + .mghl-head-lb { margin-left: 0; }
+.bt-menu-row { display: flex; }
+.bt-menu-row .tm-ghost-btn { flex: 1; }
+.bt-rules { font-size: var(--text-xs); color: var(--text-tertiary); line-height: var(--leading-normal); margin-top: var(--space-2); }
+
+/* ── Ожидание ── */
+#bt-wait {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-4); padding: var(--space-10) var(--space-4);
+  text-align: center;
+}
+.bt-wait-spinner {
+  width: 36px; height: 36px; border-radius: 999px;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--accent);
+  animation: btSpin 0.9s linear infinite;
+}
+@keyframes btSpin { to { transform: rotate(360deg); } }
+.bt-wait-title { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); }
+#bt-wait .tm-primary-btn, #bt-wait .tm-ghost-btn { width: 100%; max-width: 300px; }
+
+/* ── Драфт ── */
+#bt-draft { padding: var(--space-3) var(--space-3) 96px; }
+.bt-side { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-side-head { display: flex; align-items: baseline; justify-content: space-between; }
+.bt-side-name {
+  font-size: var(--text-xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%;
+}
+.bt-side-reserve { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-tertiary); }
+
+.bt-picks { display: flex; gap: var(--space-1); }
+.bt-picks .bt-slot { flex: 1; aspect-ratio: 16 / 9; }
+.bt-bans { display: flex; gap: 3px; flex-wrap: wrap; min-height: 18px; }
+.bt-bans .bt-slot { width: 32px; aspect-ratio: 16 / 9; }
+.bt-slot {
+  display: block; border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden; position: relative;
+}
+.bt-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bt-slot--ban img { filter: grayscale(1) brightness(0.55); }
+.bt-slot--ban::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to top right, transparent 46%, var(--negative) 47%, var(--negative) 53%, transparent 54%);
+}
+.bt-slot--empty { border-style: dashed; }
+.bt-slot--auto { border-color: var(--warning, #d29922); }
+
+/* Полоса таймера */
+.bt-timer {
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--space-2) 0; margin: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bt-timer-turn { font-size: var(--text-xs); color: var(--text-secondary); }
+.bt-timer--mine .bt-timer-turn { color: var(--accent); font-weight: var(--font-semibold); }
+.bt-timer-clock {
+  font-family: var(--font-mono); font-size: var(--text-3xl);
+  font-weight: var(--font-bold); color: var(--text-primary); line-height: 1.1;
+}
+.bt-timer-clock--reserve { color: var(--warning, #d29922); }
+.bt-timer-sub { font-size: var(--text-2xs); color: var(--warning, #d29922); min-height: 14px; }
+
+/* Поиск + грид */
+.bt-search {
+  width: 100%; margin: var(--space-2) 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated); color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+.bt-search:focus { outline: none; border-color: var(--accent); }
+.bt-grid {
+  display: grid;
+  /* minmax(0,1fr): иначе длинные имена героев (min-width:auto у grid-items)
+     раздували треки — карточки получались разных размеров и вылезали за экран. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+}
+.bt-grid--waiting { opacity: 0.55; }
+.bt-cell {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
+  padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-cell img {
+  width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: var(--radius-sm); background: var(--bg-elevated); display: block;
+}
+.bt-cell span {
+  font-size: 9px; color: var(--text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.bt-cell--taken { opacity: 0.28; }
+.bt-cell--taken img { filter: grayscale(1); }
+.bt-cell--sel { border-color: var(--accent); }
+.bt-cell:disabled { cursor: default; }
+
+/* Подтверждение хода */
+.bt-confirm {
+  position: fixed; left: var(--space-3); right: var(--space-3);
+  bottom: calc(var(--nav-height, 64px) + 10px);
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 60;
+}
+.bt-confirm img { width: 56px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-sm); }
+.bt-confirm-name { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-confirm-btn { padding: 8px 16px; }
+
+/* ── Результат ── */
+#bt-result {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-4);
+  /* Нижний отступ с запасом под фиксированный док — кнопки не режутся. */
+  padding: var(--space-6) var(--space-4) calc(var(--space-8) + 84px);
+}
+
+/* ── «Протокол матча» ────────────────────────────────────────────────────
+   Скорборд без единой рамки: вердикт-сцена → два драфта крупно → таблица
+   (значения по краям, метки по центру, победившее значение — вес + цвет).
+   Монтаж: каскад прямых детей .bt-proto (transition-delay), ~0.5с суммарно. */
+.bt-proto {
+  width: 100%; max-width: 380px;
+  display: flex; flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ── Поэтапное раскрытие (--seq ставит JS только на живой монтаж; instant-
+   путь класса не получает — всё видно сразу). Сюжет: драфты (~2с) →
+   синергия → контрпики → позиции → ИТОГ + вердикт. Тап — сразу финал. ── */
+
+/* ВАЖНО: transition объявлен ТОЛЬКО на видимом состоянии. Если повесить его
+   на скрытое, добавление --seq анимировало бы ГАШЕНИЕ уже видимого контента
+   (вспышка вердикта-спойлера + моргание значений на старте секвенции). */
+
+/* Драфты въезжают с противоположных вертикалей, второй — с задержкой. */
+.bt-proto--seq .bt-proto-team { opacity: 0; transform: translateY(16px); }
+.bt-proto--seq .bt-proto-team:last-child { transform: translateY(-16px); }
+.bt-proto--seq.bt-proto--teams-in .bt-proto-team {
+  opacity: 1; transform: none;
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-proto--seq.bt-proto--teams-in .bt-proto-team:last-child { transition-delay: 0.15s; }
+
+/* Строки протокола: сначала метка по центру, затем значения по одному. */
+.bt-proto--seq .bt-proto-row { opacity: 0; }
+.bt-proto--seq .bt-proto-row.is-in {
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
+}
+.bt-proto--seq .bt-proto-val { opacity: 0; transform: translateY(8px); }
+.bt-proto--seq .bt-proto-val.is-vin {
+  opacity: 1; transform: none;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Шапка (вердикт+рейтинг) и кнопки — только на кульминации. */
+.bt-proto--seq .bt-proto-head,
+.bt-proto--seq .bt-res-actions {
+  opacity: 0; transform: translateY(10px);
+}
+.bt-proto--seq.bt-proto--final-in .bt-proto-head,
+.bt-proto--seq.bt-proto--final-in .bt-res-actions {
+  opacity: 1; transform: none;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-proto--seq.bt-proto--final-in .bt-proto-verdict {
+  animation: btVerdictIn 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes btVerdictIn {
+  from { transform: scale(0.92); }
+  to   { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bt-proto--seq .bt-proto-team, .bt-proto--seq .bt-proto-row,
+  .bt-proto--seq .bt-proto-val, .bt-proto--seq .bt-proto-head,
+  .bt-proto--seq .bt-res-actions {
+    transition: none; opacity: 1; transform: none; animation: none;
+  }
+}
+
+.bt-proto-head {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-2); text-align: center;
+}
+.bt-proto-verdict {
+  font-size: var(--text-3xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+}
+.bt-proto-verdict.is-win { color: var(--positive); }
+.bt-proto-verdict.is-lose { color: var(--negative); }
+
+/* Команды: герои — звёзды экрана, полная ширина, тихие подписи. */
+.bt-proto-teams { display: flex; flex-direction: column; gap: var(--space-5); }
+.bt-proto-team { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-proto-team-name {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  overflow: hidden; white-space: nowrap;
+}
+
+/* Таблица-протокол: хэрлайны вместо рамок, mono-числа по краям. */
+.bt-proto-table { display: flex; flex-direction: column; }
+.bt-proto-row {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: baseline; column-gap: var(--space-3);
+  padding: 10px 0;
+}
+.bt-proto-row + .bt-proto-row { border-top: 1px solid var(--border-subtle); }
+.bt-proto-label {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary); text-align: center;
+}
+.bt-proto-val {
+  font-family: var(--font-mono); font-size: var(--text-lg);
+  font-weight: var(--font-regular, 400); color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.bt-proto-val:first-child { text-align: left; }
+.bt-proto-val:last-child { text-align: right; }
+/* Исход строки — весом, не цветом: победившее значение белое жирное,
+   проигравшее серое. Зелёный/красный зарезервированы за вердиктом, строкой
+   ИТОГ и рейтингом — один цветовой акцент на экране вместо семи. */
+.bt-proto-val.is-win { color: var(--text-primary); font-weight: var(--font-bold); }
+.bt-proto-val.is-lose { color: var(--text-tertiary); }
+/* Итог — кульминация: единственная цветная строка таблицы, ниже вердикта
+   по кеглю (вердикт — единственный герой экрана). Без прозрачностей — AA. */
+.bt-proto-row--total { padding: 14px 0 0; }
+.bt-proto-row--total .bt-proto-val { font-size: var(--text-2xl); font-weight: var(--font-bold); }
+.bt-proto-row--total .bt-proto-val.is-win { color: var(--positive); }
+.bt-proto-row--total .bt-proto-val.is-lose { color: var(--negative); }
+/* Шапка колонок: чья сторона — левая всегда твоя. */
+.bt-proto-row--caps { padding: 4px 0; }
+.bt-proto-cap {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-secondary);   /* AA: tertiary не читался «чья колонка» */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-proto-cap:last-child { text-align: right; }
+/* Позиции без штрафов — тихая строка вместо нулей. */
+.bt-proto-row--flat { display: flex; justify-content: center; }
+.bt-proto-poszero { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* ── Топ игроков: лестница рангов секциями ───────────────────────────────
+   Структура списка = онбординг: секции Вечный→Пешка с медалью и порогом,
+   каркас постоянен (пустая секция зовёт наверх). Без карточек — иерархию
+   делают медали, капс-заголовки и хэрлайны. Внизу — стики-бар «ты». */
+#bt-lb {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-4);
+  /* Запас снизу: стики-бар не должен перекрывать последнюю строку Пешки. */
+  padding-bottom: 140px;
+}
+.bt-lb-title {
+  font-size: var(--text-xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-lb-ladder { display: flex; flex-direction: column; gap: var(--space-5); }
+
+/* Каскад входа секций (перезапуск классом --in; transition только на
+   видимом состоянии — урок вспышки результата). */
+.bt-lb-ladder .bt-lbr-sec { opacity: 0; transform: translateY(10px); }
+.bt-lb-ladder--in .bt-lbr-sec {
+  opacity: 1; transform: none;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-lb-ladder--in .bt-lbr-sec:nth-child(2) { transition-delay: 0.06s; }
+.bt-lb-ladder--in .bt-lbr-sec:nth-child(3) { transition-delay: 0.12s; }
+.bt-lb-ladder--in .bt-lbr-sec:nth-child(4) { transition-delay: 0.18s; }
+.bt-lb-ladder--in .bt-lbr-sec:nth-child(5) { transition-delay: 0.24s; }
+@media (prefers-reduced-motion: reduce) {
+  .bt-lb-ladder .bt-lbr-sec { opacity: 1; transform: none; transition: none; }
+}
+
+/* Заголовок секции: медаль + имя ранга капсом + порог у правого края. */
+.bt-lbr-head {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bt-lbr-medal { flex: 0 0 auto; width: 28px; height: 28px; object-fit: contain; }
+.bt-lbr-name {
+  font-size: var(--text-xs); font-weight: var(--font-bold);
+  text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-primary);
+}
+.bt-lbr-thr {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.bt-lbr-body { display: flex; flex-direction: column; }
+.bt-lbr-empty {
+  padding: var(--space-2) 2px var(--space-1);
+  font-size: var(--text-xs); color: var(--text-tertiary);
+  font-style: normal;
+}
+
+/* Строка игрока: место · аватар · имя · MMR. */
+.bt-lb-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 9px 2px;
+}
+.bt-lb-row + .bt-lb-row { border-top: 1px solid var(--border-subtle); }
+.bt-lb-row--you {
+  background: color-mix(in oklch, var(--accent) 9%, transparent);
+  border-radius: var(--radius-md);
+  padding-left: var(--space-2); padding-right: var(--space-2);
+}
+.bt-lb-num {
+  flex: 0 0 24px; text-align: right;
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  color: var(--text-tertiary); font-variant-numeric: tabular-nums;
+}
+.bt-lb-row--top3 .bt-lb-num { color: var(--warning, #d29922); font-weight: var(--font-bold); }
+.bt-lb-av {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 999px;
+  overflow: hidden; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated);
+  font-size: var(--text-xs); font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+}
+.bt-lb-av img { width: 100%; height: 100%; object-fit: cover; }
+.bt-lb-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: var(--text-base); color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-lb-medal { flex: 0 0 auto; width: 22px; height: 22px; object-fit: contain; }
+.bt-lb-mmr {
+  flex: 0 0 auto;
+  font-family: var(--font-mono); font-size: var(--text-base);
+  font-weight: var(--font-bold); color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Стики-бар «ты»: всегда виден над доком; тап открывает справку о рангах. */
+.bt-lb-mebar {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+  z-index: 5;
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  font: inherit; color: inherit; text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-lb-mebar .bt-lb-num { flex-basis: auto; color: var(--text-primary); font-weight: var(--font-bold); }
+.bt-lb-me-txt {
+  margin-left: auto;
+  font-size: var(--text-xs); color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bt-lb-dots { display: flex; gap: 5px; flex: 0 0 auto; }
+/* Точки прогресса калибровки — общие для карточки меню и стики-бара. */
+.bt-lb-dots .bt-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+}
+.bt-lb-dots .bt-dot--on { background: var(--accent); border-color: var(--accent); }
+
+/* Пилюля-«островок» поиска: фиксирована сверху приложения, видна когда поиск
+   (или начавшийся матч) идёт вне экрана ожидания. Статичный элемент разметки;
+   [hidden]-правило обязательно — display:inline-flex перебил бы UA-hidden. */
+.bt-search-pill {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%; transform: translateX(-50%);
+  z-index: 1300;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary);
+  font-size: var(--text-xs); font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  animation: btPillIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bt-search-pill[hidden] { display: none !important; }
+@keyframes btPillIn {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.bt-search-pill .bt-pill-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--accent);
+  animation: btPillPulse 1.6s ease-in-out infinite;
+}
+@keyframes btPillPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+/* Матч начался — пилюля «живая»: зелёная точка и кромка. */
+.bt-search-pill--live { border-color: var(--positive); }
+.bt-search-pill--live .bt-pill-dot { background: var(--positive); animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .bt-search-pill { animation: none; }
+  .bt-search-pill .bt-pill-dot { animation: none; }
+}
+
+/* Пустой результат поиска в гриде драфта: стилизованное состояние на всю
+   ширину грида вместо голого текста. */
+.bt-grid-empty {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-tertiary); font-size: var(--text-sm);
+  text-align: center;
+  border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);
+}
+.bt-grid-empty i { font-size: 22px; opacity: 0.6; }
+
+/* Подсказка скипа: только во время секвенции, тихо и с задержкой (не мигать
+   на пустом старте). Обычный поток — НЕ fixed (урок F3: ничего плавающего). */
+.bt-proto-skiphint {
+  display: none;
+  text-align: center;
+  font-size: var(--text-2xs); color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+.bt-proto--seq:not(.bt-proto--final-in) .bt-proto-skiphint {
+  display: block;
+  animation: btHintIn 0.4s 0.9s both ease-out;
+}
+@keyframes btHintIn { from { opacity: 0; } to { opacity: 0.8; } }
+
+/* Защита от «кнопки под пальцем»: 350мс после скипа тапы по кнопкам глохнут. */
+.bt-proto--guard .bt-res-actions { pointer-events: none; }
+
+.bt-result-note { font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* Действия: компактный ряд, ОДИНАКОВЫЕ по размеру кнопки (у ghost есть
+   1px-рамка и свой паддинг из scoped-правила — фиксируем высоту обеим). */
+.bt-res-actions { display: flex; gap: var(--space-3); width: 100%; }
+.bt-res-actions .tm-primary-btn,
+.bt-res-actions .tm-ghost-btn {
+  flex: 1; width: auto; max-width: none;
+  height: 48px; padding: 0 var(--space-4);
+  margin: 0;   /* у глобального .tm-primary-btn есть margin-bottom — он и кривил ряд */
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
+  font-size: var(--text-base);
+}
+
+/* КРИТИЧНО: у bt-экранов задан display:flex, который перебивает
+   UA-стиль атрибута [hidden] (та же грабля, что у mghl — см. ~9082).
+   Без этого правила ВСЕ экраны битвы видны одновременно, стопкой. */
+#page-draft-battle [hidden] { display: none !important; }
+
+/* ── «Битва драфтов»: полировка UX (интерстишл, resume, активная сторона) ── */
+
+/* Полноэкранные состояния: ожидание и меню занимают весь вьюпорт,
+   ничего «следующего» под ними не проглядывает. */
+#bt-menu, #bt-wait, #bt-found, #bt-result {
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+#bt-wait { justify-content: center; padding-top: var(--space-6); }
+
+/* Интерстишл «Соперник найден» */
+.bt-found {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-6); padding: var(--space-8) var(--space-4);
+  text-align: center;
+  animation: btFoundIn 0.25s ease-out;
+}
+@keyframes btFoundIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.bt-found-label {
+  font-size: var(--text-2xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-found-vs { display: flex; align-items: center; gap: var(--space-5); }
+.bt-found-player {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  max-width: 110px;
+}
+.bt-found-player span {
+  font-size: var(--text-sm); color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.bt-found-av {
+  width: 64px; height: 64px; border-radius: 999px; object-fit: cover;
+  background: var(--bg-elevated); border: 2px solid var(--border-strong);
+}
+.bt-found-x {
+  font-family: var(--font-mono); font-size: var(--text-lg);
+  font-weight: var(--font-bold); color: var(--accent); letter-spacing: 0.1em;
+}
+.bt-found-sub { font-size: var(--text-sm); color: var(--text-tertiary); }
+
+/* Resume-баннер в меню */
+.bt-resume {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--border-subtle));
+  background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface));
+}
+.bt-resume-txt { font-size: var(--text-sm); color: var(--text-primary); line-height: var(--leading-normal); }
+.bt-resume-actions { display: flex; gap: var(--space-2); }
+.bt-resume-actions .tm-primary-btn, .bt-resume-actions .tm-ghost-btn {
+  flex: 1; min-height: 44px; padding: 9px 0; margin: 0;   /* 44px тач-таргет */
+}
+
+/* Активная сторона драфта + аватары */
+.bt-side {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.bt-side--active {
+  border-color: color-mix(in oklch, var(--accent) 50%, transparent);
+  background: color-mix(in oklch, var(--accent) 6%, transparent);
+}
+.bt-side-av {
+  width: 22px; height: 22px; border-radius: 999px; object-fit: cover;
+  background: var(--bg-elevated); flex-shrink: 0;
+}
+.bt-side-head { gap: var(--space-2); align-items: center; }
+.bt-side-name { max-width: none; flex: 1; }
+
+/* Прогресс-полоса таймера */
+.bt-timer-bar {
+  width: min(220px, 70%); height: 3px; margin-top: 6px;
+  border-radius: 999px; background: var(--bg-elevated); overflow: hidden;
+}
+.bt-timer-fill {
+  height: 100%; width: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s linear;
+}
+.bt-timer-fill--reserve { background: var(--warning, #d29922); }
+
+/* ── «Битва драфтов»: итерация UX №2 (меню, справка, грид, позиции) ── */
+
+/* Блок «История битв»: лента завершённых партий (тап → разбор результата).
+   Левая цветная кромка кодирует исход; справа задел под чип рейтинга. */
+.bt-history {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.bt-history-head { display: flex; align-items: center; }
+.bt-history-title {
+  font-size: var(--text-xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+.bt-history-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-history-empty {
+  padding: var(--space-6) var(--space-3); text-align: center;
+  font-size: var(--text-sm); color: var(--text-secondary);   /* AA: tertiary 2.6:1 */
+  border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);
+}
+.bt-history-retry { width: 100%; background: transparent; cursor: pointer; }
+/* Исход строки несут текст «Победа/Поражение» и его цвет — цветная кромка
+   border-left убрана (анти-паттерн side-stripe, информация дублировалась). */
+.bt-hist-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.bt-hist-row:active { background: var(--bg-hover); }
+.bt-hist-av {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 999px;
+  overflow: hidden; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated); color: var(--text-tertiary);
+  font-size: var(--text-lg);
+}
+.bt-hist-av img { width: 100%; height: 100%; object-fit: cover; }
+.bt-hist-av--bot { color: var(--accent); }
+.bt-hist-initial {
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  color: var(--text-secondary); line-height: 1;
+}
+.bt-hist-mid {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.bt-hist-name {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  min-width: 0;
+}
+.bt-hist-name-txt {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-hist-meta { font-size: var(--text-xs); color: var(--text-secondary); }   /* AA + 12px */
+.bt-hist-right {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+}
+.bt-hist-outcome { font-size: var(--text-xs); font-weight: var(--font-semibold); }
+.bt-hist-row--win  .bt-hist-outcome { color: var(--success, #3db87a); }
+.bt-hist-row--loss .bt-hist-outcome { color: var(--danger, #e5534b); }
+.bt-hist-row--draw .bt-hist-outcome { color: var(--text-secondary); }
+.bt-hist-score {
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  color: var(--text-secondary);   /* AA */
+}
+/* MMR-чип: подписанный пилл с тонированным фоном — читается как отдельная
+   сущность «изменение рейтинга», а не третье число в столбике. */
+.bt-hist-mmr {
+  font-family: var(--font-mono); font-size: 10px;
+  font-weight: var(--font-semibold);
+  padding: 2px 7px; border-radius: 999px;
+  margin-top: 1px;
+}
+.bt-hist-mmr.is-up {
+  color: var(--success, #3db87a);
+  background: color-mix(in oklch, var(--success, #3db87a) 12%, var(--bg-surface));
+}
+.bt-hist-mmr.is-down {
+  color: var(--danger, #e5534b);
+  background: color-mix(in oklch, var(--danger, #e5534b) 12%, var(--bg-surface));
+}
+
+/* Рейтинговая карточка в меню: ранг-бейдж + MMR ИЛИ прогресс калибровки */
+/* Карточка — <button> (тап открывает справку о рейтинге): сбрасываем
+   UA-стили кнопки, сохраняя прежний вид. */
+.bt-rankcard {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  font: inherit; color: inherit; text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease;
+}
+.bt-rankcard:active { border-color: var(--border-strong); }
+.bt-rankcard-badge {
+  flex: 0 0 auto; width: 48px; height: 48px;
+  display: flex; align-items: center; justify-content: center;
+}
+.bt-rankcard-badge img { width: 100%; height: 100%; object-fit: contain; }
+.bt-rankcard-badge--cal { border-radius: 999px; border: 2px dashed var(--accent); }
+.bt-rankcard-main {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.bt-rankcard-name {
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+.bt-rankcard-sub { font-size: var(--text-xs); color: var(--text-secondary); }   /* AA + 12px */
+/* Прогресс-точки калибровки: сыгранные бои — заполненные. */
+.bt-rankcard-dots { display: flex; gap: 5px; margin-top: 4px; }
+.bt-rankcard-dots .bt-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+}
+.bt-rankcard-dots .bt-dot--on { background: var(--accent); border-color: var(--accent); }
+.bt-rankcard-rating {
+  flex: 0 0 auto;
+  font-family: var(--font-mono); font-size: var(--text-2xl);
+  font-weight: var(--font-bold); color: var(--accent);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* Медали рангов: экран «найден» (под именем), шапка стороны в драфте,
+   строка рейтинга на результате */
+.bt-found-rank { width: 40px; height: 40px; object-fit: contain; }
+.bt-side-rank {
+  flex: 0 0 auto; width: 18px; height: 18px; object-fit: contain;
+  margin-left: 2px;
+}
+.bt-result-rating-medal {
+  width: 22px; height: 22px; object-fit: contain;
+  vertical-align: -5px; margin-right: 6px;
+}
+
+/* Изменение рейтинга на экране результата */
+.bt-result-rating {
+  text-align: center; font-family: var(--font-mono);
+  font-size: var(--text-base); font-weight: var(--font-semibold);
+  margin-top: var(--space-1);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 100%; gap: 0;
+}
+.bt-result-rating.is-up   { color: var(--success, #3db87a); }
+.bt-result-rating.is-down { color: var(--danger, #e5534b); }
+
+/* Посвящение (раскрытие ранга) — поверх каркаса .bt-found */
+.bt-reveal-badge {
+  width: 140px; height: 140px; margin: var(--space-4) 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.bt-reveal-badge img { width: 100%; height: 100%; object-fit: contain; }
+.bt-reveal-rank {
+  font-size: var(--text-3xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+
+/* Справка о режиме */
+#bt-help {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+.bt-help-title {
+  font-size: var(--text-xl); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-help-lead {
+  margin: 0; font-size: var(--text-sm); color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+/* Правила — définition-сетка: термин слева капсом, описание справа,
+   хэрлайны между строками. Структура вместо стены текста. */
+.bt-help-list { display: flex; flex-direction: column; }
+.bt-help-item {
+  display: grid; grid-template-columns: 88px 1fr;
+  column-gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+.bt-help-item + .bt-help-item { border-top: 1px solid var(--border-subtle); }
+.bt-help-term {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--accent);
+  padding-top: 2px;
+}
+.bt-help-desc {
+  font-size: var(--text-sm); color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+/* Плашка рангов: вся лестница с медалями и порогами MMR. */
+.bt-help-ranks {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.bt-help-ranks-title {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+}
+.bt-ranks-row {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.bt-rank-item {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 0; text-align: center;
+}
+.bt-rank-item img { width: 40px; height: 40px; object-fit: contain; }
+.bt-rank-nm {
+  font-size: 10px; font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.bt-rank-thr {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-secondary);
+}
+.bt-help-ranks-note {
+  margin: 0; font-size: var(--text-xs); color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+#bt-help .tm-ghost-btn { margin-top: auto; }
+
+/* Поиск + кнопка каталога */
+.bt-search-row { display: flex; gap: var(--space-2); margin: var(--space-2) 0; }
+.bt-search-row .bt-search { flex: 1; min-width: 0; margin: 0; }
+.bt-catalog-btn {
+  flex: 0 0 auto; width: 42px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated); color: var(--text-secondary);
+  cursor: pointer; font-size: 18px;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-catalog-btn:active { color: var(--text-primary); border-color: var(--border-strong); }
+
+/* Чипы позиций */
+.bt-pos-row {
+  display: flex; gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.bt-pos-row::-webkit-scrollbar { display: none; }
+.bt-pos-btn {
+  flex: 0 0 auto; padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-size: var(--text-xs); font-weight: var(--font-medium);
+  cursor: pointer; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-pos-btn--active {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--bg-surface));
+  color: var(--text-primary);
+}
+
+/* Компактный грид: 5 колонок, плотнее, имена мельче */
+.bt-cell span { font-size: 8px; }
+
+/* Confirm-плашка: над нижним доком, с запасом и safe-area */
+.bt-confirm {
+  bottom: calc(var(--nav-height, 70px) + env(safe-area-inset-bottom, 0px) + 14px);
+  z-index: 55; /* ниже дока и его popover-меню, выше контента */
+}
+
+/* ── «Битва драфтов»: стадия расстановки позиций ── */
+#bt-assign {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  min-height: calc(var(--tg-viewport-height, 100vh) - 120px);
+}
+.bt-assign-head { display: flex; align-items: center; justify-content: space-between; }
+.bt-assign-title {
+  font-size: var(--text-lg); font-weight: var(--font-bold);
+  color: var(--text-primary); letter-spacing: var(--tracking-tight);
+}
+.bt-assign-timer {
+  font-family: var(--font-mono); font-size: var(--text-2xl);
+  font-weight: var(--font-bold); color: var(--accent);
+}
+.bt-assign-timer--low { color: var(--negative); }
+.bt-assign-sub { font-size: var(--text-xs); color: var(--text-tertiary); line-height: var(--leading-normal); }
+.bt-assign-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-assign-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  cursor: grab; text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  /* none: вертикальный драг по строке не скроллит страницу. Список из 5 строк
+     помещается на экран, потому перехват прокрутки на строках безопасен. */
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  /* Плавный «слайд» соседей при reorder. Перетаскиваемая строка transition
+     отключает (--dragging) — она должна жёстко следовать за пальцем. */
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1),
+              border-color 0.15s ease, background 0.15s ease;
+}
+.bt-assign-row--dragging {
+  cursor: grabbing;
+  transition: none;
+  z-index: 5; position: relative;
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  transform: scale(1.02);
+}
+.bt-assign-pos {
+  flex: 0 0 52px;
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  font-weight: var(--font-bold); color: var(--text-tertiary);
+}
+.bt-assign-row img {
+  width: 64px; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: var(--radius-sm); background: var(--bg-elevated);
+  pointer-events: none;
+}
+/* Ручка-индикатор, что строку можно тянуть. */
+.bt-assign-grip {
+  flex: 0 0 auto; color: var(--text-tertiary);
+  font-size: 18px; line-height: 1; letter-spacing: -1px;
+  padding-left: var(--space-1);
+}
+.bt-assign-name {
+  flex: 1; min-width: 0;
+  font-size: var(--text-sm); font-weight: var(--font-medium);
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-assign-wait {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  align-items: center; text-align: center;
+  font-size: var(--text-sm); color: var(--text-secondary);
+  padding-top: var(--space-2);
+}
+#bt-assign .tm-primary-btn { margin-top: var(--space-2); }
+
+/* ── «Битва драфтов»: фикс кнопок ── */
+
+/* Базовый .tm-ghost-btn — ТЕКСТОВАЯ кнопка без рамки/заливки (см. ~7622).
+   Внутри битвы все ghost-кнопки должны выглядеть кнопками — оформляем
+   scoped-правилом (тот же приём, что .mghl-over .tm-ghost-btn). */
+#page-draft-battle .tm-ghost-btn {
+  width: auto;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 11px 16px;
+}
+#page-draft-battle .tm-ghost-btn:hover,
+#page-draft-battle .tm-ghost-btn:active {
+  border-color: var(--border-strong);
+}
+/* Где кнопка одна в колонке — на всю ширину (результат — свой ряд-флекс) */
+#bt-wait .tm-ghost-btn, #bt-help .tm-ghost-btn,
+.bt-assign-wait .tm-ghost-btn { width: 100%; }
+
+/* ── «Битва драфтов»: мобильный полиш (вылеты за экран, иконки позиций) ── */
+
+/* Страховка: ни одно состояние битвы не должно давать горизонтальный скролл */
+#page-draft-battle { overflow-x: clip; }
+
+/* Чипы позиций с иконками драфтера вместо текста */
+.bt-pos-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; height: 32px; padding: 0 10px;
+}
+.bt-pos-btn img {
+  width: 18px; height: 18px; object-fit: contain; display: block;
+  opacity: 0.65;
+}
+.bt-pos-btn--active img { opacity: 1; }
+
+/* ── «Битва драфтов»: счётчик онлайна (меню + поиск) ── */
+.bt-online {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  align-self: center;
+  margin-left: auto; margin-right: auto;   /* центр при любом родителе */
+  width: fit-content;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+#bt-online-menu { align-self: flex-start; margin-bottom: var(--space-1); }
+.bt-online-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--positive);
+  box-shadow: 0 0 0 0 color-mix(in oklch, var(--positive) 70%, transparent);
+  animation: btOnlinePulse 2.4s ease-out infinite;
+}
+@keyframes btOnlinePulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklch, var(--positive) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 6px color-mix(in oklch, var(--positive) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--positive) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bt-online-dot { animation: none; }
+}
+
+/* ── «Битва драфтов»: панели разбора результата (Контрпики / Синергия) ──
+   Раньше это были GSAP-акты; теперь — статичные панели во вкладках. */
+
+/* Общая «плитка» героя (иконка + бейдж позиции). */
+.bt-rv-hero { position: relative; display: block; }
+.bt-rv-hero img {
+  width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: var(--radius-sm); background: var(--bg-elevated); display: block;
+}
+.bt-rv-hero i {
+  position: absolute; right: 2px; bottom: 2px;
+  font-style: normal; font-family: var(--font-mono);
+  font-size: 9px; font-weight: var(--font-bold); line-height: 1; color: #fff;
+  background: rgba(0, 0, 0, 0.72); padding: 1px 3px; border-radius: 2px;
+}
+
+/* Ряд героев команды (используется протоколом результата). */
+.bt-rv-heroes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
