@@ -250,6 +250,14 @@ def init_stats_tables() -> None:
             ))
             logger.info("[stats_db] Migration applied: added battle_games_played to user_profiles")
 
+    # Migration 8e: индекс лидерборда битвы (alembic 0022). IF NOT EXISTS —
+    # кросс-БД идемпотентно (PG и SQLite поддерживают).
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_user_profiles_battle_lb "
+            "ON user_profiles (battle_games_played, battle_rating)"
+        ))
+
     # Migration 8: create hero_ability_builds (skill build aggregates per hero).
     with engine.begin() as conn:
         conn.execute(text("""

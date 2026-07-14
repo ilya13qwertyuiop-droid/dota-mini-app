@@ -79,6 +79,13 @@ class UserProfile(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
+    __table_args__ = (
+        # Лидерборд битвы: WHERE battle_games_played >= N ORDER BY battle_rating
+        # DESC — без индекса это seq scan+sort по всей user_profiles на каждый
+        # вход в топ (имя = имени в миграции 0022, конвенция 0015/0016).
+        Index("ix_user_profiles_battle_lb", "battle_games_played", "battle_rating"),
+    )
+
     quiz_results = relationship(
         "QuizResult", back_populates="user", cascade="all, delete-orphan"
     )
