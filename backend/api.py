@@ -5440,11 +5440,15 @@ def api_battle_profile(token: str, db: Session = Depends(get_db)):
 
 @app.get("/api/battle/leaderboard")
 def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
-    """Топ-25 по MMR битвы среди откалибровавшихся (games >= калибровки),
-    забаненные исключены. you — место вызывающего среди established (на
-    калибровке места нет — фронт показывает прогресс вместо позиции)."""
+    """Лестница рангов: топ-N на КАЖДУЮ секцию ранга с ГЛОБАЛЬНЫМИ местами.
+
+    Раньше отдавался глобальный топ-25 — с ростом пула все 25 лучших стали
+    Предвестником+ и секция «Пешка» на витрине опустела (пешки в глобальный
+    топ не влезают по определению). Секционная витрина требует представителей
+    каждого ранга. Забаненные исключены; you — место среди established."""
     uid = _tm_require_user(token=token)
     banned = set(get_banned_user_ids())
+    PER_TIER = 10
 
     rows = (
         db.query(
@@ -5455,19 +5459,26 @@ def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
         )
         .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
         .order_by(DBUserProfile.battle_rating.desc(), DBUserProfile.user_id)
-        .limit(200)
+        .limit(2000)
         .all()
     )
     rows = [r for r in rows if r.user_id not in banned]
 
+    # Глобальное место (после исключения banned) + отсев по PER_TIER на ранг.
     top = []
-    for r in rows[:25]:
-        s = r.settings or {}
+    tier_counts: dict[str, int] = {}
+    for place, r in enumerate(rows, start=1):
         rating = r.battle_rating if r.battle_rating is not None else _BT_RATING_BASE
+        key = _bt_public_rank_key(rating, r.battle_games_played)
+        if tier_counts.get(key, 0) >= PER_TIER:
+            continue
+        tier_counts[key] = tier_counts.get(key, 0) + 1
+        s = r.settings or {}
         top.append({
+            "place": place,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
             "photo_url": s.get("photo_url"),
-            "rank_key": _bt_public_rank_key(rating, r.battle_games_played),
+            "rank_key": key,
             "rating": rating,
             "you": r.user_id == uid,
         })

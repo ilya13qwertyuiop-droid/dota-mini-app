@@ -1437,11 +1437,13 @@
                 var d = await r.json();
                 var top = (d && d.top) || [];
 
-                // Раскладываем по секциям через rank_key игрока.
+                // Раскладываем по секциям через rank_key игрока. Место —
+                // ГЛОБАЛЬНОЕ из ответа (бэкенд отдаёт топ-10 каждого ранга;
+                // индекс массива больше не равен месту).
                 var byTier = {};
                 top.forEach(function (p, i) {
                     var k = p.rank_key || 'pawn';
-                    (byTier[k] = byTier[k] || []).push({ place: i + 1, p: p });
+                    (byTier[k] = byTier[k] || []).push({ place: p.place || (i + 1), p: p });
                 });
                 _BT_RANK_TIERS.forEach(function (t) {
                     var body = ladder.querySelector('[data-tier="' + t.key + '"] .bt-lbr-body');
