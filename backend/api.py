@@ -1744,6 +1744,65 @@ def api_draft_history(token: str, db: Session = Depends(get_db)):
     ]
 
 
+# ========== Фэнтези TI (данные собирает переписанный stats_updater.py) ======
+
+@app.get("/api/fantasy/players")
+def api_fantasy_players(db: Session = Depends(get_db)):
+    """Игроки TI-команд со средними фэнтези-показателями за все турниры.
+
+    Витрина этапа 1 (проверка данных + фундамент UX этапа 2). Сырые средние —
+    очки компендиума посчитает этап 2, когда Valve опубликует механику."""
+    try:
+        rows = db.execute(text("""
+            SELECT p.account_id, p.name, p.team_name, p.position,
+                   COUNT(s.match_id)      AS matches_count,
+                   AVG(s.kills)           AS avg_kills,
+                   AVG(s.deaths)          AS avg_deaths,
+                   AVG(s.assists)         AS avg_assists,
+                   AVG(s.last_hits)       AS avg_last_hits,
+                   AVG(s.gold_per_min)    AS avg_gpm,
+                   AVG(s.xp_per_min)      AS avg_xpm,
+                   AVG(s.stuns)           AS avg_stuns,
+                   AVG(s.obs_placed)      AS avg_obs,
+                   AVG(s.camps_stacked)   AS avg_camps,
+                   AVG(s.tower_kills)     AS avg_tower_kills,
+                   AVG(s.roshan_kills)    AS avg_roshan_kills
+            FROM fantasy_players p
+            JOIN fantasy_player_stats s ON s.account_id = p.account_id
+            GROUP BY p.account_id, p.name, p.team_name, p.position
+            ORDER BY p.team_name, p.name
+        """)).mappings().all()
+    except Exception as e:
+        # Таблиц ещё нет (воркер не запускался) — пустой список, не 500.
+        logger.warning("[fantasy] players query failed: %s", e)
+        return {"players": []}
+
+    def _r1(v):
+        return round(float(v), 1) if v is not None else 0.0
+
+    return {"players": [
+        {
+            "account_id": r["account_id"],
+            "name": r["name"],
+            "team_name": r["team_name"],
+            "position": r["position"],
+            "matches_count": r["matches_count"],
+            "avg_kills": _r1(r["avg_kills"]),
+            "avg_deaths": _r1(r["avg_deaths"]),
+            "avg_assists": _r1(r["avg_assists"]),
+            "avg_last_hits": _r1(r["avg_last_hits"]),
+            "avg_gpm": _r1(r["avg_gpm"]),
+            "avg_xpm": _r1(r["avg_xpm"]),
+            "avg_stuns": _r1(r["avg_stuns"]),
+            "avg_obs": _r1(r["avg_obs"]),
+            "avg_camps": _r1(r["avg_camps"]),
+            "avg_tower_kills": _r1(r["avg_tower_kills"]),
+            "avg_roshan_kills": _r1(r["avg_roshan_kills"]),
+        }
+        for r in rows
+    ]}
+
+
 # ========== Analytics ==========
 #
 # Один эндпоинт для записи событий миниаппа в analytics_events. Фронт зовёт
@@ -5381,11 +5440,15 @@ def api_battle_profile(token: str, db: Session = Depends(get_db)):
 
 @app.get("/api/battle/leaderboard")
 def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
-    """Топ-25 по MMR битвы среди откалибровавшихся (games >= калибровки),
-    забаненные исключены. you — место вызывающего среди established (на
-    калибровке места нет — фронт показывает прогресс вместо позиции)."""
+    """Лестница рангов: топ-N на КАЖДУЮ секцию ранга с ГЛОБАЛЬНЫМИ местами.
+
+    Раньше отдавался глобальный топ-25 — с ростом пула все 25 лучших стали
+    Предвестником+ и секция «Пешка» на витрине опустела (пешки в глобальный
+    топ не влезают по определению). Секционная витрина требует представителей
+    каждого ранга. Забаненные исключены; you — место среди established."""
     uid = _tm_require_user(token=token)
     banned = set(get_banned_user_ids())
+    PER_TIER = 10
 
     rows = (
         db.query(
@@ -5396,19 +5459,26 @@ def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
         )
         .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
         .order_by(DBUserProfile.battle_rating.desc(), DBUserProfile.user_id)
-        .limit(200)
+        .limit(2000)
         .all()
     )
     rows = [r for r in rows if r.user_id not in banned]
 
+    # Глобальное место (после исключения banned) + отсев по PER_TIER на ранг.
     top = []
-    for r in rows[:25]:
-        s = r.settings or {}
+    tier_counts: dict[str, int] = {}
+    for place, r in enumerate(rows, start=1):
         rating = r.battle_rating if r.battle_rating is not None else _BT_RATING_BASE
+        key = _bt_public_rank_key(rating, r.battle_games_played)
+        if tier_counts.get(key, 0) >= PER_TIER:
+            continue
+        tier_counts[key] = tier_counts.get(key, 0) + 1
+        s = r.settings or {}
         top.append({
+            "place": place,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
             "photo_url": s.get("photo_url"),
-            "rank_key": _bt_public_rank_key(rating, r.battle_games_played),
+            "rank_key": key,
             "rating": rating,
             "you": r.user_id == uid,
         })
