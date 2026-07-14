@@ -2093,7 +2093,13 @@
         }
 
         // ── Рейтинг / ранг (карточка в меню) ───────────────────────────────
-        function _btRankImg(key) { return 'images/ranks/' + key + '.png'; }
+        // Версия ассетов медалей: без Cache-Control nginx браузеры кэшируют
+        // картинки эвристически (10% возраста по Last-Modified) и НЕ ревалидируют
+        // днями — при замене файлов инкрементить, новый URL пробивает кэш.
+        var _BT_RANK_ASSET_V = '2';
+        function _btRankImg(key) {
+            return 'images/ranks/' + key + '.png?v=' + _BT_RANK_ASSET_V;
+        }
 
         // Медаль ранга в произвольный <img>: нет ключа (бот) → прячем.
         function _btSetRankMedal(imgId, key) {
