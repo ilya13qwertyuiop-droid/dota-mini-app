@@ -2036,10 +2036,10 @@
                 // Целые — как на экране результата (дробные «очки» не показываем).
                 score.textContent = Math.round(b.your_score) + ' : ' + Math.round(b.opp_score);
             } else if (b.forfeit) {
-                var afkH = (b.forfeit_reason === 'afk');
+                var tmoH = (b.forfeit_reason === 'timeout' || b.forfeit_reason === 'afk');
                 score.textContent = (b.outcome === 'win')
-                    ? (afkH ? 'соперник ушёл' : 'соперник сдался')
-                    : (afkH ? 'AFK' : 'сдача');
+                    ? (tmoH ? 'у соперника вышло время' : 'соперник сдался')
+                    : (tmoH ? 'время вышло' : 'сдача');
             } else {
                 score.textContent = '—';
             }
@@ -2831,14 +2831,14 @@
                 }
             }
 
-            // note — только пояснение форфейта (сдача или AFK).
+            // note — только пояснение форфейта (сдача или вышло время).
             var note = document.getElementById('bt-result-note');
             if (note) {
                 if (isForfeit) {
-                    var afk = (r.reason === 'afk');
+                    var tmo = (r.reason === 'timeout' || r.reason === 'afk');
                     note.textContent = (r.forfeit === me)
-                        ? (afk ? 'Ты не делал ходы — поражение.' : 'Ты сдался.')
-                        : (afk ? 'Соперник не вернулся в игру — победа твоя.' : 'Соперник сдался.');
+                        ? (tmo ? 'Твоё время вышло — поражение.' : 'Ты сдался.')
+                        : (tmo ? 'У соперника вышло время — победа твоя.' : 'Соперник сдался.');
                     note.hidden = false;
                 } else {
                     note.hidden = true;

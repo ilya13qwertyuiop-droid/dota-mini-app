@@ -4087,51 +4087,19 @@ def _bt_set_reserve(battle: DBDraftBattle, role: str, value_ms: int) -> None:
         battle.guest_reserve_ms = max(0, int(value_ms))
 
 
-def _bt_manual_moves(db: Session, battle_id: int, actor: str) -> int:
-    """Сколько ходов актор сделал САМ (is_auto=False) в этой битве."""
-    return (
-        db.query(DBDraftBattleAction)
-        .filter(DBDraftBattleAction.battle_id == battle_id)
-        .filter(DBDraftBattleAction.actor == actor)
-        .filter(DBDraftBattleAction.is_auto.is_(False))
-        .count()
-    )
-
-
-def _bt_trailing_autos(db: Session, battle_id: int, actor: str) -> int:
-    """Сколько ПОСЛЕДНИХ ходов актора подряд были авто (с конца журнала)."""
-    rows = (
-        db.query(DBDraftBattleAction.is_auto)
-        .filter(DBDraftBattleAction.battle_id == battle_id)
-        .filter(DBDraftBattleAction.actor == actor)
-        .order_by(DBDraftBattleAction.idx.desc())
-        .all()
-    )
-    n = 0
-    for (is_auto,) in rows:
-        if not is_auto:
-            break
-        n += 1
-    return n
-
-
 def _bt_start_turn(battle: DBDraftBattle, now: datetime, db: Session | None = None) -> None:
-    """Старт хода turn_index: дедлайн = базовое время + резерв актора.
+    """Старт хода turn_index: дедлайн = базовое время + остаток резерва актора.
 
-    АНТИ-AFK: резерв (120с) подключается только ПОСЛЕ первого собственного
-    хода игрока. Раньше AFK-с-начала сжигал base+весь резерв на первом же
-    ходе — живой соперник ждал 145 секунд. Теперь молчуну — только базовые
-    25с, а честный резерв активных игроков не тронут. db=None — старт партии
-    (ручных ходов ещё нет ни у кого по определению)."""
+    Резерв доступен С ПЕРВОГО хода (новичку сложно уложиться в базовые 25с —
+    фидбек с прода). Но просрочка дедлайна = немедленное поражение актора
+    (см. _bt_apply_timeouts) — бот больше НЕ драфтит за живого игрока.
+    db не используется, оставлен в сигнатуре для совместимости вызовов."""
     seq = _BT_SEQUENCES[battle.mode]
     if battle.turn_index >= len(seq):
         return
     actor = _bt_actor_of(battle, battle.turn_index)
     kind = seq[battle.turn_index][1]
-    reserve = 0
-    if db is not None and _bt_manual_moves(db, battle.id, actor) > 0:
-        reserve = _bt_reserve_ms(battle, actor)
-    total_ms = _bt_base_ms(kind) + reserve
+    total_ms = _bt_base_ms(kind) + _bt_reserve_ms(battle, actor)
     battle.turn_started_at = now
     battle.deadline_at = now + _tm_timedelta(milliseconds=total_ms)
 
@@ -4562,23 +4530,17 @@ def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
     return random.choice(pool)
 
 
-# AFK-детект: столько ПОСЛЕДОВАТЕЛЬНЫХ авто-ходов = игрок ушёл, победа
-# оставшемуся (один авто прощаем — отвлёкся/лаг). Игрок без ЕДИНОГО ручного
-# хода вылетает с первого же авто. Только живые битвы — в бот-партиях догон
-# просрочек лениво исполняет и ходы бота как авто, правило дало бы юзеру
-# бесплатную «победу над AFK-ботом» за простое отсутствие.
-_BT_AFK_AUTO_MOVES = 2
-
-
-def _bt_finish_afk(db: Session, battle: DBDraftBattle, afk_role: str, now: datetime) -> None:
-    """Завершение битвы из-за AFK: та же механика, что явная сдача (winner,
-    рейтинг с нейтральным множителем), но с reason='afk' для честного текста."""
+def _bt_finish_timeout(db: Session, battle: DBDraftBattle, afk_role: str, now: datetime) -> None:
+    """Завершение битвы по истёкшему времени актора: та же механика, что явная
+    сдача (winner, рейтинг с нейтральным множителем), reason='timeout' для
+    честного текста («время вышло», не обязательно AFK — мог и думать)."""
     battle.status = "finished"
     battle.winner = "guest" if afk_role == "host" else "host"
-    battle.result = {"forfeit": afk_role, "reason": "afk"}
+    battle.result = {"forfeit": afk_role, "reason": "timeout"}
     battle.finished_at = now
     battle.deadline_at = None
     battle.turn_started_at = None
+    battle.state_version += 1   # разбудить long-poll соперника (ходов не было)
     _bt_apply_ratings(db, battle)
     _bt_log("battle_afk", battle.host_id if afk_role == "host" else battle.guest_id)
 
@@ -4586,10 +4548,12 @@ def _bt_finish_afk(db: Session, battle: DBDraftBattle, afk_role: str, now: datet
 def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     """Ленивое исполнение просрочек. Возвращает True, если что-то изменилось.
 
-    drafting: каждый просроченный ход — авто-ход из мета-пула (резерв актора,
-    если был подключён, сгорает — дедлайн включал его целиком). AFK-детект —
-    см. _BT_AFK_AUTO_MOVES. Цикл догоняет цепочку просрочек.
-    waiting/searching: протухание комнаты по TTL.
+    drafting: дедлайн хода включает базу + ВЕСЬ остаток резерва актора —
+    просрочка значит «время игрока кончилось» → немедленное поражение
+    (фидбек с прода: бот не должен драфтить за живого, а серия авто-ходов
+    мучила соперника). Исключение — ход БОТА в бот-партии (догон, когда
+    никто не поллил): исполняется авто-ходом, бот не может «проиграть по
+    времени». waiting/searching: протухание комнаты по TTL.
     """
     changed = False
     if battle.status in ("waiting", "searching"):
@@ -4615,23 +4579,21 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
         and now >= _bt_aware(battle.deadline_at)
     ):
         actor = _bt_actor_of(battle, battle.turn_index)
-        kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
-        _bt_set_reserve(battle, actor, 0)
-        hero_id = _bt_auto_hero(db, battle)
-        # Ход стартует от момента истёкшего дедлайна, не от now: при догоне
-        # цепочки каждый следующий авто-ход отсчитывается честно.
         moment = _bt_aware(battle.deadline_at)
-        _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+        if battle.is_bot and actor == "guest":
+            # Догон хода бота (никто не поллил): авто-ход, бот не «проигрывает
+            # по времени». Момент — от истёкшего дедлайна, отсчёт честный.
+            kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
+            _bt_set_reserve(battle, actor, 0)
+            hero_id = _bt_auto_hero(db, battle)
+            _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+            changed = True
+            continue
+        # Живой игрок: время (база + весь резерв) вышло → поражение сразу.
+        _bt_set_reserve(battle, actor, 0)
+        _bt_finish_timeout(db, battle, actor, moment)
         changed = True
-        # AFK-детект (только живые битвы): ни одного ручного хода — вылет с
-        # первого авто; иначе — после _BT_AFK_AUTO_MOVES авто подряд.
-        if not battle.is_bot and battle.status == "drafting":
-            if (
-                _bt_manual_moves(db, battle.id, actor) == 0
-                or _bt_trailing_autos(db, battle.id, actor) >= _BT_AFK_AUTO_MOVES
-            ):
-                _bt_finish_afk(db, battle, actor, moment)
-                break
+        break
 
     # Авто-цепочка могла довести до стадии расстановки, чей дедлайн тоже уже
     # в прошлом (оба игрока отсутствовали) — дожимаем финализацию сразу.
