@@ -4087,14 +4087,51 @@ def _bt_set_reserve(battle: DBDraftBattle, role: str, value_ms: int) -> None:
         battle.guest_reserve_ms = max(0, int(value_ms))
 
 
-def _bt_start_turn(battle: DBDraftBattle, now: datetime) -> None:
-    """Старт хода turn_index: дедлайн = базовое время + остаток резерва актора."""
+def _bt_manual_moves(db: Session, battle_id: int, actor: str) -> int:
+    """Сколько ходов актор сделал САМ (is_auto=False) в этой битве."""
+    return (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle_id)
+        .filter(DBDraftBattleAction.actor == actor)
+        .filter(DBDraftBattleAction.is_auto.is_(False))
+        .count()
+    )
+
+
+def _bt_trailing_autos(db: Session, battle_id: int, actor: str) -> int:
+    """Сколько ПОСЛЕДНИХ ходов актора подряд были авто (с конца журнала)."""
+    rows = (
+        db.query(DBDraftBattleAction.is_auto)
+        .filter(DBDraftBattleAction.battle_id == battle_id)
+        .filter(DBDraftBattleAction.actor == actor)
+        .order_by(DBDraftBattleAction.idx.desc())
+        .all()
+    )
+    n = 0
+    for (is_auto,) in rows:
+        if not is_auto:
+            break
+        n += 1
+    return n
+
+
+def _bt_start_turn(battle: DBDraftBattle, now: datetime, db: Session | None = None) -> None:
+    """Старт хода turn_index: дедлайн = базовое время + резерв актора.
+
+    АНТИ-AFK: резерв (120с) подключается только ПОСЛЕ первого собственного
+    хода игрока. Раньше AFK-с-начала сжигал base+весь резерв на первом же
+    ходе — живой соперник ждал 145 секунд. Теперь молчуну — только базовые
+    25с, а честный резерв активных игроков не тронут. db=None — старт партии
+    (ручных ходов ещё нет ни у кого по определению)."""
     seq = _BT_SEQUENCES[battle.mode]
     if battle.turn_index >= len(seq):
         return
     actor = _bt_actor_of(battle, battle.turn_index)
     kind = seq[battle.turn_index][1]
-    total_ms = _bt_base_ms(kind) + _bt_reserve_ms(battle, actor)
+    reserve = 0
+    if db is not None and _bt_manual_moves(db, battle.id, actor) > 0:
+        reserve = _bt_reserve_ms(battle, actor)
+    total_ms = _bt_base_ms(kind) + reserve
     battle.turn_started_at = now
     battle.deadline_at = now + _tm_timedelta(milliseconds=total_ms)
 
@@ -4503,6 +4540,11 @@ def _bt_insert_action(
         actor=actor, kind=kind, hero_id=hero_id,
         is_auto=is_auto, created_at=now,
     ))
+    # flush ОБЯЗАТЕЛЕН (sessionmaker autoflush=False): дальше в этой же
+    # транзакции ход должны видеть _bt_manual_moves/_bt_trailing_autos
+    # (резерв следующего хода, AFK-детект). Гонка двойного idx всплывает
+    # здесь же — ловится тем же except IntegrityError у бот-ходов.
+    db.flush()
     battle.turn_index += 1
     battle.last_action_at = now
     battle.state_version += 1
@@ -4510,7 +4552,7 @@ def _bt_insert_action(
         # Драфт окончен — НЕ финализируем сразу: стадия расстановки позиций.
         _bt_start_assign(battle, now)
     else:
-        _bt_start_turn(battle, now)
+        _bt_start_turn(battle, now, db)
 
 
 def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
@@ -4520,12 +4562,33 @@ def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
     return random.choice(pool)
 
 
+# AFK-детект: столько ПОСЛЕДОВАТЕЛЬНЫХ авто-ходов = игрок ушёл, победа
+# оставшемуся (один авто прощаем — отвлёкся/лаг). Игрок без ЕДИНОГО ручного
+# хода вылетает с первого же авто. Только живые битвы — в бот-партиях догон
+# просрочек лениво исполняет и ходы бота как авто, правило дало бы юзеру
+# бесплатную «победу над AFK-ботом» за простое отсутствие.
+_BT_AFK_AUTO_MOVES = 2
+
+
+def _bt_finish_afk(db: Session, battle: DBDraftBattle, afk_role: str, now: datetime) -> None:
+    """Завершение битвы из-за AFK: та же механика, что явная сдача (winner,
+    рейтинг с нейтральным множителем), но с reason='afk' для честного текста."""
+    battle.status = "finished"
+    battle.winner = "guest" if afk_role == "host" else "host"
+    battle.result = {"forfeit": afk_role, "reason": "afk"}
+    battle.finished_at = now
+    battle.deadline_at = None
+    battle.turn_started_at = None
+    _bt_apply_ratings(db, battle)
+    _bt_log("battle_afk", battle.host_id if afk_role == "host" else battle.guest_id)
+
+
 def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     """Ленивое исполнение просрочек. Возвращает True, если что-то изменилось.
 
-    drafting: каждый просроченный ход — резерв актора сгорает (дедлайн включал
-    его целиком), авто-ход из мета-пула. Цикл догоняет цепочку просрочек,
-    если оба игрока отсутствовали.
+    drafting: каждый просроченный ход — авто-ход из мета-пула (резерв актора,
+    если был подключён, сгорает — дедлайн включал его целиком). AFK-детект —
+    см. _BT_AFK_AUTO_MOVES. Цикл догоняет цепочку просрочек.
     waiting/searching: протухание комнаты по TTL.
     """
     changed = False
@@ -4560,6 +4623,15 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
         moment = _bt_aware(battle.deadline_at)
         _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
         changed = True
+        # AFK-детект (только живые битвы): ни одного ручного хода — вылет с
+        # первого авто; иначе — после _BT_AFK_AUTO_MOVES авто подряд.
+        if not battle.is_bot and battle.status == "drafting":
+            if (
+                _bt_manual_moves(db, battle.id, actor) == 0
+                or _bt_trailing_autos(db, battle.id, actor) >= _BT_AFK_AUTO_MOVES
+            ):
+                _bt_finish_afk(db, battle, actor, moment)
+                break
 
     # Авто-цепочка могла довести до стадии расстановки, чей дедлайн тоже уже
     # в прошлом (оба игрока отсутствовали) — дожимаем финализацию сразу.
@@ -5298,6 +5370,7 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
             "vs_bot": vs_bot,
             "outcome": outcome,
             "forfeit": forfeit_role is not None,
+            "forfeit_reason": res.get("reason"),
             "your_score": final.get(my_role),
             "opp_score": final.get(opp_role),
             "rating_before": getattr(b, f"{my_role}_rating_before", None),

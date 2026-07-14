@@ -2036,7 +2036,10 @@
                 // Целые — как на экране результата (дробные «очки» не показываем).
                 score.textContent = Math.round(b.your_score) + ' : ' + Math.round(b.opp_score);
             } else if (b.forfeit) {
-                score.textContent = (b.outcome === 'win') ? 'соперник сдался' : 'сдача';
+                var afkH = (b.forfeit_reason === 'afk');
+                score.textContent = (b.outcome === 'win')
+                    ? (afkH ? 'соперник ушёл' : 'соперник сдался')
+                    : (afkH ? 'AFK' : 'сдача');
             } else {
                 score.textContent = '—';
             }
@@ -2242,6 +2245,7 @@
         // ── Драфт-экран ────────────────────────────────────────────────────
         function _btFmtReserve(ms) {
             var s = Math.max(0, Math.round(ms / 1000));
+            if (s <= 0) return '';   // резерв ещё не подключён (до первого хода)
             return '+' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
         }
 
@@ -2827,12 +2831,14 @@
                 }
             }
 
-            // note — только пояснение форфейта.
+            // note — только пояснение форфейта (сдача или AFK).
             var note = document.getElementById('bt-result-note');
             if (note) {
                 if (isForfeit) {
+                    var afk = (r.reason === 'afk');
                     note.textContent = (r.forfeit === me)
-                        ? 'Ты сдался.' : 'Соперник сдался.';
+                        ? (afk ? 'Ты не делал ходы — поражение.' : 'Ты сдался.')
+                        : (afk ? 'Соперник не вернулся в игру — победа твоя.' : 'Соперник сдался.');
                     note.hidden = false;
                 } else {
                     note.hidden = true;
