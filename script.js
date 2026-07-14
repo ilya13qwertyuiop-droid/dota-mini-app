@@ -1369,6 +1369,7 @@
             // дёргать _btShow (скролл чужого экрана), а таймеры монтажа
             // результата — вибрировать на чужом экране.
             if (_bt.foundTimer) { clearTimeout(_bt.foundTimer); _bt.foundTimer = null; }
+            if (_bt.assignDelayTimer) { clearTimeout(_bt.assignDelayTimer); _bt.assignDelayTimer = null; }
             _btClearReveal();
             _bt.protoSeqActive = false;
             // Во время драфта «назад» не выкидывает из битвы (long poll живёт),
@@ -1897,8 +1898,29 @@
             } else if (st.status === 'assigning') {
                 _btStopTimer();
                 _btRenderAssign(st);
-                _btShow('bt-assign');
-                if (prevStatus === 'drafting') _mghlHaptic('milestone');
+                if (prevStatus === 'drafting') {
+                    // Последний пик (обычно вражеский) исчезал мгновенно —
+                    // игрок не видел, кого взял соперник. Показываем доску с
+                    // финальным пиком ~2с, потом расстановку (таймер стадии
+                    // серверный 30с — пауза съедает её часть, это ок).
+                    _btRenderDraft(st);
+                    // Часы драфта на паузе — не застывшие цифры, а статус.
+                    var tt = document.getElementById('bt-timer-turn');
+                    var tc = document.getElementById('bt-timer-clock');
+                    if (tt) tt.textContent = 'Драфт завершён';
+                    if (tc) tc.textContent = '';
+                    _btShow('bt-draft');
+                    _mghlHaptic('milestone');
+                    if (_bt.assignDelayTimer) clearTimeout(_bt.assignDelayTimer);
+                    _bt.assignDelayTimer = setTimeout(function () {
+                        _bt.assignDelayTimer = null;
+                        if (_bt.state && _bt.state.status === 'assigning') {
+                            _btShow('bt-assign');
+                        }
+                    }, 2000);
+                } else {
+                    _btShow('bt-assign');
+                }
             } else if (st.status === 'finished') {
                 _btStopTimer();
                 _btStopAssignTimer();
@@ -2460,9 +2482,12 @@
 
             var names = Object.keys(window.dotaHeroIds).sort();
             var html = '';
+            var seen = {};   // dotaHeroIds содержит алиасы (OD дважды, id 76) — дедуп по id
             for (var i = 0; i < names.length; i++) {
                 var name = names[i];
                 var hid = window.dotaHeroIds[name];
+                if (seen[hid]) continue;
+                seen[hid] = 1;
                 // Тот же матчер, что у драфтера: англ. имена + русские алиасы
                 // (_ANALYSIS_HERO_NAMES_RU), без учёта регистра.
                 if (q && !_analysisHeroMatchesQuery(hid, q)) continue;

@@ -4469,9 +4469,13 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
     host_final = round(max(0.0, host_res["total_score"] + host_pen + host_meta), 1)
     guest_final = round(max(0.0, guest_res["total_score"] + guest_pen + guest_meta), 1)
 
-    if host_final > guest_final:
+    # Победитель — по ЦЕЛЫМ, как на экране (фронт показывает счёт целыми):
+    # прод-кейс — юзер видел «53:53», а внутри было 53.4 vs 52.6 → «поражение
+    # при ничейном счёте». Экран и исход обязаны совпадать.
+    host_int, guest_int = round(host_final), round(guest_final)
+    if host_int > guest_int:
         battle.winner = "host"
-    elif guest_final > host_final:
+    elif guest_int > host_int:
         battle.winner = "guest"
     else:
         battle.winner = "draw"
