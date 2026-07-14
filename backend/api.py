@@ -1744,6 +1744,65 @@ def api_draft_history(token: str, db: Session = Depends(get_db)):
     ]
 
 
+# ========== Фэнтези TI (данные собирает переписанный stats_updater.py) ======
+
+@app.get("/api/fantasy/players")
+def api_fantasy_players(db: Session = Depends(get_db)):
+    """Игроки TI-команд со средними фэнтези-показателями за все турниры.
+
+    Витрина этапа 1 (проверка данных + фундамент UX этапа 2). Сырые средние —
+    очки компендиума посчитает этап 2, когда Valve опубликует механику."""
+    try:
+        rows = db.execute(text("""
+            SELECT p.account_id, p.name, p.team_name, p.position,
+                   COUNT(s.match_id)      AS matches_count,
+                   AVG(s.kills)           AS avg_kills,
+                   AVG(s.deaths)          AS avg_deaths,
+                   AVG(s.assists)         AS avg_assists,
+                   AVG(s.last_hits)       AS avg_last_hits,
+                   AVG(s.gold_per_min)    AS avg_gpm,
+                   AVG(s.xp_per_min)      AS avg_xpm,
+                   AVG(s.stuns)           AS avg_stuns,
+                   AVG(s.obs_placed)      AS avg_obs,
+                   AVG(s.camps_stacked)   AS avg_camps,
+                   AVG(s.tower_kills)     AS avg_tower_kills,
+                   AVG(s.roshan_kills)    AS avg_roshan_kills
+            FROM fantasy_players p
+            JOIN fantasy_player_stats s ON s.account_id = p.account_id
+            GROUP BY p.account_id, p.name, p.team_name, p.position
+            ORDER BY p.team_name, p.name
+        """)).mappings().all()
+    except Exception as e:
+        # Таблиц ещё нет (воркер не запускался) — пустой список, не 500.
+        logger.warning("[fantasy] players query failed: %s", e)
+        return {"players": []}
+
+    def _r1(v):
+        return round(float(v), 1) if v is not None else 0.0
+
+    return {"players": [
+        {
+            "account_id": r["account_id"],
+            "name": r["name"],
+            "team_name": r["team_name"],
+            "position": r["position"],
+            "matches_count": r["matches_count"],
+            "avg_kills": _r1(r["avg_kills"]),
+            "avg_deaths": _r1(r["avg_deaths"]),
+            "avg_assists": _r1(r["avg_assists"]),
+            "avg_last_hits": _r1(r["avg_last_hits"]),
+            "avg_gpm": _r1(r["avg_gpm"]),
+            "avg_xpm": _r1(r["avg_xpm"]),
+            "avg_stuns": _r1(r["avg_stuns"]),
+            "avg_obs": _r1(r["avg_obs"]),
+            "avg_camps": _r1(r["avg_camps"]),
+            "avg_tower_kills": _r1(r["avg_tower_kills"]),
+            "avg_roshan_kills": _r1(r["avg_roshan_kills"]),
+        }
+        for r in rows
+    ]}
+
+
 # ========== Analytics ==========
 #
 # Один эндпоинт для записи событий миниаппа в analytics_events. Фронт зовёт
