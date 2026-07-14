@@ -2093,7 +2093,7 @@
         }
 
         // ── Рейтинг / ранг (карточка в меню) ───────────────────────────────
-        function _btRankImg(key) { return '/images/ranks/' + key + '.png'; }
+        function _btRankImg(key) { return 'images/ranks/' + key + '.png'; }
 
         // Медаль ранга в произвольный <img>: нет ключа (бот) → прячем.
         function _btSetRankMedal(imgId, key) {
@@ -4535,11 +4535,11 @@ var _POSITION_LABELS = {
     'POSITION_5': 'Поддержка',
 };
 var _POSITION_IMG = {
-    'POSITION_1': '/images/positions/pos_1.png',
-    'POSITION_2': '/images/positions/pos_2.png',
-    'POSITION_3': '/images/positions/pos_3.png',
-    'POSITION_4': '/images/positions/pos_4.png',
-    'POSITION_5': '/images/positions/pos_5.png',
+    'POSITION_1': 'images/positions/pos_1.png',
+    'POSITION_2': 'images/positions/pos_2.png',
+    'POSITION_3': 'images/positions/pos_3.png',
+    'POSITION_4': 'images/positions/pos_4.png',
+    'POSITION_5': 'images/positions/pos_5.png',
 };
 // Прямые маппинги для ключей dota_builds (pos%20N)
 var _DOTA_POS_LABELS = {
@@ -4550,11 +4550,11 @@ var _DOTA_POS_LABELS = {
     'pos%205': 'Поддержка',
 };
 var _DOTA_POS_IMG = {
-    'pos%201': '/images/positions/pos_1.png',
-    'pos%202': '/images/positions/pos_2.png',
-    'pos%203': '/images/positions/pos_3.png',
-    'pos%204': '/images/positions/pos_4.png',
-    'pos%205': '/images/positions/pos_5.png',
+    'pos%201': 'images/positions/pos_1.png',
+    'pos%202': 'images/positions/pos_2.png',
+    'pos%203': 'images/positions/pos_3.png',
+    'pos%204': 'images/positions/pos_4.png',
+    'pos%205': 'images/positions/pos_5.png',
 };
 
 function _showBuildLoading() {
@@ -5568,11 +5568,11 @@ var _META_POS_LABELS = {
 };
 
 var _META_POS_IMG = {
-    'POSITION_1': '/images/positions/pos_1.png',
-    'POSITION_2': '/images/positions/pos_2.png',
-    'POSITION_3': '/images/positions/pos_3.png',
-    'POSITION_4': '/images/positions/pos_4.png',
-    'POSITION_5': '/images/positions/pos_5.png',
+    'POSITION_1': 'images/positions/pos_1.png',
+    'POSITION_2': 'images/positions/pos_2.png',
+    'POSITION_3': 'images/positions/pos_3.png',
+    'POSITION_4': 'images/positions/pos_4.png',
+    'POSITION_5': 'images/positions/pos_5.png',
 };
 
 var _HOME_POS_ORDER = ['POSITION_1', 'POSITION_2', 'POSITION_3', 'POSITION_4', 'POSITION_5'];
@@ -7235,7 +7235,7 @@ function _renderAnalysisSide(side) {
     var html = '';
     for (var i = 0; i < 5; i++) {
         var hero = arr[i];
-        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
+        var posSrc = 'images/positions/pos_' + (i + 1) + '.png';
         var cls = 'drafter-slot analysis-slot analysis-slot--' + side;
         if (hero) cls += ' analysis-slot--filled drafter-slot--filled';
         if (isActiveSide && i === _analysisActiveSlot) cls += ' analysis-slot--active';
@@ -7886,7 +7886,7 @@ function _renderAllySlots() {
         var cls = 'drafter-slot drafter-slot--ally';
         if (isActive) cls += ' drafter-slot--active';
         if (hero) cls += ' drafter-slot--filled';
-        var posSrc = '/images/positions/pos_' + (i + 1) + '.png';
+        var posSrc = 'images/positions/pos_' + (i + 1) + '.png';
         html += '<div class="' + cls + '" id="drafter-ally-slot-' + i + '" onclick="drafterSlotClick(' + i + ')">';
         if (hero && hero.hero_id) {
             var iconUrl = _drafterHeroIcon(hero.hero_id);
@@ -7925,10 +7925,10 @@ function _renderEnemySlots() {
             }
             var posNum = parseInt(String(hero.position || '').replace('pos ', ''), 10);
             if (posNum >= 1 && posNum <= 5) {
-                html += '<img src="/images/positions/pos_' + posNum + '.png" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
+                html += '<img src="images/positions/pos_' + posNum + '.png" class="drafter-slot-pos-icon drafter-slot-pos-icon--badge" alt="">';
             }
         } else {
-            html += '<img src="/images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
+            html += '<img src="images/positions/pos_' + (i + 1) + '.png" class="drafter-slot-pos-icon" alt="">';
         }
         html += '</div>';
     }
@@ -9384,7 +9384,7 @@ function _drafterCommentText(c) {
             'onerror="this.style.display=\'none\'">';
     }
 
-    function _tmPosIcon(p) { return '/images/positions/pos_' + p + '.png'; }
+    function _tmPosIcon(p) { return 'images/positions/pos_' + p + '.png'; }
     function _tmEsc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
             return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
