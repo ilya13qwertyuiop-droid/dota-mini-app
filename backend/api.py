@@ -4087,8 +4087,13 @@ def _bt_set_reserve(battle: DBDraftBattle, role: str, value_ms: int) -> None:
         battle.guest_reserve_ms = max(0, int(value_ms))
 
 
-def _bt_start_turn(battle: DBDraftBattle, now: datetime) -> None:
-    """Старт хода turn_index: дедлайн = базовое время + остаток резерва актора."""
+def _bt_start_turn(battle: DBDraftBattle, now: datetime, db: Session | None = None) -> None:
+    """Старт хода turn_index: дедлайн = базовое время + остаток резерва актора.
+
+    Резерв доступен С ПЕРВОГО хода (новичку сложно уложиться в базовые 25с —
+    фидбек с прода). Но просрочка дедлайна = немедленное поражение актора
+    (см. _bt_apply_timeouts) — бот больше НЕ драфтит за живого игрока.
+    db не используется, оставлен в сигнатуре для совместимости вызовов."""
     seq = _BT_SEQUENCES[battle.mode]
     if battle.turn_index >= len(seq):
         return
@@ -4464,9 +4469,13 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
     host_final = round(max(0.0, host_res["total_score"] + host_pen + host_meta), 1)
     guest_final = round(max(0.0, guest_res["total_score"] + guest_pen + guest_meta), 1)
 
-    if host_final > guest_final:
+    # Победитель — по ЦЕЛЫМ, как на экране (фронт показывает счёт целыми):
+    # прод-кейс — юзер видел «53:53», а внутри было 53.4 vs 52.6 → «поражение
+    # при ничейном счёте». Экран и исход обязаны совпадать.
+    host_int, guest_int = round(host_final), round(guest_final)
+    if host_int > guest_int:
         battle.winner = "host"
-    elif guest_final > host_final:
+    elif guest_int > host_int:
         battle.winner = "guest"
     else:
         battle.winner = "draw"
@@ -4503,6 +4512,11 @@ def _bt_insert_action(
         actor=actor, kind=kind, hero_id=hero_id,
         is_auto=is_auto, created_at=now,
     ))
+    # flush ОБЯЗАТЕЛЕН (sessionmaker autoflush=False): дальше в этой же
+    # транзакции ход должны видеть _bt_manual_moves/_bt_trailing_autos
+    # (резерв следующего хода, AFK-детект). Гонка двойного idx всплывает
+    # здесь же — ловится тем же except IntegrityError у бот-ходов.
+    db.flush()
     battle.turn_index += 1
     battle.last_action_at = now
     battle.state_version += 1
@@ -4510,7 +4524,7 @@ def _bt_insert_action(
         # Драфт окончен — НЕ финализируем сразу: стадия расстановки позиций.
         _bt_start_assign(battle, now)
     else:
-        _bt_start_turn(battle, now)
+        _bt_start_turn(battle, now, db)
 
 
 def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
@@ -4520,13 +4534,30 @@ def _bt_auto_hero(db: Session, battle: DBDraftBattle) -> int:
     return random.choice(pool)
 
 
+def _bt_finish_timeout(db: Session, battle: DBDraftBattle, afk_role: str, now: datetime) -> None:
+    """Завершение битвы по истёкшему времени актора: та же механика, что явная
+    сдача (winner, рейтинг с нейтральным множителем), reason='timeout' для
+    честного текста («время вышло», не обязательно AFK — мог и думать)."""
+    battle.status = "finished"
+    battle.winner = "guest" if afk_role == "host" else "host"
+    battle.result = {"forfeit": afk_role, "reason": "timeout"}
+    battle.finished_at = now
+    battle.deadline_at = None
+    battle.turn_started_at = None
+    battle.state_version += 1   # разбудить long-poll соперника (ходов не было)
+    _bt_apply_ratings(db, battle)
+    _bt_log("battle_afk", battle.host_id if afk_role == "host" else battle.guest_id)
+
+
 def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     """Ленивое исполнение просрочек. Возвращает True, если что-то изменилось.
 
-    drafting: каждый просроченный ход — резерв актора сгорает (дедлайн включал
-    его целиком), авто-ход из мета-пула. Цикл догоняет цепочку просрочек,
-    если оба игрока отсутствовали.
-    waiting/searching: протухание комнаты по TTL.
+    drafting: дедлайн хода включает базу + ВЕСЬ остаток резерва актора —
+    просрочка значит «время игрока кончилось» → немедленное поражение
+    (фидбек с прода: бот не должен драфтить за живого, а серия авто-ходов
+    мучила соперника). Исключение — ход БОТА в бот-партии (догон, когда
+    никто не поллил): исполняется авто-ходом, бот не может «проиграть по
+    времени». waiting/searching: протухание комнаты по TTL.
     """
     changed = False
     if battle.status in ("waiting", "searching"):
@@ -4552,14 +4583,21 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
         and now >= _bt_aware(battle.deadline_at)
     ):
         actor = _bt_actor_of(battle, battle.turn_index)
-        kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
-        _bt_set_reserve(battle, actor, 0)
-        hero_id = _bt_auto_hero(db, battle)
-        # Ход стартует от момента истёкшего дедлайна, не от now: при догоне
-        # цепочки каждый следующий авто-ход отсчитывается честно.
         moment = _bt_aware(battle.deadline_at)
-        _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+        if battle.is_bot and actor == "guest":
+            # Догон хода бота (никто не поллил): авто-ход, бот не «проигрывает
+            # по времени». Момент — от истёкшего дедлайна, отсчёт честный.
+            kind = _BT_SEQUENCES[battle.mode][battle.turn_index][1]
+            _bt_set_reserve(battle, actor, 0)
+            hero_id = _bt_auto_hero(db, battle)
+            _bt_insert_action(db, battle, actor, kind, hero_id, True, moment)
+            changed = True
+            continue
+        # Живой игрок: время (база + весь резерв) вышло → поражение сразу.
+        _bt_set_reserve(battle, actor, 0)
+        _bt_finish_timeout(db, battle, actor, moment)
         changed = True
+        break
 
     # Авто-цепочка могла довести до стадии расстановки, чей дедлайн тоже уже
     # в прошлом (оба игрока отсутствовали) — дожимаем финализацию сразу.
@@ -5298,6 +5336,7 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
             "vs_bot": vs_bot,
             "outcome": outcome,
             "forfeit": forfeit_role is not None,
+            "forfeit_reason": res.get("reason"),
             "your_score": final.get(my_role),
             "opp_score": final.get(opp_role),
             "rating_before": getattr(b, f"{my_role}_rating_before", None),
