@@ -1528,9 +1528,25 @@ def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)
     Счёт целиком в compute_draft_score (чистая функция выше); здесь только
     HTTP-обвязка: rate-limit, токен, сохранение результата в draft_results.
     """
+    # ── Анти-чит: во время активной битвы драфтов оценка недоступна ─────────
+    # «Тренировка»/«Анализ» считают той же формулой, которой судится битва, —
+    # открытый evaluate в бою = идеальная подсказка. Fail-open: любая ошибка
+    # проверки открывает доступ (хуже запереть честного, чем пропустить чит).
+    rl_user_id = get_user_id_by_token(data.token) if data.token else None
+    if rl_user_id:
+        try:
+            if _bt_draft_locked(db, rl_user_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Идёт битва драфтов — анализ откроется после её завершения.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("[battle] draft-lock check failed, failing open")
+
     # ── Rate limiting: 30 req / 10 min per authenticated user ───────────────
     # Uses SQLite so all uvicorn workers share the same counters.
-    rl_user_id = get_user_id_by_token(data.token) if data.token else None
     if rl_user_id:
         allowed, count = _rl_check_and_record(rl_user_id)
         logger.info("[rate_limit] user_id=%s window_count=%d allowed=%s", rl_user_id, count, allowed)
@@ -5129,6 +5145,23 @@ def _bt_active_battle(db: Session, user_id: int):
         .order_by(DBDraftBattle.id.desc())
         .first()
     )
+
+
+def _bt_draft_locked(db: Session, user_id: int) -> bool:
+    """Анти-чит: занят ли юзер живой битвой (drafting/assigning).
+
+    Используется блоком в /api/draft/evaluate. Прокручивает _bt_tick, чтобы
+    мёртвая битва (просроченный дедлайн) финализировалась и замок снялся сам —
+    никаких «вечных» блокировок. searching НЕ блокирует (в очереди можно
+    теорикрафтить)."""
+    battle = _bt_active_battle(db, user_id)
+    if battle is None or battle.status not in ("drafting", "assigning"):
+        return False
+    now = _bt_now()
+    if _bt_tick(db, battle, now):
+        db.commit()
+        _bt_notify(battle.id)
+    return battle.status in ("drafting", "assigning")
 
 
 def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> None:

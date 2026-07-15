@@ -303,10 +303,19 @@ async def collect_once() -> None:
                     " (capped by FANTASY_MAX_MATCHES_PER_RUN)" if MAX_MATCHES_PER_RUN else "")
 
         # 2) Детали + запись.
+        skipped_unparsed = 0
         for mid in match_ids:
             match = await _od_get(client, f"/matches/{mid}")
             if not match or not match.get("players"):
                 failed += 1
+                continue
+            # Непропаршенный матч (version=null): скаляры уже есть, но
+            # stuns/obs/camps отсутствуют → записали бы нули НАВСЕГДА
+            # (идемпотентность по match_id). Пропускаем — подберём на
+            # следующем проходе, когда OpenDota допарсит.
+            if match.get("version") is None:
+                skipped_unparsed += 1
+                logger.info("[fantasy] match %s not parsed yet, deferred", mid)
                 continue
             try:
                 rows += _store_match(match, positions)
@@ -319,8 +328,9 @@ async def collect_once() -> None:
                 logger.info("[fantasy] progress: %d/%d matches, %d player rows",
                             done, len(match_ids), rows)
 
-    logger.info("[fantasy] pass done: %d matches stored, %d player rows, %d failed",
-                done, rows, failed)
+    logger.info("[fantasy] pass done: %d matches stored, %d player rows, "
+                "%d failed, %d deferred (unparsed)",
+                done, rows, failed, skipped_unparsed)
 
 
 async def run_loop() -> None:

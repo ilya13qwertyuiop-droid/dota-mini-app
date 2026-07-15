@@ -10404,3 +10404,45 @@ margin-top: var(--space-4);
 
 /* Ряд героев команды (используется протоколом результата). */
 .bt-rv-heroes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
+
+/* ─── Драфтер: замок на время активной битвы (анти-чит) ───────────────────
+   Анализ/Тренировка считают той же формулой, которой судится битва, —
+   на время боя страница закрыта. Кнопка самодостаточна (НЕ tm-primary-btn:
+   у того глобальный margin-bottom — грабля проекта). */
+#drafter-battle-lock {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+  padding: 96px var(--space-6) 48px;
+}
+#drafter-battle-lock[hidden] { display: none !important; }
+.drafter-lock-icon {
+  width: 64px; height: 64px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  margin-bottom: var(--space-5);
+}
+.drafter-lock-title {
+  font-size: var(--text-lg); font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+.drafter-lock-text {
+  font-size: var(--text-sm); color: var(--text-secondary);
+  line-height: 1.45;
+  max-width: 300px;
+  margin-bottom: var(--space-6);
+}
+.drafter-lock-btn {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  border: none; border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent) 82%, #000);
+  color: #fff;
+  font-size: var(--text-sm); font-weight: var(--font-bold);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.drafter-lock-btn:active { background: color-mix(in srgb, var(--accent) 70%, #000); }
