@@ -4395,6 +4395,52 @@ function _profileBindActions() {
 
 document.addEventListener('DOMContentLoaded', _profileBindActions);
 
+// ── Анти-чит: драфтер (Анализ/Тренировка) закрыт на время активной битвы ──
+// Анализ считает той же формулой, которой судится битва: открытый драфтер в
+// бою = идеальная подсказка против ровно той метрики, по которой определяется
+// победитель. Проверяем сервер при каждом входе на страницу и при возврате
+// вкладки в фокус (второй инстанс мини-аппа). Fail-open: ошибка проверки
+// открывает драфтер — хуже запереть честного, чем пропустить читера.
+function _drafterGateApply(busy) {
+    var lock = document.getElementById('drafter-battle-lock');
+    var main = document.getElementById('drafter-main');
+    var res = document.getElementById('drafter-result');
+    if (!lock) return;
+    lock.hidden = !busy;
+    if (busy) {
+        if (main) main.style.display = 'none';
+        if (res) res.style.display = 'none';
+    } else if (main && main.style.display === 'none'
+               && (!res || res.style.display === 'none')) {
+        // Замок снят, а контента нет (мы же его и спрятали) — вернуть драфт.
+        main.style.display = 'block';
+    }
+}
+
+var _drafterGateInFlight = false;
+function _drafterBattleGateCheck() {
+    if (_drafterGateInFlight) return;
+    var tok = (typeof USER_TOKEN === 'string' && USER_TOKEN) ? USER_TOKEN : '';
+    if (!tok) return;
+    _drafterGateInFlight = true;
+    apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(tok))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+            var busy = !!(d && d.code && (d.status === 'drafting' || d.status === 'assigning'));
+            _drafterGateApply(busy);
+        })
+        .catch(function () { _drafterGateApply(false); })
+        .finally(function () { _drafterGateInFlight = false; });
+}
+
+// Возврат WebView в фокус — ровно тот момент, когда читер переключился со
+// второго инстанса битвы обратно на заранее открытый драфтер.
+document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    var page = document.getElementById('page-drafter');
+    if (page && page.classList.contains('active')) _drafterBattleGateCheck();
+});
+
 const _originalSwitchPage = switchPage;
 switchPage = function (pageName, event) {
     _originalSwitchPage(pageName, event);
@@ -4413,6 +4459,7 @@ switchPage = function (pageName, event) {
         } else {
             initDrafter();
         }
+        _drafterBattleGateCheck();
     }
 };
 
@@ -8241,6 +8288,11 @@ async function submitDraft() {
         });
         if (resp.status === 429) {
             showToast('Слишком много драфтов! Подождите немного и попробуйте снова.');
+            return;
+        }
+        if (resp.status === 409) {
+            // Анти-чит: идёт битва драфтов — сервер не считает, показываем замок.
+            _drafterGateApply(true);
             return;
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
