@@ -4099,9 +4099,9 @@ _BT_AP_STAGES = (2, 2, 1)                      # пиков на игрока з
 _BT_AP_STAGE_MS = (50_000, 50_000, 30_000)     # базовое время этапа
 _BT_AP_REVEAL_MS = 2500                        # пауза-вскрытие между этапами
 _BT_AP_BURN_GRACE_MS = 15_000                  # минимум времени на перепик после сгорания
-# Рубильник: очередь 'ap' создаёт этапные битвы ap2. Выключен, пока фронт
-# не умеет рендерить этапы — деплой бэка без фронта не ломает режим.
-_BT_AP_STAGED = os.environ.get("BT_AP_STAGED", "0") == "1"
+# Рубильник: очередь 'ap' создаёт этапные битвы ap2 (фронт умеет с v309).
+# BT_AP_STAGED=0 — аварийный откат на старый последовательный AP.
+_BT_AP_STAGED = os.environ.get("BT_AP_STAGED", "1") == "1"
 
 # Инвайт-код: без визуально похожих символов (0/O, 1/I/L).
 _BT_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -5388,6 +5388,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "stages": list(_BT_AP_STAGES),
             "quota": _BT_AP_STAGES[stage_i],
             "starts_in_ms": starts_in,
+            "base_ms": base_ms,
             "main_remaining_ms": max(0, base_ms - elapsed_ms),
             "reserve_remaining_ms": reserve_disp,
             "you_picked": len(you_rows[prev_q:]),

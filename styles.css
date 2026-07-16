@@ -10579,3 +10579,23 @@ margin-top: var(--space-4);
   flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--text-secondary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ─── Этапный драфт (ap2): рубашка скрытого пика + пульс текущего этапа ──── */
+/* Рубашка: соперник выбрал героя, вскрытие в конце этапа. */
+.bt-slot--back {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-size: var(--text-md, 1rem); font-weight: var(--font-bold);
+  font-family: var(--font-mono);
+}
+/* Пустой слот текущего этапа мерцает: «ещё пикает» (дотовский паттерн). */
+.bt-slot--pulse { animation: btSlotPulse 1.4s ease-in-out infinite; }
+@keyframes btSlotPulse {
+  0%, 100% { border-color: var(--border-subtle); background: var(--bg-elevated); }
+  50%      { border-color: var(--accent-border); background: var(--accent-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bt-slot--pulse { animation: none; border-color: var(--accent-border); }
+}

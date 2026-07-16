@@ -1882,7 +1882,8 @@
                     // Таймер отслеживаемый: уход со страницы его чистит (btBack),
                     // иначе он стрелял бы scrollTo(0,0) на чужом экране.
                     var holdMs = Math.max(1800,
-                        (st.current && st.current.starts_in_ms) || 0);
+                        (st.current && st.current.starts_in_ms) ||
+                        (st.stage && st.stage.starts_in_ms) || 0);
                     if (_bt.foundTimer) clearTimeout(_bt.foundTimer);
                     _bt.foundTimer = setTimeout(function () {
                         _bt.foundTimer = null;
@@ -1896,6 +1897,21 @@
                     // Ход перешёл к тебе — тактильный сигнал (экран мог быть не в фокусе глаз).
                     var nowActor = st.current && st.current.actor;
                     if (nowActor === _btMyRole() && prevActor !== nowActor) _mghlHaptic('tap');
+                    // Этапный драфт: вскрытие нового этапа + сгорание героя.
+                    if (st.stage) {
+                        var prevStage = prev && prev.stage;
+                        if (prevStage && st.stage.index > prevStage.index) {
+                            _mghlHaptic('milestone');   // вскрытие — рубашки перевернулись
+                        }
+                        var burnedNow = (st.stage.burned || []).length;
+                        var burnedPrev = (prevStage && (prevStage.burned || []).length) || 0;
+                        if (burnedNow > burnedPrev && typeof showToast === 'function') {
+                            var lastBurn = st.stage.burned[st.stage.burned.length - 1];
+                            showToast('Оба выбрали одного героя — ' +
+                                (_mghlName(lastBurn) || 'герой') + ' сгорел!');
+                            _mghlHaptic('bad');
+                        }
+                    }
                 }
             } else if (st.status === 'assigning') {
                 _btStopTimer();
@@ -2041,7 +2057,7 @@
             }
             var meta = document.createElement('div');
             meta.className = 'bt-hist-meta';
-            var modeTag = (b.mode === 'ap') ? 'Без банов' : 'С банами';
+            var modeTag = (b.mode === 'ap' || b.mode === 'ap2') ? 'Без банов' : 'С банами';
             meta.textContent = modeTag + ' · ' + _btFmtDate(b.finished_at);
             mid.appendChild(nm); mid.appendChild(meta);
 
@@ -2290,14 +2306,21 @@
             if (oppAv) { oppAv.src = oppPlayer.photo_url || ''; oppAv.style.visibility = oppPlayer.photo_url ? '' : 'hidden'; }
             _btSetRankMedal('bt-me-rank', mePlayer.rank_key);
             _btSetRankMedal('bt-opp-rank', oppPlayer.rank_key);
-            // Активная сторона — подсветка панели (видно, чей ход, без чтения текста).
+            var stage = st.stage;   // этапный драфт (ap2): null у cm/легаси-ap
+            // Активная сторона — подсветка панели. Очередь: чей ход; этапы:
+            // активен каждый, кто ещё не закрыл квоту этапа.
             var curTurn = st.current;
+            var meActive = stage ? !stage.you_done : !!(curTurn && curTurn.actor === me);
+            var oppActive = stage ? !stage.opp_done : !!(curTurn && curTurn.actor === opp);
             var meSide = document.getElementById('bt-side-me');
             var oppSide = document.getElementById('bt-side-opp');
-            if (meSide) meSide.classList.toggle('bt-side--active', !!(curTurn && curTurn.actor === me));
-            if (oppSide) oppSide.classList.toggle('bt-side--active', !!(curTurn && curTurn.actor === opp));
+            if (meSide) meSide.classList.toggle('bt-side--active', meActive);
+            if (oppSide) oppSide.classList.toggle('bt-side--active', oppActive);
 
             // Пики/баны по сторонам из журнала + пустые слоты по последовательности.
+            // Сгоревшие герои (ap2, kind='burn') — void: их пики слоты не занимают.
+            var burned = {};
+            st.actions.forEach(function (a) { if (a.kind === 'burn') burned[a.hero_id] = true; });
             var picksTotal = {}, bansTotal = {};
             st.sequence.forEach(function (s2, i) {
                 var role = (s2.actor_rel === 'F') === (st.first_pick === me) ? me : opp;
@@ -2305,16 +2328,51 @@
                 bucket[role] = (bucket[role] || 0) + 1;
             });
             var done = { pick: { host: [], guest: [] }, ban: { host: [], guest: [] } };
-            st.actions.forEach(function (a) { done[a.kind][a.actor].push(a); });
+            st.actions.forEach(function (a) {
+                if (!done[a.kind]) return;                       // burn — не слот
+                if (a.hero_id != null && burned[a.hero_id]) return;   // void-пик
+                done[a.kind][a.actor].push(a);
+            });
 
-            _btRenderSlots('bt-me-picks', done.pick[me], picksTotal[me] || 5, 'pick');
-            _btRenderSlots('bt-opp-picks', done.pick[opp], picksTotal[opp] || 5, 'pick');
-            _btRenderSlots('bt-me-bans', done.ban[me], bansTotal[me] || 0, 'ban');
-            _btRenderSlots('bt-opp-bans', done.ban[opp], bansTotal[opp] || 0, 'ban');
+            // Пульс на пустых слотах ТЕКУЩЕГО этапа (дотовский паттерн:
+            // мерцает — ещё пикает, рубашка — выбрал, ждёт вскрытия).
+            var pulse = { me: 0, opp: 0 };
+            if (stage && (stage.starts_in_ms || 0) <= 0) {
+                pulse.me = stage.quota - stage.you_picked;
+                pulse.opp = stage.quota - stage.opp_picked;
+            }
+            _btRenderSlots('bt-me-picks', done.pick[me], picksTotal[me] || 5, 'pick', pulse.me);
+            _btRenderSlots('bt-opp-picks', done.pick[opp], picksTotal[opp] || 5, 'pick', pulse.opp);
+            _btRenderSlots('bt-me-bans', done.ban[me], bansTotal[me] || 0, 'ban', 0);
+            _btRenderSlots('bt-opp-bans', done.ban[opp], bansTotal[opp] || 0, 'ban', 0);
 
             // Таймер-якорь.
             var cur = st.current;
-            if (cur) {
+            var turnEl = document.getElementById('bt-timer-turn');
+            var timerBox = document.getElementById('bt-timer');
+            if (stage) {
+                var stIn = stage.starts_in_ms || 0;
+                _bt.anchor = {
+                    at: Date.now() + stIn,
+                    main: stage.main_remaining_ms,
+                    total: stage.main_remaining_ms + stage.reserve_remaining_ms,
+                    kind: 'pick',
+                    baseMs: stage.base_ms || 50000,
+                    mine: !stage.you_done,
+                    frozen: !!stage.you_done,   // квота закрыта — твои часы стоят
+                };
+                if (turnEl) {
+                    turnEl.textContent = stIn > 0
+                        ? 'Этап ' + (stage.index + 1) + ' из ' + stage.stages.length + ' — вскрытие…'
+                        : stage.you_done
+                            ? 'Готово — ждём соперника'
+                            : 'Этап ' + (stage.index + 1) + ' из ' + stage.stages.length +
+                              ' — выбери ' + (stage.quota - stage.you_picked) +
+                              (stage.quota - stage.you_picked === 1 ? ' героя' : ' героев');
+                }
+                if (timerBox) timerBox.classList.toggle('bt-timer--mine', !stage.you_done);
+                _btStartTimer();
+            } else if (cur) {
                 _bt.anchor = {
                     // Стартовый отсчёт: сервер мог назначить старт хода в будущем
                     // (starts_in_ms) — сдвигаем якорь, до этого момента таймер
@@ -2325,37 +2383,46 @@
                     kind: cur.kind,
                     mine: cur.actor === me,
                 };
-                var turnEl = document.getElementById('bt-timer-turn');
                 if (turnEl) {
                     turnEl.textContent = (cur.actor === me ? 'Твой ход — ' : 'Ход соперника — ') +
                         (cur.kind === 'ban' ? 'бан' : 'пик');
                 }
-                var timerBox = document.getElementById('bt-timer');
                 if (timerBox) timerBox.classList.toggle('bt-timer--mine', cur.actor === me);
                 _btStartTimer();
             }
 
-            // Сброс выбора, если герой стал недоступен или ход не наш.
+            // Сброс выбора, если герой стал недоступен или пикать сейчас нельзя.
             var taken = {};
-            st.actions.forEach(function (a) { taken[a.hero_id] = true; });
-            if (_bt.selHero && (taken[_bt.selHero] || !cur || cur.actor !== me)) _bt.selHero = null;
+            st.actions.forEach(function (a) { if (a.hero_id != null) taken[a.hero_id] = true; });
+            var canPick = stage ? (!stage.you_done && (stage.starts_in_ms || 0) <= 0)
+                                : !!(cur && cur.actor === me);
+            if (_bt.selHero && (taken[_bt.selHero] || !canPick)) _bt.selHero = null;
             _btRenderConfirm();
             btRenderGrid();
         }
 
-        function _btRenderSlots(elId, actions, total, kind) {
+        function _btRenderSlots(elId, actions, total, kind, pulseCount) {
             var el = document.getElementById(elId);
             if (!el) return;
             var html = '';
             for (var i = 0; i < total; i++) {
                 var a = actions[i];
-                if (a) {
+                if (a && a.hero_id == null) {
+                    // Скрытый пик соперника (этапный драфт): рубашка карты —
+                    // «герой выбран», вскрытие в конце этапа.
+                    html += '<span class="bt-slot bt-slot--' + kind + ' bt-slot--back" ' +
+                        'title="Герой выбран">?</span>';
+                } else if (a) {
                     html += '<span class="bt-slot bt-slot--' + kind + (a.is_auto ? ' bt-slot--auto' : '') + '">' +
                         '<img src="' + _mghlEsc(_mghlImg(a.hero_id)) + '" alt="" ' +
                         'title="' + _mghlEsc(_mghlName(a.hero_id)) + '" ' +
                         'onerror="this.style.visibility=\'hidden\'"></span>';
                 } else {
-                    html += '<span class="bt-slot bt-slot--' + kind + ' bt-slot--empty"></span>';
+                    // Пустые слоты текущего этапа пульсируют (i считается от
+                    // конца заполненных — первые pulseCount пустых).
+                    var isPulse = pulseCount && (i - actions.length) < pulseCount && i >= actions.length;
+                    html += '<span class="bt-slot bt-slot--' + kind + ' bt-slot--empty' +
+                        (isPulse ? ' bt-slot--pulse' : '') + '"></span>';
                 }
             }
             el.innerHTML = html;
@@ -2376,7 +2443,8 @@
             var sub = document.getElementById('bt-timer-sub');
             if (!a || !clock) return;
             // Якорь может быть в будущем (стартовый отсчёт) — до него время не горит.
-            var elapsed = Math.max(0, Date.now() - a.at);
+            // frozen (этапный драфт, квота закрыта): часы игрока стоят.
+            var elapsed = a.frozen ? 0 : Math.max(0, Date.now() - a.at);
             var mainLeft = Math.max(0, a.main - elapsed);
             var totalLeft = Math.max(0, a.total - elapsed);
             var inReserve = (mainLeft <= 0 && totalLeft > 0);
@@ -2387,7 +2455,7 @@
             // в резерве — янтарная, от остатка на момент якоря.
             var fill = document.getElementById('bt-timer-fill');
             if (fill) {
-                var base = (a.kind === 'ban') ? 20000 : 25000;
+                var base = a.baseMs || ((a.kind === 'ban') ? 20000 : 25000);
                 var pct = inReserve
                     ? (a.total > 0 ? totalLeft / a.total : 0)
                     : (mainLeft / base);
@@ -2457,15 +2525,29 @@
         // Колбэк выбора из каталога (зовёт обработчик тайлов в renderHeroesCatalog).
         window._btCatalogPick = function (hid) {
             var st = _bt.state;
-            var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
-            if (!myTurn) { if (typeof showToast === 'function') showToast('Сейчас не твой ход'); return; }
+            if (!_btCanPickNow(st)) {
+                if (typeof showToast === 'function') {
+                    showToast(st && st.stage ? 'Сейчас пикать нельзя' : 'Сейчас не твой ход');
+                }
+                return;
+            }
             var taken = {};
-            if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
+            if (st) st.actions.forEach(function (a) { if (a.hero_id != null) taken[a.hero_id] = true; });
             if (taken[hid]) { if (typeof showToast === 'function') showToast('Этот герой уже занят'); return; }
             _bt.selHero = hid;
             _btRenderConfirm();
             btRenderGrid();
         };
+
+        // «Можно ли пикать прямо сейчас»: очередь — мой ход; этапы (ap2) —
+        // этап начался и моя квота не закрыта.
+        function _btCanPickNow(st) {
+            if (!st || st.status !== 'drafting') return false;
+            if (st.stage) {
+                return !st.stage.you_done && (st.stage.starts_in_ms || 0) <= 0;
+            }
+            return !!(st.current && st.current.actor === _btMyRole());
+        }
 
         // ── Грид героев ────────────────────────────────────────────────────
         window.btRenderGrid = function () {
@@ -2474,8 +2556,8 @@
             _btLoadPosSets();
             var st = _bt.state;
             var taken = {};
-            if (st) st.actions.forEach(function (a) { taken[a.hero_id] = true; });
-            var myTurn = !!(st && st.current && st.current.actor === _btMyRole());
+            if (st) st.actions.forEach(function (a) { if (a.hero_id != null) taken[a.hero_id] = true; });
+            var myTurn = _btCanPickNow(st);
             var q = (document.getElementById('bt-search') || {}).value || '';
             q = q.trim().toLowerCase();
             // Поиск ГЛАВНЕЕ фильтра позиций: с запросом ищем по всему пулу
@@ -2529,12 +2611,12 @@
             var bar = document.getElementById('bt-confirm');
             if (!bar) return;
             var st = _bt.state;
-            var cur = st && st.current;
-            if (!_bt.selHero || !cur || cur.actor !== _btMyRole()) { bar.hidden = true; return; }
+            if (!_bt.selHero || !_btCanPickNow(st)) { bar.hidden = true; return; }
+            var cur = st.current;
             document.getElementById('bt-confirm-img').src = _mghlImg(_bt.selHero);
             document.getElementById('bt-confirm-name').textContent = _mghlName(_bt.selHero);
             document.getElementById('bt-confirm-btn').textContent =
-                (cur.kind === 'ban' ? 'Забанить' : 'Пикнуть');
+                (cur && cur.kind === 'ban' ? 'Забанить' : 'Пикнуть');
             bar.hidden = false;
         }
 
@@ -2565,8 +2647,15 @@
         // шлёт на сервер; менять можно, пока стадия не закрыта.
         function _btMyPickIds(st) {
             var me = _btMyRole();
+            var burned = {};
+            (st.actions || []).forEach(function (a) {
+                if (a.kind === 'burn') burned[a.hero_id] = true;
+            });
             return (st.actions || [])
-                .filter(function (a) { return a.kind === 'pick' && a.actor === me; })
+                .filter(function (a) {
+                    return a.kind === 'pick' && a.actor === me &&
+                        a.hero_id != null && !burned[a.hero_id];
+                })
                 .map(function (a) { return a.hero_id; });
         }
 
