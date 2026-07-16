@@ -10540,15 +10540,28 @@ margin-top: var(--space-4);
 .bt-mx-c.is-pos { color: var(--positive); background: var(--positive-soft); }
 .bt-mx-c.is-neg { color: var(--negative); background: var(--negative-soft); }
 
-/* Пары синергии: две колонки чипов. */
-.bt-pairs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.bt-pair {
-  display: flex; align-items: center; gap: 5px;
-  background: var(--bg-surface); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md); padding: 5px 7px;
-  font-size: var(--text-xs);
+/* Секция с мини-переключателем справа (матрица синергий: Ты/Соперник). */
+.bt-rev-sect-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); margin-top: var(--space-3);
 }
-.bt-pair .bt-rev-val { margin-left: auto; }
+.bt-rev-sect-row .bt-rev-sect { margin-top: 0; }
+.bt-rev-mini-tabs {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.bt-rev-mini-tab {
+  border: none; border-radius: calc(var(--radius-md) - 2px);
+  background: transparent; color: var(--text-tertiary);
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  padding: 4px 10px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.bt-rev-mini-tab--active { background: var(--bg-elevated); color: var(--text-primary); }
+.bt-rev-syn-mx[hidden] { display: none !important; }
+/* Диагональ матрицы синергий — пустая клетка без фона. */
+.bt-mx-c--x { background: transparent; }
 
 /* Позиции: кто, герой, объяснение, цена. */
 .bt-rev-poslist { display: flex; flex-direction: column; gap: var(--space-2); }

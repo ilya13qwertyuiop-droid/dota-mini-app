@@ -2863,40 +2863,63 @@
             }
             var mine = byPos(r[me].ally_ids, posMaps[me]);
             var theirs = byPos(r[opp].ally_ids, posMaps[opp]);
+
+            // Универсальная матрица: rows × cols, значение из valFn (null =
+            // пустая клетка-диагональ).
+            function mxHtml(rowIds, colIds, valFn, extraCls) {
+                var h = '<div class="bt-mx' + (extraCls || '') + '">' +
+                    '<div class="bt-mx-row bt-mx-row--head"><span class="bt-mx-h"></span>' +
+                    colIds.map(function (c) {
+                        return '<span class="bt-mx-h">' + _btRevIcon(c) + '</span>';
+                    }).join('') + '</div>';
+                rowIds.forEach(function (a) {
+                    h += '<div class="bt-mx-row"><span class="bt-mx-h">' + _btRevIcon(a) + '</span>' +
+                        colIds.map(function (b) {
+                            var v = valFn(a, b);
+                            if (v === null) return '<span class="bt-mx-c bt-mx-c--x"></span>';
+                            var cls = v >= 0.5 ? ' is-pos' : v <= -0.5 ? ' is-neg' : '';
+                            return '<span class="bt-mx-c' + cls + '">' +
+                                (v > 0 ? '+' : '') + v.toFixed(1) + '</span>';
+                        }).join('') + '</div>';
+                });
+                return h + '</div>';
+            }
+
             var muMap = {};
             (r[me].matchup_pairs || []).forEach(function (p) {
                 muMap[p.ally_id + '_' + p.enemy_id] = p.value;
             });
+            var html = '<div class="bt-rev-sect">Матрица контрпиков</div>' +
+                mxHtml(mine, theirs, function (a, e) { return muMap[a + '_' + e] || 0; });
 
-            var html = '<div class="bt-rev-sect">Контрпики · ты против соперника</div>';
-            html += '<div class="bt-mx">' +
-                '<div class="bt-mx-row bt-mx-row--head"><span class="bt-mx-h"></span>' +
-                theirs.map(function (e) {
-                    return '<span class="bt-mx-h">' + _btRevIcon(e) + '</span>';
-                }).join('') + '</div>';
-            mine.forEach(function (a) {
-                html += '<div class="bt-mx-row"><span class="bt-mx-h">' + _btRevIcon(a) + '</span>' +
-                    theirs.map(function (e) {
-                        var v = muMap[a + '_' + e] || 0;
-                        var cls = v >= 0.5 ? ' is-pos' : v <= -0.5 ? ' is-neg' : '';
-                        return '<span class="bt-mx-c' + cls + '">' +
-                            (v > 0 ? '+' : '') + v.toFixed(1) + '</span>';
-                    }).join('') + '</div>';
-            });
-            html += '</div>' +
-                '<div class="bt-rev-note">Плюс — твой герой статистически сильнее ' +
-                'этого врага. Пары складываются и нормируются в строку «Контрпики».</div>';
-
-            function synList(pairs) {
-                var arr = (pairs || []).slice().sort(function (a, b) { return b.value - a.value; });
-                if (!arr.length) return '<div class="bt-rev-note">Нет данных по парам.</div>';
-                return '<div class="bt-pairs">' + arr.map(function (p) {
-                    return '<span class="bt-pair">' + _btRevIcon(p.hero_id1) +
-                        _btRevIcon(p.hero_id2) + _btRevVal(p.value) + '</span>';
-                }).join('') + '</div>';
+            // Матрица синергий: 5×5 своей команды, тап-переключатель на
+            // вражескую (компактнее двух списков пар — фидбек юзера).
+            function synMap(pairs) {
+                var m = {};
+                (pairs || []).forEach(function (p) {
+                    m[p.hero_id1 + '_' + p.hero_id2] = p.value;
+                    m[p.hero_id2 + '_' + p.hero_id1] = p.value;
+                });
+                return m;
             }
-            html += '<div class="bt-rev-sect">Твои связки</div>' + synList(r[me].synergy_pairs);
-            html += '<div class="bt-rev-sect">Связки соперника</div>' + synList(r[opp].synergy_pairs);
+            var synMine = synMap(r[me].synergy_pairs);
+            var synTheirs = synMap(r[opp].synergy_pairs);
+            html += '<div class="bt-rev-sect-row">' +
+                '<span class="bt-rev-sect">Матрица синергий</span>' +
+                '<span class="bt-rev-mini-tabs">' +
+                    '<button type="button" class="bt-rev-mini-tab bt-rev-mini-tab--active"' +
+                        ' data-side="me" onclick="btRevSynSide(\'me\')">Ты</button>' +
+                    '<button type="button" class="bt-rev-mini-tab"' +
+                        ' data-side="opp" onclick="btRevSynSide(\'opp\')">Соперник</button>' +
+                '</span></div>';
+            html += '<div class="bt-rev-syn-mx" data-side="me">' +
+                mxHtml(mine, mine, function (a, b) {
+                    return a === b ? null : (synMine[a + '_' + b] || 0);
+                }) + '</div>';
+            html += '<div class="bt-rev-syn-mx" data-side="opp" hidden>' +
+                mxHtml(theirs, theirs, function (a, b) {
+                    return a === b ? null : (synTheirs[a + '_' + b] || 0);
+                }) + '</div>';
 
             var pi = r.penalty_items;
             if (pi) {
@@ -2946,6 +2969,20 @@
         }
         window.btResultTab = function (tab) {
             _btSetResultTab(tab);
+            _mghlHaptic('tap');
+        };
+
+        // Переключатель стороны в матрице синергий («Ты» / «Соперник»).
+        window.btRevSynSide = function (side) {
+            var box = document.getElementById('bt-review');
+            if (!box) return;
+            box.querySelectorAll('.bt-rev-syn-mx').forEach(function (el) {
+                el.hidden = el.getAttribute('data-side') !== side;
+            });
+            box.querySelectorAll('.bt-rev-mini-tab').forEach(function (b) {
+                b.classList.toggle('bt-rev-mini-tab--active',
+                    b.getAttribute('data-side') === side);
+            });
             _mghlHaptic('tap');
         };
 
