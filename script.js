@@ -2572,6 +2572,8 @@
 
         function _btRenderAssign(st) {
             var a = st.assign || {};
+            // Карта опасных позиций своих пиков (счёт v2): hero_id -> {pos: 'soft'|'hard'}.
+            _bt.posRisk = a.pos_risk || null;
             // Инициализация раскладки: своя отправленная или порядок пика.
             var picks = _btMyPickIds(st);
             if (!_bt.assignOrder || _bt.assignOrder.length !== picks.length) {
@@ -2610,10 +2612,21 @@
             if (!list) return;
             var html = '';
             (_bt.assignOrder || []).forEach(function (hid, i) {
-                html += '<div class="bt-assign-row" data-slot="' + i + '">' +
+                // Предупреждение о штрафной позиции (счёт v2): жёсткий −12
+                // не должен приходить сюрпризом в протоколе. Чип живёт в
+                // строке и обновляется при каждом перетаскивании.
+                var risk = _bt.posRisk && _bt.posRisk[String(hid)]
+                    ? _bt.posRisk[String(hid)][String(i + 1)] : null;
+                var warn = risk === 'hard'
+                    ? '<span class="bt-assign-warn is-hard">не позиция −12</span>'
+                    : risk === 'soft'
+                        ? '<span class="bt-assign-warn">флекс −5</span>'
+                        : '';
+                html += '<div class="bt-assign-row' + (risk === 'hard' ? ' bt-assign-row--warn' : '') +
+                    '" data-slot="' + i + '">' +
                     '<span class="bt-assign-pos">Pos ' + (i + 1) + '</span>' +
                     '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" draggable="false" onerror="this.style.visibility=\'hidden\'">' +
-                    '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + '</span>' +
+                    '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + warn + '</span>' +
                     '<span class="bt-assign-grip" aria-hidden="true">⠿</span>' +
                 '</div>';
             });
@@ -2790,17 +2803,32 @@
         // Строка протокола: значения по бокам, метка по центру. win/lose —
         // цвет исхода строки (победившее зелёное, проигравшее приглушённо-красное);
         // data-val хранит финальное число для count-up при поэтапном раскрытии.
-        function _btProtoRowHtml(key, label, meVal, oppVal, isTotal) {
+        function _btProtoRowHtml(key, label, meVal, oppVal, isTotal, maxCap) {
             var m = Math.round(meVal || 0), o = Math.round(oppVal || 0);
             function cls(v, other) {
                 return v > other ? ' is-win' : v < other ? ' is-lose' : '';
             }
+            // maxCap — подпись шкалы компонента (счёт v2: «до 25» / «до 50»),
+            // чтобы разные веса синергии и контрпиков читались с экрана.
+            var cap = maxCap ? '<i class="bt-proto-max">до ' + maxCap + '</i>' : '';
             return '<div class="bt-proto-row' + (isTotal ? ' bt-proto-row--total' : '') +
                 '" data-key="' + key + '">' +
                 '<b class="bt-proto-val' + cls(m, o) + '" data-val="' + m + '">' + m + '</b>' +
-                '<span class="bt-proto-label">' + _mghlEsc(label) + '</span>' +
+                '<span class="bt-proto-label">' + _mghlEsc(label) + cap + '</span>' +
                 '<b class="bt-proto-val' + cls(o, m) + '" data-val="' + o + '">' + o + '</b>' +
             '</div>';
+        }
+
+        // По-геройная расшифровка позиционного штрафа (счёт v2, лестница):
+        // сумма строк равна значению строки «Позиции» — протокол сходится
+        // столбиком на всех уровнях.
+        function _btProtoPenItemsHtml(items) {
+            return (items || []).map(function (it) {
+                return '<span class="bt-pen-item' +
+                    (it.level === 'hard' ? ' is-hard' : '') + '">' +
+                    _mghlEsc(_mghlName(it.hero_id) || ('#' + it.hero_id)) +
+                    ' (' + it.pos + ')<b>' + it.value + '</b></span>';
+            }).join('');
         }
 
         function _btRenderResult(st, forceInstant) {
@@ -2888,7 +2916,17 @@
             // контрпики → позиции → ИТОГ (кульминация, последним). Нулевые
             // позиции у обоих — строка «Все герои на своих позициях» без чисел.
             var table = document.getElementById('bt-proto-table');
-            var penMe = Math.round(pens[me] || 0), penOpp = Math.round(pens[opp] || 0);
+            // Счёт v2: бэкенд отдаёт ЦЕЛЫЕ компоненты в result.rows (сумма
+            // строк = итог, победитель по этим же числам) + шкалы в scoring.
+            // Старые битвы (без rows) рендерятся по-старому из *_score.
+            var rows = r.rows || null;
+            var scoring = r.scoring || null;
+            var synMe = rows ? rows[me].synergy : (r[me] && r[me].synergy_score);
+            var synOpp = rows ? rows[opp].synergy : (r[opp] && r[opp].synergy_score);
+            var muMe = rows ? rows[me].matchup : (r[me] && r[me].matchup_score);
+            var muOpp = rows ? rows[opp].matchup : (r[opp] && r[opp].matchup_score);
+            var penMe = Math.round((rows ? rows[me].penalty : pens[me]) || 0);
+            var penOpp = Math.round((rows ? rows[opp].penalty : pens[opp]) || 0);
             if (table) {
                 if (hasSides && meFinal != null && oppFinal != null) {
                     table.hidden = false;
@@ -2898,7 +2936,17 @@
                               '<span class="bt-proto-poszero">Все герои на своих позициях</span>' +
                           '</div>'
                         : _btProtoRowHtml('pos', 'Позиции', penMe, penOpp, false);
-                    // Метовость: у битв до её появления в result нет — строка условная.
+                    // По-геройная расшифровка штрафа (только v2 с ненулевыми штрафами).
+                    var penItems = r.penalty_items || null;
+                    var pensRow = '';
+                    if (penItems && (penMe !== 0 || penOpp !== 0)) {
+                        pensRow = '<div class="bt-proto-row bt-proto-row--pens" data-key="pens">' +
+                            '<span class="bt-proto-pens">' + _btProtoPenItemsHtml(penItems[me]) + '</span>' +
+                            '<span></span>' +
+                            '<span class="bt-proto-pens bt-proto-pens--opp">' + _btProtoPenItemsHtml(penItems[opp]) + '</span>' +
+                        '</div>';
+                    }
+                    // Метовость: жила в счёте недолго (v1), у старых битв рендерим.
                     var metaRow = (r.meta && r.meta[me] != null && r.meta[opp] != null)
                         ? _btProtoRowHtml('meta', 'Мета', r.meta[me], r.meta[opp], false)
                         : '';
@@ -2907,10 +2955,13 @@
                             '<b class="bt-proto-cap">Ты</b><span></span>' +
                             '<b class="bt-proto-cap">' + _mghlEsc(oppCap) + '</b>' +
                         '</div>' +
-                        _btProtoRowHtml('syn', 'Синергия', r[me].synergy_score, r[opp].synergy_score, false) +
-                        _btProtoRowHtml('mu', 'Контрпики', r[me].matchup_score, r[opp].matchup_score, false) +
+                        _btProtoRowHtml('syn', 'Синергия', synMe, synOpp, false,
+                            scoring && scoring.synergy_max) +
+                        _btProtoRowHtml('mu', 'Контрпики', muMe, muOpp, false,
+                            scoring && scoring.matchup_max) +
                         metaRow +
                         posRow +
+                        pensRow +
                         _btProtoRowHtml('total', 'Итог', meFinal, oppFinal, true);
                 } else {
                     table.hidden = true;
@@ -2975,6 +3026,11 @@
             var stepMs = 1000;
             seqKeys.forEach(function (k, i) {
                 stageRow(k, 1100 + i * stepMs);
+                // Расшифровка штрафа — не отдельный акт: догоняет строку
+                // «Позиции» через 250мс, монтаж не удлиняет.
+                if (k === 'pos' && table.querySelector('[data-key="pens"]')) {
+                    stageRow('pens', 1100 + i * stepMs + 250, true);
+                }
             });
             // 3) Кульминация: итог + вердикт + рейтинг + кнопки, хаптика исхода
             var finalAt = 1100 + seqKeys.length * stepMs;

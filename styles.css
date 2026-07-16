@@ -10446,3 +10446,41 @@ margin-top: var(--space-4);
   -webkit-tap-highlight-color: transparent;
 }
 .drafter-lock-btn:active { background: color-mix(in srgb, var(--accent) 70%, #000); }
+
+/* ─── Счёт v2: подписи шкал + расшифровка позиционного штрафа ────────────── */
+/* Подпись шкалы компонента («до 25» / «до 50») — тихое пояснение при метке. */
+.bt-proto-max {
+  display: block; font-style: normal; text-transform: none;
+  font-size: 10px; letter-spacing: 0.02em;
+  color: var(--text-tertiary); margin-top: 1px;
+}
+/* По-геройная расшифровка штрафа: сумма чипов = строка «Позиции». Монохром —
+   цвет в протоколе зарезервирован за итогом/вердиктом. */
+.bt-proto-row--pens { padding: 0 0 10px; border-top: none !important; }
+.bt-proto-pens {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.bt-proto-pens--opp { align-items: flex-end; text-align: right; }
+.bt-pen-item {
+  font-size: var(--text-2xs); color: var(--text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.bt-pen-item b {
+  font-family: var(--font-mono); font-weight: var(--font-semibold);
+  color: var(--text-secondary); margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Предупреждение на слоте расстановки: штраф не приходит сюрпризом. */
+.bt-assign-warn {
+  display: inline-block; margin-left: var(--space-2);
+  font-size: 10px; font-weight: var(--font-semibold);
+  letter-spacing: 0.03em; white-space: nowrap;
+  padding: 1px 6px; border-radius: 5px;
+  background: rgba(210, 153, 34, 0.12); color: var(--warning);
+  vertical-align: 1px;
+}
+.bt-assign-warn.is-hard {
+  background: var(--negative-soft); color: var(--negative);
+}
+.bt-assign-row--warn { border-color: rgba(229, 83, 75, 0.35); }
