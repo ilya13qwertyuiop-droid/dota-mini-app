@@ -9565,12 +9565,14 @@ margin-top: var(--space-4);
               transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Шапка (вердикт+рейтинг) и кнопки — только на кульминации. */
+/* Шапка (вердикт+рейтинг), вкладки и кнопки — только на кульминации. */
 .bt-proto--seq .bt-proto-head,
+.bt-proto--seq .bt-res-tabs,
 .bt-proto--seq .bt-res-actions {
   opacity: 0; transform: translateY(10px);
 }
 .bt-proto--seq.bt-proto--final-in .bt-proto-head,
+.bt-proto--seq.bt-proto--final-in .bt-res-tabs,
 .bt-proto--seq.bt-proto--final-in .bt-res-actions {
   opacity: 1; transform: none;
   transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
@@ -9586,7 +9588,7 @@ margin-top: var(--space-4);
 @media (prefers-reduced-motion: reduce) {
   .bt-proto--seq .bt-proto-team, .bt-proto--seq .bt-proto-row,
   .bt-proto--seq .bt-proto-val, .bt-proto--seq .bt-proto-head,
-  .bt-proto--seq .bt-res-actions {
+  .bt-proto--seq .bt-res-tabs, .bt-proto--seq .bt-res-actions {
     transition: none; opacity: 1; transform: none; animation: none;
   }
 }
@@ -10484,3 +10486,83 @@ margin-top: var(--space-4);
   background: var(--negative-soft); color: var(--negative);
 }
 .bt-assign-row--warn { border-color: rgba(229, 83, 75, 0.35); }
+
+/* ─── Результат: вкладки «Итог»/«Разбор» + содержимое разбора ─────────────── */
+.bt-res-tabs {
+  display: flex; gap: 3px; padding: 3px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.bt-res-tabs[hidden] { display: none !important; }
+.bt-res-tab {
+  flex: 1; min-height: 38px;
+  border: none; border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent; color: var(--text-secondary);
+  font-size: var(--text-sm); font-weight: var(--font-semibold);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.bt-res-tab--active { background: var(--bg-elevated); color: var(--text-primary); }
+
+.bt-review { display: flex; flex-direction: column; gap: var(--space-3); }
+.bt-review[hidden] { display: none !important; }
+.bt-rev-sect {
+  font-size: var(--text-2xs); font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  margin-top: var(--space-3);
+}
+.bt-rev-sect:first-child { margin-top: 0; }
+.bt-rev-ico {
+  width: 26px; height: 26px; border-radius: var(--radius-sm);
+  object-fit: cover; display: block;
+}
+.bt-rev-note { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.45; }
+.bt-rev-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.bt-rev-val.is-pos { color: var(--positive); }
+.bt-rev-val.is-neg { color: var(--negative); }
+
+/* Матрица контрпиков: свои герои — строки, вражеские — колонки. */
+.bt-mx {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: var(--space-2);
+}
+.bt-mx-row { display: grid; grid-template-columns: 30px repeat(5, 1fr); gap: 2px; align-items: center; }
+.bt-mx-h { display: flex; align-items: center; justify-content: center; }
+.bt-mx-c {
+  font-family: var(--font-mono); font-size: 10.5px;
+  font-variant-numeric: tabular-nums; text-align: center;
+  color: var(--text-tertiary);
+  padding: 6px 0; border-radius: var(--radius-sm);
+  background: var(--bg-base);
+}
+.bt-mx-c.is-pos { color: var(--positive); background: var(--positive-soft); }
+.bt-mx-c.is-neg { color: var(--negative); background: var(--negative-soft); }
+
+/* Пары синергии: две колонки чипов. */
+.bt-pairs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.bt-pair {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: 5px 7px;
+  font-size: var(--text-xs);
+}
+.bt-pair .bt-rev-val { margin-left: auto; }
+
+/* Позиции: кто, герой, объяснение, цена. */
+.bt-rev-poslist { display: flex; flex-direction: column; gap: var(--space-2); }
+.bt-rev-pos {
+  display: flex; align-items: center; gap: var(--space-2);
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: 6px 9px;
+}
+.bt-rev-pos-who {
+  flex: 0 0 auto; font-size: 10px; font-weight: var(--font-semibold);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-tertiary); min-width: 34px;
+}
+.bt-rev-pos-txt {
+  flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

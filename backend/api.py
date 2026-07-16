@@ -4254,10 +4254,10 @@ def _bt_position_penalty_detail(positions: dict) -> tuple:
         share = hero_shares.get(pos_i, 0.0)
         if share < _BT_POS_HARD_SHARE:
             hits.append({"hero_id": hid_i, "pos": pos_i, "level": "hard",
-                         "base": _BT_POS_HARD_PENALTY})
+                         "base": _BT_POS_HARD_PENALTY, "share": share})
         elif share < _BT_POS_SOFT_SHARE:
             hits.append({"hero_id": hid_i, "pos": pos_i, "level": "soft",
-                         "base": _BT_POS_SOFT_PENALTY})
+                         "base": _BT_POS_SOFT_PENALTY, "share": share})
     hits.sort(key=lambda h: -h["base"])
     items = []
     total = 0
@@ -4265,8 +4265,10 @@ def _bt_position_penalty_detail(positions: dict) -> tuple:
         mult = _BT_POS_LADDER[i] if i < len(_BT_POS_LADDER) else _BT_POS_LADDER[-1]
         value = -int(h["base"] * mult + 0.5)
         total += value
+        # share (в %) — для вкладки «Разбор»: «Medusa не играет 4 — 0% матчей».
         items.append({"hero_id": h["hero_id"], "pos": h["pos"],
-                      "level": h["level"], "value": value})
+                      "level": h["level"], "value": value,
+                      "share": round(h["share"] * 100)})
     return total, items
 
 
