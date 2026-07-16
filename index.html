@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=245" />
+    <link rel="stylesheet" href="styles.css?v=248" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -899,7 +899,17 @@
               </div>
             </div>
 
+            <!-- Вкладки результата: «Итог» (протокол) / «Разбор» (матрицы —
+                 откуда взялись цифры). Видимы после монтажа (--final-in). -->
+            <div class="bt-res-tabs" id="bt-res-tabs" role="tablist" hidden>
+              <button type="button" class="bt-res-tab bt-res-tab--active" role="tab"
+                      aria-selected="true" data-tab="proto" onclick="btResultTab('proto')">Итог</button>
+              <button type="button" class="bt-res-tab" role="tab"
+                      aria-selected="false" data-tab="review" onclick="btResultTab('review')">Разбор</button>
+            </div>
+
             <div class="bt-proto-table" id="bt-proto-table"></div>
+            <div class="bt-review" id="bt-review" hidden></div>
 
             <div class="bt-res-actions">
               <button type="button" class="tm-primary-btn" onclick="btRematch()">Ещё раз</button>
@@ -1896,6 +1906,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=305"></script>
+    <script defer src="script.js?v=308"></script>
   </body>
 </html>

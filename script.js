@@ -2572,6 +2572,8 @@
 
         function _btRenderAssign(st) {
             var a = st.assign || {};
+            // Карта опасных позиций своих пиков (счёт v2): hero_id -> {pos: 'soft'|'hard'}.
+            _bt.posRisk = a.pos_risk || null;
             // Инициализация раскладки: своя отправленная или порядок пика.
             var picks = _btMyPickIds(st);
             if (!_bt.assignOrder || _bt.assignOrder.length !== picks.length) {
@@ -2610,10 +2612,21 @@
             if (!list) return;
             var html = '';
             (_bt.assignOrder || []).forEach(function (hid, i) {
-                html += '<div class="bt-assign-row" data-slot="' + i + '">' +
+                // Предупреждение о штрафной позиции (счёт v2): жёсткий −12
+                // не должен приходить сюрпризом в протоколе. Чип живёт в
+                // строке и обновляется при каждом перетаскивании.
+                var risk = _bt.posRisk && _bt.posRisk[String(hid)]
+                    ? _bt.posRisk[String(hid)][String(i + 1)] : null;
+                var warn = risk === 'hard'
+                    ? '<span class="bt-assign-warn is-hard">не позиция −12</span>'
+                    : risk === 'soft'
+                        ? '<span class="bt-assign-warn">флекс −5</span>'
+                        : '';
+                html += '<div class="bt-assign-row' + (risk === 'hard' ? ' bt-assign-row--warn' : '') +
+                    '" data-slot="' + i + '">' +
                     '<span class="bt-assign-pos">Pos ' + (i + 1) + '</span>' +
                     '<img src="' + _mghlEsc(_mghlImg(hid)) + '" alt="" draggable="false" onerror="this.style.visibility=\'hidden\'">' +
-                    '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + '</span>' +
+                    '<span class="bt-assign-name">' + _mghlEsc(_mghlName(hid)) + warn + '</span>' +
                     '<span class="bt-assign-grip" aria-hidden="true">⠿</span>' +
                 '</div>';
             });
@@ -2790,18 +2803,188 @@
         // Строка протокола: значения по бокам, метка по центру. win/lose —
         // цвет исхода строки (победившее зелёное, проигравшее приглушённо-красное);
         // data-val хранит финальное число для count-up при поэтапном раскрытии.
-        function _btProtoRowHtml(key, label, meVal, oppVal, isTotal) {
+        function _btProtoRowHtml(key, label, meVal, oppVal, isTotal, maxCap) {
             var m = Math.round(meVal || 0), o = Math.round(oppVal || 0);
             function cls(v, other) {
                 return v > other ? ' is-win' : v < other ? ' is-lose' : '';
             }
+            // maxCap — подпись шкалы компонента (счёт v2: «до 25» / «до 50»),
+            // чтобы разные веса синергии и контрпиков читались с экрана.
+            var cap = maxCap ? '<i class="bt-proto-max">до ' + maxCap + '</i>' : '';
             return '<div class="bt-proto-row' + (isTotal ? ' bt-proto-row--total' : '') +
                 '" data-key="' + key + '">' +
                 '<b class="bt-proto-val' + cls(m, o) + '" data-val="' + m + '">' + m + '</b>' +
-                '<span class="bt-proto-label">' + _mghlEsc(label) + '</span>' +
+                '<span class="bt-proto-label">' + _mghlEsc(label) + cap + '</span>' +
                 '<b class="bt-proto-val' + cls(o, m) + '" data-val="' + o + '">' + o + '</b>' +
             '</div>';
         }
+
+        // По-геройная расшифровка позиционного штрафа (счёт v2, лестница):
+        // сумма строк равна значению строки «Позиции» — протокол сходится
+        // столбиком на всех уровнях.
+        function _btProtoPenItemsHtml(items) {
+            return (items || []).map(function (it) {
+                return '<span class="bt-pen-item' +
+                    (it.level === 'hard' ? ' is-hard' : '') + '">' +
+                    _mghlEsc(_mghlName(it.hero_id) || ('#' + it.hero_id)) +
+                    ' (' + it.pos + ')<b>' + it.value + '</b></span>';
+            }).join('');
+        }
+
+        // ── Вкладка «Разбор»: откуда взялись цифры протокола ────────────────
+        // Матрица контрпиков 5×5 + пары синергии обеих команд + позиции с
+        // долями. Данные уже в result (synergy_pairs/matchup_pairs — те же,
+        // что в Тренировке), рендер ленивый — при первом открытии вкладки.
+        function _btRevIcon(id) {
+            return '<img class="bt-rev-ico" src="' + _mghlEsc(_mghlImg(id)) +
+                '" alt="" title="' + _mghlEsc(_mghlName(id) || '') +
+                '" onerror="this.style.visibility=\'hidden\'">';
+        }
+
+        function _btRevVal(v) {
+            var cls = v >= 0.5 ? 'is-pos' : v <= -0.5 ? 'is-neg' : '';
+            return '<b class="bt-rev-val ' + cls + '">' +
+                (v > 0 ? '+' : '') + v.toFixed(1) + '</b>';
+        }
+
+        function _btRenderReview(st) {
+            var box = document.getElementById('bt-review');
+            if (!box || !st || !st.result) return;
+            var me = _btMyRole(), opp = _btOppRole();
+            var r = st.result;
+            if (!r[me] || !r[opp]) { box.innerHTML = ''; return; }
+            var posMaps = r.positions || {};
+            function byPos(ids, pm) {
+                var arr = (ids || []).slice();
+                if (pm) arr.sort(function (a, b) {
+                    return (pm[String(a)] || 9) - (pm[String(b)] || 9);
+                });
+                return arr;
+            }
+            var mine = byPos(r[me].ally_ids, posMaps[me]);
+            var theirs = byPos(r[opp].ally_ids, posMaps[opp]);
+
+            // Универсальная матрица: rows × cols, значение из valFn (null =
+            // пустая клетка-диагональ).
+            function mxHtml(rowIds, colIds, valFn, extraCls) {
+                var h = '<div class="bt-mx' + (extraCls || '') + '">' +
+                    '<div class="bt-mx-row bt-mx-row--head"><span class="bt-mx-h"></span>' +
+                    colIds.map(function (c) {
+                        return '<span class="bt-mx-h">' + _btRevIcon(c) + '</span>';
+                    }).join('') + '</div>';
+                rowIds.forEach(function (a) {
+                    h += '<div class="bt-mx-row"><span class="bt-mx-h">' + _btRevIcon(a) + '</span>' +
+                        colIds.map(function (b) {
+                            var v = valFn(a, b);
+                            if (v === null) return '<span class="bt-mx-c bt-mx-c--x"></span>';
+                            var cls = v >= 0.5 ? ' is-pos' : v <= -0.5 ? ' is-neg' : '';
+                            return '<span class="bt-mx-c' + cls + '">' +
+                                (v > 0 ? '+' : '') + v.toFixed(1) + '</span>';
+                        }).join('') + '</div>';
+                });
+                return h + '</div>';
+            }
+
+            var muMap = {};
+            (r[me].matchup_pairs || []).forEach(function (p) {
+                muMap[p.ally_id + '_' + p.enemy_id] = p.value;
+            });
+            var html = '<div class="bt-rev-sect">Матрица контрпиков</div>' +
+                mxHtml(mine, theirs, function (a, e) { return muMap[a + '_' + e] || 0; });
+
+            // Матрица синергий: 5×5 своей команды, тап-переключатель на
+            // вражескую (компактнее двух списков пар — фидбек юзера).
+            function synMap(pairs) {
+                var m = {};
+                (pairs || []).forEach(function (p) {
+                    m[p.hero_id1 + '_' + p.hero_id2] = p.value;
+                    m[p.hero_id2 + '_' + p.hero_id1] = p.value;
+                });
+                return m;
+            }
+            var synMine = synMap(r[me].synergy_pairs);
+            var synTheirs = synMap(r[opp].synergy_pairs);
+            html += '<div class="bt-rev-sect-row">' +
+                '<span class="bt-rev-sect">Матрица синергий</span>' +
+                '<span class="bt-rev-mini-tabs">' +
+                    '<button type="button" class="bt-rev-mini-tab bt-rev-mini-tab--active"' +
+                        ' data-side="me" onclick="btRevSynSide(\'me\')">Ты</button>' +
+                    '<button type="button" class="bt-rev-mini-tab"' +
+                        ' data-side="opp" onclick="btRevSynSide(\'opp\')">Соперник</button>' +
+                '</span></div>';
+            html += '<div class="bt-rev-syn-mx" data-side="me">' +
+                mxHtml(mine, mine, function (a, b) {
+                    return a === b ? null : (synMine[a + '_' + b] || 0);
+                }) + '</div>';
+            html += '<div class="bt-rev-syn-mx" data-side="opp" hidden>' +
+                mxHtml(theirs, theirs, function (a, b) {
+                    return a === b ? null : (synTheirs[a + '_' + b] || 0);
+                }) + '</div>';
+
+            var pi = r.penalty_items;
+            if (pi) {
+                var both = (pi[me] || []).map(function (it) { return { it: it, who: 'Ты' }; })
+                    .concat((pi[opp] || []).map(function (it) { return { it: it, who: 'Соперник' }; }));
+                html += '<div class="bt-rev-sect">Позиции</div>';
+                if (!both.length) {
+                    html += '<div class="bt-rev-note">Все герои обеих команд на своих ' +
+                        'позициях — штрафов нет.</div>';
+                } else {
+                    html += '<div class="bt-rev-poslist">' + both.map(function (x) {
+                        var it = x.it;
+                        return '<div class="bt-rev-pos">' +
+                            '<span class="bt-rev-pos-who">' + x.who + '</span>' +
+                            _btRevIcon(it.hero_id) +
+                            '<span class="bt-rev-pos-txt">' +
+                            _mghlEsc(_mghlName(it.hero_id) || ('#' + it.hero_id)) +
+                            ' — ' + it.pos + ' поз' +
+                            (it.share != null ? ' · ' + it.share + '% матчей' : '') +
+                            '</span><b class="bt-rev-val is-neg">' + it.value + '</b></div>';
+                    }).join('') + '</div>';
+                }
+            }
+            box.innerHTML = html;
+        }
+
+        function _btSetResultTab(tab) {
+            var table = document.getElementById('bt-proto-table');
+            var review = document.getElementById('bt-review');
+            var tabs = document.getElementById('bt-res-tabs');
+            if (!table || !review || !tabs) return;
+            var isReview = tab === 'review';
+            if (isReview) {
+                var key = String((_bt.state && _bt.state.code) || '');
+                if (review.dataset.rendered !== key) {
+                    _btRenderReview(_bt.state);
+                    review.dataset.rendered = key;
+                }
+            }
+            table.hidden = isReview;
+            review.hidden = !isReview;
+            tabs.querySelectorAll('.bt-res-tab').forEach(function (b) {
+                var act = b.getAttribute('data-tab') === tab;
+                b.classList.toggle('bt-res-tab--active', act);
+                b.setAttribute('aria-selected', act ? 'true' : 'false');
+            });
+        }
+        window.btResultTab = function (tab) {
+            _btSetResultTab(tab);
+            _mghlHaptic('tap');
+        };
+
+        // Переключатель стороны в матрице синергий («Ты» / «Соперник»).
+        window.btRevSynSide = function (side) {
+            var box = document.getElementById('bt-review');
+            if (!box) return;
+            box.querySelectorAll('.bt-rev-syn-mx').forEach(function (el) {
+                el.hidden = el.getAttribute('data-side') !== side;
+            });
+            box.querySelectorAll('.bt-rev-mini-tab').forEach(function (b) {
+                b.classList.toggle('bt-rev-mini-tab--active',
+                    b.getAttribute('data-side') === side);
+            });
+            _mghlHaptic('tap');
+        };
 
         function _btRenderResult(st, forceInstant) {
             _btClearReveal();
@@ -2888,7 +3071,17 @@
             // контрпики → позиции → ИТОГ (кульминация, последним). Нулевые
             // позиции у обоих — строка «Все герои на своих позициях» без чисел.
             var table = document.getElementById('bt-proto-table');
-            var penMe = Math.round(pens[me] || 0), penOpp = Math.round(pens[opp] || 0);
+            // Счёт v2: бэкенд отдаёт ЦЕЛЫЕ компоненты в result.rows (сумма
+            // строк = итог, победитель по этим же числам) + шкалы в scoring.
+            // Старые битвы (без rows) рендерятся по-старому из *_score.
+            var rows = r.rows || null;
+            var scoring = r.scoring || null;
+            var synMe = rows ? rows[me].synergy : (r[me] && r[me].synergy_score);
+            var synOpp = rows ? rows[opp].synergy : (r[opp] && r[opp].synergy_score);
+            var muMe = rows ? rows[me].matchup : (r[me] && r[me].matchup_score);
+            var muOpp = rows ? rows[opp].matchup : (r[opp] && r[opp].matchup_score);
+            var penMe = Math.round((rows ? rows[me].penalty : pens[me]) || 0);
+            var penOpp = Math.round((rows ? rows[opp].penalty : pens[opp]) || 0);
             if (table) {
                 if (hasSides && meFinal != null && oppFinal != null) {
                     table.hidden = false;
@@ -2898,7 +3091,17 @@
                               '<span class="bt-proto-poszero">Все герои на своих позициях</span>' +
                           '</div>'
                         : _btProtoRowHtml('pos', 'Позиции', penMe, penOpp, false);
-                    // Метовость: у битв до её появления в result нет — строка условная.
+                    // По-геройная расшифровка штрафа (только v2 с ненулевыми штрафами).
+                    var penItems = r.penalty_items || null;
+                    var pensRow = '';
+                    if (penItems && (penMe !== 0 || penOpp !== 0)) {
+                        pensRow = '<div class="bt-proto-row bt-proto-row--pens" data-key="pens">' +
+                            '<span class="bt-proto-pens">' + _btProtoPenItemsHtml(penItems[me]) + '</span>' +
+                            '<span></span>' +
+                            '<span class="bt-proto-pens bt-proto-pens--opp">' + _btProtoPenItemsHtml(penItems[opp]) + '</span>' +
+                        '</div>';
+                    }
+                    // Метовость: жила в счёте недолго (v1), у старых битв рендерим.
                     var metaRow = (r.meta && r.meta[me] != null && r.meta[opp] != null)
                         ? _btProtoRowHtml('meta', 'Мета', r.meta[me], r.meta[opp], false)
                         : '';
@@ -2907,16 +3110,32 @@
                             '<b class="bt-proto-cap">Ты</b><span></span>' +
                             '<b class="bt-proto-cap">' + _mghlEsc(oppCap) + '</b>' +
                         '</div>' +
-                        _btProtoRowHtml('syn', 'Синергия', r[me].synergy_score, r[opp].synergy_score, false) +
-                        _btProtoRowHtml('mu', 'Контрпики', r[me].matchup_score, r[opp].matchup_score, false) +
+                        _btProtoRowHtml('syn', 'Синергия', synMe, synOpp, false,
+                            scoring && scoring.synergy_max) +
+                        _btProtoRowHtml('mu', 'Контрпики', muMe, muOpp, false,
+                            scoring && scoring.matchup_max) +
                         metaRow +
                         posRow +
+                        pensRow +
                         _btProtoRowHtml('total', 'Итог', meFinal, oppFinal, true);
                 } else {
                     table.hidden = true;
                     table.innerHTML = '';
                 }
             }
+
+            // Вкладки «Итог»/«Разбор»: каждый рендер начинает с протокола;
+            // кэш разбора сбрасывается по коду битвы внутри _btSetResultTab.
+            var resTabs = document.getElementById('bt-res-tabs');
+            var showTabs = !!(table && !table.hidden && hasSides && !isForfeit);
+            if (resTabs) resTabs.hidden = !showTabs;
+            var reviewEl = document.getElementById('bt-review');
+            if (reviewEl && reviewEl.dataset.rendered !== String(st.code || '')) {
+                reviewEl.dataset.rendered = '';
+                reviewEl.innerHTML = '';
+            }
+            if (showTabs) _btSetResultTab('proto');
+            else if (reviewEl) reviewEl.hidden = true;
 
             // ── Монтаж: поэтапное раскрытие (саспенс настоящий — итог битвы
             // игрок не знает, пока счёт не показан). Драфты → синергия →
@@ -2975,6 +3194,11 @@
             var stepMs = 1000;
             seqKeys.forEach(function (k, i) {
                 stageRow(k, 1100 + i * stepMs);
+                // Расшифровка штрафа — не отдельный акт: догоняет строку
+                // «Позиции» через 250мс, монтаж не удлиняет.
+                if (k === 'pos' && table.querySelector('[data-key="pens"]')) {
+                    stageRow('pens', 1100 + i * stepMs + 250, true);
+                }
             });
             // 3) Кульминация: итог + вердикт + рейтинг + кнопки, хаптика исхода
             var finalAt = 1100 + seqKeys.length * stepMs;

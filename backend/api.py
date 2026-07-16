@@ -1399,7 +1399,7 @@ def _pos_str_to_num(pos) -> int | None:
     return None
 
 
-def compute_draft_score(ally_entries, enemy_entries) -> dict:
+def compute_draft_score(ally_entries, enemy_entries, synergy_scale: float = 50.0) -> dict:
     """Чистая оценка драфта — без HTTP-контекста (токенов, rate-limit, БД).
 
     ally_entries / enemy_entries — последовательности объектов с атрибутами
@@ -1409,6 +1409,12 @@ def compute_draft_score(ally_entries, enemy_entries) -> dict:
     оборачивает эту функцию, и финализация «Битвы драфтов» (этап 1) обязана
     считать итоги обеих сторон ИМЕННО ею — тогда числа гарантированно
     совпадают с сольным драфтером.
+
+    synergy_scale — потолок синергия-компонента. Дефолт 50 (Тренировка,
+    исторические лидерборды draft_results несопоставимы с другой шкалой).
+    Битва передаёт 25 (счёт v2, 2026-07-16): контрпик — главный навык,
+    синергия — второй план; ред-тим показал, что при равных весах заученная
+    связка с потолочной синергией фармит 97% поля вслепую.
     """
     matchups = _load_hero_matchups_file() or {}
 
@@ -1428,7 +1434,7 @@ def compute_draft_score(ally_entries, enemy_entries) -> dict:
             synergy_pairs.append((a, b, val))
 
     avg_synergy = sum(v for _, _, v in synergy_pairs) / (len(synergy_pairs) or 1)
-    synergy_component = max(0.0, min(50.0, (avg_synergy + 1.5) / 3.0 * 50.0))
+    synergy_component = max(0.0, min(synergy_scale, (avg_synergy + 1.5) / 3.0 * synergy_scale))
 
     # ── Компонент 2: Матчап против врагов (0-50) — 25 пар наш vs вражеский ──
     # СИММЕТРИЗОВАНО: val = (v_ae − v_ea) / 2, где v_ea — тот же матчап
@@ -4034,12 +4040,24 @@ _BT_MODES = ("cm", "ap")
 # блокировать «ты уже в активной битве». Ветки чтения ('waiting','searching')
 # в timeouts/leave/sweep оставлены как дешёвая страховка чтения старых строк.
 _BT_ACTIVE_STATUSES = ("searching", "drafting", "assigning")
-# Позиционный штраф (стадия расстановки): доля матчей героя на назначенной
-# позиции < 5% → −2 балла, < 15% → −1, иначе 0. Источник долей — dota_builds.
-_BT_POS_HARD_SHARE = 0.05
-_BT_POS_SOFT_SHARE = 0.15
-_BT_POS_HARD_PENALTY = 2.0
-_BT_POS_SOFT_PENALTY = 1.0
+# Позиционный штраф (счёт v2, 2026-07-16): доля матчей героя на назначенной
+# позиции < 4% → «не позиция» (−12), < 12% → «редкий флекс» (−5), иначе 0.
+# Источник долей — dota_builds (D2PT, обновляется юзером вручную). Пороги
+# выверены глазами по всему ростеру (артефакт-ревизия): Abaddon-4 (14.5%)
+# свободен, Viper-керри (4.4%) — мягкий, Medusa-4 (0%) — жёсткий.
+# Лестница: штрафы сортируются по убыванию и умножаются на _BT_POS_LADDER —
+# первая ошибка в полную цену, дальше с убыванием (решение юзера: −24 за две
+# позиции «ломает окончательно»; максимум лестницы = −25 при пяти жёстких).
+# Каждый шаг округляется до целого ОТДЕЛЬНО: по-геройные строки протокола
+# обязаны сходиться с итогом штрафа один в один.
+_BT_POS_HARD_SHARE = 0.04
+_BT_POS_SOFT_SHARE = 0.12
+_BT_POS_HARD_PENALTY = 12.0
+_BT_POS_SOFT_PENALTY = 5.0
+_BT_POS_LADDER = (1.0, 0.5, 0.25, 0.2, 0.15)
+# Шкала синергии битвы (счёт v2): контрпик (0-50) — главный навык, синергия —
+# второй план. Тренировка остаётся на 50 (сопоставимость лидерборда).
+_BT_SYNERGY_SCALE = 25.0
 
 # Последовательности ходов. Роли: 'F' — команда первого пика, 'S' — вторая.
 # 'cm' — фазовая структура Captains Mode 7.34 (14 банов + 10 пиков; баны
@@ -4215,13 +4233,16 @@ def _bt_pos_shares() -> dict:
     return out
 
 
-def _bt_position_penalty(positions: dict) -> float:
-    """Суммарный штраф за несоответствие героев позициям (отрицательный или 0).
+def _bt_position_penalty_detail(positions: dict) -> tuple:
+    """(суммарный штраф int <= 0, [{hero_id, pos, level, value}]) за
+    несоответствие героев позициям.
 
     positions: {hero_id(int|str): pos(int)}. Герои без данных о позициях
-    не штрафуются (бенефит сомнения — данные неполны, см. фидбек о флексах)."""
+    не штрафуются (бенефит сомнения — данные неполны, см. фидбек о флексах).
+    Лестница _BT_POS_LADDER применяется к штрафам, отсортированным по
+    убыванию; каждый шаг округляется отдельно (сумма строк = итог)."""
     shares = _bt_pos_shares()
-    penalty = 0.0
+    hits: list[dict] = []
     for hid, pos in (positions or {}).items():
         try:
             hid_i, pos_i = int(hid), int(pos)
@@ -4232,78 +4253,55 @@ def _bt_position_penalty(positions: dict) -> float:
             continue
         share = hero_shares.get(pos_i, 0.0)
         if share < _BT_POS_HARD_SHARE:
-            penalty -= _BT_POS_HARD_PENALTY
+            hits.append({"hero_id": hid_i, "pos": pos_i, "level": "hard",
+                         "base": _BT_POS_HARD_PENALTY, "share": share})
         elif share < _BT_POS_SOFT_SHARE:
-            penalty -= _BT_POS_SOFT_PENALTY
-    return round(penalty, 1)
+            hits.append({"hero_id": hid_i, "pos": pos_i, "level": "soft",
+                         "base": _BT_POS_SOFT_PENALTY, "share": share})
+    hits.sort(key=lambda h: -h["base"])
+    items = []
+    total = 0
+    for i, h in enumerate(hits):
+        mult = _BT_POS_LADDER[i] if i < len(_BT_POS_LADDER) else _BT_POS_LADDER[-1]
+        value = -int(h["base"] * mult + 0.5)
+        total += value
+        # share (в %) — для вкладки «Разбор»: «Medusa не играет 4 — 0% матчей».
+        items.append({"hero_id": h["hero_id"], "pos": h["pos"],
+                      "level": h["level"], "value": value,
+                      "share": round(h["share"] * 100)})
+    return total, items
 
 
-# ── Мета-компонент (только битва, сольный драфтер НЕ трогаем) ────────────────
-# Формула и гейт — как у клиентского «Анализа» (_ANALYSIS_META_* в script.js):
-# за героя (win_rate на его позиции − 0.5) × SCALE, выборка < 200 матчей —
-# герой нейтрален. SCALE здесь 20 (в Анализе 10) — осознанный тюнинг под
-# целочисленный протокол результата: при 10 типичная сумма команды ±0.5–1.4
-# округлялась на экране в «0 : 0» и строка выглядела мёртвой. При 20 типичный
-# разброс ±1–3, максимум ~±6 — читаемо, но всё ещё приправа уровня позиционного
-# штрафа; синергия/контрпики остаются ядром счёта.
-_BT_META_MIN_MATCHES = 200
-_BT_META_CENTER = 0.5
-_BT_META_SCALE = 20.0
-
-_bt_meta_wr_cache: "dict[int, dict[int, tuple[float, int]]] | None" = None
+def _bt_position_penalty(positions: dict) -> float:
+    """Суммарный штраф (обратная совместимость: бот-пики/симуляции)."""
+    return float(_bt_position_penalty_detail(positions)[0])
 
 
-def _bt_meta_wr() -> dict:
-    """{hero_id: {pos: (win_rate, num_matches)}} из dota_builds.json
-    (тот же файл, что кормит позиционный штраф и пулы бота)."""
-    global _bt_meta_wr_cache
-    if _bt_meta_wr_cache is not None:
-        return _bt_meta_wr_cache
-    raw = _load_dota_builds_file() or {}
-    out: dict[int, dict[int, tuple]] = {}
-    for hid_str, positions in raw.items():
-        if not isinstance(positions, dict):
+def _bt_pos_risk(pick_ids: list) -> dict:
+    """{hero_id: {pos: 'soft'|'hard'}} — карта опасных позиций для пиков
+    игрока (стадия расстановки, предупреждения на слотах). 'ok' опускается."""
+    shares = _bt_pos_shares()
+    out: dict[int, dict[int, str]] = {}
+    for hid in pick_ids or []:
+        hero_shares = shares.get(int(hid))
+        if not hero_shares:
             continue
-        try:
-            hid = int(hid_str)
-        except ValueError:
-            continue
-        per_pos: dict[int, tuple] = {}
-        for pk, pos_num in _DOTA_POS_URL_TO_NUM.items():
-            pd = positions.get(pk)
-            if isinstance(pd, dict) and pd.get("win_rate") is not None:
-                per_pos[pos_num] = (
-                    float(pd["win_rate"]), int(pd.get("num_matches") or 0)
-                )
-        if per_pos:
-            out[hid] = per_pos
-    _bt_meta_wr_cache = out
+        risk = {}
+        for pos in range(1, 6):
+            share = hero_shares.get(pos, 0.0)
+            if share < _BT_POS_HARD_SHARE:
+                risk[pos] = "hard"
+            elif share < _BT_POS_SOFT_SHARE:
+                risk[pos] = "soft"
+        if risk:
+            out[int(hid)] = risk
     return out
 
 
-def _bt_meta_score(positions: dict) -> float:
-    """Метовость драфта: сумма отклонений позиционного винрейта пиков от 50%.
-
-    positions: {hero_id(int|str): pos(int)} — та же раскладка, что у штрафа.
-    Герой без данных / с малой выборкой — нейтрален (0), как в «Анализе»."""
-    wr_map = _bt_meta_wr()
-    score = 0.0
-    for hid, pos in (positions or {}).items():
-        try:
-            hid_i, pos_i = int(hid), int(pos)
-        except (TypeError, ValueError):
-            continue
-        per_pos = wr_map.get(hid_i)
-        if not per_pos:
-            continue
-        entry = per_pos.get(pos_i)
-        if not entry:
-            continue
-        wr, matches = entry
-        if matches < _BT_META_MIN_MATCHES:
-            continue
-        score += (wr - _BT_META_CENTER) * _BT_META_SCALE
-    return round(score, 1)
+# Мета-компонент УДАЛЁН из счёта (v2, 2026-07-16, решение юзера): вклад был
+# крошечным (типично ±1–3, максимум ±8.4 идеальным стеком — проверено
+# ред-тимом), а вопросов в протоколе вызывал много. Старые битвы хранят
+# result.meta в payload — фронт рендерит строку условно, история не ломается.
 
 
 def _bt_picks_of(db: Session, battle: DBDraftBattle, role: str) -> list:
@@ -4533,34 +4531,49 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
             for i, h in enumerate(ids)
         ]
 
-    host_res = compute_draft_score(_entries(host_picks, host_pos), _entries(guest_picks, guest_pos))
-    guest_res = compute_draft_score(_entries(guest_picks, guest_pos), _entries(host_picks, host_pos))
+    # Счёт v2 (2026-07-16): контрпик — главный навык. Синергия 0–25 (шкала
+    # sinergy_scale=25 против дефолтных 50 Тренировки), меты НЕТ (решение
+    # юзера: крошечный вклад ±8, споры в протоколе), штрафы — лестницей.
+    host_res = compute_draft_score(
+        _entries(host_picks, host_pos), _entries(guest_picks, guest_pos),
+        synergy_scale=_BT_SYNERGY_SCALE)
+    guest_res = compute_draft_score(
+        _entries(guest_picks, guest_pos), _entries(host_picks, host_pos),
+        synergy_scale=_BT_SYNERGY_SCALE)
 
-    host_pen = _bt_position_penalty(host_pos)
-    guest_pen = _bt_position_penalty(guest_pos)
-    # Мета-компонент (battle-only): метовость пиков на их позициях.
-    host_meta = _bt_meta_score(host_pos)
-    guest_meta = _bt_meta_score(guest_pos)
-    host_final = round(max(0.0, host_res["total_score"] + host_pen + host_meta), 1)
-    guest_final = round(max(0.0, guest_res["total_score"] + guest_pen + guest_meta), 1)
+    host_pen, host_pen_items = _bt_position_penalty_detail(host_pos)
+    guest_pen, guest_pen_items = _bt_position_penalty_detail(guest_pos)
 
-    # Победитель — по ЦЕЛЫМ, как на экране (фронт показывает счёт целыми):
-    # прод-кейс — юзер видел «53:53», а внутри было 53.4 vs 52.6 → «поражение
-    # при ничейном счёте». Экран и исход обязаны совпадать.
-    host_int, guest_int = round(host_final), round(guest_final)
-    if host_int > guest_int:
+    # ЦЕЛЫЕ ЧИСЛА на всех уровнях: каждый компонент округляется отдельно,
+    # итог = сумма округлённых. Прод-жалобы: «синергия 10 + контрпики 10 +
+    # мета 5 = 25, а на экране 24» — строки протокола обязаны сходиться
+    # с итогом при сложении столбиком. Победитель — по этим же целым.
+    host_syn, host_mu = round(host_res["synergy_score"]), round(host_res["matchup_score"])
+    guest_syn, guest_mu = round(guest_res["synergy_score"]), round(guest_res["matchup_score"])
+    host_final = max(0, host_syn + host_mu + host_pen)
+    guest_final = max(0, guest_syn + guest_mu + guest_pen)
+
+    if host_final > guest_final:
         battle.winner = "host"
-    elif guest_int > host_int:
+    elif guest_final > host_final:
         battle.winner = "guest"
     else:
         battle.winner = "draw"
     battle.result = {
         "host": host_res,
         "guest": guest_res,
+        # Целые компоненты для протокола (сходятся с final при сложении).
+        "rows": {
+            "host": {"synergy": host_syn, "matchup": host_mu, "penalty": host_pen},
+            "guest": {"synergy": guest_syn, "matchup": guest_mu, "penalty": guest_pen},
+        },
         "penalties": {"host": host_pen, "guest": guest_pen},
-        # Метовость (нет у битв до этого деплоя — фронт рендерит строку условно).
-        "meta": {"host": host_meta, "guest": guest_meta},
+        # По-геройная расшифровка штрафа (лестница; сумма value = penalty).
+        "penalty_items": {"host": host_pen_items, "guest": guest_pen_items},
         "final": {"host": host_final, "guest": guest_final},
+        # Метаданные шкал: фронт подписывает «/25», «/50» и отличает v2
+        # от старых битв (у тех есть result.meta и дробные компоненты).
+        "scoring": {"v": 2, "synergy_max": int(_BT_SYNERGY_SCALE), "matchup_max": 50},
         # Раскладки вскрываются обоим только здесь, после финала.
         "positions": {"host": host_pos, "guest": guest_pos},
     }
@@ -5041,6 +5054,10 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             my_pos = battle.host_positions
         elif viewer_role == "guest":
             my_pos = battle.guest_positions
+        # Карта опасных позиций СВОИХ пиков — предупреждения на слотах
+        # расстановки (счёт v2: жёсткий штраф не должен приходить сюрпризом).
+        my_picks = [a.hero_id for a in actions
+                    if a.kind == "pick" and a.actor == viewer_role]
         assign = {
             "remaining_ms": remaining,
             "you_submitted": bool(my_pos),
@@ -5048,6 +5065,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
                 battle.guest_positions if viewer_role == "host" else battle.host_positions
             ),
             "your_positions": my_pos,
+            "pos_risk": _bt_pos_risk(my_picks),
         }
 
     current = None
