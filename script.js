@@ -1908,7 +1908,7 @@
                         if (burnedNow > burnedPrev && typeof showToast === 'function') {
                             var lastBurn = st.stage.burned[st.stage.burned.length - 1];
                             showToast('Оба выбрали одного героя — ' +
-                                (_mghlName(lastBurn) || 'герой') + ' сгорел!');
+                                (_mghlName(lastBurn) || 'герой') + ' забанен!');
                             _mghlHaptic('bad');
                         }
                     }
