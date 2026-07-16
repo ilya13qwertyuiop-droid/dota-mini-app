@@ -5108,6 +5108,26 @@ def _bt_ap_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     return changed
 
 
+def _bt_ap_bot_wait(db: Session, battle: DBDraftBattle, now: datetime):
+    """Секунды до следующего «надуманного» пика бота в этапном драфте —
+    будильник long-poll'а (иначе полл спит до дедлайна и ходы бота
+    материализуются пачкой раз в hold-цикл). None — бот ходить не должен."""
+    if not battle.is_bot or battle.status != "drafting":
+        return None
+    stage = battle.turn_index
+    _actions, _burned, eff = _bt_ap_view(db, battle)
+    if len(eff["guest"]) >= _bt_ap_cumq(stage):
+        return None
+    started = _bt_aware(battle.turn_started_at)
+    if started is None:
+        return None
+    prev_q = sum(_BT_AP_STAGES[:stage])
+    k = len(eff["guest"]) - prev_q
+    think = sum(_bt_think_ms(battle, prev_q + i) for i in range(k + 1))
+    due = started + _tm_timedelta(milliseconds=think)
+    return max(0.05, (due - now).total_seconds())
+
+
 def _bt_ap_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
     """Просрочки этапного драфта: не закрыл квоту к персональному дедлайну →
     поражение (бот в бот-партии — добор авто-пиком, не проигрывает)."""
@@ -6165,9 +6185,14 @@ def _bt_poll_read(code: str, user_id: int, since: int):
         if battle.status == "drafting" and battle.deadline_at is not None:
             wait_s = max(0.05, (_bt_aware(battle.deadline_at) - now).total_seconds())
             # Ход бота: проснуться к моменту, когда он «надумает», чтобы сходить.
-            _due, bot_wait = _bt_bot_due(battle, now)
-            if bot_wait is not None:
-                wait_s = min(wait_s, max(0.05, bot_wait))
+            if battle.mode == _BT_AP2_MODE:
+                bot_wait = _bt_ap_bot_wait(db, battle, now)
+                if bot_wait is not None:
+                    wait_s = min(wait_s, bot_wait)
+            else:
+                _due, bot_wait = _bt_bot_due(battle, now)
+                if bot_wait is not None:
+                    wait_s = min(wait_s, max(0.05, bot_wait))
         elif battle.status == "searching" and not battle.is_bot:
             # Спим не дольше, чем до момента подсадки бота.
             if battle.created_at is not None:

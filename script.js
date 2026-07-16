@@ -2307,6 +2307,25 @@
             _btSetRankMedal('bt-me-rank', mePlayer.rank_key);
             _btSetRankMedal('bt-opp-rank', oppPlayer.rank_key);
             var stage = st.stage;   // этапный драфт (ap2): null у cm/легаси-ap
+            // Пауза-вскрытие кончается БЕЗ события с сервера (version не
+            // меняется) — будим рендер сами, иначе грид заперт до следующего
+            // полла, а серверные часы игрока при этом горят (прод-баг).
+            if (_bt.stageRevealTimer) {
+                clearTimeout(_bt.stageRevealTimer);
+                _bt.stageRevealTimer = null;
+            }
+            if (stage && (stage.starts_in_ms || 0) > 0) {
+                var expectIdx = stage.index;
+                _bt.stageRevealTimer = setTimeout(function () {
+                    _bt.stageRevealTimer = null;
+                    var s2 = _bt.state;
+                    if (s2 && s2.status === 'drafting' && s2.stage &&
+                        s2.stage.index === expectIdx) {
+                        s2.stage.starts_in_ms = 0;
+                        _btRenderDraft(s2);
+                    }
+                }, (stage.starts_in_ms || 0) + 80);
+            }
             // Активная сторона — подсветка панели. Очередь: чей ход; этапы:
             // активен каждый, кто ещё не закрыл квоту этапа.
             var curTurn = st.current;
