@@ -4086,7 +4086,22 @@ _BT_SEQ_AP: list[tuple[str, str]] = [
     ("F", "pick"), ("S", "pick"), ("S", "pick"), ("F", "pick"), ("F", "pick"),
     ("S", "pick"), ("S", "pick"), ("F", "pick"), ("F", "pick"), ("S", "pick"),
 ]
-_BT_SEQUENCES = {"cm": _BT_SEQ_CM, "ap": _BT_SEQ_AP}
+# 'ap2' — этапный AP («как в рейтинговой Доте», 2026-07-16): очереди ходов
+# НЕТ, оба пикают одновременно этапами 2-2-1, пики соперника в текущем этапе
+# скрыты до вскрытия, коллизия = герой сгорает у обоих (kind='burn').
+# Значение в _BT_SEQUENCES — только фолбэк для generic-мест (len и т.п.);
+# вся логика ap2 идёт своими ветками (_bt_ap_*). Легаси-'ap' битвы,
+# начатые до деплоя, доигрываются старым последовательным движком.
+_BT_SEQUENCES = {"cm": _BT_SEQ_CM, "ap": _BT_SEQ_AP, "ap2": _BT_SEQ_AP}
+
+_BT_AP2_MODE = "ap2"
+_BT_AP_STAGES = (2, 2, 1)                      # пиков на игрока за этап
+_BT_AP_STAGE_MS = (50_000, 50_000, 30_000)     # базовое время этапа
+_BT_AP_REVEAL_MS = 2500                        # пауза-вскрытие между этапами
+_BT_AP_BURN_GRACE_MS = 15_000                  # минимум времени на перепик после сгорания
+# Рубильник: очередь 'ap' создаёт этапные битвы ap2. Выключен, пока фронт
+# не умеет рендерить этапы — деплой бэка без фронта не ломает режим.
+_BT_AP_STAGED = os.environ.get("BT_AP_STAGED", "0") == "1"
 
 # Инвайт-код: без визуально похожих символов (0/O, 1/I/L).
 _BT_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -4186,7 +4201,16 @@ def _bt_start_turn(battle: DBDraftBattle, now: datetime, db: Session | None = No
     Резерв доступен С ПЕРВОГО хода (новичку сложно уложиться в базовые 25с —
     фидбек с прода). Но просрочка дедлайна = немедленное поражение актора
     (см. _bt_apply_timeouts) — бот больше НЕ драфтит за живого игрока.
-    db не используется, оставлен в сигнатуре для совместимости вызовов."""
+    db не используется, оставлен в сигнатуре для совместимости вызовов.
+
+    ap2: turn_index = номер ЭТАПА; дедлайн — ранний из персональных дедлайнов
+    обоих игроков (оба пикают параллельно, у каждого свои часы)."""
+    if battle.mode == _BT_AP2_MODE:
+        battle.turn_started_at = now
+        battle.deadline_at = now + _tm_timedelta(milliseconds=(
+            _bt_ap_stage_base_ms(0)
+            + min(battle.host_reserve_ms, battle.guest_reserve_ms)))
+        return
     seq = _BT_SEQUENCES[battle.mode]
     if battle.turn_index >= len(seq):
         return
@@ -4305,15 +4329,16 @@ def _bt_pos_risk(pick_ids: list) -> dict:
 
 
 def _bt_picks_of(db: Session, battle: DBDraftBattle, role: str) -> list:
+    """Эффективные пики роли: сгоревшие в ap2 герои (kind='burn') — void."""
     rows = (
         db.query(DBDraftBattleAction)
         .filter(DBDraftBattleAction.battle_id == battle.id)
-        .filter(DBDraftBattleAction.kind == "pick")
-        .filter(DBDraftBattleAction.actor == role)
         .order_by(DBDraftBattleAction.idx)
         .all()
     )
-    return [r.hero_id for r in rows]
+    burned = {r.hero_id for r in rows if r.kind == "burn"}
+    return [r.hero_id for r in rows
+            if r.kind == "pick" and r.actor == role and r.hero_id not in burned]
 
 
 def _bt_default_positions(pick_ids: list) -> dict:
@@ -4665,8 +4690,15 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
             changed = True
         return changed
 
+    # Этапный драфт: своя логика просрочек (персональные дедлайны двоих).
+    if battle.status == "drafting" and battle.mode == _BT_AP2_MODE:
+        if (battle.deadline_at is not None
+                and now >= _bt_aware(battle.deadline_at)):
+            changed = _bt_ap_apply_timeouts(db, battle, now) or changed
+        # Дальше — общий дожим assigning ниже.
     while (
         battle.status == "drafting"
+        and battle.mode != _BT_AP2_MODE
         and battle.deadline_at is not None
         and now >= _bt_aware(battle.deadline_at)
     ):
@@ -4855,6 +4887,8 @@ def _bt_apply_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bo
     """Лениво исполняет «надуманные» ходы бота (pick/ban). True, если сходил."""
     if not battle.is_bot:
         return False
+    if battle.mode == _BT_AP2_MODE:
+        return _bt_ap_bot_moves(db, battle, now)
     changed = False
     seq = _BT_SEQUENCES[battle.mode]
     while (
@@ -4886,6 +4920,237 @@ def _bt_apply_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bo
     return changed
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Этапный драфт ap2: оба игрока пикают ОДНОВРЕМЕННО этапами 2-2-1.
+#
+#  Модель: turn_index = номер этапа, turn_started_at = его старт (может быть
+#  в будущем — пауза-вскрытие), deadline_at = ранний из персональных дедлайнов
+#  незакончивших (персональный = старт + база этапа + остаток резерва игрока).
+#  Пики соперника ТЕКУЩЕГО этапа скрыты (маскируются в сериализаторе) до
+#  вскрытия. Коллизия (пикнул скрытого героя соперника) — герой СГОРАЕТ у
+#  обоих: kind='burn' в журнале, пик жертвы становится void, обоим гарантия
+#  минимум _BT_AP_BURN_GRACE_MS на перепик. Резерв списывается дельтой от
+#  последнего своего действия этапа — двойное списание исключено.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _bt_ap_stage_base_ms(stage: int) -> int:
+    return _BT_AP_STAGE_MS[min(stage, len(_BT_AP_STAGE_MS) - 1)]
+
+
+def _bt_ap_cumq(stage: int) -> int:
+    """Сколько эффективных пиков должно быть у игрока к КОНЦУ этапа stage."""
+    return sum(_BT_AP_STAGES[:stage + 1])
+
+
+def _bt_ap_view(db: Session, battle: DBDraftBattle) -> tuple:
+    """(actions, burned:set, eff:{'host':[hero...],'guest':[...]}) — разбор
+    журнала: сгоревшие герои и эффективные (не void) пики по ролям."""
+    actions = (
+        db.query(DBDraftBattleAction)
+        .filter(DBDraftBattleAction.battle_id == battle.id)
+        .order_by(DBDraftBattleAction.idx)
+        .all()
+    )
+    burned = {a.hero_id for a in actions if a.kind == "burn"}
+    eff = {"host": [], "guest": []}
+    for a in actions:
+        if a.kind == "pick" and a.hero_id not in burned:
+            eff[a.actor].append(a.hero_id)
+    return actions, burned, eff
+
+
+def _bt_ap_personal_deadline(battle: DBDraftBattle, role: str, stage: int):
+    started = _bt_aware(battle.turn_started_at)
+    return started + _tm_timedelta(milliseconds=(
+        _bt_ap_stage_base_ms(stage) + _bt_reserve_ms(battle, role)))
+
+
+def _bt_ap_refresh_deadline(battle: DBDraftBattle, eff: dict) -> None:
+    """deadline_at = ранний персональный дедлайн среди не закончивших этап."""
+    stage = battle.turn_index
+    need = _bt_ap_cumq(stage)
+    pending = [r for r in ("host", "guest") if len(eff[r]) < need]
+    if pending:
+        battle.deadline_at = min(
+            _bt_ap_personal_deadline(battle, r, stage) for r in pending)
+
+
+def _bt_ap_insert(db: Session, battle: DBDraftBattle, actor: str, kind: str,
+                  hero_id: int, now: datetime, n_actions: int) -> None:
+    """Запись действия ap2 БЕЗ продвижения turn_index (этапом управляет
+    _bt_ap_try_advance). idx = порядковый номер в журнале; гонка двух
+    воркеров на один idx ловится PK (battle_id, idx)."""
+    db.add(DBDraftBattleAction(
+        battle_id=battle.id, idx=n_actions, actor=actor, kind=kind,
+        hero_id=hero_id, is_auto=False, created_at=now,
+    ))
+    db.flush()
+    battle.last_action_at = now
+    battle.state_version += 1
+
+
+def _bt_ap_charge_reserve(battle: DBDraftBattle, role: str, actions: list,
+                          stage: int, now: datetime) -> None:
+    """Списание резерва к моменту коммита: всё сверх базы этапа, ДЕЛЬТОЙ от
+    последнего своего действия этого этапа (повторное списание исключено)."""
+    started = _bt_aware(battle.turn_started_at)
+    if started is None or now <= started:
+        return
+    base = _bt_ap_stage_base_ms(stage)
+    elapsed = int((now - started).total_seconds() * 1000)
+    prev = 0
+    for a in actions:
+        ts = _bt_aware(a.created_at)
+        if a.actor == role and ts is not None and ts > started:
+            prev = max(prev, int((ts - started).total_seconds() * 1000))
+    charge = max(0, elapsed - base) - max(0, prev - base)
+    if charge > 0:
+        _bt_set_reserve(battle, role, _bt_reserve_ms(battle, role) - charge)
+
+
+def _bt_ap_try_advance(db: Session, battle: DBDraftBattle, now: datetime,
+                       eff: dict) -> None:
+    """Оба закрыли квоту этапа → следующий этап (со вскрытием) или расстановка.
+    Иначе — просто освежить deadline_at (мог закончить один из двоих)."""
+    stage = battle.turn_index
+    need = _bt_ap_cumq(stage)
+    if len(eff["host"]) < need or len(eff["guest"]) < need:
+        _bt_ap_refresh_deadline(battle, eff)
+        return
+    if stage + 1 >= len(_BT_AP_STAGES):
+        _bt_start_assign(battle, now)
+        return
+    battle.turn_index = stage + 1
+    battle.turn_started_at = now + _tm_timedelta(milliseconds=_BT_AP_REVEAL_MS)
+    battle.state_version += 1
+    _bt_ap_refresh_deadline(battle, eff)
+
+
+def _bt_ap_action(db: Session, battle: DBDraftBattle, role: str,
+                  hero_id: int, now: datetime) -> None:
+    """Пик игрока в этапном драфте (вызов под FOR UPDATE из /battle/action)."""
+    stage = battle.turn_index
+    actions, burned, eff = _bt_ap_view(db, battle)
+    started = _bt_aware(battle.turn_started_at)
+    if started is None or now < started:
+        raise HTTPException(status_code=409, detail="Этап ещё не начался.")
+    if len(eff[role]) >= _bt_ap_cumq(stage):
+        raise HTTPException(
+            status_code=409, detail="Ты уже выбрал героев этапа — ждём соперника.")
+    opp = "guest" if role == "host" else "host"
+    prev_q = sum(_BT_AP_STAGES[:stage])
+    opp_hidden = set(eff[opp][prev_q:])
+    visible_taken = ({a.hero_id for a in actions} - opp_hidden)
+    if hero_id in visible_taken:
+        raise HTTPException(status_code=409, detail="Этот герой уже занят.")
+
+    _bt_ap_charge_reserve(battle, role, actions, stage, now)
+
+    if hero_id in opp_hidden:
+        # Коллизия: оба выбрали одного героя — герой сгорает у обоих (как в
+        # рейтинговой Доте). Пик соперника становится void, обоим — гарантия
+        # времени на перепик (жертва могла «закончить» этап и уйти от экрана).
+        _bt_ap_insert(db, battle, role, "burn", hero_id, now, len(actions))
+        elapsed = int((now - started).total_seconds() * 1000)
+        floor_reserve = elapsed - _bt_ap_stage_base_ms(stage) + _BT_AP_BURN_GRACE_MS
+        for r in (role, opp):
+            if _bt_reserve_ms(battle, r) < floor_reserve:
+                _bt_set_reserve(battle, r, floor_reserve)
+        # Бот-жертва: вернуть позицию сгоревшего в пул её ролей.
+        if battle.is_bot and opp == "guest":
+            gp = dict(battle.guest_positions or {})
+            gp.pop(str(hero_id), None)
+            battle.guest_positions = gp
+        eff[opp] = [h for h in eff[opp] if h != hero_id]
+        _bt_ap_refresh_deadline(battle, eff)
+        return
+
+    _bt_ap_insert(db, battle, role, "pick", hero_id, now, len(actions))
+    eff[role].append(hero_id)
+    _bt_ap_try_advance(db, battle, now, eff)
+
+
+def _bt_ap_bot_moves(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Ленивые пики бота в этапном драфте: k-й пик этапа «надуман» после
+    суммы думалок. True, если сходил."""
+    if not battle.is_bot or battle.status != "drafting":
+        return False
+    changed = False
+    for _ in range(6):
+        if battle.status != "drafting":
+            break
+        stage = battle.turn_index
+        actions, burned, eff = _bt_ap_view(db, battle)
+        need = _bt_ap_cumq(stage)
+        if len(eff["guest"]) >= need:
+            break
+        started = _bt_aware(battle.turn_started_at)
+        if started is None:
+            break
+        prev_q = sum(_BT_AP_STAGES[:stage])
+        k = len(eff["guest"]) - prev_q   # номер пика внутри этапа (0..)
+        think = sum(_bt_think_ms(battle, prev_q + i) for i in range(k + 1))
+        due = started + _tm_timedelta(milliseconds=think)
+        if now < due:
+            break
+        try:
+            hero_id, pos = _bt_bot_choose_pick(db, battle)
+            _bt_ap_insert(db, battle, "guest", "pick", hero_id, due, len(actions))
+        except IntegrityError:
+            db.rollback()
+            return changed
+        gp = dict(battle.guest_positions or {})
+        gp[str(hero_id)] = pos
+        battle.guest_positions = gp
+        eff["guest"].append(hero_id)
+        _bt_ap_try_advance(db, battle, due, eff)
+        changed = True
+    return changed
+
+
+def _bt_ap_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> bool:
+    """Просрочки этапного драфта: не закрыл квоту к персональному дедлайну →
+    поражение (бот в бот-партии — добор авто-пиком, не проигрывает)."""
+    changed = False
+    for _ in range(8):
+        if battle.status != "drafting":
+            break
+        stage = battle.turn_index
+        actions, burned, eff = _bt_ap_view(db, battle)
+        need = _bt_ap_cumq(stage)
+        pending = [r for r in ("host", "guest") if len(eff[r]) < need]
+        if not pending:
+            # Оба готовы, но advance не случился (гонка/догон) — дожать.
+            _bt_ap_try_advance(db, battle, now, eff)
+            changed = True
+            continue
+        progressed = False
+        # Просрочивший раньше — проигрывает первым (детерминизм).
+        for role in sorted(pending,
+                           key=lambda r: _bt_ap_personal_deadline(battle, r, stage)):
+            deadline = _bt_ap_personal_deadline(battle, role, stage)
+            if now < deadline:
+                continue
+            if battle.is_bot and role == "guest":
+                hero_id, pos = _bt_bot_choose_pick(db, battle)
+                _bt_ap_insert(db, battle, "guest", "pick", hero_id, deadline,
+                              len(actions))
+                gp = dict(battle.guest_positions or {})
+                gp[str(hero_id)] = pos
+                battle.guest_positions = gp
+                eff["guest"].append(hero_id)
+                _bt_ap_try_advance(db, battle, deadline, eff)
+            else:
+                _bt_set_reserve(battle, role, 0)
+                _bt_finish_timeout(db, battle, role, deadline)
+            changed = True
+            progressed = True
+            break
+        if not progressed:
+            break
+    return changed
+
+
 def _bt_tick_pending(battle: DBDraftBattle, now: datetime) -> bool:
     """Чистый предикат: «есть ли что исполнять в _bt_tick?» — зеркалит условия
     _bt_apply_timeouts + _bt_bot_due БЕЗ побочных эффектов и БЕЗ обращений к БД.
@@ -4904,6 +5169,16 @@ def _bt_tick_pending(battle: DBDraftBattle, now: datetime) -> bool:
         deadline = _bt_aware(battle.deadline_at)
         if deadline is not None and now >= deadline:
             return True
+        # ap2: без БД не узнать, добрал ли бот квоту этапа — триггеримся всегда
+        # после минимальной думалки (пере-срабатывание безвредно по контракту;
+        # верхней границы нет — иначе догон бота после долгого сна не сработает).
+        if battle.mode == _BT_AP2_MODE:
+            if not battle.is_bot or battle.status != "drafting":
+                return False
+            started = _bt_aware(battle.turn_started_at)
+            if started is None:
+                return False
+            return now >= started + _tm_timedelta(milliseconds=_BT_BOT_THINK_MIN_MS)
         due_at, _wait = _bt_bot_due(battle, now)
         return due_at is not None
     return False
@@ -5056,8 +5331,11 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             my_pos = battle.guest_positions
         # Карта опасных позиций СВОИХ пиков — предупреждения на слотах
         # расстановки (счёт v2: жёсткий штраф не должен приходить сюрпризом).
+        # Сгоревшие герои (ap2) — void, в раскладку не входят.
+        _burned_a = {a.hero_id for a in actions if a.kind == "burn"}
         my_picks = [a.hero_id for a in actions
-                    if a.kind == "pick" and a.actor == viewer_role]
+                    if a.kind == "pick" and a.actor == viewer_role
+                    and a.hero_id not in _burned_a]
         assign = {
             "remaining_ms": remaining,
             "you_submitted": bool(my_pos),
@@ -5068,8 +5346,60 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "pos_risk": _bt_pos_risk(my_picks),
         }
 
+    # ── Этапный драфт (ap2): блок stage + маскировка текущего этапа ─────────
+    stage_block = None
+    hidden_idx: set = set()
+    if battle.mode == _BT_AP2_MODE and battle.status == "drafting":
+        burned = {a.hero_id for a in actions if a.kind == "burn"}
+        stage_i = battle.turn_index
+        prev_q = sum(_BT_AP_STAGES[:stage_i])
+        need = _bt_ap_cumq(stage_i)
+        eff_rows = {"host": [], "guest": []}
+        for a in actions:
+            if a.kind == "pick" and a.hero_id not in burned:
+                eff_rows[a.actor].append(a)
+        # Скрываем эффективные пики ТЕКУЩЕГО этапа всех, кроме зрителя
+        # (не-участнику скрыты обе стороны).
+        for side in ("host", "guest"):
+            if side == viewer_role:
+                continue
+            hidden_idx.update(a.idx for a in eff_rows[side][prev_q:])
+        started = _bt_aware(battle.turn_started_at)
+        starts_in = max(0, int((started - now).total_seconds() * 1000)) if started else 0
+        elapsed_ms = max(0, int((now - started).total_seconds() * 1000)) if started else 0
+        base_ms = _bt_ap_stage_base_ms(stage_i)
+        opp_side = "guest" if viewer_role == "host" else "host"
+        you_rows = eff_rows.get(viewer_role, []) if viewer_role in ("host", "guest") else []
+        you_done = len(you_rows) >= need
+        # Живое догорание резерва зрителя: сверх базы, дельтой от последнего
+        # своего действия этапа (та же арифметика, что списание при коммите).
+        my_reserve = _bt_reserve_ms(battle, viewer_role) if viewer_role in ("host", "guest") else 0
+        reserve_disp = my_reserve
+        if viewer_role in ("host", "guest") and not you_done and started is not None:
+            prev_ms = 0
+            for a in actions:
+                ts = _bt_aware(a.created_at)
+                if a.actor == viewer_role and ts is not None and ts > started:
+                    prev_ms = max(prev_ms, int((ts - started).total_seconds() * 1000))
+            live_burn = max(0, elapsed_ms - base_ms) - max(0, prev_ms - base_ms)
+            reserve_disp = max(0, my_reserve - max(0, live_burn))
+        stage_block = {
+            "index": stage_i,
+            "stages": list(_BT_AP_STAGES),
+            "quota": _BT_AP_STAGES[stage_i],
+            "starts_in_ms": starts_in,
+            "main_remaining_ms": max(0, base_ms - elapsed_ms),
+            "reserve_remaining_ms": reserve_disp,
+            "you_picked": len(you_rows[prev_q:]),
+            "opp_picked": len(eff_rows[opp_side][prev_q:]),
+            "you_done": you_done,
+            "opp_done": len(eff_rows[opp_side]) >= need,
+            "burned": sorted(burned),
+        }
+
     current = None
-    if battle.status == "drafting" and battle.turn_index < len(seq):
+    if (battle.status == "drafting" and battle.mode != _BT_AP2_MODE
+            and battle.turn_index < len(seq)):
         actor = _bt_actor_of(battle, battle.turn_index)
         kind = seq[battle.turn_index][1]
         base_ms = _bt_base_ms(kind)
@@ -5129,12 +5459,16 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             "guest_ms": battle.guest_reserve_ms,
         },
         "turn_index": battle.turn_index,
-        "sequence": [{"actor_rel": a, "kind": k} for a, k in seq],
+        "sequence": ([] if battle.mode == _BT_AP2_MODE
+                     else [{"actor_rel": a, "kind": k} for a, k in seq]),
         "current": current,
+        "stage": stage_block,
         "assign": assign,
         "actions": [
             {"idx": a.idx, "actor": a.actor, "kind": a.kind,
-             "hero_id": a.hero_id, "is_auto": bool(a.is_auto)}
+             "hero_id": (None if a.idx in hidden_idx else a.hero_id),
+             "hidden": a.idx in hidden_idx,
+             "is_auto": bool(a.is_auto)}
             for a in actions
         ],
         "winner": battle.winner,
@@ -5281,6 +5615,11 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
     uid = _tm_require_user(token=data.token)
     if data.mode not in _BT_MODES:
         raise HTTPException(status_code=422, detail="invalid mode")
+    # Клиент знает только 'cm'/'ap'; при включённом рубильнике 'ap' создаёт
+    # ЭТАПНЫЕ битвы (ap2). Легаси-'ap' комнаты в очереди новым не матчатся
+    # (mode-фильтр ниже) и протухнут по TTL.
+    if data.mode == "ap" and _BT_AP_STAGED:
+        data.mode = _BT_AP2_MODE
 
     existing = _bt_active_battle(db, uid)
     if existing is not None:
@@ -5580,10 +5919,18 @@ def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
 
     if battle.status != "drafting":
         raise HTTPException(status_code=409, detail="Битва не в фазе драфта.")
-    if _bt_actor_of(battle, battle.turn_index) != role:
-        raise HTTPException(status_code=409, detail="Сейчас ход соперника.")
     if data.hero_id not in _bt_known_heroes():
         raise HTTPException(status_code=422, detail="unknown hero_id")
+
+    # Этапный драфт: своя валидация (квоты, скрытые пики, сгорание).
+    if battle.mode == _BT_AP2_MODE:
+        _bt_ap_action(db, battle, role, data.hero_id, now)
+        db.commit()
+        _bt_notify(battle.id)
+        return _bt_serialize(db, battle, role, now)
+
+    if _bt_actor_of(battle, battle.turn_index) != role:
+        raise HTTPException(status_code=409, detail="Сейчас ход соперника.")
     if data.hero_id in _bt_taken_ids(db, battle.id):
         raise HTTPException(status_code=409, detail="Этот герой уже занят.")
 
