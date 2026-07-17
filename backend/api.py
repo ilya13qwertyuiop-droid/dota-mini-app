@@ -5744,6 +5744,44 @@ def _bt_bot_username() -> str | None:
         return None
 
 
+def _bt_prepare_invite_message(uid: int, code: str, invite_url: str):
+    """PreparedInlineMessage для shareMessage: карточка вызова с инлайн-кнопкой
+    «Принять вызов» прямо в сообщении (вместо голой ссылки текстом).
+    None при любой ошибке — фронт откатится на t.me/share/url."""
+    if not BOT_TOKEN:
+        return None
+    result = {
+        "type": "article",
+        "id": f"ch_{code}",
+        "title": "Вызов на битву драфтов",
+        "description": "Товарищеский матч 1×1 в D2Helper",
+        "input_message_content": {
+            "message_text": (
+                "⚔️ <b>Вызов на битву драфтов!</b>\n"
+                "Товарищеский матч в D2Helper — рейтинг не на кону, только гордость."
+            ),
+            "parse_mode": "HTML",
+        },
+        "reply_markup": {"inline_keyboard": [[
+            {"text": "⚔️ Принять вызов", "url": invite_url}
+        ]]},
+    }
+    try:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/savePreparedInlineMessage",
+            json={"user_id": uid, "result": result,
+                  "allow_user_chats": True, "allow_group_chats": True},
+            timeout=6,
+        )
+        d = r.json()
+        if d.get("ok"):
+            return ((d.get("result") or {}).get("id"))
+        logger.warning("[battle] savePreparedInlineMessage rejected: %s", d)
+    except Exception as e:
+        logger.warning("[battle] savePreparedInlineMessage failed: %s", e)
+    return None
+
+
 @app.post("/api/battle/challenge")
 def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
     """«Сыграть с другом»: приватная товарищеская комната + ссылка-вызов.
@@ -5779,8 +5817,12 @@ def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
 
     username = _bt_bot_username()
     invite_url = f"https://t.me/{username}?start=db_{battle.code}" if username else None
+    # Красивое сообщение-вызов с КНОПКОЙ (Bot API 8.0, prepared inline message):
+    # фронт отправит его через Telegram.WebApp.shareMessage. Best-effort —
+    # без него фронт падает на обычный t.me/share/url со ссылкой текстом.
+    prepared_id = _bt_prepare_invite_message(uid, battle.code, invite_url) if invite_url else None
     return {"code": battle.code, "invite_url": invite_url,
-            "ttl_min": _BT_WAITING_TTL_MIN}
+            "prepared_msg_id": prepared_id, "ttl_min": _BT_WAITING_TTL_MIN}
 
 
 @app.post("/api/battle/join")

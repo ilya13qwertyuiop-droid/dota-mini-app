@@ -1693,11 +1693,16 @@
 
         // ── «Сыграть с другом»: товарищеский вызов через шаринг Telegram ────
         function _btOpenShare() {
+            var twa = window.Telegram && window.Telegram.WebApp;
+            // Красивый путь: карточка с кнопкой «Принять вызов» в сообщении
+            // (prepared inline message, Bot API 8.0 / клиенты с конца 2024).
+            if (twa && _bt.inviteMsgId && typeof twa.shareMessage === 'function') {
+                try { twa.shareMessage(_bt.inviteMsgId); return; } catch (e) { /* фолбэк ниже */ }
+            }
             if (!_bt.inviteUrl) return;
             var text = '⚔️ Вызываю тебя на битву драфтов в D2Helper! Прими вызов:';
             var share = 'https://t.me/share/url?url=' + encodeURIComponent(_bt.inviteUrl) +
                 '&text=' + encodeURIComponent(text);
-            var twa = window.Telegram && window.Telegram.WebApp;
             if (twa && typeof twa.openTelegramLink === 'function') {
                 twa.openTelegramLink(share);
             } else if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1710,6 +1715,7 @@
             try {
                 var d = await _btPost('/battle/challenge', { mode: _bt.mode });
                 _bt.inviteUrl = d.invite_url;
+                _bt.inviteMsgId = d.prepared_msg_id || null;
                 _btEnter(d.code);
                 _btOpenShare();
             } catch (e) {
