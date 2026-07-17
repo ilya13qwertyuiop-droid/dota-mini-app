@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=249" />
+    <link rel="stylesheet" href="styles.css?v=250" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -767,6 +767,7 @@
           </div>
 
           <button type="button" class="tm-primary-btn bt-menu-primary" onclick="btQueue()">Найти соперника</button>
+          <button type="button" class="tm-ghost-btn bt-menu-friend" onclick="btChallenge()">Сыграть с другом</button>
 
           <!-- История битв: лента завершённых партий (тап → разбор результата).
                Строка: аватар + имя с медалью ранга + режим·дата | исход,
@@ -787,6 +788,9 @@
             <span class="bt-online-dot" aria-hidden="true"></span>
             <span class="bt-online-text" id="bt-online-wait-text"></span>
           </div>
+          <div class="bt-wait-sub" id="bt-wait-sub" hidden>Приглашение живёт 10 минут</div>
+          <button type="button" class="tm-primary-btn" id="bt-wait-reshare" hidden
+                  onclick="btReshare()">Отправить приглашение</button>
           <button type="button" class="tm-ghost-btn" onclick="btCancelWait()">Отменить</button>
         </div>
 
@@ -1906,6 +1910,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=310"></script>
+    <script defer src="script.js?v=311"></script>
   </body>
 </html>

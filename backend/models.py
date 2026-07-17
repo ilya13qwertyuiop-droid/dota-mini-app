@@ -716,6 +716,8 @@ class DraftBattle(Base):
     # поиска). guest_id при этом NULL; роль бота — всегда 'guest'. Бот ходит
     # лениво на сервере (см. _bt_apply_bot_moves). В онлайн-счётчик не идёт.
     is_bot = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Товарищеский матч по вызову друга: не двигает рейтинг, метка в истории.
+    is_friendly = Column(Boolean, nullable=False, default=False, server_default="0")
     # Кто ходит первым ('host'/'guest') — жеребьёвка при старте драфта.
     first_pick = Column(String(5), nullable=True)
     turn_index = Column(SmallInteger, nullable=False, default=0)

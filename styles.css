@@ -10599,3 +10599,8 @@ margin-top: var(--space-4);
 @media (prefers-reduced-motion: reduce) {
   .bt-slot--pulse { animation: none; border-color: var(--accent-border); }
 }
+
+/* ─── Товарищеский вызов («Сыграть с другом») ─────────────────────────────── */
+.bt-menu-friend { margin-top: var(--space-2); }
+.bt-wait-sub { font-size: var(--text-xs); color: var(--text-tertiary); }
+#bt-wait-reshare { min-height: 46px; }

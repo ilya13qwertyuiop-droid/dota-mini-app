@@ -1682,13 +1682,39 @@
                 if (typeof showToast === 'function') showToast(e.message);
             }
         };
-        // Вход по коду — только resume своей битвы (deep-link `?battle=` из
-        // пуша «соперник найден»). Приватных комнат больше нет.
+        // Вход по коду: resume своей битвы (deep-link `?battle=` из пуша)
+        // или приём товарищеского вызова от друга (тот же deep-link из шаринга).
         window.btJoinByCode = async function (code) {
             try {
                 var d = await _btPost('/battle/join', { code: code });
                 _btEnter(d.code);
             } catch (e) { if (typeof showToast === 'function') showToast(e.message); }
+        };
+
+        // ── «Сыграть с другом»: товарищеский вызов через шаринг Telegram ────
+        function _btOpenShare() {
+            if (!_bt.inviteUrl) return;
+            var text = '⚔️ Вызываю тебя на битву драфтов в D2Helper! Прими вызов:';
+            var share = 'https://t.me/share/url?url=' + encodeURIComponent(_bt.inviteUrl) +
+                '&text=' + encodeURIComponent(text);
+            var twa = window.Telegram && window.Telegram.WebApp;
+            if (twa && typeof twa.openTelegramLink === 'function') {
+                twa.openTelegramLink(share);
+            } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(_bt.inviteUrl);
+                if (typeof showToast === 'function') showToast('Ссылка-вызов скопирована');
+            }
+        }
+        window.btReshare = function () { _btOpenShare(); };
+        window.btChallenge = async function () {
+            try {
+                var d = await _btPost('/battle/challenge', { mode: _bt.mode });
+                _bt.inviteUrl = d.invite_url;
+                _btEnter(d.code);
+                _btOpenShare();
+            } catch (e) {
+                if (typeof showToast === 'function') showToast(e.message);
+            }
         };
 
         function _btEnter(code, fromHistory) {
@@ -1858,7 +1884,7 @@
                 _bt.searchStartedAt = null;
             }
             _btPillUpdate();
-            if (st.status === 'searching') {
+            if (st.status === 'searching' || st.status === 'waiting') {
                 _btRenderWait(st);
                 _btShow('bt-wait');
             } else if (st.status === 'drafting') {
@@ -1964,8 +1990,14 @@
         }
 
         function _btRenderWait(st) {
+            var isFriend = st.status === 'waiting';
             var title = document.getElementById('bt-wait-title');
-            if (title) title.textContent = 'Ищем соперника…';
+            if (title) title.textContent = isFriend ? 'Ждём друга…' : 'Ищем соперника…';
+            // Товарищеский вызов: кнопка повторного шаринга + срок жизни.
+            var reshare = document.getElementById('bt-wait-reshare');
+            if (reshare) reshare.hidden = !(isFriend && _bt.inviteUrl);
+            var sub = document.getElementById('bt-wait-sub');
+            if (sub) sub.hidden = !isFriend;
         }
 
         // ── История битв (лента в меню) ────────────────────────────────────
@@ -2058,6 +2090,7 @@
             var meta = document.createElement('div');
             meta.className = 'bt-hist-meta';
             var modeTag = (b.mode === 'ap' || b.mode === 'ap2') ? 'Без банов' : 'С банами';
+            if (b.friendly) modeTag += ' · товарищеский';
             meta.textContent = modeTag + ' · ' + _btFmtDate(b.finished_at);
             mid.appendChild(nm); mid.appendChild(meta);
 
@@ -3152,11 +3185,16 @@
             // note — только пояснение форфейта (сдача или вышло время).
             var note = document.getElementById('bt-result-note');
             if (note) {
+                var friendlyTxt = st.friendly ? 'Товарищеский матч — рейтинг не тронут.' : '';
                 if (isForfeit) {
                     var tmo = (r.reason === 'timeout' || r.reason === 'afk');
-                    note.textContent = (r.forfeit === me)
+                    note.textContent = ((r.forfeit === me)
                         ? (tmo ? 'Твоё время вышло — поражение.' : 'Ты сдался.')
-                        : (tmo ? 'У соперника вышло время — победа твоя.' : 'Соперник сдался.');
+                        : (tmo ? 'У соперника вышло время — победа твоя.' : 'Соперник сдался.'))
+                        + (friendlyTxt ? ' ' + friendlyTxt : '');
+                    note.hidden = false;
+                } else if (friendlyTxt) {
+                    note.textContent = friendlyTxt;
                     note.hidden = false;
                 } else {
                     note.hidden = true;

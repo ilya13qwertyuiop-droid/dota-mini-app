@@ -4509,6 +4509,8 @@ def _bt_apply_ratings(db: Session, battle: DBDraftBattle) -> None:
         return   # уже применяли (двойная финализация/форфейт-гонка)
     if battle.is_bot or battle.guest_id is None:
         return   # бот/нет живого гостя — рейтинг не меняем
+    if battle.is_friendly:
+        return   # товарищеский матч: счёт настоящий, рейтинг не трогаем
 
     profiles = {
         p.user_id: p
@@ -5485,6 +5487,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
         "status": battle.status,
         "you": viewer_role,
         "vs_bot": bool(battle.is_bot),
+        "friendly": bool(battle.is_friendly),
         "first_pick": battle.first_pick,
         "host": _player(battle.host_id),
         "guest": _guest_player(),
@@ -5719,26 +5722,117 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
     return {"code": battle.code, "status": "searching", "matched": False}
 
 
+_bt_bot_username_cache: str | None = None
+
+
+def _bt_bot_username() -> str | None:
+    """Username бота через getMe (кэш на процесс) — для ссылки-вызова.
+    API-процесс не знает своё имя из конфига, но владеет BOT_TOKEN."""
+    global _bt_bot_username_cache
+    if _bt_bot_username_cache:
+        return _bt_bot_username_cache
+    if not BOT_TOKEN:
+        return None
+    try:
+        r = httpx.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=6)
+        username = ((r.json() or {}).get("result") or {}).get("username")
+        if username:
+            _bt_bot_username_cache = username
+        return username
+    except Exception as e:
+        logger.warning("[battle] getMe failed: %s", e)
+        return None
+
+
+@app.post("/api/battle/challenge")
+def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
+    """«Сыграть с другом»: приватная товарищеская комната + ссылка-вызов.
+
+    Ссылка ведёт в БОТА (t.me/<bot>?start=db_КОД), не напрямую в мини-апп:
+    /start бота держит гейт обязательных подписок — вызов от друга не должен
+    его обходить (прямой startapp-линк открыл бы апп без подписок). Рейтинг
+    товарищеские бои не двигают (win-trading через твинков)."""
+    uid = _tm_require_user(token=data.token)
+    if data.mode not in _BT_MODES:
+        raise HTTPException(status_code=422, detail="invalid mode")
+    mode = _BT_AP2_MODE if (data.mode == "ap" and _BT_AP_STAGED) else data.mode
+
+    existing = _bt_active_battle(db, uid)
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Сначала закончи текущую битву.")
+    # Прошлый неиспользованный вызов — гасим, чтобы не копить комнаты
+    # (waiting не входит в active-статусы и не блокирует, но зомби не нужны).
+    db.query(DBDraftBattle).filter(
+        DBDraftBattle.host_id == uid,
+        DBDraftBattle.status == "waiting",
+    ).update({"status": "abandoned"}, synchronize_session=False)
+
+    now = _bt_now()
+    battle = DBDraftBattle(
+        code=_bt_new_code(db), mode=mode, status="waiting",
+        host_id=uid, is_friendly=True,
+        host_reserve_ms=_BT_RESERVE_MS, guest_reserve_ms=_BT_RESERVE_MS,
+        created_at=now,
+    )
+    db.add(battle)
+    db.commit()
+
+    username = _bt_bot_username()
+    invite_url = f"https://t.me/{username}?start=db_{battle.code}" if username else None
+    return {"code": battle.code, "invite_url": invite_url,
+            "ttl_min": _BT_WAITING_TTL_MIN}
+
+
 @app.post("/api/battle/join")
 def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
-    """Вход по коду — теперь только RESUME уже своей битвы.
+    """Вход по коду: RESUME своей битвы ИЛИ приём товарищеского вызова.
 
-    Приватные комнаты (создать код → отдать другу) убраны: единственный путь к
-    сопернику — быстрый поиск (/battle/queue). Сюда попадают лишь по deep-link
-    `?battle=КОД` из пуша «соперник найден» — игрок к этому моменту уже
-    участник пары (queue проставил host/guest), так что это resume, не claim.
-    Чужой код (не участник) → 409: присоединиться к чужой битве больше нельзя."""
+    Вызов друга («Сыграть с другом», 2026-07-17): комната status='waiting'
+    + is_friendly, друг приходит по deep-link `?battle=КОД` из шаринга.
+    Клейм под FOR UPDATE (двое из группового чата тапнули одновременно —
+    второй получает «вызов уже принят»). Прочие чужие коды → 409, как раньше."""
     uid = _tm_require_user(token=data.token)
     code = (data.code or "").strip().upper()
     battle = _bt_get_battle(db, code)
 
     role = _bt_role(battle, uid)
-    if role is None:
+    if role is not None:
+        return {"code": battle.code, "status": battle.status, "you": role}
+
+    if not (battle.status == "waiting" and battle.is_friendly):
         raise HTTPException(
             status_code=409,
             detail="Войти можно только через быстрый поиск соперника.",
         )
-    return {"code": battle.code, "status": battle.status, "you": role}
+
+    # Приём вызова: гость не должен сидеть в другой активной битве.
+    mine = _bt_active_battle(db, uid)
+    if mine is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Сначала закончи свою текущую битву.",
+        )
+    now = _bt_now()
+    locked = _bt_get_battle(db, code, for_update=True)
+    if locked.status != "waiting" or locked.guest_id is not None:
+        raise HTTPException(status_code=409, detail="Вызов уже принят или отменён.")
+    created = _bt_aware(locked.created_at)
+    if created and now - created > _tm_timedelta(minutes=_BT_WAITING_TTL_MIN):
+        raise HTTPException(status_code=409, detail="Приглашение устарело.")
+    # Хост мог бросить комнату и уйти в другую битву — вызов мёртв.
+    host_busy = (
+        db.query(DBDraftBattle.id)
+        .filter((DBDraftBattle.host_id == locked.host_id)
+                | (DBDraftBattle.guest_id == locked.host_id))
+        .filter(DBDraftBattle.status.in_(("drafting", "assigning")))
+        .first()
+    )
+    if host_busy is not None:
+        raise HTTPException(status_code=409, detail="Приглашение устарело.")
+    _bt_start_battle(locked, uid, now)
+    db.commit()
+    _bt_notify(locked.id)
+    return {"code": locked.code, "status": locked.status, "you": "guest"}
 
 
 @app.get("/api/battle/history")
@@ -5817,6 +5911,7 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
             "finished_at": b.finished_at.isoformat() if b.finished_at else None,
             "opponent": opponent,
             "vs_bot": vs_bot,
+            "friendly": bool(b.is_friendly),
             "outcome": outcome,
             "forfeit": forfeit_role is not None,
             "forfeit_reason": res.get("reason"),

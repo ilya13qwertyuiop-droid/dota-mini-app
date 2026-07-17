@@ -208,16 +208,17 @@ def init_stats_tables() -> None:
             conn.execute(text(ddl))
             logger.info("[stats_db] Migration applied: added %s to draft_battles", col_name)
 
-    # is_bot — отдельно: boolean DEFAULT кросс-БД (PG: false, SQLite: 0).
-    # NOT NULL с дефолтом, чтобы ALTER на непустой таблице не падал.
-    with engine.begin() as conn:
-        if not _column_exists(conn, "draft_battles", "is_bot"):
-            _bool_default = "0" if conn.dialect.name == "sqlite" else "false"
-            conn.execute(text(
-                "ALTER TABLE draft_battles ADD COLUMN is_bot BOOLEAN NOT NULL "
-                f"DEFAULT {_bool_default}"
-            ))
-            logger.info("[stats_db] Migration applied: added is_bot to draft_battles")
+    # is_bot / is_friendly — отдельно: boolean DEFAULT кросс-БД (PG: false,
+    # SQLite: 0). NOT NULL с дефолтом, чтобы ALTER на непустой таблице не падал.
+    for _bool_col in ("is_bot", "is_friendly"):
+        with engine.begin() as conn:
+            if not _column_exists(conn, "draft_battles", _bool_col):
+                _bool_default = "0" if conn.dialect.name == "sqlite" else "false"
+                conn.execute(text(
+                    f"ALTER TABLE draft_battles ADD COLUMN {_bool_col} BOOLEAN NOT NULL "
+                    f"DEFAULT {_bool_default}"
+                ))
+                logger.info("[stats_db] Migration applied: added %s to draft_battles", _bool_col)
 
     # Migration 8c: задел под рейтинг битв (alembic 0020). Снимок рейтинга
     # обеих сторон на draft_battles (nullable) + рейтинг игрока на user_profiles
