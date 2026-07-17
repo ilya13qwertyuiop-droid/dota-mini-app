@@ -5734,7 +5734,7 @@ def _bt_bot_username() -> str | None:
     if not BOT_TOKEN:
         return None
     try:
-        r = httpx.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=6)
+        r = httpx.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=3)
         username = ((r.json() or {}).get("result") or {}).get("username")
         if username:
             _bt_bot_username_cache = username
@@ -5771,7 +5771,7 @@ def _bt_prepare_invite_message(uid: int, code: str, invite_url: str):
             f"https://api.telegram.org/bot{BOT_TOKEN}/savePreparedInlineMessage",
             json={"user_id": uid, "result": result,
                   "allow_user_chats": True, "allow_group_chats": True},
-            timeout=6,
+            timeout=3,
         )
         d = r.json()
         if d.get("ok"):
@@ -6488,3 +6488,7 @@ async def _bt_sweep_loop() -> None:
 @app.on_event("startup")
 async def _bt_start_sweep_task() -> None:
     asyncio.create_task(_bt_sweep_loop())
+    # Прогрев getMe-кэша (username бота для ссылок-вызовов): иначе ПЕРВЫЙ
+    # «Сыграть с другом» после рестарта платит лишний Telegram-round-trip
+    # прямо в обработчике (прод-жалоба: кнопка «молчала» секунды).
+    asyncio.create_task(asyncio.to_thread(_bt_bot_username))

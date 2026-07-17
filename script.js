@@ -1712,6 +1712,15 @@
         }
         window.btReshare = function () { _btOpenShare(); };
         window.btChallenge = async function () {
+            // Защита от дабл-тапа + мгновенная реакция: сервер внутри ходит в
+            // Telegram (регистрация карточки-вызова), ответ может занять
+            // секунды — без оптимистичного экрана юзер тапает повторно и
+            // получает очередь окон шаринга (прод-жалоба).
+            if (_bt.challengeBusy) return;
+            _bt.challengeBusy = true;
+            var title = document.getElementById('bt-wait-title');
+            if (title) title.textContent = 'Создаём вызов…';
+            _btShow('bt-wait');
             try {
                 var d = await _btPost('/battle/challenge', { mode: _bt.mode });
                 _bt.inviteUrl = d.invite_url;
@@ -1719,7 +1728,10 @@
                 _btEnter(d.code);
                 _btOpenShare();
             } catch (e) {
+                _btShow('bt-menu');
                 if (typeof showToast === 'function') showToast(e.message);
+            } finally {
+                _bt.challengeBusy = false;
             }
         };
 
@@ -1999,11 +2011,9 @@
             var isFriend = st.status === 'waiting';
             var title = document.getElementById('bt-wait-title');
             if (title) title.textContent = isFriend ? 'Ждём друга…' : 'Ищем соперника…';
-            // Товарищеский вызов: кнопка повторного шаринга + срок жизни.
+            // Товарищеский вызов: кнопка повторного шаринга.
             var reshare = document.getElementById('bt-wait-reshare');
             if (reshare) reshare.hidden = !(isFriend && _bt.inviteUrl);
-            var sub = document.getElementById('bt-wait-sub');
-            if (sub) sub.hidden = !isFriend;
         }
 
         // ── История битв (лента в меню) ────────────────────────────────────
