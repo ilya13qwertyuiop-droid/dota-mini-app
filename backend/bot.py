@@ -189,6 +189,14 @@ SKIP_CHECK_USER_IDS: frozenset[int] = frozenset(
     int(x) for x in os.environ.get("SKIP_SUBSCRIPTION_CHECK_IDS", "").split(",") if x.strip().lstrip("-").isdigit()
 )
 
+# Отложенные товарищеские вызовы: неподписанный тапнул ссылку db_<КОД> →
+# гейт отправил подписываться, а код из ссылки к повторному /start теряется
+# (человек жмёт команду, не ссылку). Помним код на TTL комнаты и доигрываем
+# после подписки. In-memory: бот однопроцессный, рестарат теряет — не страшно
+# (вызов живёт 10 минут, друг может тапнуть ссылку повторно).
+_PENDING_BATTLE_INVITES: dict[int, tuple[str, float]] = {}
+_PENDING_BATTLE_TTL_SEC = 600
+
 # Telegram user_id администраторов — имеют доступ к /admin_feedback
 ADMIN_IDS: frozenset[int] = frozenset({556944111})
 API_BASE_URL = "https://dotaquiz.blog"
@@ -261,6 +269,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subscribed = await is_subscriber(context.bot, user_id)
 
     if not subscribed:
+        # Вызов друга у неподписанного: код из ссылки потеряется к моменту
+        # повторного /start (человек жмёт команду, не ссылку) — запоминаем
+        # на TTL комнаты и доиграем после подписки.
+        if _start_payload and _start_payload.startswith("db_"):
+            _PENDING_BATTLE_INVITES[user_id] = (_start_payload[3:][:12], time.time())
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
@@ -269,7 +282,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         await update.message.reply_text(
             "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз.",
+            "Подпишись на оба канала и нажми /start ещё раз."
+            + ("\n\n⚔️ Вызов друга не потеряется — после подписки "
+               "пришлю кнопку боя." if user_id in _PENDING_BATTLE_INVITES else ""),
             reply_markup=kb,
         )
         return
@@ -280,8 +295,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Товарищеский вызов («Сыграть с другом»): deep-link db_<КОД> из шаринга.
     # Гейт подписок выше УЖЕ пройден — неподписанный друг сперва подпишется
     # (это осознанно: вызовы не должны обходить обязательные каналы).
+    # Код берём из payload ИЛИ из отложенного вызова: после подписки человек
+    # жмёт /start без payload — доигрываем сохранённый код.
+    _battle_code = None
     if _start_payload and _start_payload.startswith("db_"):
         _battle_code = _start_payload[3:][:12]
+    else:
+        _pending = _PENDING_BATTLE_INVITES.pop(user_id, None)
+        if _pending and time.time() - _pending[1] <= _PENDING_BATTLE_TTL_SEC:
+            _battle_code = _pending[0]
+    if _battle_code:
         battle_url = f"{mini_app_url_with_token}&battle={_battle_code}"
         await update.message.reply_text(
             "⚔️ Тебя вызвали на битву драфтов!\n"
