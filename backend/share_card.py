@@ -6,7 +6,7 @@ share_card.py — рендер карточки-результата мини-и
 один-в-один с аппом (Linear-точность, без слопа).
 
 Производительность: портреты героев тянутся с CDN ОДИН раз и кладутся в
-локальный дисковый кэш (assets/hero_portraits/<slug>.png); сама карточка
+локальный дисковый кэш (assets/hero_portraits/<slug>.webp); сама карточка
 кэшируется по полному набору параметров (assets/share_cache/<hash>.png).
 Рендерим только при нажатии «Поделиться» — Pillow, без браузеров.
 """
@@ -19,17 +19,16 @@ import os
 import tempfile
 from pathlib import Path
 
-import httpx
 from PIL import Image, ImageDraw, ImageFont
+
+from backend.hero_portraits import get_hero_portrait_path
 
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
 _FONTS = _ROOT / "assets" / "fonts"
-_PORTRAITS = _ROOT / "assets" / "hero_portraits"
 _CACHE = _ROOT / "assets" / "share_cache"
 _AVATAR = _ROOT / "d2helper.jpg"      # аватарка бота (брендинг в подвале карточки)
-_CDN = "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/{slug}.png"
 
 # Токены аппа (styles.css :root) — карточка обязана совпадать по цвету.
 _BG = (10, 10, 15)            # --bg-base   #0a0a0f
@@ -59,22 +58,13 @@ def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
 
 
 def _portrait(slug: str) -> Image.Image | None:
-    """Портрет героя 256×144: локальный кэш, при промахе — один fetch с CDN."""
-    safe = "".join(c for c in slug if c.isalnum() or c in "_-")
-    if not safe:
+    """Return a portrait from the shared validated, allowlisted cache."""
+    path = get_hero_portrait_path(slug)
+    if path is None:
         return None
-    path = _PORTRAITS / f"{safe}.png"
-    if not path.exists():
-        try:
-            _PORTRAITS.mkdir(parents=True, exist_ok=True)
-            r = httpx.get(_CDN.format(slug=safe), timeout=10.0, follow_redirects=True)
-            r.raise_for_status()
-            path.write_bytes(r.content)
-        except Exception as e:
-            logger.warning("[share_card] portrait fetch failed for %s: %s", safe, e)
-            return None
     try:
-        return Image.open(path).convert("RGBA")
+        with Image.open(path) as portrait:
+            return portrait.convert("RGBA")
     except Exception as e:
         logger.warning("[share_card] portrait open failed for %s: %s", safe, e)
         return None

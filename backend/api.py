@@ -150,6 +150,7 @@ from backend.stats_db import (
 )
 from backend.config import BAYESIAN_SMOOTHING_C
 from backend.avatar_store import avatar_path, public_avatar_url
+from backend.hero_portraits import get_hero_portrait_path
 from backend.security_logging import configure_secure_logging
 from backend.telegram_auth import validate_telegram_init_data as _validate_telegram_init_data
 from backend.rate_limit import check_rate_limit
@@ -382,6 +383,23 @@ def get_cached_avatar(avatar_key: str):
         media_type="image/webp",
         headers={
             "Cache-Control": "public, max-age=604800, immutable",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
+
+
+@app.get("/api/hero-images/{slug}.webp", include_in_schema=False)
+def get_cached_hero_portrait(slug: str):
+    """Serve an allowlisted, validated portrait from the same origin."""
+    path = get_hero_portrait_path(slug)
+    if path is None:
+        raise HTTPException(status_code=404, detail="hero portrait not found")
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={
+            "Cache-Control": "public, max-age=2592000, immutable",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },

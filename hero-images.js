@@ -1,5 +1,5 @@
 // data/hero-images.js
-// Мапа "отображаемое имя героя" -> slug для cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes
+// Мапа "отображаемое имя героя" -> slug безопасного same-origin кэша.
 
 window.dotaHeroImages = {
   'Anti-Mage': 'antimage',
@@ -292,5 +292,6 @@ window.getHeroIconUrlByName = function (heroName) {
         .replace(/'/g, '')
         .replace(/\s+/g, '_');
 
-  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
+  const apiBase = String(window.API_BASE_URL || '/api').replace(/\/$/, '');
+  return `${apiBase}/hero-images/${slug}.webp`;
 };

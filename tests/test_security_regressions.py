@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 import unittest
@@ -108,6 +109,49 @@ class AvatarStoreTests(unittest.TestCase):
         ):
             with self.assertRaises(AvatarValidationError):
                 store_avatar_bytes(b"<svg><script>alert(1)</script></svg>")
+
+
+@unittest.skipUnless(importlib.util.find_spec("httpx"), "httpx unavailable")
+class HeroPortraitCacheTests(unittest.TestCase):
+    def test_frontend_map_is_the_closed_server_allowlist(self):
+        from backend.hero_portraits import HERO_SLUGS
+
+        source = (PROJECT_ROOT / "hero-images.js").read_text(encoding="utf-8")
+        mapped = frozenset(
+            re.findall(
+                r"^\s*['\"].+['\"]\s*:\s*'([a-z0-9][a-z0-9_-]{0,63})'"
+                r"\s*,?(?:\s*//.*)?$",
+                source,
+                re.MULTILINE,
+            )
+        )
+        self.assertGreaterEqual(len(mapped), 100)
+        self.assertEqual(HERO_SLUGS, mapped)
+        self.assertIn("largo", HERO_SLUGS)
+        self.assertIn("obsidian_destroyer", HERO_SLUGS)
+
+    def test_portraits_are_normalized_cached_and_path_safe(self):
+        from backend import hero_portraits
+
+        raw = io.BytesIO()
+        Image.new("RGB", (256, 144), (30, 40, 50)).save(raw, format="PNG")
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            hero_portraits, "_CACHE_DIR", Path(temp_dir)
+        ), patch.object(
+            hero_portraits, "_download_source", return_value=raw.getvalue()
+        ) as download:
+            (Path(temp_dir) / "axe.png").write_bytes(b"invalid legacy image")
+            path = hero_portraits.get_hero_portrait_path("axe")
+            self.assertIsNotNone(path)
+            self.assertEqual(path.parent, Path(temp_dir))
+            self.assertEqual(path.suffix, ".webp")
+            with Image.open(path) as cached:
+                self.assertEqual(cached.format, "WEBP")
+                self.assertEqual(cached.size, (256, 144))
+            self.assertEqual(hero_portraits.get_hero_portrait_path("axe"), path)
+            download.assert_called_once_with("axe")
+            self.assertIsNone(hero_portraits.get_hero_portrait_path("../../etc/passwd"))
+            self.assertIsNone(hero_portraits.get_hero_portrait_path("not_a_dota_hero"))
 
 
 class LoggingTests(unittest.TestCase):
@@ -795,6 +839,7 @@ class SourceBoundaryTests(unittest.TestCase):
         api_source = (PROJECT_ROOT / "backend" / "api.py").read_text(encoding="utf-8")
         html_source = (PROJECT_ROOT / "index.html").read_text(encoding="utf-8")
         script_source = (PROJECT_ROOT / "script.js").read_text(encoding="utf-8")
+        hero_images_source = (PROJECT_ROOT / "hero-images.js").read_text(encoding="utf-8")
         self.assertNotIn("file.file_path", bot_source)
         self.assertNotIn('mini_app_url_with_token = f"{MINI_APP_URL}?token=', bot_source)
         self.assertNotIn("create_token_for_user,", bot_source)
@@ -817,6 +862,9 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("_BT_RATED_PAIR_LIMIT_24H = 3", api_source)
         self.assertGreaterEqual(api_source.count("_bt_lock_user(db, uid)"), 3)
         self.assertIn("with_for_update()", api_source)
+        self.assertIn("/hero-images/${slug}.webp", hero_images_source)
+        self.assertNotIn("return `https://cdn.cloudflare", hero_images_source)
+        self.assertIn('hero-images.js?v=2', html_source)
 
 
 if __name__ == "__main__":
