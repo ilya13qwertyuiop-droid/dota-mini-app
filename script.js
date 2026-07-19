@@ -1743,6 +1743,9 @@
             _bt.state = null;
             _bt.assignOrder = null;   // раскладка прошлой битвы не наследуется
             _bt.selHero = null;
+            _bt.actionBusy = false;
+            _bt.assignSubmitting = false;
+            _bt.stageGate = null;
             // Просмотр из истории: результат показываем сразу (без пересчёта
             // счёта), «назад» возвращает в меню битвы. См. _btRenderResult / btBack.
             _bt.historyView = !!fromHistory;
@@ -1892,6 +1895,19 @@
         // ── Применение состояния ──────────────────────────────────────────
         function _btApply(st) {
             var prev = _bt.state;
+            if (_bt.code && st && st.code && st.code !== _bt.code) return;
+            // Состояние битвы монотонно. POST и long-poll идут параллельно:
+            // медленный ответ на предыдущий ход/расстановку может приехать уже
+            // после более свежего long-poll (вплоть до finished). Не даём ему
+            // откатить экран и снова запереть актуальный грид.
+            if (prev && st && prev.code === st.code) {
+                var prevVersion = Number(prev.version) || 0;
+                var nextVersion = Number(st.version) || 0;
+                if (nextVersion < prevVersion ||
+                    (prev.status === 'finished' && st.status !== 'finished')) {
+                    return;
+                }
+            }
             var prevStatus = prev && prev.status;
             var prevActor = prev && prev.current && prev.current.actor;
             _bt.state = st;
@@ -2356,6 +2372,19 @@
             _btSetRankMedal('bt-me-rank', mePlayer.rank_key);
             _btSetRankMedal('bt-opp-rank', oppPlayer.rank_key);
             var stage = st.stage;   // этапный драфт (ap2): null у cm/легаси-ap
+            if (stage) {
+                var gateAt = Date.now() + Math.max(0, Number(stage.starts_in_ms) || 0);
+                if (!_bt.stageGate || _bt.stageGate.index !== stage.index) {
+                    _bt.stageGate = { index: stage.index, at: gateAt };
+                } else {
+                    // Повторный ответ сервера приходит позже и несёт меньший
+                    // remaining. Берём более ранний дедлайн, чтобы сетевой лаг
+                    // не продлевал клиентскую блокировку этапа.
+                    _bt.stageGate.at = Math.min(_bt.stageGate.at, gateAt);
+                }
+            } else {
+                _bt.stageGate = null;
+            }
             // Пауза-вскрытие кончается БЕЗ события с сервера (version не
             // меняется) — будим рендер сами, иначе грид заперт до следующего
             // полла, а серверные часы игрока при этом горят (прод-баг).
@@ -2371,6 +2400,9 @@
                     if (s2 && s2.status === 'drafting' && s2.stage &&
                         s2.stage.index === expectIdx) {
                         s2.stage.starts_in_ms = 0;
+                        if (_bt.stageGate && _bt.stageGate.index === expectIdx) {
+                            _bt.stageGate.at = Date.now();
+                        }
                         _btRenderDraft(s2);
                     }
                 }, (stage.starts_in_ms || 0) + 80);
@@ -2612,7 +2644,10 @@
         function _btCanPickNow(st) {
             if (!st || st.status !== 'drafting') return false;
             if (st.stage) {
-                return !st.stage.you_done && (st.stage.starts_in_ms || 0) <= 0;
+                var gateReady = (st.stage.starts_in_ms || 0) <= 0 ||
+                    (_bt.stageGate && _bt.stageGate.index === st.stage.index &&
+                     Date.now() >= _bt.stageGate.at);
+                return !st.stage.you_done && gateReady;
             }
             return !!(st.current && st.current.actor === _btMyRole());
         }
@@ -2626,6 +2661,11 @@
             var taken = {};
             if (st) st.actions.forEach(function (a) { if (a.hero_id != null) taken[a.hero_id] = true; });
             var myTurn = _btCanPickNow(st);
+            // Во время короткого «вскрытия» не ставим native disabled на
+            // будущий активный грид: некоторые Telegram WebView задерживают
+            // setTimeout, и тогда визуальный таймер уже идёт, а disabled
+            // продолжает глотать все тапы. Делегат ниже сам проверит gate.
+            var stageEligible = !!(st && st.stage && !st.stage.you_done);
             var q = (document.getElementById('bt-search') || {}).value || '';
             q = q.trim().toLowerCase();
             // Поиск ГЛАВНЕЕ фильтра позиций: с запросом ищем по всему пулу
@@ -2648,7 +2688,8 @@
                 var sel = (_bt.selHero === hid);
                 html += '<button type="button" class="bt-cell' +
                     (isTaken ? ' bt-cell--taken' : '') + (sel ? ' bt-cell--sel' : '') + '" ' +
-                    'data-hid="' + hid + '"' + (isTaken || !myTurn ? ' disabled' : '') + '>' +
+                    'data-hid="' + hid + '"' +
+                    (isTaken || (!myTurn && !stageEligible) || _bt.actionBusy ? ' disabled' : '') + '>' +
                     '<img src="' + _mghlEsc(window.getHeroIconUrlByName ? window.getHeroIconUrlByName(name) : '') + '" ' +
                     'alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
                     '<span>' + _mghlEsc(name) + '</span></button>';
@@ -2667,6 +2708,14 @@
             document.addEventListener('click', function (e) {
                 var cell = e.target && e.target.closest && e.target.closest('.bt-cell');
                 if (!cell || cell.disabled) return;
+                if (_bt.actionBusy || !_btCanPickNow(_bt.state)) {
+                    if (typeof showToast === 'function') {
+                        showToast(_bt.state && _bt.state.stage
+                            ? 'Этап ещё не начался'
+                            : 'Сейчас не твой ход');
+                    }
+                    return;
+                }
                 var hid = parseInt(cell.getAttribute('data-hid'), 10);
                 if (!hid) return;
                 _bt.selHero = (_bt.selHero === hid) ? null : hid;
@@ -2690,11 +2739,15 @@
 
         window.btConfirm = async function () {
             var hid = _bt.selHero;
-            if (!hid) return;
+            if (!hid || _bt.actionBusy || !_btCanPickNow(_bt.state)) return;
+            var requestCode = _bt.code;
             var btn = document.getElementById('bt-confirm-btn');
+            _bt.actionBusy = true;
             if (btn) btn.disabled = true;
+            btRenderGrid();
             try {
                 var st = await _btPost('/battle/action', { code: _bt.code, hero_id: hid });
+                if (requestCode !== _bt.code) return;
                 _bt.selHero = null;
                 // Чистим поиск после хода — игрок сразу вводит следующего героя,
                 // не стирая прошлый запрос вручную.
@@ -2704,7 +2757,9 @@
             } catch (e) {
                 if (typeof showToast === 'function') showToast(e.message);
             } finally {
+                _bt.actionBusy = false;
                 if (btn) btn.disabled = false;
+                btRenderGrid();
             }
         };
 
@@ -2727,6 +2782,42 @@
                 .map(function (a) { return a.hero_id; });
         }
 
+        function _btAssignStorageKey() {
+            return _bt.code ? 'bt_assign_' + String(_bt.code) : null;
+        }
+        function _btSaveAssignDraft(order) {
+            var key = _btAssignStorageKey();
+            if (!key) return;
+            try { sessionStorage.setItem(key, JSON.stringify(order || [])); } catch (e) {}
+        }
+        function _btLoadAssignDraft(picks) {
+            var key = _btAssignStorageKey();
+            if (!key) return null;
+            try {
+                var saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+                if (!Array.isArray(saved) || saved.length !== picks.length) return null;
+                var want = picks.slice().sort(function (a, b) { return a - b; }).join(',');
+                var got = saved.slice().sort(function (a, b) { return a - b; }).join(',');
+                return want === got ? saved : null;
+            } catch (e) { return null; }
+        }
+        function _btPositionsEqual(expected, actual) {
+            if (!actual) return false;
+            var keys = Object.keys(expected || {});
+            if (keys.length !== Object.keys(actual || {}).length) return false;
+            return keys.every(function (k) {
+                return Number(expected[k]) === Number(actual[k]);
+            });
+        }
+        function _btAckPositions(st, expected) {
+            if (!st) return false;
+            if (st.status === 'finished') {
+                var resultPos = st.result && st.result.positions;
+                return _btPositionsEqual(expected, resultPos && resultPos[_btMyRole()]);
+            }
+            return _btPositionsEqual(expected, st.assign && st.assign.your_positions);
+        }
+
         function _btRenderAssign(st) {
             var a = st.assign || {};
             // Карта опасных позиций своих пиков (счёт v2): hero_id -> {pos: 'soft'|'hard'}.
@@ -2743,7 +2834,7 @@
                     });
                     _bt.assignOrder = arr.every(Boolean) ? arr : picks.slice();
                 } else {
-                    _bt.assignOrder = picks.slice();
+                    _bt.assignOrder = _btLoadAssignDraft(picks) || picks.slice();
                 }
             }
             _btDrawAssignList();
@@ -2751,6 +2842,7 @@
             var submitted = !!a.you_submitted;
             var btn = document.getElementById('bt-assign-submit');
             if (btn) btn.hidden = submitted;
+            if (btn) btn.disabled = !!_bt.assignSubmitting;
             var wait = document.getElementById('bt-assign-wait');
             if (wait) wait.hidden = !submitted;
             var waitTxt = document.getElementById('bt-assign-wait-txt');
@@ -2838,6 +2930,7 @@
                 var item = arr.splice(d.index, 1)[0];
                 arr.splice(d.target, 0, item);   // move-with-shift
                 _mghlHaptic('tap');
+                _btSaveAssignDraft(arr);
             }
             d.children.forEach(function (ch) { ch.style.transform = ''; });
             _btDrawAssignList();   // перерисовка с обновлёнными метками Pos
@@ -2848,7 +2941,7 @@
             if (list) {
                 list.addEventListener('pointerdown', function (e) {
                     var row = e.target && e.target.closest && e.target.closest('.bt-assign-row');
-                    if (!row || _btDrag) return;
+                    if (!row || _btDrag || _bt.assignSubmitting) return;
                     var children = Array.prototype.slice.call(list.children);
                     var index = children.indexOf(row);
                     if (index < 0) return;
@@ -2866,17 +2959,33 @@
         }
 
         window.btAssignSubmit = async function () {
+            if (_bt.assignSubmitting) return;
+            var requestCode = _bt.code;
             var positions = {};
             (_bt.assignOrder || []).forEach(function (hid, i) { positions[String(hid)] = i + 1; });
+            if (Object.keys(positions).length !== 5) {
+                if (typeof showToast === 'function') showToast('Не удалось собрать все 5 позиций. Обнови экран.');
+                return;
+            }
             var btn = document.getElementById('bt-assign-submit');
+            _bt.assignSubmitting = true;
+            _btSaveAssignDraft(_bt.assignOrder);
             if (btn) btn.disabled = true;
             try {
                 var st = await _btPost('/battle/positions', { code: _bt.code, positions: positions });
+                if (requestCode !== _bt.code) return;
+                // HTTP 200 недостаточно: подтверждаем именно ту карту, которую
+                // отправили. Это защищает от потерянного/устаревшего ответа.
+                if (!_btAckPositions(st, positions)) {
+                    throw new Error('Сервер не подтвердил расстановку. Нажми «Готово» ещё раз.');
+                }
                 if (st && st.version) _btApply(st);
             } catch (e) {
                 if (typeof showToast === 'function') showToast(e.message);
             } finally {
+                _bt.assignSubmitting = false;
                 if (btn) btn.disabled = false;
+                if (_bt.state && _bt.state.status === 'assigning') _btRenderAssign(_bt.state);
             }
         };
         window.btAssignEdit = function () {
@@ -12871,4 +12980,3 @@ function _drafterCommentText(c) {
         document.addEventListener('DOMContentLoaded', _tmCheckDeepLink, { once: true });
     }
 })();
-

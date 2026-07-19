@@ -4562,8 +4562,15 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
     host_picks = _bt_picks_of(db, battle, "host")
     guest_picks = _bt_picks_of(db, battle, "guest")
 
-    host_pos = battle.host_positions or _bt_default_positions(host_picks)
-    guest_pos = battle.guest_positions or _bt_default_positions(guest_picks)
+    host_submitted = bool(battle.host_positions)
+    guest_submitted = bool(battle.guest_positions)
+    host_pos = dict(battle.host_positions) if host_submitted else _bt_default_positions(host_picks)
+    guest_pos = dict(battle.guest_positions) if guest_submitted else _bt_default_positions(guest_picks)
+    if not host_submitted or not guest_submitted:
+        logger.warning(
+            "[battle/finalize] fallback positions battle=%s code=%s host_submitted=%s guest_submitted=%s",
+            battle.id, battle.code, host_submitted, guest_submitted,
+        )
 
     def _entries(ids, pos_map):
         return [
@@ -4616,6 +4623,12 @@ def _bt_finalize(db: Session, battle: DBDraftBattle, now: datetime) -> None:
         "scoring": {"v": 2, "synergy_max": int(_BT_SYNERGY_SCALE), "matchup_max": 50},
         # Раскладки вскрываются обоим только здесь, после финала.
         "positions": {"host": host_pos, "guest": guest_pos},
+        # Диагностика прод-репортов: отличаем подтверждённую раскладку от
+        # серверного fallback по истёкшему таймеру.
+        "positions_submitted": {
+            "host": host_submitted,
+            "guest": guest_submitted,
+        },
     }
     battle.status = "finished"
     battle.finished_at = now
@@ -6162,6 +6175,23 @@ def api_battle_positions(data: BattlePositionsReq, db: Session = Depends(get_db)
         battle.guest_positions = pos_map
     battle.state_version += 1
     battle.last_action_at = now
+
+    # SessionLocal работает с autoflush=False. Явно материализуем JSON до
+    # финализации: результат и ответ клиенту должны ссылаться на одну и ту же,
+    # уже подготовленную к записи карту позиций, даже при одновременной сдаче
+    # второго игрока и long-poll на другом воркере.
+    db.flush()
+    db.refresh(
+        battle,
+        attribute_names=["host_positions" if role == "host" else "guest_positions"],
+    )
+    persisted = battle.host_positions if role == "host" else battle.guest_positions
+    if persisted != pos_map:
+        logger.error(
+            "[battle/positions] persistence mismatch battle=%s role=%s sent=%s stored=%s",
+            battle.id, role, pos_map, persisted,
+        )
+        raise HTTPException(status_code=500, detail="positions were not saved")
 
     if battle.host_positions and battle.guest_positions:
         _bt_finalize(db, battle, now)
