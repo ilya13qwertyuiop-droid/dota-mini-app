@@ -114,7 +114,7 @@ class AvatarStoreTests(unittest.TestCase):
 @unittest.skipUnless(importlib.util.find_spec("httpx"), "httpx unavailable")
 class HeroPortraitCacheTests(unittest.TestCase):
     def test_frontend_map_is_the_closed_server_allowlist(self):
-        from backend.hero_portraits import HERO_SLUGS
+        from backend import hero_portraits
 
         source = (PROJECT_ROOT / "hero-images.js").read_text(encoding="utf-8")
         mapped = frozenset(
@@ -126,9 +126,10 @@ class HeroPortraitCacheTests(unittest.TestCase):
             )
         )
         self.assertGreaterEqual(len(mapped), 100)
-        self.assertEqual(HERO_SLUGS, mapped)
-        self.assertIn("largo", HERO_SLUGS)
-        self.assertIn("obsidian_destroyer", HERO_SLUGS)
+        self.assertEqual(hero_portraits.HERO_SLUGS, mapped)
+        self.assertIn("largo", hero_portraits.HERO_SLUGS)
+        self.assertIn("obsidian_destroyer", hero_portraits.HERO_SLUGS)
+        self.assertTrue(hero_portraits._UPSTREAM.startswith("https://cdn.steamstatic.com/"))
 
     def test_portraits_are_normalized_cached_and_path_safe(self):
         from backend import hero_portraits

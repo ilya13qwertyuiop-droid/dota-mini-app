@@ -22,7 +22,7 @@ _CACHE_DIR = Path(
 )
 _SOURCE_MAP = _ROOT / "hero-images.js"
 _UPSTREAM = (
-    "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/"
+    "https://cdn.steamstatic.com/apps/dota2/images/"
     "dota_react/heroes/{slug}.png"
 )
 _MAX_SOURCE_BYTES = 512 * 1024
