@@ -46,10 +46,6 @@ _build_cache: dict[int, tuple[float, str]] = {}  # {hero_id: (timestamp, json_st
 _leaderboard_cache: list | None = None
 _leaderboard_cache_ts: float = 0.0
 
-# /api/check-subscription — TTL 600s per user_id
-_subscription_cache: dict[int, float] = {}
-
-
 def _load_dota_builds_file() -> dict | None:
     """Return parsed dota_builds.json, caching the result in memory."""
     global _dota_builds_file_cache
@@ -161,12 +157,20 @@ from backend.rate_limit import check_rate_limit
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
+SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "-1002005211472")
+SKIP_SUBSCRIPTION_CHECK_IDS: frozenset[int] = frozenset(
+    int(value)
+    for value in os.environ.get("SKIP_SUBSCRIPTION_CHECK_IDS", "").split(",")
+    if value.strip().lstrip("-").isdigit()
+)
 
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
 if not CHECK_CHAT_ID:
     raise RuntimeError("CHECK_CHAT_ID is not set")
+if not SPONSOR_CHAT_ID:
+    raise RuntimeError("SPONSOR_CHAT_ID is not set")
 
 configure_secure_logging(BOT_TOKEN, os.environ.get("DATABASE_URL"))
 
@@ -443,6 +447,45 @@ class RefreshTokenResponse(BaseModel):
 
 # ========== API Endpoints ==========
 
+_SUBSCRIBER_STATUSES = frozenset({"member", "administrator", "creator"})
+
+
+async def _has_required_subscriptions(user_id: int) -> bool:
+    """Fail closed unless Telegram confirms membership in both channels."""
+    if user_id in SKIP_SUBSCRIPTION_CHECK_IDS:
+        return True
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+    timeout = httpx.Timeout(8.0, connect=3.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for chat_id in (CHECK_CHAT_ID, SPONSOR_CHAT_ID):
+            try:
+                response = await client.get(
+                    url,
+                    params={"chat_id": chat_id, "user_id": user_id},
+                )
+                if response.status_code != 200:
+                    logger.warning(
+                        "[subscription] Telegram rejected membership check "
+                        "user=%s chat=%s status=%s",
+                        user_id,
+                        chat_id,
+                        response.status_code,
+                    )
+                    return False
+                status = response.json().get("result", {}).get("status")
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning(
+                    "[subscription] membership check failed user=%s chat=%s: %s",
+                    user_id,
+                    chat_id,
+                    exc,
+                )
+                return False
+            if status not in _SUBSCRIBER_STATUSES:
+                return False
+    return True
+
 @app.post("/api/refresh_token", response_model=RefreshTokenResponse)
 async def refresh_token(data: RefreshTokenRequest, request: Request):
     """Issue a short-lived app session from fresh signed Telegram initData."""
@@ -465,6 +508,11 @@ async def refresh_token(data: RefreshTokenRequest, request: Request):
         raise HTTPException(status_code=401, detail="Invalid user payload")
 
     _enforce_rate("auth_refresh_user", user_id, limit=5, window_seconds=300)
+    if not await _has_required_subscriptions(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Subscription to both required channels is required",
+        )
     claimed = await asyncio.to_thread(claim_telegram_init_data, data.init_data, user_id)
     if not claimed:
         raise HTTPException(status_code=409, detail="initData has already been used")
@@ -474,43 +522,13 @@ async def refresh_token(data: RefreshTokenRequest, request: Request):
 
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
-    """Проверяет подписку пользователя на канал"""
-    global _subscription_cache
-
-    # 1. по токену достаём user_id
+    """Проверяет подписку пользователя на оба обязательных канала."""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         return CheckResponse(allowed=False)
 
     _enforce_rate("subscription_check", user_id, limit=10, window_seconds=60)
-
-    # 2. кеш: если подписка уже подтверждена менее 600 сек назад — не идём в Telegram
-    cached_ts = _subscription_cache.get(user_id)
-    if cached_ts is not None and time.time() - cached_ts < 600:
-        return CheckResponse(allowed=True)
-
-    # 3. проверяем подписку через getChatMember
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
-    params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
-
-    async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
-        r = await client.get(url, params=params)
-
-    if r.status_code != 200:
-        raise HTTPException(status_code=500, detail="Telegram API error")
-
-    result = r.json().get("result", {})
-    status = result.get("status")
-
-    allowed_statuses = {"member", "administrator", "creator"}
-    allowed = status in allowed_statuses
-
-    if allowed:
-        _subscription_cache[user_id] = time.time()
-    else:
-        _subscription_cache.pop(user_id, None)
-
-    return CheckResponse(allowed=allowed)
+    return CheckResponse(allowed=await _has_required_subscriptions(user_id))
 
 
 @app.post("/api/save_telegram_data")

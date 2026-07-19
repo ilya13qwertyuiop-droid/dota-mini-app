@@ -94,7 +94,7 @@ import httpx
 from telegram import (
     Bot,
     BotCommand,
-    MenuButtonWebApp,
+    MenuButtonCommands,
     Update,
     KeyboardButton,
     ReplyKeyboardMarkup,
@@ -2330,11 +2330,12 @@ async def _on_startup(application: Application) -> None:
 
 async def _set_commands(application: Application) -> None:
     """Registers the visible command menu shown when the user types / in Telegram."""
+    # Keep the persistent chat menu as a command list. A WebApp menu button
+    # opens the app without passing through /start and therefore bypasses the
+    # two-channel subscription gate. Setting this explicitly also replaces
+    # any attacker-controlled menu left after a bot-token compromise.
     await application.bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(
-            text="Открыть D2Helper",
-            web_app=WebAppInfo(url=MINI_APP_URL),
-        )
+        menu_button=MenuButtonCommands()
     )
     await application.bot.set_my_commands([
         BotCommand("start",      "Открыть мини‑приложение"),

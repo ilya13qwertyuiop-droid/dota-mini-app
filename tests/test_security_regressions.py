@@ -228,16 +228,76 @@ class ApiIntegrationTests(unittest.TestCase):
     def test_init_data_is_single_use_and_sessions_are_capped(self):
         now = int(time.time())
         init_data = _signed_init_data(os.environ["BOT_TOKEN"], 9006, now)
-        first = self.client.post("/api/refresh_token", json={"init_data": init_data})
-        self.assertEqual(first.status_code, 200)
-        replay = self.client.post("/api/refresh_token", json={"init_data": init_data})
-        self.assertEqual(replay.status_code, 409)
+        with patch.object(
+            self.api,
+            "_has_required_subscriptions",
+            new=AsyncMock(return_value=True),
+        ):
+            first = self.client.post("/api/refresh_token", json={"init_data": init_data})
+            self.assertEqual(first.status_code, 200)
+            replay = self.client.post("/api/refresh_token", json={"init_data": init_data})
+            self.assertEqual(replay.status_code, 409)
 
         from backend.models import Token
         for _ in range(8):
             self.api.create_token_for_user(9007)
         with self.api.SessionLocal() as session:
             self.assertLessEqual(session.query(Token).filter_by(user_id=9007).count(), 5)
+
+    def test_refresh_token_requires_both_channel_subscriptions(self):
+        now = int(time.time())
+        init_data = _signed_init_data(os.environ["BOT_TOKEN"], 9008, now)
+        with patch.object(
+            self.api,
+            "_has_required_subscriptions",
+            new=AsyncMock(return_value=False),
+        ):
+            denied = self.client.post("/api/refresh_token", json={"init_data": init_data})
+        self.assertEqual(denied.status_code, 403)
+
+        from backend.models import Token
+        with self.api.SessionLocal() as session:
+            self.assertEqual(session.query(Token).filter_by(user_id=9008).count(), 0)
+
+        # A denied attempt must not consume the one-time initData: after the
+        # user subscribes, the same fresh Telegram launch can still sign in.
+        with patch.object(
+            self.api,
+            "_has_required_subscriptions",
+            new=AsyncMock(return_value=True),
+        ):
+            allowed = self.client.post("/api/refresh_token", json={"init_data": init_data})
+        self.assertEqual(allowed.status_code, 200)
+
+    def test_subscription_check_requires_main_and_sponsor_channels(self):
+        calls = []
+        statuses = iter(["member", "left"])
+
+        class FakeResponse:
+            status_code = 200
+
+            def __init__(self, status):
+                self._status = status
+
+            def json(self):
+                return {"result": {"status": self._status}}
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def get(self, _url, *, params):
+                calls.append(params["chat_id"])
+                return FakeResponse(next(statuses))
+
+        with patch.object(self.api.httpx, "AsyncClient", return_value=FakeClient()):
+            allowed = asyncio.run(self.api._has_required_subscriptions(9009))
+
+        self.assertFalse(allowed)
+        self.assertEqual(calls, [self.api.CHECK_CHAT_ID, self.api.SPONSOR_CHAT_ID])
 
     def test_invalid_init_data_is_rate_limited_before_signature_validation(self):
         with patch.object(self.api, "_enforce_rate") as enforce:
@@ -740,7 +800,8 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertNotIn("create_token_for_user,", bot_source)
         self.assertNotIn('urlencode({"token": token})', bot_source)
         self.assertIn("drop_pending_updates=True", bot_source)
-        self.assertIn("set_chat_menu_button", bot_source)
+        self.assertIn("MenuButtonCommands", bot_source)
+        self.assertNotIn("MenuButtonWebApp", bot_source)
         self.assertIn("role = _bt_require_role(battle, uid)", api_source)
         self.assertIn("role = _bt_require_role(battle, user_id)", api_source)
         self.assertIn("token=_token_digest(token_str)", (PROJECT_ROOT / "backend" / "db.py").read_text(encoding="utf-8"))
