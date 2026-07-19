@@ -281,15 +281,26 @@ async def app_token_from_authorization(request: Request, call_next):
     """
     authorization = request.headers.get("authorization", "")
     scheme, separator, token = authorization.partition(" ")
-    raw_query = request.scope.get("query_string", b"").decode("latin-1")
+    original_query_string = request.scope.get("query_string", b"")
+    raw_query = original_query_string.decode("latin-1")
     pairs = parse_qsl(raw_query, keep_blank_values=True)
     has_query_token = any(key == "token" for key, _value in pairs)
+    injected_query_token = False
     if separator and scheme.lower() == "bearer" and not has_query_token:
         token = token.strip()
         if 20 <= len(token) <= 256 and all(c.isalnum() or c in "_-" for c in token):
             pairs.append(("token", token))
             request.scope["query_string"] = urlencode(pairs).encode("ascii")
-    response = await call_next(request)
+            injected_query_token = True
+    try:
+        response = await call_next(request)
+    finally:
+        # FastAPI's existing endpoint signatures still consume the injected
+        # query parameter, but outer ASGI layers (including Uvicorn access
+        # logging) must see the original network request target.  Otherwise a
+        # bearer token supplied safely in a header is copied into server logs.
+        if injected_query_token:
+            request.scope["query_string"] = original_query_string
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     if authorization or has_query_token or request.method != "GET":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import importlib
@@ -175,6 +176,36 @@ class ApiIntegrationTests(unittest.TestCase):
             stored = session.query(Token).filter_by(user_id=9001).one()
             self.assertNotEqual(stored.token, raw_token)
             self.assertEqual(len(stored.token), 64)
+
+    def test_authorization_token_is_removed_from_asgi_scope_after_request(self):
+        from starlette.requests import Request
+        from starlette.responses import Response
+
+        raw_token = self.api.create_token_for_user(9004)
+        original_query = b"limit=20"
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/profile_full",
+            "raw_path": b"/api/profile_full",
+            "query_string": original_query,
+            "headers": [(b"authorization", f"Bearer {raw_token}".encode("ascii"))],
+            "scheme": "https",
+            "server": ("mini.example.test", 443),
+            "client": ("127.0.0.1", 12345),
+            "root_path": "",
+        }
+        request = Request(scope)
+
+        async def call_next(_request):
+            self.assertIn(b"token=", scope["query_string"])
+            return Response(status_code=200)
+
+        response = asyncio.run(
+            self.api.app_token_from_authorization(request, call_next)
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(scope["query_string"], original_query)
 
     def test_signed_profile_cannot_cross_user_boundary(self):
         raw_token = self.api.create_token_for_user(9002)
