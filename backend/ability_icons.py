@@ -26,7 +26,8 @@ _UPSTREAM = (
     "https://cdn.steamstatic.com/apps/dota2/images/"
     "dota_react/abilities/{ability_name}.png"
 )
-_MAX_SOURCE_BYTES = 512 * 1024
+_MAX_SOURCE_BYTES = 2 * 1024 * 1024
+_MAX_CACHE_BYTES = 512 * 1024
 _ABILITY_RE = re.compile(r"^[a-z0-9][a-z0-9_]{0,95}$")
 
 
@@ -88,7 +89,7 @@ def _normalized_webp(raw: bytes) -> bytes:
     output = io.BytesIO()
     image.save(output, format="WEBP", quality=90, method=4)
     encoded = output.getvalue()
-    if not encoded or len(encoded) > _MAX_SOURCE_BYTES:
+    if not encoded or len(encoded) > _MAX_CACHE_BYTES:
         raise ValueError("ability icon encoding failed")
     return encoded
 
@@ -130,7 +131,7 @@ def _write_atomic(path: Path, payload: bytes) -> None:
 
 def _is_usable_cache_file(path: Path) -> bool:
     try:
-        return path.is_file() and 0 < path.stat().st_size <= _MAX_SOURCE_BYTES
+        return path.is_file() and 0 < path.stat().st_size <= _MAX_CACHE_BYTES
     except OSError:
         return False
 

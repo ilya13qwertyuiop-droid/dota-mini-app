@@ -165,6 +165,8 @@ class AbilityIconCacheTests(unittest.TestCase):
         self.assertIn("shredder_timber_chain", ability_icons.ABILITY_NAMES)
         self.assertNotIn("unknown", ability_icons.ABILITY_NAMES)
         self.assertTrue(ability_icons._UPSTREAM.startswith("https://cdn.steamstatic.com/"))
+        self.assertGreaterEqual(ability_icons._MAX_SOURCE_BYTES, 1_165_014)
+        self.assertLess(ability_icons._MAX_CACHE_BYTES, ability_icons._MAX_SOURCE_BYTES)
 
     def test_icons_are_normalized_cached_and_path_safe(self):
         from backend import ability_icons
