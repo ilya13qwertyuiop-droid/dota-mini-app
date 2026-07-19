@@ -66,7 +66,7 @@ def _portrait(slug: str) -> Image.Image | None:
         with Image.open(path) as portrait:
             return portrait.convert("RGBA")
     except Exception as e:
-        logger.warning("[share_card] portrait open failed for %s: %s", safe, e)
+        logger.warning("[share_card] portrait open failed for %s: %s", slug, e)
         return None
 
 

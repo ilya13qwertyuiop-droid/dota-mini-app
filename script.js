@@ -5238,14 +5238,19 @@ function _getTopPositionsFromBuilds(data) {
 }
 
 function _buildSkillRowHtml(dotaPos, data) {
+    function isAbilityName(name) {
+        return typeof name === 'string' &&
+            name !== 'unknown' &&
+            /^[a-z0-9][a-z0-9_]{0,95}$/.test(name);
+    }
     var abilities;
     if (dotaPos && dotaPos.abilities && dotaPos.abilities.length) {
         abilities = dotaPos.abilities
-            .filter(function (a) { return !a.isTalent; })
+            .filter(function (a) { return !a.isTalent && isAbilityName(a.name); })
             .map(function (a) { return a.name; });
     } else {
         abilities = (data.ability_build || []).filter(function (n) {
-            return n.indexOf('special_bonus_') !== 0;
+            return isAbilityName(n) && n.indexOf('special_bonus_') !== 0;
         });
     }
     if (!abilities.length) {
@@ -5264,7 +5269,8 @@ function _buildSkillRowHtml(dotaPos, data) {
     }
 
     var slots = abilities.map(function (aname, i) {
-        var iconUrl = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/abilities/' + aname + '.png';
+        var apiBase = String(window.API_BASE_URL || '/api').replace(/\/$/, '');
+        var iconUrl = apiBase + '/ability-icons/' + encodeURIComponent(aname) + '.webp';
         var ultCls = ultNames[aname] ? ' build-ability-slot--ult' : '';
         return '<div class="build-ability-slot' + ultCls + '">' +
             '<div class="build-ability-level">' + (i + 1) + '</div>' +

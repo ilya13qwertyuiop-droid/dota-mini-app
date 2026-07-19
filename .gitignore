@@ -24,6 +24,7 @@ hero_detailed_stats.json
 
 # Сгенерированное в рантайме (карточки-результаты мини-игры)
 assets/hero_portraits/
+assets/ability_icons/
 assets/share_cache/
 assets/_sample_card.*
 

@@ -155,6 +155,50 @@ class HeroPortraitCacheTests(unittest.TestCase):
             self.assertIsNone(hero_portraits.get_hero_portrait_path("not_a_dota_hero"))
 
 
+@unittest.skipUnless(importlib.util.find_spec("httpx"), "httpx unavailable")
+class AbilityIconCacheTests(unittest.TestCase):
+    def test_build_dataset_is_the_closed_server_allowlist(self):
+        from backend import ability_icons
+
+        self.assertGreaterEqual(len(ability_icons.ABILITY_NAMES), 300)
+        self.assertIn("spirit_breaker_charge_of_darkness", ability_icons.ABILITY_NAMES)
+        self.assertIn("shredder_timber_chain", ability_icons.ABILITY_NAMES)
+        self.assertNotIn("unknown", ability_icons.ABILITY_NAMES)
+        self.assertTrue(ability_icons._UPSTREAM.startswith("https://cdn.steamstatic.com/"))
+
+    def test_icons_are_normalized_cached_and_path_safe(self):
+        from backend import ability_icons
+
+        raw = io.BytesIO()
+        Image.new("RGB", (128, 128), (70, 80, 90)).save(raw, format="PNG")
+        ability_name = "spirit_breaker_charge_of_darkness"
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            ability_icons, "_CACHE_DIR", Path(temp_dir)
+        ), patch.object(
+            ability_icons, "_download_source", return_value=raw.getvalue()
+        ) as download:
+            path = ability_icons.get_ability_icon_path(ability_name)
+            self.assertIsNotNone(path)
+            self.assertEqual(path.parent, Path(temp_dir))
+            self.assertEqual(path.suffix, ".webp")
+            with Image.open(path) as cached:
+                self.assertEqual(cached.format, "WEBP")
+                self.assertEqual(cached.size, (128, 128))
+            self.assertEqual(ability_icons.get_ability_icon_path(ability_name), path)
+            download.assert_called_once_with(ability_name)
+            self.assertIsNone(ability_icons.get_ability_icon_path("../../etc/passwd"))
+            self.assertIsNone(ability_icons.get_ability_icon_path("unknown_ability"))
+
+
+class HeroCatalogTests(unittest.TestCase):
+    def test_share_card_catalog_resolves_names_and_portrait_slugs(self):
+        from backend.hero_catalog import hero_identity
+
+        self.assertEqual(hero_identity(3), ("bane", "Bane"))
+        self.assertEqual(hero_identity(97), ("magnataur", "Magnus"))
+        self.assertEqual(hero_identity(98), ("shredder", "Timbersaw"))
+
+
 class LoggingTests(unittest.TestCase):
     def test_credentials_are_redacted(self):
         canary = "BOT_TOKEN_CANARY_ABCDEFGHIJKLMNOPQRSTUVWXYZ_secret"
@@ -181,6 +225,35 @@ class LoggingTests(unittest.TestCase):
             access_logger.removeHandler(handler)
             access_logger.setLevel(old_level)
         self.assertNotIn("session-canary", stream.getvalue())
+
+    def test_uvicorn_access_formatter_keeps_its_five_arguments(self):
+        class FiveArgAccessFormatter(logging.Formatter):
+            def format(self, record):
+                client, method, path, version, status = record.args
+                return f'{client} - "{method} {path} HTTP/{version}" {status}'
+
+        configure_secure_logging()
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(FiveArgAccessFormatter())
+        access_logger = logging.getLogger("uvicorn.access")
+        access_logger.addHandler(handler)
+        old_level = access_logger.level
+        access_logger.setLevel(logging.INFO)
+        try:
+            access_logger.info(
+                '%s - "%s %s HTTP/%s" %d',
+                "127.0.0.1:1",
+                "GET",
+                "/api/profile_full?token=session-canary",
+                "1.1",
+                200,
+            )
+        finally:
+            access_logger.removeHandler(handler)
+            access_logger.setLevel(old_level)
+        self.assertNotIn("session-canary", stream.getvalue())
+        self.assertIn("token=<redacted>", stream.getvalue())
 
     def test_handlers_installed_after_configuration_are_also_protected(self):
         canary = "999999:POST_CONFIG_HANDLER_CANARY"
@@ -269,6 +342,17 @@ class ApiIntegrationTests(unittest.TestCase):
     def test_docs_are_not_public(self):
         self.assertEqual(self.client.get("/docs").status_code, 404)
         self.assertEqual(self.client.get("/openapi.json").status_code, 404)
+
+    def test_ability_icons_are_served_from_the_same_origin(self):
+        icon_path = Path(self._temp.name) / "ability.webp"
+        Image.new("RGB", (64, 64), (10, 20, 30)).save(icon_path, format="WEBP")
+        with patch.object(self.api, "get_ability_icon_path", return_value=icon_path):
+            response = self.client.get(
+                "/api/ability-icons/spirit_breaker_charge_of_darkness.webp"
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.headers["content-type"], "image/webp")
+        self.assertIn("immutable", response.headers["cache-control"])
 
     def test_init_data_is_single_use_and_sessions_are_capped(self):
         now = int(time.time())
@@ -854,7 +938,7 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("role = _bt_require_role(battle, uid)", api_source)
         self.assertIn("role = _bt_require_role(battle, user_id)", api_source)
         self.assertIn("token=_token_digest(token_str)", (PROJECT_ROOT / "backend" / "db.py").read_text(encoding="utf-8"))
-        self.assertIn('script.js?v=316', html_source)
+        self.assertIn('script.js?v=317', html_source)
         self.assertNotIn("frozenset({556944111})", bot_source)
         self.assertNotIn("traceback.print_exc()", bot_source)
         self.assertIn("client-supplied scores are not accepted", api_source)
@@ -866,6 +950,10 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("/hero-images/${slug}.webp", hero_images_source)
         self.assertNotIn("return `https://cdn.cloudflare", hero_images_source)
         self.assertIn('hero-images.js?v=2', html_source)
+        self.assertIn("/ability-icons/", script_source)
+        self.assertNotIn("dota_react/abilities/", script_source)
+        self.assertIn("hero_identity(run.reference_id)", api_source)
+        self.assertIn("hero_identity(run.challenger_id)", api_source)
 
 
 if __name__ == "__main__":

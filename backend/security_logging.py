@@ -65,17 +65,29 @@ class _RedactingFilter(logging.Filter):
         return value
 
     def filter(self, record: logging.LogRecord) -> bool:
-        # Render %-style structured arguments before redaction. Redacting the
-        # format string and its args independently can consume a placeholder
-        # (e.g. ``.../bot%s``) and leave logging with a mismatched arg tuple.
-        try:
-            rendered = record.getMessage()
-        except Exception:
+        # ``uvicorn.logging.AccessFormatter`` unpacks the original five
+        # structured arguments after ``logging.Formatter`` has rendered the
+        # message. Replacing them with ``()`` breaks every access log record.
+        # Redact each value in place while preserving the formatter contract.
+        if (
+            record.name == "uvicorn.access"
+            and isinstance(record.args, tuple)
+            and len(record.args) == 5
+        ):
             record.msg = self._clean(record.msg)
             record.args = self._clean(record.args)
         else:
-            record.msg = redact_text(rendered, self._secrets)
-            record.args = ()
+            # Render %-style structured arguments before redaction. Redacting
+            # the format string and args independently can consume a
+            # placeholder and leave logging with a mismatched arg tuple.
+            try:
+                rendered = record.getMessage()
+            except Exception:
+                record.msg = self._clean(record.msg)
+                record.args = self._clean(record.args)
+            else:
+                record.msg = redact_text(rendered, self._secrets)
+                record.args = ()
         # A handler installed after secure logging may format ``exc_info``
         # itself and would otherwise bypass message/argument redaction. Cache a
         # sanitized traceback on the record so every formatter reuses it.

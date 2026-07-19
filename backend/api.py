@@ -151,6 +151,8 @@ from backend.stats_db import (
 from backend.config import BAYESIAN_SMOOTHING_C
 from backend.avatar_store import avatar_path, public_avatar_url
 from backend.hero_portraits import get_hero_portrait_path
+from backend.ability_icons import get_ability_icon_path
+from backend.hero_catalog import hero_identity
 from backend.security_logging import configure_secure_logging
 from backend.telegram_auth import validate_telegram_init_data as _validate_telegram_init_data
 from backend.rate_limit import check_rate_limit
@@ -395,6 +397,23 @@ def get_cached_hero_portrait(slug: str):
     path = get_hero_portrait_path(slug)
     if path is None:
         raise HTTPException(status_code=404, detail="hero portrait not found")
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={
+            "Cache-Control": "public, max-age=2592000, immutable",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
+
+
+@app.get("/api/ability-icons/{ability_name}.webp", include_in_schema=False)
+def get_cached_ability_icon(ability_name: str):
+    """Serve an allowlisted, validated ability icon from the same origin."""
+    path = get_ability_icon_path(ability_name)
+    if path is None:
+        raise HTTPException(status_code=404, detail="ability icon not found")
     return FileResponse(
         path,
         media_type="image/webp",
@@ -2520,9 +2539,11 @@ async def api_minigame_share_image(
         jpg = cached[1]
     else:
         mode = run.game.removeprefix("hl_")
+        reference_slug, reference_name = hero_identity(run.reference_id)
+        challenger_slug, challenger_name = hero_identity(run.challenger_id)
         heroes = [
-            ("", f"Hero #{run.reference_id}", run.reference_value),
-            ("", f"Hero #{run.challenger_id}", run.challenger_value),
+            (reference_slug, reference_name, run.reference_value),
+            (challenger_slug, challenger_name, run.challenger_value),
         ]
         from backend.share_card import render_share_card
         jpg = await asyncio.to_thread(render_share_card, mode, run.streak, heroes)
