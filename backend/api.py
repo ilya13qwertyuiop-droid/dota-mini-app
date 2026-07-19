@@ -6484,7 +6484,7 @@ def _bt_prepare_invite_message(uid: int, code: str, invite_url: str):
         "input_message_content": {
             "message_text": (
                 "⚔️ <b>Вызов на битву драфтов!</b>\n"
-                "Товарищеский матч в D2Helper — рейтинг не на кону, только гордость."
+                "Товарищеский матч в D2Helper — рейтинг не на кону."
             ),
             "parse_mode": "HTML",
         },

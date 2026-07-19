@@ -340,7 +340,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ))
         await update.message.reply_text(
             "⚔️ Тебя вызвали на битву драфтов!\n"
-            "Товарищеский матч — рейтинг не на кону, только гордость.",
+            "В товарищеском матче рейтинг не меняется.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
                     "⚔️ Принять вызов",
