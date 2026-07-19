@@ -96,8 +96,7 @@ from telegram import (
     BotCommand,
     MenuButtonCommands,
     Update,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     WebAppInfo,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -383,25 +382,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.warning("Failed to upsert profile settings for user %s: %s", user_id, e)
 
-    keyboard = [
-        [
-            KeyboardButton(
-                text="Открыть D2Helper",
-                web_app=WebAppInfo(url=mini_app_url),
-            )
-        ]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    # A reply-keyboard WebApp opens a Telegram "simple WebView" without
+    # signed user initData.  The former token-bearing URL hid that limitation.
+    # Inline WebApp buttons receive signed initData, so the browser can obtain
+    # its short-lived API session without putting credentials in the URL.
+    open_markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            text="Открыть D2Helper",
+            web_app=WebAppInfo(url=mini_app_url),
+        )
+    ]])
 
     # Welcome admin-редактируется через /admin_text welcome.
     # Дефолт см. backend/bot_texts.py:DEFAULT_BOT_TEXTS["welcome"].
     from backend.bot_texts import get_text as _get_bot_text
     await update.message.reply_text(
         _get_bot_text("welcome"),
-        reply_markup=reply_markup,
+        # Remove the legacy reply keyboard already stored by Telegram clients.
+        reply_markup=ReplyKeyboardRemove(),
         parse_mode="HTML",
     )
-    await update.message.reply_text("⚠️ Mini App не грузится? Попробуй зайти с VPN!")
+    await update.message.reply_text(
+        "Открыть мини-приложение 👇\n\n"
+        "⚠️ Mini App не грузится? Попробуй зайти с VPN!",
+        reply_markup=open_markup,
+    )
 
 
 # -------- вспомогательные функции для разбора результатов квиза --------
