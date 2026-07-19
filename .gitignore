@@ -9,6 +9,11 @@ CLAUDE.md
 .impeccable.md
 .gitignore
 
+# Python bytecode and interpreter caches
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Skill plugins (taste-skill via npx skills add)
 .agents/
 skills-lock.json

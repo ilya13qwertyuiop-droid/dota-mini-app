@@ -4370,21 +4370,22 @@ def _bt_start_assign(battle: DBDraftBattle, now: datetime) -> None:
 _BT_RATING_BASE = 1000        # стартовый рейтинг (внутренний; скрыт на калибровке)
 _BT_RATING_FLOOR = 0          # ниже не падает
 _BT_ELO_DIVISOR = 1600.0      # насколько разрыв рейтинга влияет на шансы (≈9:1 на 1600)
-_BT_K_CALIBRATION = 400       # K на калибровке — большие скачки
-_BT_K_ESTABLISHED = 96        # K после калибровки — стабильно (~±50 за равный бой)
+_BT_EXPECTED_MIN = 0.25       # защита фаворита: даже огромный разрыв не ниже 25%
+_BT_EXPECTED_MAX = 0.75       # один апсет не должен стирать серию побед
+_BT_K_CALIBRATION = 160       # калибровка двигается быстро, но без скачков ±300
+_BT_K_ESTABLISHED = 56        # равный обычный бой ≈ ±28
 _BT_CALIBRATION_GAMES = 5     # сколько живых боёв длится калибровка (холодный старт; потом 10)
-# Множитель за разгром (перекалиброван под целочисленный счёт v2 2026-07-17:
-# тоталы 35-55, медианный отрыв ~10). Разрыв 10 → 1.0, потолок с 24, пол —
-# сверхблизкие бои. Потолок опущен 1.5 → 1.35: в паре с Elo-асимметрией
-# фаворита (окно подбора) 1.5 давал «−100 за поражение» на проде.
-_BT_MARGIN_MIN = 0.7
-_BT_MARGIN_MAX = 1.35
+# Множитель за разгром под целочисленный счёт v2: разрыв 10 → 1.0,
+# 20+ → потолок 1.1, нулевой разрыв → 0.9. Он слегка различает близкий бой
+# и разгром, но больше не усиливает Elo-асимметрию до «−90 за один апсет».
+_BT_MARGIN_MIN = 0.9
+_BT_MARGIN_MAX = 1.1
 _BT_MARGIN_GAP_CENTER = 10    # отрыв в очках, при котором множитель = 1.0
-_BT_MARGIN_GAP_SLOPE = 40     # +1 к множителю за каждые 40 очков отрыва
-# Потолок сдвига за ОДИН бой: K=400 × разгром 1.5 при матче «любой с любым»
-# (окно снято после 25с) теоретически даёт ±600 — один такой бой ломает
-# доверие к числам. Клэмп держит худший случай в рамках здравого смысла.
-_BT_RATING_DELTA_MAX = 350
+_BT_MARGIN_GAP_SLOPE = 100    # +0.1 к множителю за 10 очков сверх центра
+# Разные пределы: калибровка должна быстро искать уровень, established-рейтинг
+# обязан переживать случайный апсет без потери прогресса за 5–10 побед.
+_BT_RATING_DELTA_MAX_CALIBRATION = 120
+_BT_RATING_DELTA_MAX_ESTABLISHED = 50
 
 # Ранги: (нижний порог рейтинга, ключ-ассет, отображаемое имя). По возрастанию.
 # Пороги — гипотеза; подвинем по реальному распределению (один список — одна правка).
@@ -4398,8 +4399,13 @@ _BT_RANKS = [
 
 
 def _bt_expected(rating_a: float, rating_b: float) -> float:
-    """Ожидаемый счёт A против B по логистике Elo (0..1)."""
-    return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / _BT_ELO_DIVISOR))
+    """Ожидаемый счёт A против B по Elo, ограниченный диапазоном 25–75%.
+
+    Ограничение сохраняет преимущество фаворита, но не допускает сценарий,
+    где одна осечка стоит ему 5–10 ожидаемых побед над тем же соперником.
+    """
+    raw = 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / _BT_ELO_DIVISOR))
+    return max(_BT_EXPECTED_MIN, min(_BT_EXPECTED_MAX, raw))
 
 
 def _bt_k_factor(games_played: int) -> int:
@@ -4407,15 +4413,21 @@ def _bt_k_factor(games_played: int) -> int:
     return _BT_K_CALIBRATION if games_played < _BT_CALIBRATION_GAMES else _BT_K_ESTABLISHED
 
 
+def _bt_delta_cap(games_played: int) -> int:
+    """Максимальный модуль изменения за один бой для текущей фазы игрока."""
+    return (
+        _BT_RATING_DELTA_MAX_CALIBRATION
+        if games_played < _BT_CALIBRATION_GAMES
+        else _BT_RATING_DELTA_MAX_ESTABLISHED
+    )
+
+
 def _bt_margin_mult(my_final, opp_final) -> float:
     """Множитель за разгром из счёта драфта. При форфейте (счёта нет) — 1.0.
 
-    v2 (2026-07-17): по АБСОЛЮТНОМУ разрыву, не относительному. Старая формула
-    |Δ|/сумма калибровалась под счета 60-80 на игрока; счёт v2 ужал тоталы до
-    35-55 (и прибивает штрафами к нулю) — типичные бои стали «разгромными»
-    (множитель 1.4-1.5 вместо ~1.1), и в паре с Elo-асимметрией фаворитов
-    прод получил «+30 за победу / −100 за поражение». Абсолютный разрыв от
-    целочисленного счёта стабилен: 10 очков → 1.0, 24+ → потолок."""
+    Считается по абсолютному разрыву целочисленного счёта v2: 10 очков → 1.0,
+    20+ → 1.1, нулевой разрыв → 0.9. Узкий диапазон не даёт качеству одной
+    партии перекрыть защитные границы Elo."""
     if my_final is None or opp_final is None:
         return 1.0
     gap = abs((my_final or 0) - (opp_final or 0))
@@ -4423,12 +4435,14 @@ def _bt_margin_mult(my_final, opp_final) -> float:
     return max(_BT_MARGIN_MIN, min(_BT_MARGIN_MAX, m))
 
 
-def _bt_rating_delta(my_rating, opp_rating, score: float, k: int, margin: float) -> int:
-    """Изменение рейтинга за бой (клэмп ±_BT_RATING_DELTA_MAX).
+def _bt_rating_delta(
+    my_rating, opp_rating, score: float, k: int, margin: float, max_delta: int
+) -> int:
+    """Изменение рейтинга за бой с отдельным пределом фазы игрока.
     score: 1 победа / 0.5 ничья / 0 поражение."""
     expected = _bt_expected(my_rating, opp_rating)
     delta = round(k * margin * (score - expected))
-    return max(-_BT_RATING_DELTA_MAX, min(_BT_RATING_DELTA_MAX, delta))
+    return max(-max_delta, min(max_delta, delta))
 
 
 def _bt_apply_floor(rating: int) -> int:
@@ -4541,9 +4555,11 @@ def _bt_apply_ratings(db: Session, battle: DBDraftBattle) -> None:
     guest_margin = _bt_margin_mult(final.get("guest"), final.get("host"))
 
     host_delta = _bt_rating_delta(host_r, guest_r, host_score,
-                                  _bt_k_factor(host_games), host_margin)
+                                  _bt_k_factor(host_games), host_margin,
+                                  _bt_delta_cap(host_games))
     guest_delta = _bt_rating_delta(guest_r, host_r, guest_score,
-                                   _bt_k_factor(guest_games), guest_margin)
+                                   _bt_k_factor(guest_games), guest_margin,
+                                   _bt_delta_cap(guest_games))
 
     host_new = _bt_apply_floor(host_r + host_delta)
     guest_new = _bt_apply_floor(guest_r + guest_delta)
