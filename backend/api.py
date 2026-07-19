@@ -1,12 +1,15 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
 import random
+import secrets
 import threading
 import time
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -42,55 +45,6 @@ _build_cache: dict[int, tuple[float, str]] = {}  # {hero_id: (timestamp, json_st
 # /api/draft/leaderboard — TTL 5 min
 _leaderboard_cache: list | None = None
 _leaderboard_cache_ts: float = 0.0
-
-# /api/draft/evaluate — rate limiting: max 30 requests per 10 min per user_id
-# Uses SQLite (shared across all uvicorn workers) instead of in-memory dict.
-_EVALUATE_RL_WINDOW = 600   # seconds
-_EVALUATE_RL_LIMIT  = 30
-
-
-def _init_rl_table() -> None:
-    """Create rate_limit_evaluate table if it doesn't exist."""
-    from sqlalchemy import text as _text
-    with engine.begin() as conn:
-        conn.execute(_text("""
-            CREATE TABLE IF NOT EXISTS rate_limit_evaluate (
-                user_id   INTEGER NOT NULL,
-                ts        REAL    NOT NULL
-            )
-        """))
-        conn.execute(_text(
-            "CREATE INDEX IF NOT EXISTS idx_rle_user_ts ON rate_limit_evaluate(user_id, ts)"
-        ))
-
-
-def _rl_check_and_record(user_id: int) -> tuple[bool, int]:
-    """Returns (allowed, current_count).
-
-    Uses SQLite as shared store so all uvicorn workers see the same counters.
-    Deletes expired rows for this user, counts remaining, inserts new row.
-    All in one BEGIN…COMMIT so concurrent workers don't race.
-    """
-    from sqlalchemy import text as _text
-    now = time.time()
-    window_start = now - _EVALUATE_RL_WINDOW
-    with engine.begin() as conn:
-        # Clean up expired rows for this user
-        conn.execute(_text(
-            "DELETE FROM rate_limit_evaluate WHERE user_id = :uid AND ts <= :ws"
-        ), {"uid": user_id, "ws": window_start})
-        # Count remaining rows in window
-        row = conn.execute(_text(
-            "SELECT COUNT(*) FROM rate_limit_evaluate WHERE user_id = :uid"
-        ), {"uid": user_id}).fetchone()
-        count = row[0] if row else 0
-        if count >= _EVALUATE_RL_LIMIT:
-            return False, count
-        # Record this request
-        conn.execute(_text(
-            "INSERT INTO rate_limit_evaluate (user_id, ts) VALUES (:uid, :ts)"
-        ), {"uid": user_id, "ts": now})
-        return True, count + 1
 
 # /api/check-subscription — TTL 600s per user_id
 _subscription_cache: dict[int, float] = {}
@@ -180,8 +134,8 @@ from sqlalchemy.orm.attributes import flag_modified
 
 # --- Shared DB layer (единая точка подключения) ---
 from backend.database import get_db, create_all_tables, engine
-from backend.models import BannedUser as DBBannedUser, UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult
-from backend.db import get_user_id_by_token, create_token_for_user, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids, is_user_banned, get_banned_user_ids
+from backend.models import BannedUser as DBBannedUser, UserProfile as DBUserProfile, QuizResult as DBQuizResult, DraftResult as DBDraftResult, DraftChallenge as DBDraftChallenge, MinigameRun as DBMinigameRun
+from backend.db import get_user_id_by_token, create_token_for_user, claim_telegram_init_data, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids, is_user_banned, get_banned_user_ids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
 from backend.stats_db import (
@@ -202,6 +156,7 @@ from backend.config import BAYESIAN_SMOOTHING_C
 from backend.avatar_store import avatar_path, public_avatar_url
 from backend.security_logging import configure_secure_logging
 from backend.telegram_auth import validate_telegram_init_data as _validate_telegram_init_data
+from backend.rate_limit import check_rate_limit
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -236,7 +191,6 @@ def _allowed_cors_origins() -> list[str]:
 # Оставлен только init_stats_tables — он гарантированно зовёт create_all_tables
 # первым шагом, плюс делает свои миграции по stats-таблицам.
 init_stats_tables()
-_init_rl_table()          # rate limiting table for /api/draft/evaluate
 # --- DB init end ---
 
 # Warm up file-backed caches so the first request to each worker doesn't pay the
@@ -246,7 +200,12 @@ _load_hero_matchups_file()
 
 
 # Production: uvicorn backend.api:app --workers 4 --timeout-keep-alive 30
-app = FastAPI(title="Dota Mini App Backend")
+app = FastAPI(
+    title="Dota Mini App Backend",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 
 # CORS разрешён только origin из MINI_APP_URL и явного CORS_ALLOWED_ORIGINS.
@@ -272,6 +231,41 @@ if "image/" not in _gzip_mod.DEFAULT_EXCLUDED_CONTENT_TYPES:
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
+def _request_subject(request: Request) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"ip:{host}"
+
+
+def _enforce_rate(
+    scope: str,
+    subject: str | int,
+    *,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    allowed, _count = check_rate_limit(
+        scope, subject, limit=limit, window_seconds=window_seconds
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many requests")
+
+
+def _gateway_auth_required(path: str) -> bool:
+    """Protect formerly public data endpoints from anonymous scraping/DoS."""
+    exact = {
+        "/api/hero_matchups",
+        "/api/items_db",
+        "/api/meta",
+        "/api/news",
+        "/api/draft/random",
+        "/api/draft/matchups_all",
+        "/api/draft/popularity",
+        "/api/fantasy/players",
+        "/api/teammates/founders",
+    }
+    return path in exact or path.startswith("/api/hero/")
+
+
 @app.middleware("http")
 async def app_token_from_authorization(request: Request, call_next):
     """Accept app tokens in a header so they never enter browser/proxy URLs.
@@ -280,11 +274,24 @@ async def app_token_from_authorization(request: Request, call_next):
     the incoming request target (and therefore access logs) remains token-free.
     """
     authorization = request.headers.get("authorization", "")
+    content_length = request.headers.get("content-length")
+    if request.method in {"POST", "PUT", "PATCH"} and content_length:
+        try:
+            if int(content_length) > 1_048_576:
+                return Response(status_code=413, content="request body too large")
+        except ValueError:
+            return Response(status_code=400, content="invalid content-length")
     scheme, separator, token = authorization.partition(" ")
     original_query_string = request.scope.get("query_string", b"")
     raw_query = original_query_string.decode("latin-1")
     pairs = parse_qsl(raw_query, keep_blank_values=True)
     has_query_token = any(key == "token" for key, _value in pairs)
+    if has_query_token:
+        # Query-string credentials are rejected. Remove them from the ASGI
+        # scope as well so application-server access logs do not retain them.
+        safe_pairs = [(key, value) for key, value in pairs if key != "token"]
+        request.scope["query_string"] = urlencode(safe_pairs).encode("ascii")
+        return Response(status_code=400, content="credentials must use Authorization header")
     injected_query_token = False
     if separator and scheme.lower() == "bearer" and not has_query_token:
         token = token.strip()
@@ -292,6 +299,40 @@ async def app_token_from_authorization(request: Request, call_next):
             pairs.append(("token", token))
             request.scope["query_string"] = urlencode(pairs).encode("ascii")
             injected_query_token = True
+    if request.method != "OPTIONS" and _gateway_auth_required(request.url.path):
+        if not injected_query_token:
+            return Response(
+                status_code=401,
+                content="authentication required",
+                headers={"Cache-Control": "no-store"},
+            )
+        gateway_user_id = await asyncio.to_thread(get_user_id_by_token, token)
+        if gateway_user_id is None:
+            return Response(
+                status_code=401,
+                content="invalid or expired session",
+                headers={"Cache-Control": "no-store"},
+            )
+        scope = (
+            "large_data_read"
+            if request.url.path == "/api/draft/matchups_all"
+            else "authenticated_data_read"
+        )
+        limit = 12 if scope == "large_data_read" else 240
+        try:
+            await asyncio.to_thread(
+                _enforce_rate,
+                scope,
+                gateway_user_id,
+                limit=limit,
+                window_seconds=60,
+            )
+        except HTTPException as exc:
+            return Response(
+                status_code=exc.status_code,
+                content="too many requests",
+                headers={"Cache-Control": "no-store"},
+            )
     try:
         response = await call_next(request)
     finally:
@@ -347,7 +388,7 @@ def get_cached_avatar(avatar_key: str):
 # ========== Pydantic Models ==========
 
 class CheckRequest(BaseModel):
-    token: str  # одноразовый токен из URL мини-апа
+    token: str = Field(min_length=20, max_length=256)
 
 
 class CheckResponse(BaseModel):
@@ -355,7 +396,7 @@ class CheckResponse(BaseModel):
 
 
 class SaveResultRequest(BaseModel):
-    token: str
+    token: str = Field(min_length=20, max_length=256)
     result: dict
 
 
@@ -403,10 +444,12 @@ class RefreshTokenResponse(BaseModel):
 # ========== API Endpoints ==========
 
 @app.post("/api/refresh_token", response_model=RefreshTokenResponse)
-async def refresh_token(data: RefreshTokenRequest):
-    """Выдаёт новый токен по валидному Telegram WebApp initData.
-    Нужен для silent refresh когда старый токен истёк (24ч),
-    чтобы пользователю не приходилось заново нажимать /start в боте."""
+async def refresh_token(data: RefreshTokenRequest, request: Request):
+    """Issue a short-lived app session from fresh signed Telegram initData."""
+    # Count malformed and forged attempts too.  Keeping this after signature
+    # validation let an unauthenticated caller spend CPU/DB connections without
+    # ever entering the limiter.
+    _enforce_rate("auth_refresh_ip", _request_subject(request), limit=20, window_seconds=300)
     params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
     if params is None:
         raise HTTPException(status_code=401, detail="Invalid initData signature")
@@ -421,6 +464,10 @@ async def refresh_token(data: RefreshTokenRequest):
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid user payload")
 
+    _enforce_rate("auth_refresh_user", user_id, limit=5, window_seconds=300)
+    claimed = await asyncio.to_thread(claim_telegram_init_data, data.init_data, user_id)
+    if not claimed:
+        raise HTTPException(status_code=409, detail="initData has already been used")
     new_token = await asyncio.to_thread(create_token_for_user, user_id)
     return RefreshTokenResponse(token=new_token)
 
@@ -435,6 +482,8 @@ async def check_subscription(data: CheckRequest):
     if not user_id:
         return CheckResponse(allowed=False)
 
+    _enforce_rate("subscription_check", user_id, limit=10, window_seconds=60)
+
     # 2. кеш: если подписка уже подтверждена менее 600 сек назад — не идём в Telegram
     cached_ts = _subscription_cache.get(user_id)
     if cached_ts is not None and time.time() - cached_ts < 600:
@@ -444,7 +493,7 @@ async def check_subscription(data: CheckRequest):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
     params = {"chat_id": CHECK_CHAT_ID, "user_id": user_id}
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
         r = await client.get(url, params=params)
 
     if r.status_code != 200:
@@ -470,6 +519,7 @@ def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    _enforce_rate("telegram_identity_sync", user_id, limit=10, window_seconds=300)
 
     params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
     if params is None:
@@ -582,7 +632,7 @@ def get_profile_full(token: str, db: Session = Depends(get_db)):
     settings = db_profile.settings or {}
 
     return UserStats(
-        user_id=user_id,
+        user_id=_tm_public_user_id(user_id),
         username=settings.get("username"),
         first_name=settings.get("first_name"),
         last_name=settings.get("last_name"),
@@ -599,6 +649,13 @@ def save_result(data: SaveResultRequest, db: Session = Depends(get_db)):
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    _enforce_rate("quiz_save", user_id, limit=30, window_seconds=3600)
+    try:
+        encoded_result = json.dumps(data.result, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="invalid result")
+    if len(encoded_result.encode("utf-8")) > 65_536:
+        raise HTTPException(status_code=413, detail="result is too large")
 
     # Профиль для FK
     db_user_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
@@ -1204,18 +1261,32 @@ async def api_news():
         return {}
     row = rows[0]
     published = row.get("published_at")
+    raw_link = str(row.get("link") or "").strip()
+    parsed_link = urlsplit(raw_link)
+    safe_link = ""
+    if (
+        parsed_link.scheme == "https"
+        and parsed_link.hostname
+        and (
+            parsed_link.hostname == "dota2.com"
+            or parsed_link.hostname.endswith(".dota2.com")
+            or parsed_link.hostname == "steampowered.com"
+            or parsed_link.hostname.endswith(".steampowered.com")
+        )
+    ):
+        safe_link = raw_link
     return {
         "title": row.get("title") or "",
-        "link": row.get("link") or "",
+        "link": safe_link,
         "published_at": published.isoformat() if published is not None else None,
     }
 
 
 class FeedbackRequest(BaseModel):
-    token: str
-    rating: int | None = None
-    tags: list[str] = []
-    message: str
+    token: str = Field(min_length=20, max_length=256)
+    rating: int | None = Field(default=None, ge=1, le=4)
+    tags: list[str] = Field(default_factory=list, max_length=10)
+    message: str = Field(min_length=1, max_length=4000)
 
 
 @app.post("/api/feedback")
@@ -1224,6 +1295,8 @@ def submit_feedback(data: FeedbackRequest, db: Session = Depends(get_db)):
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    _enforce_rate("feedback", user_id, limit=5, window_seconds=3600)
 
     if data.rating is not None and data.rating not in (1, 2, 3, 4):
         raise HTTPException(status_code=422, detail="rating must be 1, 2, 3 or 4")
@@ -1327,8 +1400,40 @@ _DRAFT_POOLS_BY_POS = {
 
 
 @app.get("/api/draft/random")
-def api_draft_random():
+def api_draft_random(token: str, db: Session = Depends(get_db)):
     """Returns a random enemy draft generated from per-position hero pools."""
+    user_id = get_user_id_by_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    _enforce_rate("draft_challenge", user_id, limit=20, window_seconds=3600)
+
+    # One active challenge per player. The profile row serializes concurrent
+    # reroll attempts across workers; returning the same challenge prevents
+    # cherry-picking an easy enemy draft for the ranked leaderboard.
+    profile = (
+        db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id == user_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if profile is None:
+        raise HTTPException(status_code=409, detail="profile is not initialized")
+    now = datetime.now(timezone.utc)
+    active = (
+        db.query(DBDraftChallenge)
+        .filter(DBDraftChallenge.user_id == user_id)
+        .filter(DBDraftChallenge.consumed_at.is_(None))
+        .filter(DBDraftChallenge.expires_at > now)
+        .order_by(DBDraftChallenge.created_at.desc())
+        .first()
+    )
+    if active is not None:
+        return {
+            "match_id": 0,
+            "challenge_id": active.challenge_id,
+            "enemy": active.enemy,
+        }
+
     enemy = []
     used_ids: set[int] = set()
     for pos in (1, 2, 3, 4, 5):
@@ -1337,7 +1442,20 @@ def api_draft_random():
         used_ids.add(hero_id)
         enemy.append({"hero_id": hero_id, "position": f"pos {pos}"})
 
-    return {"match_id": 0, "enemy": enemy}
+    db.query(DBDraftChallenge).filter(
+        DBDraftChallenge.user_id == user_id,
+        DBDraftChallenge.expires_at <= now,
+    ).delete(synchronize_session=False)
+    challenge = DBDraftChallenge(
+        challenge_id=secrets.token_urlsafe(32),
+        user_id=user_id,
+        enemy=enemy,
+        created_at=now,
+        expires_at=now + timedelta(minutes=30),
+    )
+    db.add(challenge)
+    db.commit()
+    return {"match_id": 0, "challenge_id": challenge.challenge_id, "enemy": enemy}
 
 
 # Cache for popularity payload — derived from dota_builds.json once per process.
@@ -1420,14 +1538,17 @@ def api_draft_popularity():
 
 
 class DraftHeroEntry(BaseModel):
-    hero_id: int
-    position: str = ""
+    hero_id: int = Field(ge=1, le=1000)
+    position: str = Field(default="", max_length=16)
 
 
 class DraftEvaluateRequest(BaseModel):
-    enemy: list[DraftHeroEntry] = []
-    ally: list[DraftHeroEntry] = []
-    token: str | None = None
+    enemy: list[DraftHeroEntry] = Field(min_length=5, max_length=5)
+    ally: list[DraftHeroEntry] = Field(min_length=5, max_length=5)
+    token: str = Field(min_length=20, max_length=256)
+    challenge_id: str | None = Field(
+        default=None, min_length=32, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 def _pos_str_to_num(pos) -> int | None:
@@ -1581,41 +1702,82 @@ def api_draft_evaluate(data: DraftEvaluateRequest, db: Session = Depends(get_db)
     """
     # ── Анти-чит: во время активной битвы драфтов оценка недоступна ─────────
     # «Тренировка»/«Анализ» считают той же формулой, которой судится битва, —
-    # открытый evaluate в бою = идеальная подсказка. Fail-open: любая ошибка
-    # проверки открывает доступ (хуже запереть честного, чем пропустить чит).
-    rl_user_id = get_user_id_by_token(data.token) if data.token else None
-    if rl_user_id:
-        try:
-            if _bt_draft_locked(db, rl_user_id):
-                raise HTTPException(
-                    status_code=409,
-                    detail="Идёт битва драфтов — анализ откроется после её завершения.",
-                )
-        except HTTPException:
-            raise
-        except Exception:
-            logger.exception("[battle] draft-lock check failed, failing open")
+    # открытый evaluate в бою = идеальная подсказка. Проверка fail-closed:
+    # при ошибке состояния бой не должен превращаться в источник подсказок.
+    rl_user_id = get_user_id_by_token(data.token)
+    if rl_user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    all_ids = [entry.hero_id for entry in data.ally + data.enemy]
+    if len(set(all_ids)) != 10:
+        raise HTTPException(status_code=422, detail="heroes must be unique")
+    for team in (data.ally, data.enemy):
+        positions = [_pos_str_to_num(entry.position) for entry in team]
+        if len(positions) != 5 or set(positions) != {1, 2, 3, 4, 5}:
+            raise HTTPException(status_code=422, detail="each team must contain positions 1..5")
+    known_heroes = set((_load_hero_matchups_file() or {}).keys())
+    if known_heroes and any(str(hero_id) not in known_heroes for hero_id in all_ids):
+        raise HTTPException(status_code=422, detail="unknown hero")
+
+    try:
+        if _bt_draft_locked(db, rl_user_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Идёт битва драфтов — анализ откроется после её завершения.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("[battle] draft-lock check failed, failing closed")
+        raise HTTPException(status_code=503, detail="draft availability check failed")
 
     # ── Rate limiting: 30 req / 10 min per authenticated user ───────────────
-    # Uses SQLite so all uvicorn workers share the same counters.
-    if rl_user_id:
-        allowed, count = _rl_check_and_record(rl_user_id)
-        logger.info("[rate_limit] user_id=%s window_count=%d allowed=%s", rl_user_id, count, allowed)
-        if not allowed:
-            raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите немного.")
+    # Persistent DB-backed counter shared by all Uvicorn workers.
+    _enforce_rate(
+        "draft_evaluate", rl_user_id,
+        limit=30, window_seconds=600,
+    )
+
+    ranked_challenge = None
+    if data.challenge_id:
+        ranked_challenge = (
+            db.query(DBDraftChallenge)
+            .filter(DBDraftChallenge.challenge_id == data.challenge_id)
+            .with_for_update()
+            .first()
+        )
+        now = datetime.now(timezone.utc)
+        if ranked_challenge is None or ranked_challenge.user_id != rl_user_id:
+            raise HTTPException(status_code=404, detail="draft challenge not found")
+        expires_at = ranked_challenge.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if ranked_challenge.consumed_at is not None or expires_at <= now:
+            raise HTTPException(status_code=409, detail="draft challenge is no longer active")
+        expected_enemy = sorted(
+            (int(item["hero_id"]), _pos_str_to_num(item.get("position")))
+            for item in (ranked_challenge.enemy or [])
+        )
+        submitted_enemy = sorted(
+            (entry.hero_id, _pos_str_to_num(entry.position)) for entry in data.enemy
+        )
+        if expected_enemy != submitted_enemy:
+            raise HTTPException(status_code=422, detail="enemy draft does not match challenge")
 
     result = compute_draft_score(data.ally, data.enemy)
 
     # ── Сохраняем результат если передан токен ───────────────────────────────
-    uid = get_user_id_by_token(data.token) if data.token else None
-    if uid:
+    if ranked_challenge is not None:
+        ranked_challenge.consumed_at = datetime.now(timezone.utc)
         db.add(DBDraftResult(
-            user_id=uid,
+            user_id=rl_user_id,
             total_score=result["total_score"],
             ally_heroes=result["ally_ids"],
             enemy_heroes=result["enemy_ids"],
         ))
         db.commit()
+
+    result["ranked"] = ranked_challenge is not None
 
     return result
 
@@ -1692,7 +1854,7 @@ def _current_month_start_utc() -> datetime:
 
 
 @app.get("/api/draft/leaderboard")
-def api_draft_leaderboard(db: Session = Depends(get_db)):
+def api_draft_leaderboard(token: str, db: Session = Depends(get_db)):
     """Топ-25 пользователей по сумме топ-5 результатов за текущий месяц.
 
     Правило: на уникальный союзный состав (sorted ally_heroes) засчитываются
@@ -1700,6 +1862,9 @@ def api_draft_leaderboard(db: Session = Depends(get_db)):
     месяца — рейтинг обнуляется 1-го числа каждого месяца.
     """
     global _leaderboard_cache, _leaderboard_cache_ts
+
+    if get_user_id_by_token(token) is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
 
     if _leaderboard_cache is not None and time.time() - _leaderboard_cache_ts < 300:
         return _leaderboard_cache
@@ -1749,11 +1914,9 @@ def api_draft_leaderboard_me(token: str = "", db: Session = Depends(get_db)):
     Использует то же правило дедупа по союзному составу и тот же месячный
     фильтр, что и /leaderboard.
     """
-    if not token:
-        return {"rank": None, "top5_sum": None}
     user_id = get_user_id_by_token(token)
     if not user_id:
-        return {"rank": None, "top5_sum": None}
+        raise HTTPException(status_code=401, detail="unauthorized")
 
     if is_user_banned(user_id):
         return {"banned": True, "rank": None, "top5_sum": None}
@@ -1902,8 +2065,8 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
 
 
 class AnalyticsEventBody(BaseModel):
-    token: str
-    event: str
+    token: str = Field(min_length=20, max_length=256)
+    event: str = Field(min_length=1, max_length=64)
 
 
 @app.post("/api/analytics/event")
@@ -1915,6 +2078,7 @@ def api_analytics_event(data: AnalyticsEventBody):
     user_id = get_user_id_by_token(data.token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
+    _enforce_rate("analytics", user_id, limit=120, window_seconds=60)
     # log_event сам глотает любые ошибки записи — endpoint всегда возвращает ok.
     from backend.db import log_event as _log_event
     _log_event(data.event, user_id)
@@ -1926,21 +2090,252 @@ def api_analytics_event(data: AnalyticsEventBody):
 # «Выше/Ниже»: пул героев с агрегатами (популярность/длительность/ранг) +
 # хранение личного рекорда стрика в user_profiles.settings.minigame_best.
 
+_MINIGAME_MODES: dict[str, tuple[str, str]] = {
+    "pop": ("hl_pop", "matches"),
+    "kills": ("hl_kills", "kills"),
+    "deaths": ("hl_deaths", "deaths"),
+}
+_MINIGAME_GAMES = frozenset(game for game, _metric in _MINIGAME_MODES.values())
+_MINIGAME_RUN_TTL_MINUTES = 30
+
+
+class MinigameRunStart(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+    mode: str = Field(min_length=3, max_length=16)
+
+
+class MinigameRunAnswer(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+    run_id: str = Field(min_length=32, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    round: int = Field(ge=0, le=1_000_000)
+    guess: str = Field(pattern=r"^(higher|lower)$")
+
+
 class MinigameScore(BaseModel):
-    token: str
-    game: str          # идентификатор игры, напр. "hl"
+    token: str = Field(min_length=20, max_length=256)
+    game: str = Field(max_length=16)
     streak: int
+
+
+def _minigame_best_for_profile(row: DBUserProfile | None, game: str) -> int:
+    try:
+        return max(0, int((((row.settings if row else None) or {}).get("minigame_best") or {}).get(game) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _minigame_update_best(db: Session, user_id: int, game: str, streak: int) -> int:
+    row = db.get(DBUserProfile, user_id)
+    if row is None:
+        row = DBUserProfile(user_id=user_id, favorite_heroes=[], settings={})
+        db.add(row)
+        db.flush()
+    settings = dict(row.settings or {})
+    bests = dict(settings.get("minigame_best") or {})
+    best = max(_minigame_best_for_profile(row, game), max(0, int(streak)))
+    bests[game] = best
+    settings["minigame_best"] = bests
+    row.settings = settings
+    flag_modified(row, "settings")
+    return best
+
+
+def _minigame_candidates(pool: list[dict], metric: str) -> list[tuple[int, float]]:
+    out: list[tuple[int, float]] = []
+    for hero in pool:
+        try:
+            hero_id = int(hero["id"])
+            value = float(hero[metric])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if hero_id > 0 and value > 0:
+            out.append((hero_id, value))
+    return out
+
+
+def _minigame_pick(
+    candidates: list[tuple[int, float]],
+    *,
+    avoid_ids: set[int],
+    avoid_value: float | None,
+) -> tuple[int, float]:
+    available = [
+        item for item in candidates
+        if item[0] not in avoid_ids and (avoid_value is None or item[1] != avoid_value)
+    ]
+    if not available:
+        available = [item for item in candidates if avoid_value is None or item[1] != avoid_value]
+    if not available:
+        raise HTTPException(status_code=503, detail="minigame data unavailable")
+    return secrets.choice(available)
 
 
 @app.get("/api/minigames/hl/pool")
 async def api_minigame_hl_pool(token: str):
-    """Пул героев для «Выше/Ниже». Пары/раунды собирает фронт из этого пула.
-    Тяжёлый пересчёт кэшируется на 12ч — гоняем в threadpool, чтобы не блокировать loop."""
+    """Legacy client-side game data is intentionally no longer exposed."""
     if get_user_id_by_token(token) is None:
         raise HTTPException(status_code=401, detail="unauthorized")
+    raise HTTPException(status_code=410, detail="use server-authoritative run API")
+
+
+@app.post("/api/minigames/run/start")
+async def api_minigame_run_start(data: MinigameRunStart, db: Session = Depends(get_db)):
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    mode = (data.mode or "").removeprefix("hl_")
+    config = _MINIGAME_MODES.get(mode)
+    if config is None:
+        raise HTTPException(status_code=422, detail="invalid mode")
+    _enforce_rate("minigame_start", user_id, limit=12, window_seconds=300)
+
+    game, metric = config
+    profile = (
+        db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id == user_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if profile is None:
+        profile = DBUserProfile(user_id=user_id, favorite_heroes=[], settings={})
+        db.add(profile)
+        db.flush()
+
+    now = datetime.now(timezone.utc)
+    active_run = (
+        db.query(DBMinigameRun)
+        .filter(DBMinigameRun.user_id == user_id)
+        .filter(DBMinigameRun.game == game)
+        .filter(DBMinigameRun.status == "active")
+        .with_for_update()
+        .first()
+    )
+    if active_run is not None:
+        active_expiry = active_run.expires_at
+        if active_expiry.tzinfo is None:
+            active_expiry = active_expiry.replace(tzinfo=timezone.utc)
+        if active_expiry > now:
+            return {
+                "run_id": active_run.run_id,
+                "game": game,
+                "round": active_run.round,
+                "streak": active_run.streak,
+                "best": _minigame_best_for_profile(profile, game),
+                "reference": {
+                    "id": active_run.reference_id,
+                    "value": active_run.reference_value,
+                },
+                "challenger": {"id": active_run.challenger_id},
+            }
+        active_run.status = "abandoned"
+
     from backend.stats_db import get_minigame_hl_pool
     pool = await asyncio.to_thread(get_minigame_hl_pool)
-    return {"heroes": pool}
+    candidates = _minigame_candidates(pool, metric)
+    if len(candidates) < 2:
+        raise HTTPException(status_code=503, detail="minigame data unavailable")
+    reference_id, reference_value = _minigame_pick(
+        candidates, avoid_ids=set(), avoid_value=None
+    )
+    challenger_id, challenger_value = _minigame_pick(
+        candidates, avoid_ids={reference_id}, avoid_value=reference_value
+    )
+    run = DBMinigameRun(
+        run_id=secrets.token_urlsafe(32),
+        user_id=user_id,
+        game=game,
+        metric=metric,
+        reference_id=reference_id,
+        reference_value=reference_value,
+        challenger_id=challenger_id,
+        challenger_value=challenger_value,
+        round=0,
+        streak=0,
+        recent_hero_ids=[reference_id, challenger_id],
+        status="active",
+        created_at=now,
+        updated_at=now,
+        expires_at=now + timedelta(minutes=_MINIGAME_RUN_TTL_MINUTES),
+    )
+    db.add(run)
+    db.commit()
+    return {
+        "run_id": run.run_id,
+        "game": game,
+        "round": 0,
+        "streak": 0,
+        "best": _minigame_best_for_profile(profile, game),
+        "reference": {"id": reference_id, "value": reference_value},
+        "challenger": {"id": challenger_id},
+    }
+
+
+@app.post("/api/minigames/run/answer")
+async def api_minigame_run_answer(data: MinigameRunAnswer, db: Session = Depends(get_db)):
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    _enforce_rate("minigame_answer", user_id, limit=180, window_seconds=60)
+    run = (
+        db.query(DBMinigameRun)
+        .filter(DBMinigameRun.run_id == data.run_id)
+        .with_for_update()
+        .first()
+    )
+    if run is None or run.user_id != user_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    now = datetime.now(timezone.utc)
+    expires_at = run.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if run.status != "active" or expires_at <= now:
+        if run.status == "active":
+            run.status = "expired"
+            db.commit()
+        raise HTTPException(status_code=409, detail="run is not active")
+    if data.round != run.round:
+        raise HTTPException(status_code=409, detail="stale or replayed round")
+
+    correct = (
+        (data.guess == "higher" and run.challenger_value > run.reference_value)
+        or (data.guess == "lower" and run.challenger_value < run.reference_value)
+    )
+    revealed_value = run.challenger_value
+    next_challenger: dict | None = None
+    if correct:
+        run.streak += 1
+        run.round += 1
+        best = _minigame_update_best(db, user_id, run.game, run.streak)
+        from backend.stats_db import get_minigame_hl_pool
+        pool = await asyncio.to_thread(get_minigame_hl_pool)
+        candidates = _minigame_candidates(pool, run.metric)
+        recent = [int(x) for x in (run.recent_hero_ids or []) if isinstance(x, int)]
+        next_id, next_value = _minigame_pick(
+            candidates,
+            avoid_ids=set(recent[-40:]) | {run.challenger_id},
+            avoid_value=run.challenger_value,
+        )
+        run.reference_id = run.challenger_id
+        run.reference_value = run.challenger_value
+        run.challenger_id = next_id
+        run.challenger_value = next_value
+        run.recent_hero_ids = (recent + [next_id])[-40:]
+        flag_modified(run, "recent_hero_ids")
+        next_challenger = {"id": next_id}
+    else:
+        run.status = "finished"
+        best = _minigame_update_best(db, user_id, run.game, run.streak)
+    run.updated_at = now
+    db.commit()
+    return {
+        "correct": correct,
+        "round": run.round,
+        "revealed_value": revealed_value,
+        "streak": run.streak,
+        "best": best,
+        "challenger": next_challenger,
+        "finished": not correct,
+    }
 
 
 @app.get("/api/minigames/best")
@@ -1949,9 +2344,10 @@ def api_minigame_best(token: str, game: str, db: Session = Depends(get_db)):
     user_id = get_user_id_by_token(token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
+    if game not in _MINIGAME_GAMES:
+        raise HTTPException(status_code=422, detail="invalid game")
     row = db.get(DBUserProfile, user_id)
-    best = ((row.settings if row else None) or {}).get("minigame_best") or {}
-    return {"best": int(best.get(game) or 0)}
+    return {"best": _minigame_best_for_profile(row, game)}
 
 
 @app.get("/api/minigames/leaderboard")
@@ -1960,6 +2356,8 @@ async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = D
     user_id = get_user_id_by_token(token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
+    if game not in _MINIGAME_GAMES:
+        raise HTTPException(status_code=422, detail="invalid game")
     from backend.stats_db import get_minigame_leaderboard
     data = await asyncio.to_thread(get_minigame_leaderboard, game)
 
@@ -1990,20 +2388,11 @@ async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = D
 
 @app.post("/api/minigames/score")
 def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
-    """Сохраняет результат: обновляет личный рекорд, если стрик выше прошлого."""
+    """Reject legacy browser-asserted scores; only run/answer can score."""
     user_id = get_user_id_by_token(data.token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
-    if not isinstance(data.streak, int) or data.streak < 0 or data.streak > 100000:
-        raise HTTPException(status_code=422, detail="invalid streak")
-
-    row = db.get(DBUserProfile, user_id)
-    best = dict(((row.settings if row else None) or {}).get("minigame_best") or {})
-    new_best = max(int(best.get(data.game) or 0), int(data.streak))
-    best[data.game] = new_best
-    from backend.db import upsert_user_profile_settings
-    upsert_user_profile_settings(user_id, {"minigame_best": best})
-    return {"ok": True, "best": new_best}
+    raise HTTPException(status_code=410, detail="client-supplied scores are not accepted")
 
 
 # ── Шеринг результата: карточка-картинка + prepared inline message ──
@@ -2011,7 +2400,7 @@ def api_minigame_score(data: MinigameScore, db: Session = Depends(get_db)):
 # save_prepared_inline_message (фото + подпись + url-кнопка «Играть» на бота —
 # кнопка ведёт в /start, чтобы НЕ обходить гейт подписки).
 
-_MGHL_MODES_SET = {"pop", "kills", "deaths"}
+_MGHL_MODES_SET = frozenset(_MINIGAME_MODES)
 
 
 def _normalize_mode(mode: str) -> str | None:
@@ -2066,76 +2455,87 @@ async def _get_share_bot():
     return _share_bot
 
 
-@app.get("/api/minigames/share-image")
+def _minigame_share_signature(run_id: str, expires: int) -> str:
+    key = hashlib.sha256((BOT_TOKEN + "\0minigame-share-v1").encode("utf-8")).digest()
+    return hmac.new(key, f"{run_id}:{expires}".encode("ascii"), hashlib.sha256).hexdigest()
+
+
+_share_image_cache: dict[str, tuple[float, bytes]] = {}
+
+
+@app.get("/api/minigames/share-image", include_in_schema=False)
 async def api_minigame_share_image(
-    mode: str, streak: int,
-    h1: str = "", n1: str = "", v1: str = "",
-    h2: str = "", n2: str = "", v2: str = "",
+    run_id: str = Query(min_length=32, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"),
+    expires: int = Query(gt=0),
+    sig: str = Query(min_length=64, max_length=64, pattern=r"^[0-9a-f]+$"),
+    db: Session = Depends(get_db),
 ):
     """JPEG-карточка результата. Без токена — Telegram тянет её как photo_url.
     Контент детерминирован параметрами, поэтому агрессивно кэшируется."""
-    mode = _normalize_mode(mode)
-    if mode is None:
-        raise HTTPException(status_code=400, detail="bad mode")
-    streak = max(0, min(int(streak), 100000))
-
-    def _slug(s: str) -> str:
-        return "".join(c for c in (s or "") if c.isalnum() or c in "_-")[:40]
-
-    def _nm(s: str) -> str:
-        return ((s or "").strip()[:24]) or "?"
-
-    def _val(s: str):
-        try:
-            return float(s)
-        except (TypeError, ValueError):
-            return None
-
-    heroes = [(_slug(h1), _nm(n1), _val(v1)), (_slug(h2), _nm(n2), _val(v2))]
-    from backend.share_card import render_share_card
-    jpg = await asyncio.to_thread(render_share_card, mode, streak, heroes)
+    now_ts = int(time.time())
+    expected = _minigame_share_signature(run_id, expires)
+    if expires < now_ts or expires > now_ts + 1800 or not hmac.compare_digest(expected, sig):
+        raise HTTPException(status_code=403, detail="invalid or expired share URL")
+    run = db.get(DBMinigameRun, run_id)
+    if run is None or run.status != "finished":
+        raise HTTPException(status_code=404, detail="result not found")
+    cached = _share_image_cache.get(run_id)
+    if cached and time.time() - cached[0] < 1800:
+        jpg = cached[1]
+    else:
+        mode = run.game.removeprefix("hl_")
+        heroes = [
+            ("", f"Hero #{run.reference_id}", run.reference_value),
+            ("", f"Hero #{run.challenger_id}", run.challenger_value),
+        ]
+        from backend.share_card import render_share_card
+        jpg = await asyncio.to_thread(render_share_card, mode, run.streak, heroes)
+        if len(_share_image_cache) >= 100:
+            oldest = min(_share_image_cache, key=lambda key: _share_image_cache[key][0])
+            _share_image_cache.pop(oldest, None)
+        _share_image_cache[run_id] = (time.time(), jpg)
     # GZip для image/* отключён глобально (см. DEFAULT_EXCLUDED_CONTENT_TYPES выше),
     # поэтому JPEG уходит как есть — без сжатия и без Content-Encoding-заголовка,
     # который строгий фетчер Telegram мог не разжать.
     return Response(
         content=jpg, media_type="image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={
+            "Cache-Control": "public, max-age=900, immutable",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )
 
 
 class MinigameShareReq(BaseModel):
-    token: str
-    mode: str
-    streak: int
-    h1: str = ""
-    n1: str = ""
-    v1: float | None = None
-    h2: str = ""
-    n2: str = ""
-    v2: float | None = None
+    token: str = Field(min_length=20, max_length=256)
+    run_id: str = Field(min_length=32, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 @app.post("/api/minigames/share")
-async def api_minigame_share(data: MinigameShareReq):
+async def api_minigame_share(data: MinigameShareReq, db: Session = Depends(get_db)):
     """Готовит inline-сообщение с карточкой и возвращает его id для
     Telegram.WebApp.shareMessage(id) на фронте."""
     user_id = get_user_id_by_token(data.token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
-    mode = _normalize_mode(data.mode)   # принимает и «deaths», и «hl_deaths»
-    if mode is None:
-        raise HTTPException(status_code=400, detail="bad mode")
+    _enforce_rate("minigame_share", user_id, limit=5, window_seconds=600)
+    run = db.get(DBMinigameRun, data.run_id)
+    if run is None or run.user_id != user_id or run.status != "finished":
+        raise HTTPException(status_code=404, detail="verified result not found")
+    mode = run.game.removeprefix("hl_")
     base = _public_base()
     if not base:
         logger.warning("[minigame_share] MINI_APP_URL не задаёт публичный URL")
         raise HTTPException(status_code=503, detail="share unavailable")
 
-    streak = max(0, min(int(data.streak), 100000))
+    streak = run.streak
+    expires = int(time.time()) + 900
     from urllib.parse import urlencode
     qs = urlencode({
-        "mode": mode, "streak": streak,
-        "h1": data.h1, "n1": data.n1, "v1": "" if data.v1 is None else data.v1,
-        "h2": data.h2, "n2": data.n2, "v2": "" if data.v2 is None else data.v2,
+        "run_id": run.run_id,
+        "expires": expires,
+        "sig": _minigame_share_signature(run.run_id, expires),
     })
     img_url = f"{base}/api/minigames/share-image?{qs}"
 
@@ -2230,10 +2630,11 @@ _TM_MAX_FAVORITE_HEROES = 3
 # founder_number (см. миграцию 0014). Янтарная метка на карточке + счётчик
 # «осталось N мест» на экране заполнения. Сам номер наружу не отдаём.
 _TM_FOUNDER_CAP = 1000
-# Админы (модерация профилей из миниапа). Зеркалит ADMIN_IDS в bot.py —
-# держать в синхроне. Можно переопределить через env TM_ADMIN_IDS="id1,id2".
+# Admin authority is deployment configuration, never a source-code default.
 _TM_ADMIN_IDS: frozenset[int] = frozenset(
-    int(x) for x in os.environ.get("TM_ADMIN_IDS", "556944111").split(",") if x.strip()
+    int(x)
+    for x in os.environ.get("TM_ADMIN_IDS", os.environ.get("ADMIN_IDS", "")).split(",")
+    if x.strip().isdigit()
 )
 # Замок «раньше игры быть не могло»: нельзя оставить отзыв раньше, чем
 # проходит партия. Турбо ~20 мин, обычная ~40 — 30 мин это безопасный порог,
@@ -2306,12 +2707,50 @@ def _tm_authenticate(token: str, db: Session) -> int:
     return uid
 
 
+def _tm_enforce_mutation(user_id: int) -> None:
+    """Bound authenticated write/churn traffic across all API workers."""
+    _enforce_rate("teammate_mutation", user_id, limit=30, window_seconds=300)
+
+
 def _tm_require_user(token: str) -> int:
     """Validates token and returns user_id, or raises 401."""
     uid = get_user_id_by_token(token)
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return uid
+
+
+_TM_PUBLIC_ID_KEY = hashlib.sha256(
+    (BOT_TOKEN + "\0teammate-public-id-v1").encode("utf-8")
+).digest()
+
+
+def _tm_public_user_id(user_id: int) -> int:
+    """Return a stable, JS-safe pseudonym instead of a Telegram user id.
+
+    The teammate UI needs an identifier for actions and DOM reconciliation, but
+    exposing Telegram's real numeric id lets clients correlate and enumerate
+    people outside the app.  A keyed 52-bit alias is exact in JavaScript and is
+    rotated automatically with the bot token.
+    """
+    digest = hmac.new(
+        _TM_PUBLIC_ID_KEY, str(int(user_id)).encode("ascii"), hashlib.sha256
+    ).digest()
+    return (int.from_bytes(digest[:8], "big") & ((1 << 52) - 1)) or 1
+
+
+def _tm_internal_user_id(db: Session, public_id: int) -> int | None:
+    """Resolve a public teammate alias without accepting raw Telegram ids."""
+    try:
+        candidate = int(public_id)
+    except (TypeError, ValueError):
+        return None
+    if candidate <= 0 or candidate >= (1 << 52):
+        return None
+    for (user_id,) in db.query(DBTeammateProfile.user_id).all():
+        if hmac.compare_digest(str(_tm_public_user_id(user_id)), str(candidate)):
+            return int(user_id)
+    return None
 
 
 def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) -> dict:
@@ -2323,7 +2762,7 @@ def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) ->
     """
     s = settings or {}
     return {
-        "user_id":         p.user_id,
+        "user_id":         _tm_public_user_id(p.user_id),
         "rank":            p.rank,
         "hours":           p.hours,
         "positions":       list(p.positions or []),
@@ -2474,72 +2913,72 @@ def _tm_load_tags_grouped(db: Session, user_ids: list[int]) -> dict[int, list[di
 # ── Pydantic models ─────────────────────────────────────────────────────────
 
 class TeammateProfileUpsert(BaseModel):
-    token: str
-    rank: str
-    hours: int
-    positions: list[int]
-    game_modes: list[str]
+    token: str = Field(min_length=20, max_length=256)
+    rank: str = Field(min_length=1, max_length=32)
+    hours: int = Field(ge=0, le=100000)
+    positions: list[int] = Field(min_length=1, max_length=5)
+    game_modes: list[str] = Field(min_length=1, max_length=3)
     microphone: bool
     discord: bool
-    favorite_heroes: list[int] = []
-    about: str = ""
+    favorite_heroes: list[int] = Field(default_factory=list, max_length=3)
+    about: str = Field(default="", max_length=200)
 
 
 class TeammateTokenOnly(BaseModel):
-    token: str
+    token: str = Field(min_length=20, max_length=256)
 
 
 class TeammateRequestCreate(BaseModel):
-    token: str
-    to_user_id: int
+    token: str = Field(min_length=20, max_length=256)
+    to_user_id: int = Field(gt=0)
 
 
 class TeammateRequestRespond(BaseModel):
-    token: str
-    request_id: int
+    token: str = Field(min_length=20, max_length=256)
+    request_id: int = Field(gt=0)
     accept: bool
 
 
 class TeammateReviewSubmit(BaseModel):
-    token: str
-    request_id: int
-    tags: list[str]
+    token: str = Field(min_length=20, max_length=256)
+    request_id: int = Field(gt=0)
+    tags: list[str] = Field(min_length=1, max_length=10)
 
 
 class TeammateRequestCancel(BaseModel):
-    token: str
-    request_id: int
+    token: str = Field(min_length=20, max_length=256)
+    request_id: int = Field(gt=0)
 
 
 class TeammateStatusUpdate(BaseModel):
-    token: str
-    status: str  # ready_now / looking_regular / looking_casual / hidden
+    token: str = Field(min_length=20, max_length=256)
+    status: str = Field(min_length=1, max_length=20)
 
 
 class TeammateAdminDelete(BaseModel):
-    token: str
-    target_user_id: int
+    token: str = Field(min_length=20, max_length=256)
+    target_user_id: int = Field(gt=0)
 
 
 # ── Party-finder («Лобби») Pydantic models ──────────────────────────────────
 
 class TeammateLobbyCreate(BaseModel):
-    token: str
-    party_size: int                       # 3 / 4 / 5 (4 запрещён при mode='ranked')
-    mode: str                             # ranked / normal / turbo
-    host_position: int                    # 1..5 — позиция host'а
-    needed_positions: list[int]           # позиции, которые ищем (без host'а)
-    rank_filter: list[str] | None = None  # обязателен для ranked
+    token: str = Field(min_length=20, max_length=256)
+    party_size: int = Field(ge=3, le=5)
+    mode: str = Field(min_length=1, max_length=16)
+    host_position: int = Field(ge=1, le=5)
+    needed_positions: list[int] = Field(min_length=1, max_length=4)
+    rank_filter: list[str] | None = Field(default=None, max_length=9)
 
 
 class TeammateLobbyJoin(BaseModel):
-    token: str
-    position: int
+    token: str = Field(min_length=20, max_length=256)
+    position: int = Field(ge=1, le=5)
 
 
 class TeammateLobbyAction(BaseModel):
     """Используется для leave / disband — body всех action-endpoint'ов одинаков."""
-    token: str
+    token: str = Field(min_length=20, max_length=256)
 
 
 # ── 1. POST /api/teammates/profile — upsert ─────────────────────────────────
@@ -2550,6 +2989,7 @@ def api_teammates_profile_upsert(
 ):
     """Создаёт или обновляет профиль текущего пользователя для поиска тиммейтов."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
     if data.rank not in _TM_VALID_RANKS:
         raise HTTPException(status_code=422, detail="invalid rank")
@@ -2639,6 +3079,7 @@ def api_teammates_profile_me(token: str, db: Session = Depends(get_db)):
     null = статус ещё не выбран → фронт покажет обязательный экран выбора.
     """
     user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
     try:
         profile = db.get(DBTeammateProfile, user_id)
         if profile is None:
@@ -2693,10 +3134,13 @@ def api_teammates_admin_delete_profile(
     cancelled (чтобы не висели у получателей). Отзывы/история не трогаем —
     они ссылаются на user_id и безвредны без профиля."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
     if user_id not in _TM_ADMIN_IDS:
         raise HTTPException(status_code=403, detail="admin only")
 
-    target = data.target_user_id
+    target = _tm_internal_user_id(db, data.target_user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="profile not found")
     profile = db.get(DBTeammateProfile, target)
     if profile is None:
         raise HTTPException(status_code=404, detail="profile not found")
@@ -2730,6 +3174,7 @@ def api_teammates_status_set(
 
     Заменил пару search/start + search/stop из старой TTL-модели."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
     if data.status not in _TM_VALID_STATUSES:
         raise HTTPException(status_code=422, detail="invalid status")
 
@@ -2778,6 +3223,7 @@ def api_teammates_feed(
     тоже True; False = «нет фильтра».
     """
     user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
     offset = int(cursor) if cursor is not None and cursor > 0 else 0
 
     # Какие статусы показывать. По умолчанию — все feed-статусы. Если задан
@@ -2864,14 +3310,27 @@ async def api_teammates_request_create(
 ):
     """Создаёт pending-запрос от текущего пользователя к to_user_id."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
-    if data.to_user_id == user_id:
+    _enforce_rate("teammate_request", user_id, limit=5, window_seconds=3600)
+
+    target_user_id = _tm_internal_user_id(db, data.to_user_id)
+    if target_user_id is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+    if target_user_id == user_id:
         raise HTTPException(status_code=422, detail="cannot request yourself")
+
+    target_profile = db.get(DBTeammateProfile, target_user_id)
+    if target_profile is None or target_profile.status not in {
+        "ready_now", "looking_regular", "looking_casual"
+    }:
+        # Do not turn this endpoint into a Telegram-ID/profile existence oracle.
+        raise HTTPException(status_code=404, detail="profile not found")
 
     existing = (
         db.query(DBTeammateRequest)
         .filter(DBTeammateRequest.from_user_id == user_id)
-        .filter(DBTeammateRequest.to_user_id == data.to_user_id)
+        .filter(DBTeammateRequest.to_user_id == target_user_id)
         .filter(DBTeammateRequest.status == "pending")
         .first()
     )
@@ -2895,7 +3354,7 @@ async def api_teammates_request_create(
 
     req = DBTeammateRequest(
         from_user_id=user_id,
-        to_user_id=data.to_user_id,
+        to_user_id=target_user_id,
         status="pending",
         review_sent=False,
         created_at=datetime.now(timezone.utc),
@@ -2924,7 +3383,7 @@ async def api_teammates_request_create(
         sender_name=_tm_html_safe(sender_name),
     )
     await _tm_send_bot_message(
-        chat_id=data.to_user_id,
+        chat_id=target_user_id,
         text=push_text,
         with_open_button=True,
         open_button_url=incoming_url,
@@ -2942,6 +3401,7 @@ async def api_teammates_request_respond(
 ):
     """Принять/отклонить входящий запрос."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
     req = db.get(DBTeammateRequest, data.request_id)
     if req is None:
@@ -3063,6 +3523,7 @@ async def api_teammates_request_respond(
 def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
     """Входящие pending-запросы с прикреплённым профилем отправителя."""
     user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
 
     rows = (
         db.query(DBTeammateRequest)
@@ -3091,7 +3552,7 @@ def api_teammates_requests_incoming(token: str, db: Session = Depends(get_db)):
             profile_payload["tags"] = tags_by_user.get(r.from_user_id, [])
         result.append({
             "request_id":   r.id,
-            "from_user_id": r.from_user_id,
+            "from_user_id": _tm_public_user_id(r.from_user_id),
             "created_at":   r.created_at.isoformat() if r.created_at else None,
             "profile":      profile_payload,
         })
@@ -3111,6 +3572,7 @@ def api_teammates_review_submit(
     request_id — 409.
     """
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
     req = db.get(DBTeammateRequest, data.request_id)
     if req is None:
@@ -3187,10 +3649,10 @@ def api_teammates_review_submit(
 # ── 9b. POST /api/teammates/report — пожаловаться на игрока ──────────────────
 
 class TeammateReportSubmit(BaseModel):
-    token: str
-    request_id: int
-    reason: str
-    text: str = ""
+    token: str = Field(min_length=20, max_length=256)
+    request_id: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=64)
+    text: str = Field(default="", max_length=2000)
 
 
 async def _tm_notify_admins_report(reporter_id: int, reported_id: int,
@@ -3230,6 +3692,9 @@ async def api_teammates_report_submit(
     публичной метки нет). Сохраняется для разбора + push админам в Telegram.
     Гейт «только после игры» — тот же, что у отзыва (через request_id)."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
+
+    _enforce_rate("teammate_report", user_id, limit=3, window_seconds=86400)
 
     reason = (data.reason or "").strip()
     if reason not in _TM_REPORT_REASONS:
@@ -3285,10 +3750,34 @@ def api_teammates_profile_public(
     (имя, @username, фото) любого user_id. Так как user_id = Telegram ID и они
     перебираемы, это позволяло без входа собрать контакты всех зарегистрированных
     (в т.ч. со статусом hidden). Теперь нужен токен — как у /feed и остальных."""
-    _tm_authenticate(token, db)
+    viewer_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", viewer_id, limit=180, window_seconds=60)
+    internal_user_id = _tm_internal_user_id(db, user_id)
+    if internal_user_id is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+    user_id = internal_user_id
     profile = db.get(DBTeammateProfile, user_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="profile not found")
+    if (
+        viewer_id != user_id
+        and viewer_id not in _TM_ADMIN_IDS
+        and profile.status not in {"ready_now", "looking_regular", "looking_casual"}
+    ):
+        related = (
+            db.query(DBTeammateRequest.id)
+            .filter(
+                ((DBTeammateRequest.from_user_id == viewer_id) &
+                 (DBTeammateRequest.to_user_id == user_id))
+                |
+                ((DBTeammateRequest.from_user_id == user_id) &
+                 (DBTeammateRequest.to_user_id == viewer_id))
+            )
+            .filter(DBTeammateRequest.status.in_(("pending", "accepted")))
+            .first()
+        )
+        if related is None:
+            raise HTTPException(status_code=404, detail="profile not found")
     user_row = db.get(DBUserProfile, user_id)
     settings = (user_row.settings if user_row else None) or {}
     out = _tm_serialize_profile(profile, settings)
@@ -3302,6 +3791,7 @@ def api_teammates_profile_public(
 def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
     """Исходящие pending-запросы текущего пользователя с профилем получателя."""
     user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
 
     rows = (
         db.query(DBTeammateRequest)
@@ -3330,7 +3820,7 @@ def api_teammates_requests_outgoing(token: str, db: Session = Depends(get_db)):
             profile_payload["tags"] = tags_by_user.get(r.to_user_id, [])
         result.append({
             "request_id": r.id,
-            "to_user_id": r.to_user_id,
+            "to_user_id": _tm_public_user_id(r.to_user_id),
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "profile":    profile_payload,
         })
@@ -3352,6 +3842,7 @@ def api_teammates_requests_history(
     accepted_at DESC; следующая страница — строки строго раньше курсора.
     """
     user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
 
     q = (
         db.query(DBTeammateRequest)
@@ -3419,7 +3910,7 @@ def api_teammates_requests_history(
             profile_payload["tags"] = tags_by_user.get(other_id, [])
         items.append({
             "request_id":     r.id,
-            "other_user_id":  other_id,
+            "other_user_id":  _tm_public_user_id(other_id),
             "accepted_at":    r.accepted_at.isoformat() if r.accepted_at else None,
             "profile":        profile_payload,
             "my_review_left": other_id in reviewed_user_ids,
@@ -3443,6 +3934,7 @@ def api_teammates_request_cancel(
     (history фильтрует по status='accepted').
     """
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
     req = db.get(DBTeammateRequest, data.request_id)
     if req is None:
@@ -3492,6 +3984,8 @@ def _tm_serialize_lobby(
     db: Session,
     lobby: DBTeammateLobby,
     slots: list[DBTeammateLobbySlot] | None = None,
+    *,
+    include_contact_urls: bool = False,
 ) -> dict:
     """Сериализует лобби с полным списком слотов (host'а + всех остальных).
 
@@ -3527,12 +4021,17 @@ def _tm_serialize_lobby(
             # Юзер существует в TG, но без teammate-профиля — редкий edge
             # (заполнил профиль host'а до миграции?). Возвращаем минимум.
             user_data = {
-                "user_id": s.user_id,
+                "user_id": _tm_public_user_id(s.user_id),
                 **(settings_by_user.get(s.user_id) or {}),
                 "rank": None,
             }
         else:
             user_data = _tm_serialize_profile(prof, settings_by_user.get(s.user_id))
+        if include_contact_urls:
+            # Filled-lobby history is visible only to its participants.  This is
+            # the one place where contacting a teammate by Telegram identity is
+            # an intended feature; public feeds keep the real id hidden.
+            user_data["contact_url"] = f"tg://user?id={int(s.user_id)}"
         return {
             "position": s.position,
             "user": user_data,
@@ -3541,7 +4040,7 @@ def _tm_serialize_lobby(
 
     return {
         "lobby_id":          lobby.id,
-        "host_id":           lobby.host_id,
+        "host_id":           _tm_public_user_id(lobby.host_id),
         "host_position":     lobby.host_position,
         "party_size":        lobby.party_size,
         "mode":              lobby.mode,
@@ -3655,9 +4154,15 @@ def api_teammates_lobby_create(
 ):
     """Создаёт лобби. Host автоматически занимает свой слот."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
     # Профиль обязателен — без него host не сможет показать ранг/позицию.
-    profile = db.get(DBTeammateProfile, user_id)
+    profile = (
+        db.query(DBTeammateProfile)
+        .filter(DBTeammateProfile.user_id == user_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if profile is None:
         raise HTTPException(status_code=400, detail="profile not found — fill in profile first")
 
@@ -3756,7 +4261,8 @@ def api_teammates_lobbies_list(token: str, db: Session = Depends(get_db)):
     игроками в ленте. Фронту передаём ВСЕ — фильтрацию по rank_filter тоже,
     клиент сам решит как подсветить «доступно мне / нет».
     """
-    _tm_authenticate(token, db)
+    user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
     now = datetime.now(timezone.utc)
 
     lobbies = (
@@ -3802,12 +4308,27 @@ async def api_teammates_lobby_join(
     точную точку падения по `[tm/lobby/join]` в логах backend'а.
     """
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
     logger.info(
         "[tm/lobby/join] user_id=%s lobby_id=%s position=%s",
         user_id, lobby_id, data.position,
     )
     try:
-        lobby = db.get(DBTeammateLobby, lobby_id)
+        # Serialise membership and final-slot decisions across workers.
+        profile = (
+            db.query(DBTeammateProfile)
+            .filter(DBTeammateProfile.user_id == user_id)
+            .with_for_update()
+            .one_or_none()
+        )
+        if profile is None:
+            raise HTTPException(status_code=400, detail="profile not found")
+        lobby = (
+            db.query(DBTeammateLobby)
+            .filter(DBTeammateLobby.id == lobby_id)
+            .with_for_update()
+            .one_or_none()
+        )
         if lobby is None:
             raise HTTPException(status_code=404, detail="lobby not found")
         if lobby.status != "open":
@@ -3829,8 +4350,7 @@ async def api_teammates_lobby_join(
 
         # Rank-filter: если есть — юзер должен быть в нём.
         if lobby.rank_filter:
-            profile = db.get(DBTeammateProfile, user_id)
-            if profile is None or profile.rank not in set(lobby.rank_filter):
+            if profile.rank not in set(lobby.rank_filter):
                 raise HTTPException(
                     status_code=403,
                     detail="Твой ранг не подходит под фильтр лобби",
@@ -3897,10 +4417,7 @@ async def api_teammates_lobby_join(
         )
         try: db.rollback()
         except Exception: pass
-        raise HTTPException(
-            status_code=500,
-            detail=f"Внутренняя ошибка: {type(exc).__name__}: {str(exc)[:200]}",
-        )
+        raise HTTPException(status_code=500, detail="Не удалось присоединиться к лобби")
 
 
 # ── L4. POST /api/teammates/lobby/{id}/leave ────────────────────────────────
@@ -3912,8 +4429,14 @@ async def api_teammates_lobby_leave(
     """Member выходит из своего слота. Если выходит host — это disband
     (но мы возвращаем 409 чтобы фронт явно вызвал /disband — UI там другой)."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
-    lobby = db.get(DBTeammateLobby, lobby_id)
+    lobby = (
+        db.query(DBTeammateLobby)
+        .filter(DBTeammateLobby.id == lobby_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if lobby is None:
         raise HTTPException(status_code=404, detail="lobby not found")
     if lobby.status != "open":
@@ -3964,8 +4487,14 @@ async def api_teammates_lobby_disband(
 ):
     """Host распускает лобби. Members получают пуш."""
     user_id = _tm_authenticate(data.token, db)
+    _tm_enforce_mutation(user_id)
 
-    lobby = db.get(DBTeammateLobby, lobby_id)
+    lobby = (
+        db.query(DBTeammateLobby)
+        .filter(DBTeammateLobby.id == lobby_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if lobby is None:
         raise HTTPException(status_code=404, detail="lobby not found")
     if lobby.host_id != user_id:
@@ -3995,6 +4524,7 @@ def api_teammates_lobbies_history(
     хватит, плюс легко merge'ить с requests/history на фронте).
     """
     user_id = _tm_authenticate(token, db)
+    _enforce_rate("teammate_read", user_id, limit=180, window_seconds=60)
 
     # Берём id лобби в которых я участвовал (host ИЛИ занимал слот).
     my_lobby_ids_rows = db.execute(
@@ -4039,7 +4569,9 @@ def api_teammates_lobbies_history(
         lobby = lobby_by_id.get(lid)
         if lobby is None:
             continue
-        items.append(_tm_serialize_lobby(db, lobby, slots_by_lobby.get(lid, [])))
+        items.append(_tm_serialize_lobby(
+            db, lobby, slots_by_lobby.get(lid, []), include_contact_urls=True
+        ))
     return {"items": items}
 
 
@@ -4540,6 +5072,7 @@ _BT_MATCH_WINDOW_MID = 1200    # подождал — окно шире
 _BT_MATCH_WIDEN_1_SEC = 10
 _BT_MATCH_WIDEN_2_SEC = 25
 _BT_MATCH_SCAN_LIMIT = 20      # сколько кандидатов осматриваем за раз
+_BT_RATED_PAIR_LIMIT_24H = 3   # anti-win-trading: further pair games are unranked
 # Тест-режим (staging): BT_MATCH_ANY=1 полностью выключает окно рейтинга —
 # любые два игрока матчатся сразу. На проде НЕ ставить.
 _BT_MATCH_ANY = os.environ.get("BT_MATCH_ANY", "0") == "1"
@@ -4582,6 +5115,33 @@ def _bt_apply_ratings(db: Session, battle: DBDraftBattle) -> None:
         return   # бот/нет живого гостя — рейтинг не меняем
     if battle.is_friendly:
         return   # товарищеский матч: счёт настоящий, рейтинг не трогаем
+
+    pair_cutoff = _bt_now() - _tm_timedelta(hours=24)
+    recent_pair_games = (
+        db.query(DBDraftBattle.id)
+        .filter(DBDraftBattle.id != battle.id)
+        .filter(DBDraftBattle.status == "finished")
+        .filter(DBDraftBattle.is_friendly.is_(False))
+        .filter(DBDraftBattle.finished_at >= pair_cutoff)
+        .filter(
+            ((DBDraftBattle.host_id == battle.host_id) &
+             (DBDraftBattle.guest_id == battle.guest_id))
+            |
+            ((DBDraftBattle.host_id == battle.guest_id) &
+             (DBDraftBattle.guest_id == battle.host_id))
+        )
+        .count()
+    )
+    if recent_pair_games >= _BT_RATED_PAIR_LIMIT_24H:
+        logger.warning(
+            "[battle/rating] pair cap reached battle=%s host=%s guest=%s recent=%s",
+            battle.id, battle.host_id, battle.guest_id, recent_pair_games,
+        )
+        host_rating = _bt_player_rating(db, battle.host_id)
+        guest_rating = _bt_player_rating(db, battle.guest_id)
+        battle.host_rating_before = battle.host_rating_after = host_rating
+        battle.guest_rating_before = battle.guest_rating_after = guest_rating
+        return
 
     profiles = {
         p.user_id: p
@@ -5623,6 +6183,19 @@ def _bt_active_battle(db: Session, user_id: int):
     )
 
 
+def _bt_lock_user(db: Session, user_id: int) -> DBUserProfile:
+    """Serialize creation and join decisions for one authenticated player."""
+    profile = (
+        db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id == user_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if profile is None:
+        raise HTTPException(status_code=409, detail="profile is not initialized")
+    return profile
+
+
 def _bt_draft_locked(db: Session, user_id: int) -> bool:
     """Анти-чит: занят ли юзер живой битвой (drafting/assigning).
 
@@ -5661,22 +6234,22 @@ def _bt_start_battle(battle: DBDraftBattle, guest_id: int, now: datetime) -> Non
 # ── Pydantic ────────────────────────────────────────────────────────────────
 
 class BattleStartReq(BaseModel):
-    token: str
-    mode: str = "cm"          # 'cm' (с банами) / 'ap' (без банов)
+    token: str = Field(min_length=20, max_length=256)
+    mode: str = Field(default="cm", min_length=2, max_length=8)
 
 
 class BattleCodeReq(BaseModel):
-    token: str
-    code: str
+    token: str = Field(min_length=20, max_length=256)
+    code: str = Field(min_length=4, max_length=8, pattern=r"^[A-Za-z0-9]+$")
     # 'cancel_search' — отмена с экрана поиска: при гонке с матчером НЕ форфейт
     # (см. api_battle_leave). Отсутствует = явная сдача/обычный leave.
-    intent: str | None = None
+    intent: str | None = Field(default=None, max_length=32)
 
 
 class BattleActionReq(BaseModel):
-    token: str
-    code: str
-    hero_id: int
+    token: str = Field(min_length=20, max_length=256)
+    code: str = Field(min_length=4, max_length=8, pattern=r"^[A-Za-z0-9]+$")
+    hero_id: int = Field(gt=0, le=1000)
 
 
 # ── Эндпоинты ───────────────────────────────────────────────────────────────
@@ -5737,6 +6310,7 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
     или встаём в очередь своей. Гонка двух воркеров решается row-lock'ом
     (FOR UPDATE SKIP LOCKED на PG; dev-SQLite однопроцессный)."""
     uid = _tm_require_user(token=data.token)
+    _enforce_rate("battle_queue", uid, limit=10, window_seconds=300)
     if data.mode not in _BT_MODES:
         raise HTTPException(status_code=422, detail="invalid mode")
     # Клиент знает только 'cm'/'ap'; при включённом рубильнике 'ap' создаёт
@@ -5745,6 +6319,7 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
     if data.mode == "ap" and _BT_AP_STAGED:
         data.mode = _BT_AP2_MODE
 
+    _bt_lock_user(db, uid)
     existing = _bt_active_battle(db, uid)
     if existing is not None:
         return {
@@ -5752,6 +6327,13 @@ def api_battle_queue(data: BattleStartReq, db: Session = Depends(get_db)):
             "status": existing.status,
             "matched": existing.status == "drafting",
         }
+
+    # Matchmaking invalidates unused friend invitations, so a delayed accept
+    # cannot place this host into a second simultaneous game.
+    db.query(DBDraftBattle).filter(
+        DBDraftBattle.host_id == uid,
+        DBDraftBattle.status == "waiting",
+    ).update({"status": "abandoned"}, synchronize_session=False)
 
     # Намерение играть (existing уже отсеян выше — это не resume).
     _bt_log("battle_queue", uid)
@@ -5878,10 +6460,12 @@ def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
     его обходить (прямой startapp-линк открыл бы апп без подписок). Рейтинг
     товарищеские бои не двигают (win-trading через твинков)."""
     uid = _tm_require_user(token=data.token)
+    _enforce_rate("battle_challenge", uid, limit=5, window_seconds=3600)
     if data.mode not in _BT_MODES:
         raise HTTPException(status_code=422, detail="invalid mode")
     mode = _BT_AP2_MODE if (data.mode == "ap" and _BT_AP_STAGED) else data.mode
 
+    _bt_lock_user(db, uid)
     existing = _bt_active_battle(db, uid)
     if existing is not None:
         raise HTTPException(status_code=409, detail="Сначала закончи текущую битву.")
@@ -5921,6 +6505,7 @@ def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
     Клейм под FOR UPDATE (двое из группового чата тапнули одновременно —
     второй получает «вызов уже принят»). Прочие чужие коды → 409, как раньше."""
     uid = _tm_require_user(token=data.token)
+    _enforce_rate("battle_join", uid, limit=20, window_seconds=300)
     code = (data.code or "").strip().upper()
     battle = _bt_get_battle(db, code)
 
@@ -5928,7 +6513,13 @@ def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
     if role is not None:
         return {"code": battle.code, "status": battle.status, "you": role}
 
-    if not (battle.status == "waiting" and battle.is_friendly):
+    _bt_lock_user(db, uid)
+    locked = _bt_get_battle(db, code, for_update=True)
+    role = _bt_role(locked, uid)
+    if role is not None:
+        return {"code": locked.code, "status": locked.status, "you": role}
+
+    if not (locked.status == "waiting" and locked.is_friendly):
         raise HTTPException(
             status_code=409,
             detail="Войти можно только через быстрый поиск соперника.",
@@ -5942,7 +6533,6 @@ def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
             detail="Сначала закончи свою текущую битву.",
         )
     now = _bt_now()
-    locked = _bt_get_battle(db, code, for_update=True)
     if locked.status != "waiting" or locked.guest_id is not None:
         raise HTTPException(status_code=409, detail="Вызов уже принят или отменён.")
     created = _bt_aware(locked.created_at)
@@ -6163,6 +6753,7 @@ def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
 def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
     """Ход (пик или бан — тип диктует последовательность)."""
     uid = _tm_require_user(token=data.token)
+    _enforce_rate("battle_action", uid, limit=120, window_seconds=60)
     battle = _bt_get_battle(db, data.code, for_update=True)
     role = _bt_role(battle, uid)
     if role is None:
@@ -6207,9 +6798,9 @@ def api_battle_action(data: BattleActionReq, db: Session = Depends(get_db)):
 
 
 class BattlePositionsReq(BaseModel):
-    token: str
-    code: str
-    positions: dict[str, int]   # {hero_id(str): pos(1..5)}
+    token: str = Field(min_length=20, max_length=256)
+    code: str = Field(min_length=4, max_length=8, pattern=r"^[A-Za-z0-9]+$")
+    positions: dict[str, int] = Field(min_length=5, max_length=5)
 
 
 @app.post("/api/battle/positions")
@@ -6220,6 +6811,7 @@ def api_battle_positions(data: BattlePositionsReq, db: Session = Depends(get_db)
     немедленная финализация (не ждём таймер). Раскладка валидируется жёстко:
     ровно свои 5 героев, позиции 1-5 без повторов."""
     uid = _tm_require_user(token=data.token)
+    _enforce_rate("battle_positions", uid, limit=20, window_seconds=60)
     battle = _bt_get_battle(db, data.code, for_update=True)
     role = _bt_role(battle, uid)
     if role is None:
@@ -6285,6 +6877,7 @@ def api_battle_leave(data: BattleCodeReq, db: Session = Depends(get_db)):
     возвращаем «матч начался», фронт входит в бой. Форфейт — только явная
     сдача из драфта (кнопка-флаг с confirm, intent отсутствует)."""
     uid = _tm_require_user(token=data.token)
+    _enforce_rate("battle_leave", uid, limit=20, window_seconds=300)
     battle = _bt_get_battle(db, data.code, for_update=True)
     role = _bt_role(battle, uid)
     if role is None:
@@ -6458,13 +7051,18 @@ def _bt_poll_read(code: str, user_id: int, since: int):
 
 
 @app.get("/api/battle/events")
-async def api_battle_events(token: str, code: str, since: int = 0):
+async def api_battle_events(
+    token: str,
+    code: str = Query(min_length=4, max_length=8, pattern=r"^[A-Za-z0-9]+$"),
+    since: int = Query(default=0, ge=0, le=1_000_000),
+):
     """Long polling: висим до изменения состояния (version > since), дедлайна
     текущего хода или _BT_MAX_HOLD_SECONDS. async def с реальными await —
     висящие запросы НЕ занимают threadpool; БД — через to_thread."""
     uid = await asyncio.to_thread(get_user_id_by_token, token)
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    _enforce_rate("battle_events", uid, limit=90, window_seconds=60)
 
     deadline = time.monotonic() + _BT_MAX_HOLD_SECONDS
     while True:

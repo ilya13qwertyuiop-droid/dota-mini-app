@@ -247,11 +247,17 @@ def register_admin_text_handlers(application: Application, admin_ids: frozenset[
     application.add_handler(CommandHandler("admin_texts", make_admin_texts_command(admin_ids)))
     application.add_handler(CommandHandler("admin_text_reset", make_admin_text_reset_command(admin_ids)))
 
+    async def receive_admin_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        if update.effective_user is None or not _is_admin(update.effective_user.id, admin_ids):
+            ctx.user_data.pop("admin_editing_key", None)
+            return ConversationHandler.END
+        return await _receive_new_text(update, ctx)
+
     conv = ConversationHandler(
         entry_points=[CommandHandler("admin_text", make_admin_text_command(admin_ids))],
         states={
             WAITING_FOR_NEW_TEXT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, _receive_new_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_text),
             ],
         },
         fallbacks=[CommandHandler("cancel", _cancel_edit)],

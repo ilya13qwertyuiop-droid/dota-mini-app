@@ -24,7 +24,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from backend.database import SessionLocal  # noqa: E402
-from backend.models import AnalyticsEvent, BannedUser, BroadcastJob, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UserProfile  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
+from backend.models import AnalyticsEvent, BannedUser, BroadcastJob, DotaNews, DraftResult, Feedback, HeroMatchupsCache, Match, QuizResult, Token, UsedTelegramInitData, UserProfile  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -52,20 +53,60 @@ def _token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+_MAX_ACTIVE_TOKENS_PER_USER = 5
+
+
 def create_token_for_user(user_id: int) -> str:
-    """Generates a 24-hour token for the given Telegram user_id."""
+    """Generate a 24-hour token and cap concurrent sessions per user."""
     import secrets
     token_str = secrets.token_urlsafe(32)
     expires_at = datetime.utcnow() + timedelta(hours=24)
 
     with SessionLocal() as session:
+        session.query(Token).filter(
+            Token.user_id == user_id,
+            Token.expires_at < datetime.utcnow(),
+        ).delete(synchronize_session=False)
         token_obj = Token(
             token=_token_digest(token_str), user_id=user_id, expires_at=expires_at
         )
         session.add(token_obj)
+        session.flush()
+        excess = (
+            session.query(Token)
+            .filter(Token.user_id == user_id)
+            .order_by(Token.expires_at.desc(), Token.token.desc())
+            .offset(_MAX_ACTIVE_TOKENS_PER_USER)
+            .all()
+        )
+        for old in excess:
+            session.delete(old)
         session.commit()
 
     return token_str
+
+
+def claim_telegram_init_data(init_data: str, user_id: int, *, ttl_seconds: int = 600) -> bool:
+    """Claim signed initData once, preventing replay-based session minting."""
+    import hashlib
+
+    digest = hashlib.sha256(init_data.encode("utf-8")).hexdigest()
+    now = datetime.utcnow()
+    with SessionLocal() as session:
+        session.query(UsedTelegramInitData).filter(
+            UsedTelegramInitData.expires_at < now
+        ).delete(synchronize_session=False)
+        try:
+            session.add(UsedTelegramInitData(
+                digest=digest,
+                user_id=user_id,
+                expires_at=now + timedelta(seconds=ttl_seconds),
+            ))
+            session.commit()
+            return True
+        except IntegrityError:
+            session.rollback()
+            return False
 
 
 def get_user_id_by_token(token: str) -> int | None:

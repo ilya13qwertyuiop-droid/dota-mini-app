@@ -8,8 +8,8 @@ import time
 from urllib.parse import parse_qsl
 
 
-INIT_DATA_MAX_AGE_SECONDS = 600
-INIT_DATA_MAX_FUTURE_SKEW_SECONDS = 300
+INIT_DATA_MAX_AGE_SECONDS = 300
+INIT_DATA_MAX_FUTURE_SKEW_SECONDS = 60
 
 
 def validate_telegram_init_data(

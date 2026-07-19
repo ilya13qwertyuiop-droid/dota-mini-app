@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 # DateTime(timezone=True) → TIMESTAMPTZ on PostgreSQL
 from sqlalchemy.orm import relationship
@@ -45,6 +46,30 @@ class Token(Base):
         # Имя совпадает с миграцией 0016 — на свежих БД индекс создаёт
         # create_all, на существующих — миграция (как 0015).
         Index("ix_tokens_expires_at", "expires_at"),
+    )
+
+
+class UsedTelegramInitData(Base):
+    """Short-lived replay marker for Telegram WebApp authentication data."""
+    __tablename__ = "used_telegram_init_data"
+
+    digest = Column(String(64), primary_key=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class ApiRateLimitEvent(Base):
+    """Persistent rate-limit event shared by all API workers."""
+    __tablename__ = "api_rate_limit_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope = Column(String(64), nullable=False)
+    subject = Column(String(128), nullable=False)
+    occurred_at = Column(Float, nullable=False)
+
+    __table_args__ = (
+        Index("ix_api_rate_limit_scope_subject_ts", "scope", "subject", "occurred_at"),
+        Index("ix_api_rate_limit_occurred_at", "occurred_at"),
     )
 
 
@@ -129,6 +154,63 @@ class DraftResult(Base):
     )
 
     user = relationship("UserProfile", back_populates="draft_results")
+
+
+class DraftChallenge(Base):
+    """Server-issued enemy draft required for a ranked solo result."""
+    __tablename__ = "draft_challenges"
+
+    challenge_id = Column(String(64), primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True)
+    enemy = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        # Application locks prevent rerolls; the partial unique index keeps the
+        # invariant true even if a future code path forgets that lock.
+        Index(
+            "uq_draft_challenges_unconsumed_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("consumed_at IS NULL"),
+            sqlite_where=text("consumed_at IS NULL"),
+        ),
+    )
+
+
+class MinigameRun(Base):
+    """Server-authoritative state for one Higher/Lower run."""
+    __tablename__ = "minigame_runs"
+
+    run_id = Column(String(64), primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("user_profiles.user_id"), nullable=False, index=True)
+    game = Column(String(16), nullable=False)
+    metric = Column(String(16), nullable=False)
+    reference_id = Column(Integer, nullable=False)
+    reference_value = Column(Float, nullable=False)
+    challenger_id = Column(Integer, nullable=False)
+    challenger_value = Column(Float, nullable=False)
+    round = Column(Integer, nullable=False, default=0, server_default="0")
+    streak = Column(Integer, nullable=False, default=0, server_default="0")
+    recent_hero_ids = Column(JSON, nullable=False, default=list)
+    status = Column(String(12), nullable=False, default="active", server_default="active")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_minigame_runs_user_status", "user_id", "status"),
+        Index(
+            "uq_minigame_runs_active_user_game",
+            "user_id",
+            "game",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,10 @@ _DATABASE_PASSWORD_RE = re.compile(
     re.IGNORECASE,
 )
 
+_RECORD_FACTORY_INSTALLED = False
+_RECORD_FACTORY_SECRETS: tuple[str, ...] = ()
+_ORIGINAL_RECORD_FACTORY = logging.getLogRecordFactory()
+
 
 def redact_text(value: object, secrets: Iterable[str] = ()) -> str:
     text = str(value)
@@ -61,15 +65,47 @@ class _RedactingFilter(logging.Filter):
         return value
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = self._clean(record.msg)
-        record.args = self._clean(record.args)
+        # Render %-style structured arguments before redaction. Redacting the
+        # format string and its args independently can consume a placeholder
+        # (e.g. ``.../bot%s``) and leave logging with a mismatched arg tuple.
+        try:
+            rendered = record.getMessage()
+        except Exception:
+            record.msg = self._clean(record.msg)
+            record.args = self._clean(record.args)
+        else:
+            record.msg = redact_text(rendered, self._secrets)
+            record.args = ()
+        # A handler installed after secure logging may format ``exc_info``
+        # itself and would otherwise bypass message/argument redaction. Cache a
+        # sanitized traceback on the record so every formatter reuses it.
+        if record.exc_info:
+            try:
+                trace = logging.Formatter().formatException(record.exc_info)
+                record.exc_text = redact_text(trace, self._secrets)
+            except Exception:
+                record.exc_text = "<exception redacted>"
+        if record.stack_info:
+            record.stack_info = redact_text(record.stack_info, self._secrets)
         return True
 
 
 def configure_secure_logging(*secrets: str | None) -> None:
     """Suppress verbose HTTP URL logging and redact all installed handlers."""
 
+    global _RECORD_FACTORY_INSTALLED, _RECORD_FACTORY_SECRETS
     secret_values = tuple(s for s in secrets if s)
+    _RECORD_FACTORY_SECRETS = tuple(dict.fromkeys(
+        _RECORD_FACTORY_SECRETS + secret_values
+    ))
+    if not _RECORD_FACTORY_INSTALLED:
+        def _secure_record_factory(*args, **kwargs):
+            record = _ORIGINAL_RECORD_FACTORY(*args, **kwargs)
+            _RedactingFilter(_RECORD_FACTORY_SECRETS).filter(record)
+            return record
+
+        logging.setLogRecordFactory(_secure_record_factory)
+        _RECORD_FACTORY_INSTALLED = True
     logger_names = (
         "httpx",
         "httpcore",

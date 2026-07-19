@@ -312,12 +312,14 @@
         let lastPositionResult = null;
         let selectedAnswersHistory = [];
 
-        // Получаем token из URL параметров
-        function getTokenFromUrl() {
+        // Legacy links could contain a session in the URL. Never trust or use
+        // it: the initial navigation may already have been logged by a proxy.
+        // Remove it from browser history and authenticate only via initData.
+        function discardTokenFromUrl() {
             const params = new URLSearchParams(window.location.search);
             const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-            const token = fragment.get('token') || params.get('token');
-            if (token && window.history && window.history.replaceState) {
+            const hadToken = fragment.has('token') || params.has('token');
+            if (hadToken && window.history && window.history.replaceState) {
                 params.delete('token');
                 fragment.delete('token');
                 const cleanQuery = params.toString();
@@ -327,15 +329,14 @@
                     (cleanFragment ? '#' + cleanFragment : '');
                 window.history.replaceState(null, document.title, cleanUrl);
             }
-            return token;
+            return null;
         }
 
-        let USER_TOKEN = getTokenFromUrl();
+        let USER_TOKEN = discardTokenFromUrl();
 
         // ── Silent token refresh через Telegram initData ─────────────────
-        // Токены живут 24ч. Если пользователь давно не нажимал /start,
-        // API-запросы падают с 401 — ловим их и бесшумно обновляем токен
-        // через /api/refresh_token, проверяющий подпись initData.
+        // Session credentials are minted only from fresh, signed Telegram
+        // initData. They are never accepted from a URL.
         const _rawFetch = window.fetch.bind(window);
         let _refreshInFlight = null;
 
@@ -362,7 +363,7 @@
             if (_refreshInFlight) return _refreshInFlight;
             const initData = _getInitData();
             if (!initData) {
-                _showAuthError('Вернитесь в чат с ботом и нажмите кнопку /start');
+                _showAuthError('Откройте мини‑апп заново из чата с ботом.');
                 return null;
             }
             const API = window.API_BASE_URL || '/api';
@@ -404,17 +405,61 @@
                     const headers = new Headers(requestOptions.headers || {});
                     headers.set('Authorization', 'Bearer ' + queryToken);
                     requestOptions.headers = headers;
-                    requestUrl = parsedUrl.toString();
                 }
+                // Same-origin API calls always use the in-memory bearer token.
+                // This also lets a first anonymous-looking GET retry correctly
+                // after refreshToken() obtains a session from signed initData.
+                if (parsedUrl.origin === window.location.origin && USER_TOKEN) {
+                    const headers = new Headers(requestOptions.headers || {});
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', 'Bearer ' + USER_TOKEN);
+                    }
+                    requestOptions.headers = headers;
+                }
+                requestUrl = parsedUrl.toString();
             } catch (e) {
                 console.warn('[auth] failed to sanitize request URL');
             }
             return { url: requestUrl, options: requestOptions };
         }
 
+        function _replaceRequestToken(url, options, oldToken, newToken) {
+            let nextUrl = url;
+            let nextOptions = options;
+            try {
+                const parsedUrl = new URL(String(url), window.location.href);
+                if (parsedUrl.searchParams.has('token')) {
+                    parsedUrl.searchParams.set('token', newToken);
+                    nextUrl = parsedUrl.toString();
+                }
+            } catch (e) { /* _prepareApiRequest handles malformed URLs */ }
+
+            if (options && typeof options.body === 'string') {
+                try {
+                    const parsedBody = JSON.parse(options.body);
+                    if (parsedBody && typeof parsedBody === 'object' &&
+                            Object.prototype.hasOwnProperty.call(parsedBody, 'token') &&
+                            (!oldToken || parsedBody.token === oldToken)) {
+                        parsedBody.token = newToken;
+                        nextOptions = Object.assign({}, options, {
+                            body: JSON.stringify(parsedBody),
+                        });
+                    }
+                } catch (e) { /* non-JSON request body: leave it untouched */ }
+            }
+            return { url: nextUrl, options: nextOptions };
+        }
+
         async function apiFetch(url, options) {
             const oldToken = USER_TOKEN;
-            const initialRequest = _prepareApiRequest(url, options);
+            let firstAttempt = { url: url, options: options };
+            if (!oldToken) {
+                const initialToken = await refreshToken();
+                if (initialToken) {
+                    firstAttempt = _replaceRequestToken(url, options, '', initialToken);
+                }
+            }
+            const initialRequest = _prepareApiRequest(firstAttempt.url, firstAttempt.options);
             const resp = await _rawFetch(initialRequest.url, initialRequest.options);
             if (resp.status !== 401 && resp.status !== 403) return resp;
 
@@ -425,32 +470,8 @@
             }
             if (newToken === oldToken) return resp;
 
-            // Подменяем старый токен на новый в URL и теле запроса.
-            // Токен — URL-safe base64 (secrets.token_urlsafe), поэтому
-            // простая строковая замена безопасна от коллизий.
-            let retryUrl = url;
-            let retryOptions = options;
-            if (oldToken && typeof retryUrl === 'string') {
-                retryUrl = retryUrl.split(oldToken).join(newToken);
-            }
-            if (options && typeof options.body === 'string') {
-                let newBody = options.body;
-                if (oldToken) {
-                    newBody = newBody.split(oldToken).join(newToken);
-                } else {
-                    // oldToken пустой — строковая замена бесполезна.
-                    // Пересобираем JSON-тело, проставляя token явно.
-                    try {
-                        const parsed = JSON.parse(newBody);
-                        if (parsed && typeof parsed === 'object') {
-                            parsed.token = newToken;
-                            newBody = JSON.stringify(parsed);
-                        }
-                    } catch (e) { /* не-JSON тело — оставляем как есть */ }
-                }
-                retryOptions = Object.assign({}, options, { body: newBody });
-            }
-            const retryRequest = _prepareApiRequest(retryUrl, retryOptions);
+            const retry = _replaceRequestToken(url, options, oldToken, newToken);
+            const retryRequest = _prepareApiRequest(retry.url, retry.options);
             return _rawFetch(retryRequest.url, retryRequest.options);
         }
 
@@ -699,7 +720,7 @@
             kills:  { metric: 'kills',   game: 'hl_kills',  q: 'Кто чаще убивает?', short: 'Убийства',     fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
             deaths: { metric: 'deaths',  game: 'hl_deaths', q: 'Кто чаще умирает?', short: 'Смерти',       fmt: function (v) { return _mghlDec(v) + ' за игру'; } },
         };
-        var _mghl = { pool: [], workingPool: [], mode: null, modeKey: 'pop', metric: 'matches', game: 'hl_pop', best: 0, streak: 0, ref: null, chal: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over', lbMode: 'pop', lbCache: {} };
+        var _mghl = { pool: [], workingPool: [], mode: null, modeKey: 'pop', metric: 'matches', game: 'hl_pop', best: 0, streak: 0, ref: null, chal: null, nextChal: null, runId: null, busy: false, loaded: false, recent: [], inProgress: false, lb: null, lbReturn: 'over', lbMode: 'pop', lbCache: {} };
         function _mghlNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
         var _MGHL_TINKER_ID = 34;     // мем рус-комьюнити: «все ненавидят Тинкера»
         function _mghlVal(h) { return h[_mghl.metric]; }
@@ -853,14 +874,8 @@
         // «популярность») никогда не попадала бы в лидерборд — счёт пишется
         // только на game-over. Шлём и при смене режима, и при сворачивании аппа.
         function _mghlBankScore() {
-            if (!_mghl.inProgress || _mghl.streak <= 0) return;
-            var tok = _mghlTok(); if (!tok) return;
-            var game = _mghl.game, streak = _mghl.streak;
-            if (streak > _mghl.best) _mghl.best = streak;
-            apiFetch(window.API_BASE_URL + '/minigames/score', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: tok, game: game, streak: streak })
-            }).then(function () { _mghl.lbCache[game] = null; }).catch(function () {});
+            // Every correct answer is persisted by the server-authoritative run.
+            return;
         }
         // Свернули/закрыли мини-апп с активной серией — успеваем зафиксировать.
         if (!window._mghlVisBound) {
@@ -900,7 +915,7 @@
         window.mghlReplay = function () { mghlStart(); };
 
         window.mghlStart = async function () {
-            _mghl.streak = 0; _mghl.busy = false; _mghl.recent = [];
+            _mghl.streak = 0; _mghl.round = 0; _mghl.busy = false; _mghl.recent = []; _mghl.runId = null; _mghl.nextChal = null;
             _mghlHideMeme();             // снять зависший мем перед новым раундом
             var modes = document.getElementById('mghl-modes'); if (modes) modes.hidden = true;
             var over = document.getElementById('mghl-over'); if (over) over.hidden = true;
@@ -917,39 +932,29 @@
             }
             _mghlSetScore();
             var tok = _mghlTok();
-            // Пул героев общий для всех режимов — грузим один раз.
-            if (!_mghl.loaded) {
-                _mghlShowMsg('Загрузка…');
-                try {
-                    var pr = await apiFetch(window.API_BASE_URL + '/minigames/hl/pool?token=' + encodeURIComponent(tok));
-                    var pd = await pr.json();
-                    _mghl.pool = (pd && pd.heroes) || [];
-                    _mghl.loaded = true;
-                } catch (e) { console.warn('[mghl] load pool:', e); }
-            }
-            // Рекорд — per-mode: подтягиваем при первом старте режима.
-            if (_mghl.loaded_best !== _mghl.game) {
-                _mghlShowMsg('Загрузка…');
-                try {
-                    var br = await apiFetch(window.API_BASE_URL + '/minigames/best?token=' + encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
-                    var bd = await br.json();
-                    _mghl.best = (bd && bd.best) || 0;
-                    _mghl.loaded_best = _mghl.game;
-                } catch (e) { console.warn('[mghl] load best:', e); }
-            }
-            // Рабочий пул режима: только герои, у которых есть нужная метрика.
-            _mghl.workingPool = _mghl.pool.filter(function (h) {
-                var v = h[_mghl.metric];
-                return typeof v === 'number' && v > 0;
-            });
-            if (_mghl.workingPool.length < 2) {
-                _mghlShowMsg('Пока недостаточно данных. Загляни позже.');
+            _mghlShowMsg('Загрузка…');
+            try {
+                var startResp = await apiFetch(window.API_BASE_URL + '/minigames/run/start', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tok, mode: _mghl.modeKey })
+                });
+                var startData = await startResp.json();
+                if (!startResp.ok || !startData || !startData.run_id) throw new Error('HTTP ' + startResp.status);
+                _mghl.runId = startData.run_id;
+                _mghl.round = startData.round || 0;
+                _mghl.game = startData.game;
+                _mghl.best = startData.best || 0;
+                _mghl.streak = startData.streak || 0;
+                _mghl.ref = { id: startData.reference.id };
+                _mghl.ref[_mghl.metric] = startData.reference.value;
+                _mghl.chal = { id: startData.challenger.id };
+            } catch (e) {
+                console.warn('[mghl] start run:', e);
+                _mghlShowMsg('Не удалось начать игру. Попробуй ещё раз.');
                 return;
             }
             _mghlShowMsg(null);          // прячем сообщение, показываем игру
             _mghlSetScore();
-            _mghl.ref = _mghlPickFresh(null);
-            _mghl.chal = _mghlPickFresh(_mghlVal(_mghl.ref));
             _mghlRenderLeft(_mghl.ref);
             _mghlRenderRight(_mghl.chal);
             document.getElementById('mghl-guess').style.display = '';
@@ -973,10 +978,29 @@
             }
         }
 
-        window.mghlGuess = function (dir) {
+        window.mghlGuess = async function (dir) {
             if (_mghl.busy) return; _mghl.busy = true;
-            var rm = _mghlVal(_mghl.ref), cm = _mghlVal(_mghl.chal);
-            var correct = (dir === 'higher' && cm > rm) || (dir === 'lower' && cm < rm);
+            var tok = _mghlTok(), answer;
+            try {
+                var answerResp = await apiFetch(window.API_BASE_URL + '/minigames/run/answer', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tok, run_id: _mghl.runId, round: _mghl.round, guess: dir })
+                });
+                answer = await answerResp.json();
+                if (!answerResp.ok || !answer || typeof answer.correct !== 'boolean') throw new Error('HTTP ' + answerResp.status);
+            } catch (e) {
+                console.warn('[mghl] answer:', e);
+                _mghl.busy = false;
+                showToast('Не удалось проверить ответ. Попробуй ещё раз.');
+                return;
+            }
+            var correct = answer.correct;
+            _mghl.round = answer.round;
+            var cm = answer.revealed_value;
+            _mghl.chal[_mghl.metric] = cm;
+            _mghl.streak = answer.streak || 0;
+            _mghl.best = answer.best || _mghl.best;
+            _mghl.nextChal = answer.challenger ? { id: answer.challenger.id } : null;
             var rc = document.getElementById('mghl-right');
             var rv = document.getElementById('mghl-right-val');
             rv.classList.remove('mghl-card-val--hidden');
@@ -994,7 +1018,7 @@
             var advanceDelay = tink ? (READ_MS + _MGHL_MEME_MS + 100) : 1150;
             var overDelay    = tink ? (READ_MS + _MGHL_MEME_MS + 100) : 1450;
             if (correct) {
-                _mghl.streak++; _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
+                _mghlSetScore(); _mghlPulseStreak(); _mghlApplyHeat();
                 // Дать раскрытому числу «продышаться» перед уездом.
                 setTimeout(function () { rc.classList.remove('mghl-correct'); _mghlAdvance(); }, advanceDelay);
             } else {
@@ -1017,7 +1041,8 @@
             var onEnd = function () {
                 rc.removeEventListener('animationend', onEnd);
                 _mghl.ref = _mghl.chal;                      // претендент → новый эталон
-                _mghl.chal = _mghlPickFresh(_mghlVal(_mghl.ref));
+                _mghl.chal = _mghl.nextChal;
+                _mghl.nextChal = null;
                 // Сброс анимаций/трансформаций, пересборка, въезд нового справа.
                 lc.style.animation = 'none'; rc.style.animation = 'none';
                 lc.style.transform = ''; rc.style.transform = '';
@@ -1079,16 +1104,12 @@
             // На рекорде с заметной серией — отклик успеха (а не только «провал»).
             if (isRecord && _mghl.streak >= 5) _mghlHaptic('milestone');
             var rankEl = document.getElementById('mghl-rank'); if (rankEl) rankEl.hidden = true;
-            // Сохраняем результат → подтягиваем лидерборд → показываем ранг/перцентиль.
+            // Результат уже сохранён сервером при проверке ответа; подтягиваем лидерборд.
             var tok = _mghlTok();
             if (tok) {
-                apiFetch(window.API_BASE_URL + '/minigames/score', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: tok, game: _mghl.game, streak: _mghl.streak })
-                }).then(function () {
-                    return apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
-                        encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game));
-                }).then(function (r) { return r.json(); }).then(function (lb) {
+                apiFetch(window.API_BASE_URL + '/minigames/leaderboard?token=' +
+                    encodeURIComponent(tok) + '&game=' + encodeURIComponent(_mghl.game))
+                .then(function (r) { return r.json(); }).then(function (lb) {
                     _mghl.lb = lb;
                     _mghl.lbCache[_mghl.game] = lb;   // мгновенно для вкладки лидерборда
                     _mghlRenderRank();
@@ -1134,12 +1155,7 @@
                 _mghlShareFallback();
                 return;
             }
-            var r = _mghl.ref || {}, c = _mghl.chal || {};
-            var body = {
-                token: tok, mode: _mghl.modeKey || 'pop', streak: _mghl.streak,
-                h1: _mghlHeroSlug(r.id), n1: _mghlName(r.id), v1: r[_mghl.metric],
-                h2: _mghlHeroSlug(c.id), n2: _mghlName(c.id), v2: c[_mghl.metric]
-            };
+            var body = { token: tok, run_id: _mghl.runId };
             apiFetch(window.API_BASE_URL + '/minigames/share', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -5594,12 +5610,22 @@ function showMatchupsLoading() {
 
 function showMatchupsError(msg) {
     var el = document.getElementById('counters-list');
-    if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Не удалось загрузить матчапы. Попробуй позже.') + '</p>';
+    if (!el) return;
+    el.replaceChildren();
+    var text = document.createElement('p');
+    text.className = 'matchup-placeholder-text';
+    text.textContent = msg || 'Не удалось загрузить матчапы. Попробуй позже.';
+    el.appendChild(text);
 }
 
 function showSynergyError(msg) {
     var el = document.getElementById('synergy-list');
-    if (el) el.innerHTML = '<p class="matchup-placeholder-text">' + (msg || 'Недостаточно матчей для оценки синергии.') + '</p>';
+    if (!el) return;
+    el.replaceChildren();
+    var text = document.createElement('p');
+    text.className = 'matchup-placeholder-text';
+    text.textContent = msg || 'Недостаточно матчей для оценки синергии.';
+    el.appendChild(text);
 }
 
 function renderMatchupList(containerId, positiveItems, negativeItems, baseWr, labels) {
@@ -6036,7 +6062,7 @@ function _clearFeedbackStatus() {
 function _setFeedbackStatus(text, type) {
     var el = document.getElementById('feedback-status');
     if (!el) return;
-    el.innerHTML = text;
+    el.textContent = text;
     el.className = 'feedback-status ' + (type || '');
 }
 
@@ -6077,13 +6103,13 @@ async function submitFeedback() {
     var ta  = document.getElementById('feedback-message');
 
     if (!_feedbackRating) {
-        _setFeedbackStatus('Выбери оценку <i class="ph ph-hand-pointing" aria-hidden="true"></i>', 'hint');
+        _setFeedbackStatus('Выбери оценку ☝️', 'hint');
         return;
     }
 
     var message = (ta ? ta.value : '').trim();
     if (!message) {
-        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии <i class="ph ph-hands-praying" aria-hidden="true"></i>', 'hint');
+        _setFeedbackStatus('Напиши хотя бы пару слов в комментарии 🙏', 'hint');
         return;
     }
 
@@ -6108,7 +6134,7 @@ async function submitFeedback() {
         });
 
         if (resp.ok) {
-            _setFeedbackStatus('Спасибо за отзыв <i class="ph ph-heart" aria-hidden="true"></i>', 'ok');
+            _setFeedbackStatus('Спасибо за отзыв ♥', 'ok');
             _feedbackRating = null;
             _feedbackTags.clear();
             document.querySelectorAll('.feedback-rating-btn').forEach(function(b) { b.classList.remove('selected'); });
@@ -7271,6 +7297,7 @@ var _drafterPosFilter = 1;           // 1..5 — основная позиция
 var _drafterLeaderboardCache = null;
 var _drafterEnemyManualMode = false; // true = пользователь сам выбирает врагов
 var _drafterActiveEnemySlot = -1;    // -1 = клик по герою идёт в союзный слот
+var _drafterChallengeId = null;      // single-use server challenge for ranking
 
 function _drafterHeroName(heroId) {
     if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
@@ -7300,7 +7327,7 @@ function initDrafter() {
 
     // Prefetch лидерборда в фоне
     if (!_drafterLeaderboardCache) {
-        apiFetch(window.API_BASE_URL + '/draft/leaderboard')
+        apiFetch(window.API_BASE_URL + '/draft/leaderboard?token=' + encodeURIComponent(USER_TOKEN || ''))
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(data) { if (data) _drafterLeaderboardCache = data; })
             .catch(function() {});
@@ -8437,6 +8464,7 @@ async function loadDrafterMatch() {
     _drafterAllyPick = [null, null, null, null, null];
     _drafterActiveSlot = 0;
     _drafterEnemyPick = [];
+    _drafterChallengeId = null;
     _drafterEnemyManualMode = false;
     _drafterActiveEnemySlot = -1;
     _updateManualBtn();
@@ -8453,6 +8481,7 @@ async function loadDrafterMatch() {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
 
+        _drafterChallengeId = data.challenge_id || null;
         _drafterEnemyPick = (data.enemy || []).slice(0, 5);
         // Sort by position number so slots match pos 1..5 order
         _drafterEnemyPick.sort(function(a, b) {
@@ -8553,6 +8582,7 @@ function _updateManualBtn() {
 
 function enableEnemyManualMode() {
     _drafterEnemyManualMode = true;
+    _drafterChallengeId = null;
     _drafterEnemyPick = [
         { hero_id: 0, position: '' },
         { hero_id: 0, position: '' },
@@ -8808,7 +8838,12 @@ async function submitDraft() {
         var resp = await apiFetch(window.API_BASE_URL + '/draft/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ally: ally, enemy: enemy, token: USER_TOKEN || null })
+            body: JSON.stringify({
+                ally: ally,
+                enemy: enemy,
+                token: USER_TOKEN || null,
+                challenge_id: _drafterChallengeId
+            })
         });
         if (resp.status === 429) {
             showToast('Слишком много драфтов! Подождите немного и попробуйте снова.');
@@ -9368,7 +9403,7 @@ async function showDrafterLeaderboard() {
     content.appendChild(_lbBuildSkeletonRows(6));
 
     try {
-        var resp = await apiFetch(window.API_BASE_URL + '/draft/leaderboard');
+        var resp = await apiFetch(window.API_BASE_URL + '/draft/leaderboard?token=' + encodeURIComponent(USER_TOKEN || ''));
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var rows = await resp.json();
         _drafterLeaderboardCache = rows;
@@ -9996,7 +10031,7 @@ function _drafterCommentText(c) {
         var cls = 'tm-rank-icon' + (modifier ? ' ' + modifier : '');
         return '<img class="' + cls + '" src="/rank_icons/medal_' + tier + '.png" ' +
             'alt="' + _tmEsc(rank || ('Тир ' + tier)) + '" ' +
-            'onerror="this.style.display=\'none\'">';
+            'data-tm-hide-on-error="1">';
     }
 
     function _tmPosIcon(p) { return 'images/positions/pos_' + p + '.png'; }
@@ -10041,14 +10076,28 @@ function _drafterCommentText(c) {
         if (p && p.photo_url) {
             return '<div class="' + cls + '">' +
                 '<img src="' + _tmEsc(p.photo_url) + '" alt="" ' +
-                'onerror="var w=this.parentNode;w.classList.add(\'tm-player-avatar--fallback\');w.textContent=\'' +
-                _tmEsc(_tmAvatarInitial(p)) + '\';">' +
+                'data-tm-avatar-fallback="' + _tmEsc(_tmAvatarInitial(p)) + '">' +
             '</div>';
         }
         return '<div class="' + cls + ' tm-player-avatar--fallback">' +
             _tmEsc(_tmAvatarInitial(p)) +
         '</div>';
     }
+
+    document.addEventListener('error', function (event) {
+        var image = event.target;
+        if (!(image instanceof HTMLImageElement)) return;
+        if (image.hasAttribute('data-tm-hide-on-error')) {
+            image.style.display = 'none';
+            return;
+        }
+        if (image.hasAttribute('data-tm-avatar-fallback')) {
+            var wrapper = image.parentNode;
+            if (!wrapper) return;
+            wrapper.classList.add('tm-player-avatar--fallback');
+            wrapper.textContent = image.getAttribute('data-tm-avatar-fallback') || '·';
+        }
+    }, true);
 
     // ── Entry point from home widget ────────────────────────────────────
     // Используется deep-link обработчиком (?tm_incoming=1 из push'а бота)
@@ -11966,9 +12015,10 @@ function _drafterCommentText(c) {
                 var name = _tmDisplayName(u);
                 var uname = (u.username || '').toString().replace(/^@/, '');
                 var label = uname ? ('@' + uname) : name;
-                return '<a class="tm-history-lobby-member" href="tg://user?id=' + u.user_id + '">' +
-                    _tmEsc(label) +
-                '</a>';
+                var href = (u.contact_url || '').toString();
+                if (!/^tg:\/\/user\?id=\d+$/.test(href)) return _tmEsc(label);
+                return '<a class="tm-history-lobby-member" href="' + _tmEsc(href) + '">' +
+                    _tmEsc(label) + '</a>';
             }).join(', ');
 
         var when = _tmRelativeDate(lobby.filled_at);
@@ -12547,7 +12597,7 @@ function _drafterCommentText(c) {
     // используется внутри slot-circle где обёртка уже есть.
     function _tmAvatarHtmlInner(user) {
         if (user && user.photo_url) {
-            return '<img src="' + _tmEsc(user.photo_url) + '" alt="">';
+            return '<img src="' + _tmEsc(user.photo_url) + '" alt="" data-tm-hide-on-error="1">';
         }
         var src = (user && (user.first_name || user.username || '')).trim();
         var ch = src ? src.charAt(0).toUpperCase() : '·';

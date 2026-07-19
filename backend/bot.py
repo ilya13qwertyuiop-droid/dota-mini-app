@@ -5,7 +5,6 @@ import logging
 import os
 import re
 import time
-import traceback
 from collections import deque
 from io import BytesIO
 from pathlib import Path
@@ -95,6 +94,7 @@ import httpx
 from telegram import (
     Bot,
     BotCommand,
+    MenuButtonWebApp,
     Update,
     KeyboardButton,
     ReplyKeyboardMarkup,
@@ -109,7 +109,6 @@ from telegram.ext import (
 from telegram.error import RetryAfter, Forbidden, TelegramError
 from db import (
     init_tokens_table,
-    create_token_for_user,
     get_last_quiz_result,
     save_feedback,
     get_recent_feedback,
@@ -201,8 +200,15 @@ SKIP_CHECK_USER_IDS: frozenset[int] = frozenset(
 _PENDING_BATTLE_INVITES: dict[int, tuple[str, float]] = {}
 _PENDING_BATTLE_TTL_SEC = 600
 
-# Telegram user_id администраторов — имеют доступ к /admin_feedback
-ADMIN_IDS: frozenset[int] = frozenset({556944111})
+# Telegram user_id administrators. Never grant admin authority from source-code
+# defaults: deployment configuration is the only trust source.
+ADMIN_IDS: frozenset[int] = frozenset(
+    int(x)
+    for x in os.environ.get("ADMIN_IDS", "").split(",")
+    if x.strip().isdigit()
+)
+if not ADMIN_IDS:
+    logger.warning("ADMIN_IDS is empty; all administrative bot commands are disabled")
 API_BASE_URL = "https://dotaquiz.blog"
 # CDN для иконок героев — тот же, что использует фронтенд (hero-images.js).
 # Переопределяется через .env: HERO_IMAGE_BASE_URL=https://your-cdn/heroes
@@ -300,16 +306,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    token = await asyncio.to_thread(create_token_for_user, user_id)
-    # Fragment виден JavaScript, но не отправляется HTTP-серверу и поэтому не
-    # попадает в nginx access logs или Referer.
+    # Never embed an API session in a Telegram button. The WebApp obtains a
+    # short-lived session from signed Telegram initData after it opens.
     _mini_parts = urlsplit(MINI_APP_URL)
-    mini_app_url_with_token = urlunsplit((
+    mini_app_url = urlunsplit((
         _mini_parts.scheme,
         _mini_parts.netloc,
         _mini_parts.path,
         _mini_parts.query,
-        urlencode({"token": token}),
+        "",
     ))
 
     # Товарищеский вызов («Сыграть с другом»): deep-link db_<КОД> из шаринга.
@@ -332,7 +337,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _mini_parts.netloc,
             _mini_parts.path,
             urlencode(_battle_query),
-            urlencode({"token": token}),
+            "",
         ))
         await update.message.reply_text(
             "⚔️ Тебя вызвали на битву драфтов!\n"
@@ -382,7 +387,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             KeyboardButton(
                 text="Открыть D2Helper",
-                web_app=WebAppInfo(url=mini_app_url_with_token),
+                web_app=WebAppInfo(url=mini_app_url),
             )
         ]
     ]
@@ -504,7 +509,7 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to read quiz result")
         await update.message.reply_text(
             "Произошла ошибка при чтении результатов. Попробуй позже."
         )
@@ -809,7 +814,7 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_photo(photo=buf, caption=caption, parse_mode="HTML")
                 return
             except Exception:
-                traceback.print_exc()
+                logger.exception("Failed to send quiz result image")
 
         lines = [
             "🧙 <b>Рекомендованные герои</b>",
@@ -824,7 +829,7 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to read hero quiz result")
         await update.message.reply_text(
             "Произошла ошибка при чтении результатов. Попробуй позже."
         )
@@ -1282,7 +1287,7 @@ async def _handle_counters_hero(
                 await update.message.reply_photo(photo=buf, caption=caption, parse_mode="HTML")
                 return
             except Exception:
-                traceback.print_exc()
+                logger.exception("Failed to send counter image")
                 # продолжаем → текстовый fallback
 
         # ── Текстовый fallback ────────────────────────────────────────────
@@ -1299,7 +1304,7 @@ async def _handle_counters_hero(
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load counter data")
         await update.message.reply_text(
             "Произошла ошибка при получении данных. Попробуй позже."
         )
@@ -1373,7 +1378,7 @@ async def _handle_synergy_hero(
                 await update.message.reply_photo(photo=buf, caption=caption, parse_mode="HTML")
                 return
             except Exception:
-                traceback.print_exc()
+                logger.exception("Failed to send synergy image")
 
         lines = [f"🤝 <b>Синергия для: {hero_name}</b>", ""]
         if best:
@@ -1388,7 +1393,7 @@ async def _handle_synergy_hero(
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load synergy data")
         await update.message.reply_text(
             "Произошла ошибка при получении данных. Попробуй позже."
         )
@@ -1458,7 +1463,7 @@ async def _handle_feedback_message(
             username=username,
         )
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to save bot feedback")
         await update.message.reply_text(
             "Не удалось сохранить отзыв. Попробуй позже."
         )
@@ -1489,7 +1494,7 @@ async def stats_mode_command(update: Update, _context: ContextTypes.DEFAULT_TYPE
         new_mode = "strict" if current == "normal" else "normal"
         set_stats_mode(new_mode)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to change statistics mode")
         await update.message.reply_text("Не удалось переключить режим статистики.")
         return
 
@@ -1527,7 +1532,7 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
             asyncio.to_thread(get_recent_feedback, limit=20),
         )
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load admin feedback")
         await update.message.reply_text("Не удалось получить отзывы.")
         return
 
@@ -1579,11 +1584,11 @@ async def admin_feedback_command(update: Update, _context: ContextTypes.DEFAULT_
         try:
             await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
         except Exception:
-            traceback.print_exc()
+            logger.exception("Failed to send formatted admin feedback")
             try:
                 await update.message.reply_text(text, disable_web_page_preview=True)
             except Exception:
-                traceback.print_exc()
+                logger.exception("Failed to send plain admin feedback")
 
 
 # -------- /admin_users (скрытая команда для администраторов) --------
@@ -1597,7 +1602,7 @@ async def admin_users_command(update: Update, _context: ContextTypes.DEFAULT_TYP
         new_today = count_new_users_today()
         active_30d = count_active_users_30d()
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load admin user statistics")
         await update.message.reply_text("Не удалось получить статистику пользователей.")
         return
 
@@ -1617,7 +1622,7 @@ async def admin_matches_command(update: Update, _context: ContextTypes.DEFAULT_T
     try:
         count = count_matches_with_game_mode()
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load admin match statistics")
         await update.message.reply_text("Не удалось получить статистику матчей.")
         return
 
@@ -1634,7 +1639,7 @@ async def tm_stats_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     try:
         s = get_teammate_stats()
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load teammate statistics")
         await update.message.reply_text("Не удалось получить статистику раздела «Пати».")
         return
 
@@ -1725,7 +1730,7 @@ async def analytics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         a = await asyncio.to_thread(get_analytics_overview, days=days)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load analytics")
         await update.message.reply_text("Не удалось получить аналитику.")
         return
 
@@ -1787,7 +1792,7 @@ async def topdraft_command(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     try:
         top = get_top_drafters(month=now.month, year=now.year)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to load draft leaderboard")
         await update.message.reply_text("❌ Не удалось получить топ драфтеров.")
         return
 
@@ -1849,7 +1854,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         newly_banned = await asyncio.to_thread(ban_user, target_id, admin_id, reason)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to ban user")
         await update.message.reply_text("❌ Не удалось применить бан.")
         return
 
@@ -1874,7 +1879,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         removed = await asyncio.to_thread(unban_user, target_id)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to unban user")
         await update.message.reply_text("❌ Не удалось снять бан.")
         return
 
@@ -2103,7 +2108,7 @@ async def _do_broadcast(context, job_id: int, src_chat_id: int, src_msg_id: int,
                 failed=base_failed + counters["failed"],
             )
         except Exception:
-            traceback.print_exc()
+            logger.exception("Failed to checkpoint broadcast")
         await render(cursor)
 
     try:
@@ -2115,7 +2120,7 @@ async def _do_broadcast(context, job_id: int, src_chat_id: int, src_msg_id: int,
             status="done",
         )
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to mark broadcast complete")
     await render(cursor, final=True)
     logger.info("[broadcast] done job=%s ok=%d blocked=%d failed=%d flood=%d/%.0fs",
                 job_id, counters["ok"], counters["blocked"], counters["failed"],
@@ -2137,7 +2142,7 @@ async def broadcast_receive(update: Update, _context: ContextTypes.DEFAULT_TYPE)
         n = len(await asyncio.to_thread(get_all_bot_user_ids))
         n_str = str(n)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to count broadcast recipients")
         n_str = "?"
 
     kb = InlineKeyboardMarkup([
@@ -2205,7 +2210,7 @@ async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             user_ids = await asyncio.to_thread(get_all_bot_user_ids)
         except Exception as e:
-            traceback.print_exc()
+            logger.exception("Failed to load broadcast recipients")
             _BROADCAST_PENDING.pop(admin_id, None)
             try:
                 await q.edit_message_text(f"Не удалось получить список пользователей: {e}")
@@ -2226,7 +2231,7 @@ async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 status_chat_id=status_msg.chat_id, status_message_id=status_msg.message_id,
             )
         except Exception as e:
-            traceback.print_exc()
+            logger.exception("Failed to create broadcast job")
             await q.edit_message_text(f"Не удалось создать задачу рассылки: {e}")
             _BROADCAST_PENDING.pop(admin_id, None)
             return
@@ -2259,7 +2264,7 @@ async def broadcast_resume_command(update: Update, context: ContextTypes.DEFAULT
     try:
         user_ids = await asyncio.to_thread(get_all_bot_user_ids)
     except Exception as e:
-        traceback.print_exc()
+        logger.exception("Failed to resume broadcast recipients")
         await update.message.reply_text(f"Не удалось получить список пользователей: {e}")
         return
 
@@ -2285,7 +2290,7 @@ async def broadcast_resume_command(update: Update, context: ContextTypes.DEFAULT
             status_message_id=status_msg.message_id,
         )
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to update resumed broadcast")
 
     await _do_broadcast(
         context, job["id"], job["src_chat_id"], job["src_message_id"],
@@ -2325,6 +2330,12 @@ async def _on_startup(application: Application) -> None:
 
 async def _set_commands(application: Application) -> None:
     """Registers the visible command menu shown when the user types / in Telegram."""
+    await application.bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(
+            text="Открыть D2Helper",
+            web_app=WebAppInfo(url=MINI_APP_URL),
+        )
+    )
     await application.bot.set_my_commands([
         BotCommand("start",      "Открыть мини‑приложение"),
         BotCommand("news",       "Уведомления об обновлениях Dota 2"),
@@ -2406,6 +2417,10 @@ def main():
     print("✅ Бот запущен! Открой Telegram и напиши боту /start")
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
+        # A stolen token can be used to install an attacker-controlled webhook.
+        # Polling deletes it during bootstrap; queued updates from the compromise
+        # window must not execute after token rotation.
+        drop_pending_updates=True,
     )
 
 
