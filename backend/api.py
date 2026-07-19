@@ -1,6 +1,4 @@
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -10,7 +8,7 @@ import time
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +167,9 @@ def _load_draft_matches_file() -> list | None:
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from starlette.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 from sqlalchemy import text
@@ -200,6 +199,9 @@ from backend.stats_db import (
     get_latest_match_patch,
 )
 from backend.config import BAYESIAN_SMOOTHING_C
+from backend.avatar_store import avatar_path, public_avatar_url
+from backend.security_logging import configure_secure_logging
+from backend.telegram_auth import validate_telegram_init_data as _validate_telegram_init_data
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -210,6 +212,20 @@ if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
 if not CHECK_CHAT_ID:
     raise RuntimeError("CHECK_CHAT_ID is not set")
+
+configure_secure_logging(BOT_TOKEN, os.environ.get("DATABASE_URL"))
+
+
+def _allowed_cors_origins() -> list[str]:
+    origins: set[str] = set()
+    mini_app = urlsplit((os.environ.get("MINI_APP_URL") or "").strip())
+    if mini_app.scheme in ("https", "http") and mini_app.netloc:
+        origins.add(f"{mini_app.scheme}://{mini_app.netloc}")
+    for raw in (os.environ.get("CORS_ALLOWED_ORIGINS") or "").split(","):
+        parsed = urlsplit(raw.strip())
+        if parsed.scheme in ("https", "http") and parsed.netloc:
+            origins.add(f"{parsed.scheme}://{parsed.netloc}")
+    return sorted(origins)
 
 
 # --- DB init (idempotent; Alembic is the authoritative source for PostgreSQL) ---
@@ -233,11 +249,10 @@ _load_hero_matchups_file()
 app = FastAPI(title="Dota Mini App Backend")
 
 
-# CORS нужен, чтобы фронтенд (мини-ап) мог вызывать этот API из браузера.
-# Для продакшена лучше сузить allow_origins до домена мини-апа.
+# CORS разрешён только origin из MINI_APP_URL и явного CORS_ALLOWED_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_cors_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -258,6 +273,31 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")
+async def app_token_from_authorization(request: Request, call_next):
+    """Accept app tokens in a header so they never enter browser/proxy URLs.
+
+    Existing endpoint signatures still receive an internal query parameter;
+    the incoming request target (and therefore access logs) remains token-free.
+    """
+    authorization = request.headers.get("authorization", "")
+    scheme, separator, token = authorization.partition(" ")
+    raw_query = request.scope.get("query_string", b"").decode("latin-1")
+    pairs = parse_qsl(raw_query, keep_blank_values=True)
+    has_query_token = any(key == "token" for key, _value in pairs)
+    if separator and scheme.lower() == "bearer" and not has_query_token:
+        token = token.strip()
+        if 20 <= len(token) <= 256 and all(c.isalnum() or c in "_-" for c in token):
+            pairs.append(("token", token))
+            request.scope["query_string"] = urlencode(pairs).encode("ascii")
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    if authorization or has_query_token or request.method != "GET":
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Логирует каждый HTTP-запрос: метод, путь, статус, время выполнения."""
     t0 = time.monotonic()
@@ -272,6 +312,24 @@ async def log_requests(request: Request, call_next):
         ms,
     )
     return response
+
+
+@app.get("/api/avatars/{avatar_key}", include_in_schema=False)
+def get_cached_avatar(avatar_key: str):
+    """Serve a validated first-party avatar by an opaque, non-user key."""
+
+    path = avatar_path(avatar_key)
+    if path is None:
+        raise HTTPException(status_code=404, detail="avatar not found")
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={
+            "Cache-Control": "public, max-age=604800, immutable",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 
@@ -318,58 +376,17 @@ class UserStats(BaseModel):
 
 class TelegramUserData(BaseModel):
     """Данные пользователя из Telegram Web App"""
-    token: str
-    username: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
-    photo_url: str | None = None
+    token: str = Field(min_length=20, max_length=256)
+    init_data: str = Field(min_length=1, max_length=16_384)
 
 
 class RefreshTokenRequest(BaseModel):
     """Silent token refresh через валидный Telegram WebApp initData."""
-    init_data: str
+    init_data: str = Field(min_length=1, max_length=16_384)
 
 
 class RefreshTokenResponse(BaseModel):
     token: str
-
-
-# ── Telegram WebApp initData validation ───────────────────────────────────
-# Максимальный возраст auth_date в initData (защита от replay).
-_INIT_DATA_MAX_AGE_SECONDS = 86400  # 24 часа
-
-
-def _validate_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
-    """Проверяет HMAC-подпись initData по схеме из документации Telegram.
-    Возвращает словарь параметров при успехе или None при ошибке."""
-    if not init_data:
-        return None
-    try:
-        pairs = parse_qsl(init_data, keep_blank_values=True)
-    except ValueError:
-        return None
-
-    params = dict(pairs)
-    received_hash = params.pop("hash", None)
-    if not received_hash:
-        return None
-
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
-    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
-    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-
-    if not hmac.compare_digest(computed_hash, received_hash):
-        return None
-
-    try:
-        auth_date = int(params.get("auth_date", "0"))
-    except ValueError:
-        return None
-    if auth_date <= 0 or (time.time() - auth_date) > _INIT_DATA_MAX_AGE_SECONDS:
-        return None
-
-    return params
-
 
 
 # ========== API Endpoints ==========
@@ -438,10 +455,30 @@ async def check_subscription(data: CheckRequest):
 
 @app.post("/api/save_telegram_data")
 def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
-    """Сохраняет данные пользователя из Telegram (имя, username, фото)"""
+    """Сохраняет только подписанную Telegram identity; аватар принимает bot.py."""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
+    if params is None:
+        raise HTTPException(status_code=401, detail="Invalid initData signature")
+    try:
+        telegram_user = json.loads(params["user"])
+        if not isinstance(telegram_user, dict):
+            raise TypeError("user payload must be an object")
+        signed_user_id = int(telegram_user["id"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=401, detail="Invalid user payload")
+    if signed_user_id != user_id:
+        raise HTTPException(status_code=403, detail="initData user does not match token")
+
+    def _identity_text(key: str, max_length: int) -> str | None:
+        value = telegram_user.get(key)
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        return value[:max_length] or None
 
     # Обновляем профиль
     db_profile = db.query(DBUserProfile).filter(DBUserProfile.user_id == user_id).first()
@@ -457,18 +494,15 @@ def save_telegram_data(data: TelegramUserData, db: Session = Depends(get_db)):
     if not db_profile.settings:
         db_profile.settings = {}
 
-    # НЕ затираем существующие значения пустыми: Telegram WebApp не всегда
-    # отдаёт username/фото в initDataUnsafe (приватность/клиент) — раньше
-    # приходящий null стирал валидный username, сохранённый на /start, и
-    # пуши «Пати» уходили без контакта.
-    if data.username:
-        db_profile.settings["username"] = data.username
-    if data.first_name:
-        db_profile.settings["first_name"] = data.first_name
-    if data.last_name:
-        db_profile.settings["last_name"] = data.last_name
-    if data.photo_url:
-        db_profile.settings["photo_url"] = data.photo_url
+    # Все identity-поля берутся из HMAC-подписанного initData, а не из JSON
+    # браузера. Отсутствующие значения удаляем, чтобы не сохранять устаревшие.
+    for key, max_length in (("username", 64), ("first_name", 64), ("last_name", 64)):
+        value = _identity_text(key, max_length)
+        if value is None:
+            db_profile.settings.pop(key, None)
+        else:
+            db_profile.settings[key] = value
+    db_profile.settings.pop("photo_url", None)
     flag_modified(db_profile, "settings")
 
     db.commit()
@@ -541,7 +575,7 @@ def get_profile_full(token: str, db: Session = Depends(get_db)):
         username=settings.get("username"),
         first_name=settings.get("first_name"),
         last_name=settings.get("last_name"),
-        photo_url=settings.get("photo_url"),
+        photo_url=public_avatar_url(settings),
         total_quizzes=len(quiz_results),
         last_quiz_date=quiz_results[0].updated_at.isoformat() if quiz_results and quiz_results[0].updated_at else None,
         quiz_history=quiz_history
@@ -1682,11 +1716,10 @@ def api_draft_leaderboard(db: Session = Depends(get_db)):
     for rank, (uid, (top5_sum, draft_count)) in enumerate(top25, 1):
         profile = profiles.get(uid)
         settings = (profile.settings if profile else None) or {}
-        username = settings.get("first_name") or settings.get("username") or f"Игрок {uid}"
-        photo_url = settings.get("photo_url") or None
+        username = settings.get("first_name") or settings.get("username") or "Игрок"
+        photo_url = public_avatar_url(settings)
         result.append({
             "rank": rank,
-            "user_id": uid,
             "username": username,
             "photo_url": photo_url,
             "top5_sum": round(top5_sum, 1),
@@ -1928,7 +1961,7 @@ async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = D
 
     scores = data.get("scores") or []     # отсортировано по ВОЗРАСТАНИЮ (для bisect)
     total = data.get("total") or 0
-    you = {"user_id": user_id, "best": ub, "rank": None, "percentile": None}
+    you = {"best": ub, "rank": None, "percentile": None}
     if ub > 0 and total > 0:
         import bisect
         le = bisect.bisect_right(scores, ub)   # сколько результатов <= твоего — O(log n)
@@ -1936,7 +1969,12 @@ async def api_minigame_leaderboard(token: str, game: str = "hl", db: Session = D
         rank = greater + 1
         you["rank"] = rank
         you["percentile"] = round(100 * (total - rank) / total) if total > 1 else 100
-    return {"top": data.get("top", []), "total": total, "you": you}
+    top = []
+    for entry in data.get("top", []):
+        public_entry = {key: value for key, value in entry.items() if key != "user_id"}
+        public_entry["you"] = entry.get("user_id") == user_id
+        top.append(public_entry)
+    return {"top": top, "total": total, "you": you}
 
 
 @app.post("/api/minigames/score")
@@ -2294,7 +2332,7 @@ def _tm_serialize_profile(p: DBTeammateProfile, settings: dict | None = None) ->
         "first_name":      s.get("first_name"),
         "last_name":       s.get("last_name"),
         "username":        s.get("username"),
-        "photo_url":       s.get("photo_url"),
+        "photo_url":       public_avatar_url(s),
     }
 
 
@@ -4171,6 +4209,14 @@ def _bt_role(battle: DBDraftBattle, user_id: int):
     return None
 
 
+def _bt_require_role(battle: DBDraftBattle, user_id: int) -> str:
+    """Не раскрывает существование/состояние комнаты постороннему токену."""
+    role = _bt_role(battle, user_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="battle not found")
+    return role
+
+
 def _bt_actor_of(battle: DBDraftBattle, idx: int) -> str:
     """Роль ('host'/'guest') актора хода idx по first_pick и последовательности."""
     seq = _BT_SEQUENCES[battle.mode]
@@ -5339,6 +5385,8 @@ def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
 
 
 def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime) -> dict:
+    if viewer_role not in ("host", "guest"):
+        raise HTTPException(status_code=404, detail="battle not found")
     seq = _BT_SEQUENCES[battle.mode]
     actions = (
         db.query(DBDraftBattleAction)
@@ -5368,9 +5416,8 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
             return None
         s = settings.get(uid) or {}
         return {
-            "user_id": uid,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
-            "photo_url": s.get("photo_url"),
+            "photo_url": public_avatar_url(s),
             "rank_key": _rank_key_of(uid),
         }
 
@@ -5378,7 +5425,7 @@ def _bt_serialize(db: Session, battle: DBDraftBattle, viewer_role, now: datetime
     # Медали у бота нет (rank_key None) — фронт её просто не рисует.
     def _guest_player():
         if battle.is_bot:
-            return {"user_id": None, "name": "Бот", "photo_url": None,
+            return {"name": "Бот", "photo_url": None,
                     "is_bot": True, "rank_key": None}
         return _player(battle.guest_id)
 
@@ -5958,7 +6005,7 @@ def api_battle_history(token: str, limit: int = 20, db: Session = Depends(get_db
             s = settings.get(opp_id) or {}
             opponent = {
                 "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
-                "photo_url": s.get("photo_url"),
+                "photo_url": public_avatar_url(s),
                 "is_bot": False,
                 "rank_key": opp_ranks.get(opp_id),
             }
@@ -6067,7 +6114,7 @@ def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
         top.append({
             "place": place,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
-            "photo_url": s.get("photo_url"),
+            "photo_url": public_avatar_url(s),
             "rank_key": key,
             "rating": rating,
             "you": r.user_id == uid,
@@ -6266,11 +6313,12 @@ def api_battle_state(token: str, code: str, db: Session = Depends(get_db)):
     """Разовое чтение состояния (вход на экран / резюм после сна WebView)."""
     uid = _tm_require_user(token=token)
     battle = _bt_get_battle(db, code)
+    role = _bt_require_role(battle, uid)
     now = _bt_now()
     if _bt_tick(db, battle, now):
         db.commit()
         _bt_notify(battle.id)
-    return _bt_serialize(db, battle, _bt_role(battle, uid), now)
+    return _bt_serialize(db, battle, role, now)
 
 
 def _bt_try_live_match(db: Session, code: str, now: datetime) -> bool:
@@ -6350,6 +6398,7 @@ def _bt_poll_read(code: str, user_id: int, since: int):
     секунд можно спать до ближайшего дедлайна)."""
     with SessionLocal() as db:
         battle = _bt_get_battle(db, code)
+        role = _bt_require_role(battle, user_id)
         now = _bt_now()
         # Ленивый live-матч: пока комната ждёт в searching, каждый полл пробует
         # спарить её с другой ждущей (окно по max-ожиданию). Живой соперник
@@ -6376,7 +6425,7 @@ def _bt_poll_read(code: str, user_id: int, since: int):
             db.commit()
             _bt_notify(battle.id)
         if battle.state_version > since:
-            return _bt_serialize(db, battle, _bt_role(battle, user_id), now), battle.id, 0.0
+            return _bt_serialize(db, battle, role, now), battle.id, 0.0
         wait_s = _BT_MAX_HOLD_SECONDS
         if battle.status == "drafting" and battle.deadline_at is not None:
             wait_s = max(0.05, (_bt_aware(battle.deadline_at) - now).total_seconds())

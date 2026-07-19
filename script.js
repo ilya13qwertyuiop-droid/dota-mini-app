@@ -315,7 +315,19 @@
         // Получаем token из URL параметров
         function getTokenFromUrl() {
             const params = new URLSearchParams(window.location.search);
-            return params.get('token');
+            const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+            const token = fragment.get('token') || params.get('token');
+            if (token && window.history && window.history.replaceState) {
+                params.delete('token');
+                fragment.delete('token');
+                const cleanQuery = params.toString();
+                const cleanFragment = fragment.toString();
+                const cleanUrl = window.location.pathname +
+                    (cleanQuery ? '?' + cleanQuery : '') +
+                    (cleanFragment ? '#' + cleanFragment : '');
+                window.history.replaceState(null, document.title, cleanUrl);
+            }
+            return token;
         }
 
         let USER_TOKEN = getTokenFromUrl();
@@ -381,9 +393,29 @@
             return _refreshInFlight;
         }
 
+        function _prepareApiRequest(url, options) {
+            let requestUrl = url;
+            let requestOptions = Object.assign({}, options || {});
+            try {
+                const parsedUrl = new URL(String(url), window.location.href);
+                const queryToken = parsedUrl.searchParams.get('token');
+                if (queryToken) {
+                    parsedUrl.searchParams.delete('token');
+                    const headers = new Headers(requestOptions.headers || {});
+                    headers.set('Authorization', 'Bearer ' + queryToken);
+                    requestOptions.headers = headers;
+                    requestUrl = parsedUrl.toString();
+                }
+            } catch (e) {
+                console.warn('[auth] failed to sanitize request URL');
+            }
+            return { url: requestUrl, options: requestOptions };
+        }
+
         async function apiFetch(url, options) {
             const oldToken = USER_TOKEN;
-            const resp = await _rawFetch(url, options);
+            const initialRequest = _prepareApiRequest(url, options);
+            const resp = await _rawFetch(initialRequest.url, initialRequest.options);
             if (resp.status !== 401 && resp.status !== 403) return resp;
 
             const newToken = await refreshToken();
@@ -418,7 +450,8 @@
                 }
                 retryOptions = Object.assign({}, options, { body: newBody });
             }
-            return _rawFetch(retryUrl, retryOptions);
+            const retryRequest = _prepareApiRequest(retryUrl, retryOptions);
+            return _rawFetch(retryRequest.url, retryRequest.options);
         }
 
         // Сохранение результата на backend
@@ -1194,10 +1227,9 @@
         function _mghlRenderLeaderboard(lb) {
             if (!lb) return;
             var list = document.getElementById('mghl-lb-list'); if (!list) return;
-            var meId = lb.you && lb.you.user_id;
             var top = lb.top || [];
             var rows = top.map(function (e, i) {
-                var me = (e.user_id === meId) ? ' mghl-lb-row--me' : '';
+                var me = e.you ? ' mghl-lb-row--me' : '';
                 var av = e.photo_url
                     ? '<img class="mghl-lb-av" src="' + _mghlEsc(e.photo_url) + '" alt="" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'mghl-lb-av mghl-lb-av--ph\',textContent:\'·\'}))">'
                     : '<span class="mghl-lb-av mghl-lb-av--ph">' + _mghlEsc((e.name || '?').charAt(0)) + '</span>';
@@ -1209,7 +1241,7 @@
                 '</div>';
             }).join('');
             // Если тебя нет в топе — пристёгиваем твою строку снизу.
-            var inTop = top.some(function (e) { return e.user_id === meId; });
+            var inTop = top.some(function (e) { return !!e.you; });
             if (lb.you && lb.you.rank && !inTop) {
                 rows += '<div class="mghl-lb-row mghl-lb-row--me">' +
                     '<span class="mghl-lb-rank">' + lb.you.rank + '</span>' +
@@ -4441,10 +4473,7 @@ async function initProfile() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             token: USER_TOKEN,
-                            first_name: user.first_name,
-                            last_name: user.last_name || null,
-                            username: user.username || null,
-                            photo_url: user.photo_url || null
+                            init_data: _getInitData()
                         })
                     });
                     console.log('[PROFILE] Данные Telegram отправлены');
@@ -9201,7 +9230,7 @@ function _lbBuildRow(r) {
     place.textContent = r.rank;
     row.appendChild(place);
 
-    var displayName = r.username || r.first_name || ('Игрок ' + r.user_id);
+    var displayName = r.username || r.first_name || 'Игрок';
     var firstChar = displayName.charAt(0).toUpperCase();
 
     if (r.photo_url) {

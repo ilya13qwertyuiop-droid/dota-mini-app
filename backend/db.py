@@ -46,17 +46,23 @@ def init_hero_matchups_cache_table() -> None:
 # Token management
 # ---------------------------------------------------------------------------
 
+def _token_digest(token: str) -> str:
+    """One-way lookup key; a DB snapshot must not contain usable sessions."""
+    import hashlib
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def create_token_for_user(user_id: int) -> str:
     """Generates a 24-hour token for the given Telegram user_id."""
     import secrets
-    token_str = secrets.token_urlsafe(16)
+    token_str = secrets.token_urlsafe(32)
     expires_at = datetime.utcnow() + timedelta(hours=24)
 
     with SessionLocal() as session:
-        # session.merge() = upsert by PK: inserts or replaces the row.
-        # Replaces the former `INSERT OR REPLACE INTO tokens ...` (SQLite-only).
-        token_obj = Token(token=token_str, user_id=user_id, expires_at=expires_at)
-        session.merge(token_obj)
+        token_obj = Token(
+            token=_token_digest(token_str), user_id=user_id, expires_at=expires_at
+        )
+        session.add(token_obj)
         session.commit()
 
     return token_str
@@ -64,8 +70,10 @@ def create_token_for_user(user_id: int) -> str:
 
 def get_user_id_by_token(token: str) -> int | None:
     """Validates token and returns user_id, or None if missing/expired."""
+    if not isinstance(token, str) or not token or len(token) > 256:
+        return None
     with SessionLocal() as session:
-        token_obj = session.get(Token, token)
+        token_obj = session.get(Token, _token_digest(token))
 
         if token_obj is None:
             return None
@@ -80,8 +88,10 @@ def get_user_id_by_token(token: str) -> int | None:
 
 def delete_token(token: str) -> None:
     """Deletes a token (called when it's found to be expired)."""
+    if not isinstance(token, str) or not token or len(token) > 256:
+        return
     with SessionLocal() as session:
-        token_obj = session.get(Token, token)
+        token_obj = session.get(Token, _token_digest(token))
         if token_obj:
             session.delete(token_obj)
             session.commit()
@@ -228,7 +238,20 @@ def get_recent_feedback(limit: int = 20) -> list[dict]:
         ]
 
 
-def upsert_user_profile_settings(user_id: int, settings_patch: dict) -> None:
+def get_user_profile_settings(user_id: int) -> dict:
+    """Return a detached copy of profile settings for a Telegram user."""
+
+    with SessionLocal() as session:
+        profile = session.get(UserProfile, user_id)
+        return dict((profile.settings if profile else None) or {})
+
+
+def upsert_user_profile_settings(
+    user_id: int,
+    settings_patch: dict,
+    *,
+    remove_keys: tuple[str, ...] = (),
+) -> None:
     """Creates or updates user_profiles.settings fields (shallow merge).
 
     Used by bot.py /start to persist Telegram profile data without making a
@@ -240,15 +263,20 @@ def upsert_user_profile_settings(user_id: int, settings_patch: dict) -> None:
     with SessionLocal() as session:
         profile = session.get(UserProfile, user_id)
         if profile is None:
+            initial = dict(settings_patch)
+            for key in remove_keys:
+                initial.pop(key, None)
             profile = UserProfile(
                 user_id=user_id,
                 favorite_heroes=[],
-                settings=settings_patch,
+                settings=initial,
             )
             session.add(profile)
         else:
             current = dict(profile.settings or {})
             current.update(settings_patch)
+            for key in remove_keys:
+                current.pop(key, None)
             profile.settings = current
             flag_modified(profile, "settings")
         session.commit()

@@ -36,6 +36,7 @@ from sqlalchemy import text
 
 from backend.config import ALLOWED_GAME_MODE_PAIRS, MIN_MATCH_DURATION_SECONDS
 from backend.database import engine
+from backend.avatar_store import public_avatar_url
 
 logger = logging.getLogger(__name__)
 
@@ -1983,7 +1984,7 @@ def _rebuild_all_minigame_leaderboards(top_n: int = 20) -> dict:
             name = (first + " " + last).strip()
             if not name:
                 name = ("@" + s["username"]) if s.get("username") else ("Игрок " + str(uid))
-            top.append({"user_id": uid, "name": name, "photo_url": s.get("photo_url"), "best": b})
+            top.append({"user_id": uid, "name": name, "photo_url": public_avatar_url(s), "best": b})
         out = {"built_at": now, "top": top, "total": total,
                "scores": sorted(b for (_u, b) in bests)}   # ascending — для bisect
         set_app_cache_value(_MINIGAME_LB_KEY_PREFIX + g, out)   # межворкерный шеринг

@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ from db import (
     count_active_users_30d,
     count_matches_with_game_mode,
     get_top_drafters,
+    get_user_profile_settings,
     upsert_user_profile_settings,
     toggle_notify_news,
     get_all_bot_user_ids,
@@ -128,6 +130,8 @@ from db import (
     find_user_id_by_username,
     log_event,
 )
+from avatar_store import delete_avatar, store_avatar_bytes
+from security_logging import configure_secure_logging
 from stats_db import get_teammate_stats, get_analytics_overview
 
 # Optional: локальная статистика (stats_updater.py должен был уже наполнить БД).
@@ -255,14 +259,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if _start_payload:
         logger.info("[start] deep-link payload=%s user=%s", _start_payload, user_id)
 
-    # Получаем фото профиля (два Telegram API вызова; ошибка не критична)
-    photo_url = None
+    # Получаем байты фото на сервере. Telegram file URL содержит BOT_TOKEN и
+    # поэтому никогда не сохраняется и не возвращается клиенту.
+    avatar_state = "error"
+    avatar_bytes = None
+    avatar_file_unique_id = None
     try:
         photos = await context.bot.get_user_profile_photos(user.id, limit=1)
         if photos.total_count > 0:
-            file_id = photos.photos[0][0].file_id
-            file = await context.bot.get_file(file_id)
-            photo_url = file.file_path
+            photo = photos.photos[0][-1]
+            telegram_file = await context.bot.get_file(photo.file_id)
+            avatar_bytes = await telegram_file.download_as_bytearray()
+            avatar_file_unique_id = photo.file_unique_id
+            avatar_state = "ready"
+        else:
+            avatar_state = "missing"
     except Exception as e:
         logger.warning("Failed to fetch user photo for %s: %s", user_id, e)
 
@@ -290,7 +301,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     token = await asyncio.to_thread(create_token_for_user, user_id)
-    mini_app_url_with_token = f"{MINI_APP_URL}?token={token}"
+    # Fragment виден JavaScript, но не отправляется HTTP-серверу и поэтому не
+    # попадает в nginx access logs или Referer.
+    _mini_parts = urlsplit(MINI_APP_URL)
+    mini_app_url_with_token = urlunsplit((
+        _mini_parts.scheme,
+        _mini_parts.netloc,
+        _mini_parts.path,
+        _mini_parts.query,
+        urlencode({"token": token}),
+    ))
 
     # Товарищеский вызов («Сыграть с другом»): deep-link db_<КОД> из шаринга.
     # Гейт подписок выше УЖЕ пройден — неподписанный друг сперва подпишется
@@ -305,7 +325,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if _pending and time.time() - _pending[1] <= _PENDING_BATTLE_TTL_SEC:
             _battle_code = _pending[0]
     if _battle_code:
-        battle_url = f"{mini_app_url_with_token}&battle={_battle_code}"
+        _battle_query = parse_qsl(_mini_parts.query, keep_blank_values=True)
+        _battle_query.append(("battle", _battle_code))
+        battle_url = urlunsplit((
+            _mini_parts.scheme,
+            _mini_parts.netloc,
+            _mini_parts.path,
+            urlencode(_battle_query),
+            urlencode({"token": token}),
+        ))
         await update.message.reply_text(
             "⚔️ Тебя вызвали на битву драфтов!\n"
             "Товарищеский матч — рейтинг не на кону, только гордость.",
@@ -318,13 +346,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # Пишем данные профиля напрямую в БД — без HTTP-запроса к самому себе.
+    # Старый token-bearing photo_url удаляется при любом успешном /start.
     try:
-        await asyncio.to_thread(upsert_user_profile_settings, user_id, {
+        current_settings = await asyncio.to_thread(get_user_profile_settings, user_id)
+        old_avatar_key = current_settings.get("avatar_key")
+        settings_patch = {
             "username": user.username,
             "first_name": user.first_name,
             "last_name": getattr(user, "last_name", None),
-            "photo_url": photo_url,
-        })
+        }
+        remove_keys = ["photo_url"]
+
+        if avatar_state == "ready" and avatar_bytes is not None:
+            avatar_key = await asyncio.to_thread(
+                store_avatar_bytes, avatar_bytes, old_avatar_key
+            )
+            settings_patch.update({
+                "avatar_key": avatar_key,
+                "avatar_file_unique_id": avatar_file_unique_id,
+            })
+        elif avatar_state == "missing":
+            await asyncio.to_thread(delete_avatar, old_avatar_key)
+            remove_keys.extend(("avatar_key", "avatar_file_unique_id"))
+
+        await asyncio.to_thread(
+            upsert_user_profile_settings,
+            user_id,
+            settings_patch,
+            remove_keys=tuple(remove_keys),
+        )
     except Exception as e:
         logger.warning("Failed to upsert profile settings for user %s: %s", user_id, e)
 
@@ -2293,6 +2343,7 @@ def main():
         datefmt="%H:%M:%S",
         level=logging.INFO,
     )
+    configure_secure_logging(BOT_TOKEN, os.environ.get("DATABASE_URL"))
     init_tokens_table()
     print("🤖 Бот запускается...")
 

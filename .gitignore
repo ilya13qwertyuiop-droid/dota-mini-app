@@ -1,4 +1,7 @@
 backend/.env
+.env
+.env.*
+!.env.example
 ARCHITECTURE.md
 .claude/
 stratz_data.json
@@ -23,3 +26,12 @@ hero_detailed_stats.json
 assets/hero_portraits/
 assets/share_cache/
 assets/_sample_card.*
+
+# Local databases and runtime state (may contain tokens and personal data)
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+.runtime/
+*.log

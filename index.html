@@ -6,35 +6,39 @@
       name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,shrink-to-fit=no,viewport-fit=cover"
     />
+    <meta name="referrer" content="no-referrer" />
     <title>Dota 2 Helper</title>
-
-    <!-- Шрифты — Geist для тактической точности -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap"
-    />
 
     <!-- Иконки — Phosphor Icons (regular) -->
     <link
       rel="stylesheet"
       href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
+      integrity="sha384-6p9AefaqUhEVheRlj1mpAkbngHXy9mbYMrIdcIt4Jlc9lOLIablJq3bBsLOjGwZ7"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
     />
     <!-- Fill-вес: нужен для ph-fill (метка первопроходца и т.п.). Без него
          класс ph-fill не имеет глифов и иконка рендерится пустой. -->
     <link
       rel="stylesheet"
       href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css"
+      integrity="sha384-pPVoXE8ft+zxKtxIDDI7SfTK6y95NHm4qa+hKEg/hs8VkjW5IP+9/dGOPCbDpUPl"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=252" />
+    <link rel="stylesheet" href="styles.css?v=253" />
 
     <!-- Telegram WebApp SDK -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
     <!-- GSAP -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"
+      integrity="sha512-16esztaSRplJROstbIIdwX3N97V1+pZvV33ABoG1H2OyTttBxEGkTsoIVsiP1iaTtM8b3+hu2kB6pQ4Clr5yug=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
     <!-- API base URL — overridden by nginx sub_filter on staging -->
     <script>window.API_BASE_URL = "/api";</script>
     <!-- Ссылка на бота для шаринга. Прод-значение по умолчанию; на staging
@@ -1909,6 +1913,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=1"></script>
-    <script defer src="script.js?v=313"></script>
+    <script defer src="script.js?v=314"></script>
   </body>
 </html>

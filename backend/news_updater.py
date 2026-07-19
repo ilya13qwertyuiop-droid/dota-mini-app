@@ -72,6 +72,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("news_updater")
 
+from backend.security_logging import configure_secure_logging  # noqa: E402
+
+configure_secure_logging(BOT_TOKEN, os.environ.get("DATABASE_URL"))
+
 # ---------------------------------------------------------------------------
 # DB helpers (imported lazily to allow path bootstrap above)
 # ---------------------------------------------------------------------------

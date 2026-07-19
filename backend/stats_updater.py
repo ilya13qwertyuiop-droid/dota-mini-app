@@ -52,6 +52,10 @@ logger = logging.getLogger("fantasy_updater")
 OPENDOTA = "https://api.opendota.com/api"
 API_KEY = os.environ.get("OPENDOTA_API_KEY", "").strip()
 
+from backend.security_logging import configure_secure_logging  # noqa: E402
+
+configure_secure_logging(API_KEY, os.environ.get("DATABASE_URL"))
+
 # Пауза между запросами: без ключа лимит OpenDota 60/мин.
 REQUEST_SLEEP_SECONDS = float(os.environ.get("FANTASY_SLEEP_SECONDS", "1.1"))
 # Период полного прохода.

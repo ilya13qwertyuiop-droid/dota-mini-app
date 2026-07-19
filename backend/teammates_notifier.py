@@ -43,6 +43,7 @@ import httpx
 from sqlalchemy import text
 
 from backend.database import SessionLocal
+from backend.security_logging import configure_secure_logging, redact_text
 
 logger = logging.getLogger(__name__)
 
@@ -484,7 +485,7 @@ async def run_loop() -> None:
         POLL_INTERVAL_SECONDS,
         BATCH_SIZE,
         MINI_APP_URL or "(none — buttons will be skipped)",
-        _DB_URL,
+        redact_text(_DB_URL),
     )
 
     cycle = 0
@@ -539,6 +540,7 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    configure_secure_logging(BOT_TOKEN, os.environ.get("DATABASE_URL"))
     try:
         asyncio.run(run_loop())
     except KeyboardInterrupt:
