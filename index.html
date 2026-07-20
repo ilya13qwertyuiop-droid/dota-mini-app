@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=253" />
+    <link rel="stylesheet" href="styles.css?v=254" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
@@ -937,15 +937,17 @@
         <div id="bt-assign" hidden>
           <div class="bt-assign-head">
             <div class="bt-assign-title">Расставь героев по позициям</div>
-            <div class="bt-assign-timer" id="bt-assign-timer">30</div>
+            <div class="bt-assign-timer" id="bt-assign-timer">45</div>
           </div>
           <div class="bt-assign-sub">Перетаскивай героев, чтобы изменить порядок.
             Соперник не видит твою расстановку.</div>
           <div class="bt-assign-list" id="bt-assign-list"></div>
           <button type="button" class="tm-primary-btn" id="bt-assign-submit" onclick="btAssignSubmit()">Готово</button>
-          <div class="bt-assign-wait" id="bt-assign-wait" hidden>
+          <div class="bt-assign-wait" id="bt-assign-wait" role="status" aria-live="polite" hidden>
+            <span class="bt-assign-state-dot" aria-hidden="true"></span>
             <span id="bt-assign-wait-txt">Расстановка отправлена. Ждём соперника…</span>
-            <button type="button" class="tm-ghost-btn" onclick="btAssignEdit()">Изменить</button>
+            <button type="button" class="tm-primary-btn" id="bt-assign-retry" onclick="btAssignSubmit()" hidden>Отправить ещё раз</button>
+            <button type="button" class="tm-ghost-btn" id="bt-assign-edit" onclick="btAssignEdit()">Изменить</button>
           </div>
         </div>
 
@@ -964,6 +966,7 @@
               <!-- Изменение рейтинга за бой (живой бой; на боте скрыто) -->
               <div class="bt-result-rating" id="bt-result-rating" hidden></div>
               <div class="bt-result-note" id="bt-result-note" hidden></div>
+              <div class="bt-result-sync-warning" id="bt-result-sync-warning" role="status" hidden></div>
             </div>
 
             <div class="bt-proto-teams" id="bt-proto-teams">
@@ -1988,6 +1991,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=2"></script>
-    <script defer src="script.js?v=319"></script>
+    <script defer src="script.js?v=320"></script>
   </body>
 </html>

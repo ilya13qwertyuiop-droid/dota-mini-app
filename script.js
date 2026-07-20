@@ -1295,6 +1295,11 @@
             inviteCode: null,
             inviteBusy: false,
             inviteTimer: null,
+            assignSubmitting: false,
+            assignSubmitState: 'idle',   // idle | sending | confirmed | error
+            assignSubmitError: '',
+            assignEditing: false,
+            assignAttempted: false,
         };
 
         function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
@@ -1946,18 +1951,56 @@
             if (_btSavedMode === 'ap' || _btSavedMode === 'cm') btSetMode(_btSavedMode);
         } catch (e) {}
 
-        async function _btPost(path, body) {
-            var r = await apiFetch(window.API_BASE_URL + path, {
+        async function _btPost(path, body, fetchOptions) {
+            var options = Object.assign({}, fetchOptions || {}, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(Object.assign({ token: _btTok() }, body || {})),
             });
+            var r = await apiFetch(window.API_BASE_URL + path, options);
             var d = null;
             try { d = await r.json(); } catch (e) { /* пустое тело */ }
             if (!r.ok) {
                 var msg = (d && d.detail) ? String(d.detail) : ('Ошибка ' + r.status);
-                throw new Error(msg);
+                var error = new Error(msg);
+                error.status = r.status;
+                throw error;
             }
             return d;
+        }
+
+        async function _btPostTimed(path, body, timeoutMs) {
+            var ac = (typeof AbortController === 'function') ? new AbortController() : null;
+            var timer = ac ? setTimeout(function () { ac.abort(); }, timeoutMs) : null;
+            try {
+                return await _btPost(path, body, ac ? { signal: ac.signal } : {});
+            } catch (e) {
+                if (ac && ac.signal.aborted && !e.status) {
+                    var timeoutError = new Error('Сервер отвечает дольше обычного.');
+                    timeoutError.code = 'timeout';
+                    throw timeoutError;
+                }
+                throw e;
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
+        }
+
+        async function _btReadStateTimed(code, timeoutMs) {
+            var ac = (typeof AbortController === 'function') ? new AbortController() : null;
+            var timer = ac ? setTimeout(function () { ac.abort(); }, timeoutMs) : null;
+            try {
+                var r = await apiFetch(
+                    window.API_BASE_URL + '/battle/state?token=' + encodeURIComponent(_btTok()) +
+                    '&code=' + encodeURIComponent(code),
+                    ac ? { signal: ac.signal } : {}
+                );
+                if (!r.ok) return null;
+                return await r.json();
+            } catch (e) {
+                return null;
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
         }
 
         // Мгновенный отклик: экран ожидания показываем В МОМЕНТ нажатия,
@@ -2043,6 +2086,14 @@
             _bt.selHero = null;
             _bt.actionBusy = false;
             _bt.assignSubmitting = false;
+            _bt.assignSubmitState = 'idle';
+            _bt.assignSubmitError = '';
+            _bt.assignEditing = false;
+            try {
+                _bt.assignAttempted = sessionStorage.getItem('bt_assign_attempt_' + String(code)) === '1';
+            } catch (e) {
+                _bt.assignAttempted = false;
+            }
             _bt.stageGate = null;
             // Просмотр из истории: результат показываем сразу (без пересчёта
             // счёта), «назад» возвращает в меню битвы. См. _btRenderResult / btBack.
@@ -2774,6 +2825,7 @@
             var timerBox = document.getElementById('bt-timer');
             if (stage) {
                 var stIn = stage.starts_in_ms || 0;
+                var oppLeft = Math.max(0, stage.quota - stage.opp_picked);
                 _bt.anchor = {
                     at: Date.now() + stIn,
                     main: stage.main_remaining_ms,
@@ -2787,7 +2839,8 @@
                     turnEl.textContent = stIn > 0
                         ? 'Этап ' + (stage.index + 1) + ' из ' + stage.stages.length + ' — вскрытие…'
                         : stage.you_done
-                            ? 'Готово — ждём соперника'
+                            ? 'Твои пики приняты — сопернику осталось ' + oppLeft +
+                              (oppLeft === 1 ? ' герой' : ' героя')
                             : 'Этап ' + (stage.index + 1) + ' из ' + stage.stages.length +
                               ' — выбери ' + (stage.quota - stage.you_picked) +
                               (stage.quota - stage.you_picked === 1 ? ' героя' : ' героев');
@@ -2864,9 +2917,23 @@
             var clock = document.getElementById('bt-timer-clock');
             var sub = document.getElementById('bt-timer-sub');
             if (!a || !clock) return;
+            if (a.frozen) {
+                // В AP2 игрок уже закрыл свою квоту. Это не зависший таймер:
+                // персональные часы остановлены, пока соперник завершает этап.
+                clock.textContent = '—';
+                clock.classList.remove('bt-timer-clock--reserve');
+                clock.classList.add('bt-timer-clock--waiting');
+                if (sub) sub.textContent = 'Соперник выбирает';
+                var waitingFill = document.getElementById('bt-timer-fill');
+                if (waitingFill) {
+                    waitingFill.style.width = '0%';
+                    waitingFill.classList.remove('bt-timer-fill--reserve');
+                }
+                return;
+            }
+            clock.classList.remove('bt-timer-clock--waiting');
             // Якорь может быть в будущем (стартовый отсчёт) — до него время не горит.
-            // frozen (этапный драфт, квота закрыта): часы игрока стоят.
-            var elapsed = a.frozen ? 0 : Math.max(0, Date.now() - a.at);
+            var elapsed = Math.max(0, Date.now() - a.at);
             var mainLeft = Math.max(0, a.main - elapsed);
             var totalLeft = Math.max(0, a.total - elapsed);
             var inReserve = (mainLeft <= 0 && totalLeft > 0);
@@ -3112,6 +3179,11 @@
             if (!key) return;
             try { sessionStorage.setItem(key, JSON.stringify(order || [])); } catch (e) {}
         }
+        function _btMarkAssignAttempt() {
+            _bt.assignAttempted = true;
+            if (!_bt.code) return;
+            try { sessionStorage.setItem('bt_assign_attempt_' + String(_bt.code), '1'); } catch (e) {}
+        }
         function _btLoadAssignDraft(picks) {
             var key = _btAssignStorageKey();
             if (!key) return null;
@@ -3131,11 +3203,21 @@
                 return Number(expected[k]) === Number(actual[k]);
             });
         }
+        function _btPositionsFromOrder(order) {
+            var positions = {};
+            (order || []).forEach(function (hid, i) {
+                positions[String(hid)] = i + 1;
+            });
+            return positions;
+        }
         function _btAckPositions(st, expected) {
             if (!st) return false;
             if (st.status === 'finished') {
                 var resultPos = st.result && st.result.positions;
-                return _btPositionsEqual(expected, resultPos && resultPos[_btMyRole()]);
+                var submitted = st.result && st.result.positions_submitted;
+                var role = _btMyRole();
+                return submitted && submitted[role] === true &&
+                    _btPositionsEqual(expected, resultPos && resultPos[role]);
             }
             return _btPositionsEqual(expected, st.assign && st.assign.your_positions);
         }
@@ -3162,17 +3244,48 @@
             _btDrawAssignList();
 
             var submitted = !!a.you_submitted;
+            var state = _bt.assignSubmitState || 'idle';
+            var serverMatches = submitted && _btAckPositions(
+                st, _btPositionsFromOrder(_bt.assignOrder)
+            );
+            // Источник истины — серверная карта, а не судьба конкретного HTTP
+            // ответа. Поздний long-poll может подтвердить POST, ответ которого
+            // клиент уже счёл потерянным.
+            if (serverMatches && !_bt.assignEditing) {
+                state = 'confirmed';
+                _bt.assignSubmitState = state;
+                _bt.assignSubmitError = '';
+            }
             var btn = document.getElementById('bt-assign-submit');
-            if (btn) btn.hidden = submitted;
-            if (btn) btn.disabled = !!_bt.assignSubmitting;
+            if (btn) {
+                btn.hidden = state !== 'idle';
+                btn.disabled = !!_bt.assignSubmitting;
+                btn.textContent = _bt.assignEditing ? 'Сохранить изменения' : 'Готово';
+            }
             var wait = document.getElementById('bt-assign-wait');
-            if (wait) wait.hidden = !submitted;
+            if (wait) {
+                wait.hidden = state === 'idle';
+                wait.classList.toggle('is-sending', state === 'sending');
+                wait.classList.toggle('is-confirmed', state === 'confirmed');
+                wait.classList.toggle('is-error', state === 'error');
+            }
             var waitTxt = document.getElementById('bt-assign-wait-txt');
             if (waitTxt) {
-                waitTxt.textContent = a.opponent_submitted
-                    ? 'Соперник готов. Финализируем…'
-                    : 'Расстановка отправлена. Ждём соперника…';
+                if (state === 'sending') {
+                    waitTxt.textContent = 'Отправляем расстановку на сервер…';
+                } else if (state === 'error') {
+                    waitTxt.textContent = _bt.assignSubmitError ||
+                        'Расстановка не подтверждена. Отправь её ещё раз.';
+                } else {
+                    waitTxt.textContent = a.opponent_submitted
+                        ? 'Расстановка принята. Соперник тоже готов.'
+                        : 'Расстановка принята сервером. Ждём соперника…';
+                }
             }
+            var retry = document.getElementById('bt-assign-retry');
+            if (retry) retry.hidden = state !== 'error';
+            var edit = document.getElementById('bt-assign-edit');
+            if (edit) edit.hidden = state !== 'confirmed';
             // Таймер стадии — общий, от серверного остатка.
             _bt.assignAnchor = { at: Date.now(), remaining: a.remaining_ms || 0 };
             _btStartAssignTimer();
@@ -3280,30 +3393,102 @@
             }
         }
 
+        async function _btSubmitPositionsReliable(code, positions) {
+            var lastError = null;
+            for (var attempt = 0; attempt < 2; attempt++) {
+                var responseState = null;
+                try {
+                    responseState = await _btPostTimed(
+                        '/battle/positions',
+                        { code: code, positions: positions },
+                        8000
+                    );
+                    if (_btAckPositions(responseState, positions)) return responseState;
+                    lastError = new Error('Сервер вернул ответ без подтверждения расстановки.');
+                } catch (e) {
+                    lastError = e;
+                    // Ошибки payload повтором не лечатся.
+                    if (e.status === 422 || e.status === 403) throw e;
+                }
+
+                // POST мог сохраниться, а ответ потеряться. Перед повтором
+                // сверяемся с источником истины — повторная запись безопасна.
+                try {
+                    var latest = await _btReadStateTimed(code, 4000);
+                    if (_btAckPositions(latest, positions)) return latest;
+                    if (latest && latest.status !== 'assigning') {
+                        if (latest.version) _btApply(latest);
+                        var closed = new Error(
+                            'Время вышло — сервер не подтвердил расстановку.'
+                        );
+                        closed.status = 409;
+                        throw closed;
+                    }
+                } catch (stateError) {
+                    // 409 означает уже завершившуюся стадию и должен дойти до
+                    // интерфейса. Сетевой сбой контрольного GET не отменяет
+                    // второй POST: именно для такого случая повтор и нужен.
+                    if (stateError.status === 409) throw stateError;
+                    lastError = stateError;
+                }
+                if (attempt === 0) {
+                    await new Promise(function (resolve) { setTimeout(resolve, 350); });
+                }
+            }
+            throw lastError || new Error('Расстановка не подтверждена.');
+        }
+
+        function _btAssignErrorText(error) {
+            if (error && error.status === 409) {
+                return 'Время вышло — расстановка не была подтверждена сервером.';
+            }
+            if (error && (error.code === 'timeout' || error.status === 502 || error.status === 503)) {
+                return 'Сервер отвечает дольше обычного. Проверь соединение и отправь ещё раз.';
+            }
+            return (error && error.message) || 'Расстановка не подтверждена. Отправь её ещё раз.';
+        }
+
         window.btAssignSubmit = async function () {
             if (_bt.assignSubmitting) return;
             var requestCode = _bt.code;
-            var positions = {};
-            (_bt.assignOrder || []).forEach(function (hid, i) { positions[String(hid)] = i + 1; });
+            var positions = _btPositionsFromOrder(_bt.assignOrder);
             if (Object.keys(positions).length !== 5) {
                 if (typeof showToast === 'function') showToast('Не удалось собрать все 5 позиций. Обнови экран.');
                 return;
             }
             var btn = document.getElementById('bt-assign-submit');
             _bt.assignSubmitting = true;
+            _bt.assignSubmitState = 'sending';
+            _bt.assignSubmitError = '';
+            _bt.assignEditing = false;
+            _btMarkAssignAttempt();
             _btSaveAssignDraft(_bt.assignOrder);
             if (btn) btn.disabled = true;
+            if (_bt.state && _bt.state.status === 'assigning') _btRenderAssign(_bt.state);
             try {
-                var st = await _btPost('/battle/positions', { code: _bt.code, positions: positions });
+                var st = await _btSubmitPositionsReliable(requestCode, positions);
                 if (requestCode !== _bt.code) return;
                 // HTTP 200 недостаточно: подтверждаем именно ту карту, которую
                 // отправили. Это защищает от потерянного/устаревшего ответа.
                 if (!_btAckPositions(st, positions)) {
                     throw new Error('Сервер не подтвердил расстановку. Нажми «Готово» ещё раз.');
                 }
+                _bt.assignSubmitState = 'confirmed';
+                _bt.assignSubmitError = '';
                 if (st && st.version) _btApply(st);
             } catch (e) {
-                if (typeof showToast === 'function') showToast(e.message);
+                if (requestCode !== _bt.code) return;
+                // Пока POST ждал/повторялся, long-poll мог уже принести точное
+                // серверное подтверждение. Не перекрываем его поздней ошибкой
+                // потерянного HTTP-ответа.
+                if (_btAckPositions(_bt.state, positions)) {
+                    _bt.assignSubmitState = 'confirmed';
+                    _bt.assignSubmitError = '';
+                } else {
+                    _bt.assignSubmitState = 'error';
+                    _bt.assignSubmitError = _btAssignErrorText(e);
+                    if (typeof _mghlHaptic === 'function') _mghlHaptic('bad');
+                }
             } finally {
                 _bt.assignSubmitting = false;
                 if (btn) btn.disabled = false;
@@ -3311,11 +3496,12 @@
             }
         };
         window.btAssignEdit = function () {
-            // Локально возвращаем редактор; повторный «Готово» перезапишет.
-            var btn = document.getElementById('bt-assign-submit');
-            if (btn) btn.hidden = false;
-            var wait = document.getElementById('bt-assign-wait');
-            if (wait) wait.hidden = true;
+            // Серверная карта остаётся безопасным фолбэком, пока игрок правит;
+            // следующий «Сохранить изменения» атомарно перезапишет её.
+            _bt.assignEditing = true;
+            _bt.assignSubmitState = 'idle';
+            _bt.assignSubmitError = '';
+            if (_bt.state && _bt.state.status === 'assigning') _btRenderAssign(_bt.state);
         };
 
         function _btStartAssignTimer() {
@@ -3589,6 +3775,21 @@
             var posMaps = r.positions || {};
             var finals = r.final || {};
             var pens = r.penalties || {};
+
+            // Если игрок действительно нажимал «Готово», но сервер не успел
+            // подтвердить карту до финализации, не маскируем fallback обычным
+            // результатом. Предупреждение остаётся на экране, а не исчезает
+            // через toast: порядок пиков мог повлиять на позиционный штраф.
+            var syncWarning = document.getElementById('bt-result-sync-warning');
+            if (syncWarning) {
+                var submittedMap = r.positions_submitted || {};
+                var showSyncWarning = !isForfeit && _bt.assignAttempted &&
+                    submittedMap[me] === false;
+                syncWarning.textContent = showSyncWarning
+                    ? 'Расстановка не была подтверждена. Сервер использовал порядок пиков.'
+                    : '';
+                syncWarning.hidden = !showSyncWarning;
+            }
 
             var meFinal = (finals[me] != null) ? finals[me]
                 : (r[me] && r[me].total_score != null ? r[me].total_score : null);

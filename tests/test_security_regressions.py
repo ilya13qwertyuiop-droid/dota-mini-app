@@ -14,7 +14,7 @@ import re
 import tempfile
 import time
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlencode
@@ -892,6 +892,152 @@ class ApiIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(participant.status_code, 200)
 
+    def test_battle_events_subscribes_then_rechecks_before_waiting(self):
+        payload = {"changed": True, "version": 8, "code": "RACE88"}
+        reads = [
+            (None, 8801, 20.0),
+            (payload, 8801, 0.0),
+        ]
+
+        class Subscription:
+            def __init__(self):
+                self.wait_called = False
+                self.closed = False
+
+            async def wait(self, _timeout):
+                self.wait_called = True
+                return True
+
+            def close(self):
+                self.closed = True
+
+        subscription = Subscription()
+        with patch.object(self.api, "get_user_id_by_token", return_value=9101), patch.object(
+            self.api, "_enforce_rate"
+        ), patch.object(
+            self.api, "_bt_poll_read", side_effect=reads
+        ) as poll_read, patch.object(
+            self.api, "_bt_subscribe", return_value=subscription
+        ) as subscribe:
+            result = asyncio.run(
+                self.api.api_battle_events(token="test-token", code="RACE88", since=7)
+            )
+
+        self.assertEqual(result, payload)
+        self.assertEqual(poll_read.call_count, 2)
+        subscribe.assert_called_once_with(8801)
+        self.assertFalse(subscription.wait_called)
+        self.assertTrue(subscription.closed)
+
+    def test_battle_change_subscription_keeps_early_signal(self):
+        from backend import battle_bus
+
+        async def scenario():
+            subscription = battle_bus.subscribe_to_changes(8802)
+            try:
+                # Сигнал приходит после регистрации, но до await — именно окно
+                # старой lost-wakeup гонки endpoint'а.
+                battle_bus.fire_local(8802)
+                return await subscription.wait(0.05)
+            finally:
+                subscription.close()
+                subscription.close()  # cleanup обязан быть идемпотентным
+
+        self.assertTrue(asyncio.run(scenario()))
+        self.assertNotIn(8802, battle_bus._waiters)
+
+    def test_assignment_deadline_has_delivery_grace(self):
+        from backend.models import DraftBattle
+
+        now = datetime.now(timezone.utc)
+        battle = DraftBattle(
+            code="GRACE1",
+            mode="cm",
+            status="assigning",
+            host_id=9101,
+            guest_id=9102,
+            deadline_at=now,
+        )
+        before_grace = now + timedelta(
+            milliseconds=self.api._BT_ASSIGN_GRACE_MS - 1
+        )
+        at_grace = now + timedelta(milliseconds=self.api._BT_ASSIGN_GRACE_MS)
+        self.assertFalse(self.api._bt_tick_pending(battle, before_grace))
+        self.assertTrue(self.api._bt_tick_pending(battle, at_grace))
+
+        self.api._bt_start_assign(battle, now)
+        assigned_ms = int((battle.deadline_at - now).total_seconds() * 1000)
+        self.assertEqual(assigned_ms, 45_000)
+
+    def test_battle_positions_are_persisted_and_idempotently_confirmed(self):
+        from backend.models import DraftBattle, DraftBattleAction, UserProfile
+
+        host_id = 9131
+        guest_id = 9132
+        host_token = self.api.create_token_for_user(host_id)
+        now = datetime.now(timezone.utc)
+        host_picks = [1, 2, 3, 4, 5]
+        guest_picks = [6, 7, 8, 9, 10]
+        expected = {str(hero_id): pos for pos, hero_id in enumerate(
+            reversed(host_picks), 1
+        )}
+
+        with self.api.SessionLocal() as session:
+            session.add_all([
+                UserProfile(user_id=host_id, favorite_heroes=[], settings={}),
+                UserProfile(user_id=guest_id, favorite_heroes=[], settings={}),
+            ])
+            battle = DraftBattle(
+                code="POS913",
+                mode="cm",
+                status="assigning",
+                host_id=host_id,
+                guest_id=guest_id,
+                is_bot=False,
+                first_pick="host",
+                deadline_at=now + timedelta(seconds=45),
+                started_at=now,
+            )
+            session.add(battle)
+            session.flush()
+            session.add_all([
+                DraftBattleAction(
+                    battle_id=battle.id,
+                    idx=idx,
+                    actor=actor,
+                    kind="pick",
+                    hero_id=hero_id,
+                    is_auto=False,
+                    created_at=now,
+                )
+                for idx, (actor, hero_id) in enumerate(
+                    [("host", hero_id) for hero_id in host_picks]
+                    + [("guest", hero_id) for hero_id in guest_picks]
+                )
+            ])
+            session.commit()
+
+        payload = {
+            "token": host_token,
+            "code": "POS913",
+            "positions": expected,
+        }
+        first = self.client.post("/api/battle/positions", json=payload)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertTrue(first.json()["assign"]["you_submitted"])
+        self.assertEqual(first.json()["assign"]["your_positions"], expected)
+
+        # Потерянный HTTP-ответ заставляет клиент повторить тот же POST. Повтор
+        # должен быть безопасным и подтвердить уже записанную карту.
+        repeated = self.client.post("/api/battle/positions", json=payload)
+        self.assertEqual(repeated.status_code, 200, repeated.text)
+        self.assertEqual(repeated.json()["assign"]["your_positions"], expected)
+        with self.api.SessionLocal() as session:
+            stored = session.query(DraftBattle).filter_by(code="POS913").one()
+            self.assertEqual(stored.host_positions, expected)
+            self.assertIsNone(stored.guest_positions)
+            self.assertEqual(stored.status, "assigning")
+
     def test_friend_invite_is_remembered_without_creating_unsubscribed_profile(self):
         from backend.models import BattlePendingInvite, DraftBattle, UserProfile
 
@@ -1373,7 +1519,8 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("role = _bt_require_role(battle, uid)", api_source)
         self.assertIn("role = _bt_require_role(battle, user_id)", api_source)
         self.assertIn("token=_token_digest(token_str)", (PROJECT_ROOT / "backend" / "db.py").read_text(encoding="utf-8"))
-        self.assertIn('script.js?v=319', html_source)
+        self.assertIn('script.js?v=320', html_source)
+        self.assertIn('styles.css?v=254', html_source)
         self.assertNotIn("frozenset({556944111})", bot_source)
         self.assertNotIn("traceback.print_exc()", bot_source)
         self.assertIn("client-supplied scores are not accepted", api_source)
@@ -1404,6 +1551,13 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertNotIn("_PENDING_BATTLE_INVITES", bot_source)
         self.assertIn("/battle/invite/bootstrap", script_source)
         self.assertIn("['waiting', 'searching', 'drafting', 'assigning']", script_source)
+        self.assertIn("_btSubmitPositionsReliable", script_source)
+        self.assertIn("submitted && submitted[role] === true", script_source)
+        self.assertIn("_btAckPositions(_bt.state, positions)", script_source)
+        self.assertIn("Расстановка принята сервером", script_source)
+        self.assertIn("Сервер использовал порядок пиков", script_source)
+        self.assertIn("subscribe_to_changes as _bt_subscribe", api_source)
+        self.assertIn("_BT_ASSIGN_GRACE_MS = 3_000", api_source)
 
 
 if __name__ == "__main__":

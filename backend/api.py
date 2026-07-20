@@ -4749,7 +4749,7 @@ from types import SimpleNamespace as _BTEntry  # noqa: E402
 
 from backend.database import SessionLocal  # noqa: E402
 from backend.battle_bus import notify_battle_changed as _bt_notify  # noqa: E402
-from backend.battle_bus import wait_for_change as _bt_wait  # noqa: E402
+from backend.battle_bus import subscribe_to_changes as _bt_subscribe  # noqa: E402
 from backend.models import (  # noqa: E402
     BattlePendingInvite as DBBattlePendingInvite,
     DraftBattle as DBDraftBattle,
@@ -4759,7 +4759,11 @@ from backend.models import (  # noqa: E402
 _BT_BAN_MS = 20_000          # основное время на бан
 _BT_PICK_MS = 25_000         # основное время на пик
 _BT_RESERVE_MS = 90_000      # доп. время на игрока на всю партию (как в CM; 120→90 2026-07-16)
-_BT_ASSIGN_MS = 30_000       # общий таймер стадии расстановки позиций
+_BT_ASSIGN_MS = 45_000       # общий таймер стадии расстановки позиций
+# Небольшое серверное окно доставки: клиент мог нажать «Готово» на последней
+# секунде, а запрос — ждать row lock второго игрока. В UI оно не добавляется к
+# таймеру; только не даёт read-поллу финализировать битву перед уже летящим POST.
+_BT_ASSIGN_GRACE_MS = 3_000
 # Стартовый отсчёт: таймер ПЕРВОГО хода начинает тикать через столько мс после
 # матча — покрывает доставку матча второму игроку (его полл) + интерстишл.
 _BT_START_COUNTDOWN_MS = 4_000
@@ -5501,7 +5505,12 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
     # Стадия расстановки: общий таймер вышел → не успевшие получают раскладку
     # «в порядке пика», финализируем.
     if battle.status == "assigning":
-        if battle.deadline_at is not None and now >= _bt_aware(battle.deadline_at):
+        deadline = _bt_aware(battle.deadline_at)
+        finalize_at = (
+            deadline + _tm_timedelta(milliseconds=_BT_ASSIGN_GRACE_MS)
+            if deadline is not None else None
+        )
+        if finalize_at is not None and now >= finalize_at:
             _bt_finalize(db, battle, now)
             battle.state_version += 1
             changed = True
@@ -5541,7 +5550,9 @@ def _bt_apply_timeouts(db: Session, battle: DBDraftBattle, now: datetime) -> boo
     if (
         battle.status == "assigning"
         and battle.deadline_at is not None
-        and now >= _bt_aware(battle.deadline_at)
+        and now >= _bt_aware(battle.deadline_at) + _tm_timedelta(
+            milliseconds=_BT_ASSIGN_GRACE_MS
+        )
     ):
         _bt_finalize(db, battle, now)
         battle.state_version += 1
@@ -6004,6 +6015,8 @@ def _bt_tick_pending(battle: DBDraftBattle, now: datetime) -> bool:
         )
     if battle.status in ("drafting", "assigning"):
         deadline = _bt_aware(battle.deadline_at)
+        if battle.status == "assigning" and deadline is not None:
+            deadline += _tm_timedelta(milliseconds=_BT_ASSIGN_GRACE_MS)
         if deadline is not None and now >= deadline:
             return True
         # ap2: без БД не узнать, добрал ли бот квоту этапа — триггеримся всегда
@@ -7567,6 +7580,13 @@ def _bt_poll_read(code: str, user_id: int, since: int):
                 _due, bot_wait = _bt_bot_due(battle, now)
                 if bot_wait is not None:
                     wait_s = min(wait_s, max(0.05, bot_wait))
+        elif battle.status == "assigning" and battle.deadline_at is not None:
+            # Финализатор просыпается ровно после короткого окна доставки, а не
+            # через произвольный 25-секундный heartbeat long-poll.
+            finalize_at = _bt_aware(battle.deadline_at) + _tm_timedelta(
+                milliseconds=_BT_ASSIGN_GRACE_MS
+            )
+            wait_s = max(0.05, (finalize_at - now).total_seconds())
         elif battle.status == "searching" and not battle.is_bot:
             # Спим не дольше, чем до момента подсадки бота.
             if battle.created_at is not None:
@@ -7594,10 +7614,28 @@ async def api_battle_events(
         payload, battle_id, wait_s = await asyncio.to_thread(_bt_poll_read, code, uid, since)
         if payload is not None:
             return payload
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return {"changed": False, "version": since}
-        await _bt_wait(battle_id, min(wait_s, remaining))
+
+        # Критический порядок против lost wake-up:
+        #   read(no change) -> SUBSCRIBE -> read again -> await.
+        # Если commit/NOTIFY попал между первым read и подпиской, второе чтение
+        # увидит state_version. Если после подписки — Event уже будет установлен.
+        subscription = _bt_subscribe(battle_id)
+        try:
+            payload, current_id, wait_s = await asyncio.to_thread(
+                _bt_poll_read, code, uid, since
+            )
+            if payload is not None:
+                return payload
+            if current_id != battle_id:
+                # Защитный случай для moved_to/замены комнаты: подписываемся на
+                # актуальный id в следующей итерации.
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return {"changed": False, "version": since}
+            await subscription.wait(min(wait_s, remaining))
+        finally:
+            subscription.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

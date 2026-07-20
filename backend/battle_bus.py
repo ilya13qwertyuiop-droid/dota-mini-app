@@ -11,10 +11,10 @@ long-poll клиенты висят на локальных asyncio.Event сво
 На dev-SQLite NOTIFY не существует — но dev-uvicorn однопроцессный, поэтому
 fire_local в notify_battle_changed() покрывает доставку полностью.
 
-Надёжность: listener-поток переподключается с backoff; пропуск NOTIFY во
-время реконнекта НЕ теряет события, потому что ожидающий всегда сначала
-перечитывает state_version из БД и только потом засыпает (см. events-эндпоинт
-в api.py) — худший исход деградации это +таймаут удержания к латентности.
+Надёжность: listener-поток переподключается с backoff. Events-эндпоинт после
+первого чтения регистрирует waiter, контрольный раз перечитывает state_version
+и только потом засыпает. Поэтому изменение не теряется на границе read/await;
+при реконнекте худший исход деградации — +таймаут удержания к латентности.
 """
 
 from __future__ import annotations
@@ -42,6 +42,52 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 _listener_started = False
 _listener_start_lock = threading.Lock()
+
+
+class BattleChangeSubscription:
+    """Зарегистрированное ожидание изменения одной битвы.
+
+    Подписка создаётся ДО контрольного перечитывания state_version. Поэтому
+    уведомление, пришедшее между перечитыванием БД и фактическим ``await``, уже
+    поставит Event и не потеряется. ``close`` идемпотентен: endpoint вызывает
+    его из ``finally`` и при отмене long-poll клиентом утечки waiters нет.
+    """
+
+    def __init__(self, battle_id: int, event: asyncio.Event) -> None:
+        self.battle_id = int(battle_id)
+        self._event = event
+        self._closed = False
+
+    async def wait(self, timeout: float) -> bool:
+        try:
+            await asyncio.wait_for(self._event.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        with _waiters_lock:
+            bucket = _waiters.get(self.battle_id)
+            if bucket is not None:
+                bucket.discard(self._event)
+                if not bucket:
+                    _waiters.pop(self.battle_id, None)
+
+
+def subscribe_to_changes(battle_id: int) -> BattleChangeSubscription:
+    """Регистрирует waiter немедленно и возвращает управляемую подписку."""
+    global _loop
+    _loop = asyncio.get_running_loop()
+    _ensure_listener()
+
+    event = asyncio.Event()
+    battle_id = int(battle_id)
+    with _waiters_lock:
+        _waiters.setdefault(battle_id, set()).add(event)
+    return BattleChangeSubscription(battle_id, event)
 
 
 def fire_local(battle_id: int) -> None:
@@ -92,25 +138,11 @@ async def wait_for_change(battle_id: int, timeout: float) -> bool:
     запроса (клиент ушёл) нет. Также лениво запускает listener и захватывает
     loop при первом использовании.
     """
-    global _loop
-    _loop = asyncio.get_running_loop()
-    _ensure_listener()
-
-    ev = asyncio.Event()
-    with _waiters_lock:
-        _waiters.setdefault(battle_id, set()).add(ev)
+    subscription = subscribe_to_changes(battle_id)
     try:
-        await asyncio.wait_for(ev.wait(), timeout=timeout)
-        return True
-    except asyncio.TimeoutError:
-        return False
+        return await subscription.wait(timeout)
     finally:
-        with _waiters_lock:
-            bucket = _waiters.get(battle_id)
-            if bucket is not None:
-                bucket.discard(ev)
-                if not bucket:
-                    _waiters.pop(battle_id, None)
+        subscription.close()
 
 
 def _ensure_listener() -> None:
