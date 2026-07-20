@@ -7780,6 +7780,10 @@ var _drafterLeaderboardCache = null;
 var _drafterEnemyManualMode = false; // true = пользователь сам выбирает врагов
 var _drafterActiveEnemySlot = -1;    // -1 = клик по герою идёт в союзный слот
 var _drafterChallengeId = null;      // single-use server challenge for ranking
+var _drafterModeInitialized = false;
+var _drafterTrainingEpoch = 0;
+var _drafterChallengeInvalidation = null; // {epoch, promise<boolean>}
+var _drafterLoadGeneration = 0; // invalidates responses started before a mode transition
 
 function _drafterHeroName(heroId) {
     if (window.dotaHeroIdToName && window.dotaHeroIdToName[heroId]) {
@@ -7815,22 +7819,29 @@ function initDrafter() {
             .catch(function() {});
     }
 
-    // Загрузить матч если ещё не загружен
-    if (!_drafterMatchLoaded) {
-        loadDrafterMatch();
-    } else {
-        _renderPosFilterBtns();
-        _updateManualBtn();
-        renderDrafterSlots();
-        renderDrafterGrid();
-    }
-
     // Восстановить ранее выбранный режим (по умолчанию — Анализ).
     // Ключ bumped до v2, чтобы старые сохранённые 'training' не перебивали
     // новый дефолт у уже существующих пользователей.
     var savedMode = null;
     try { savedMode = localStorage.getItem('drafter_mode_v2'); } catch (e) {}
-    setDrafterMode(savedMode === 'training' ? 'training' : 'analysis');
+    setDrafterMode(
+        savedMode === 'training' ? 'training' : 'analysis',
+        !_drafterModeInitialized
+    );
+    _drafterModeInitialized = true;
+
+    // В Анализе рейтинговое задание намеренно не загружаем: его жизненный
+    // цикл начинается только при фактическом входе в Тренировку.
+    if (_drafterMode === 'training') {
+        if (!_drafterMatchLoaded && !_drafterChallengeInvalidation) {
+            loadDrafterMatch();
+        } else if (_drafterMatchLoaded) {
+            _renderPosFilterBtns();
+            _updateManualBtn();
+            renderDrafterSlots();
+            renderDrafterGrid();
+        }
+    }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -7929,9 +7940,76 @@ function _analysisHeroMatchesQuery(heroId, query) {
     return false;
 }
 
-function setDrafterMode(mode) {
+function _clearRankedDrafterState() {
+    // Fail closed: как только игрок открыл Анализ, старый challenge_id больше
+    // нельзя держать даже локально. Иначе сетевой сбой invalidation/reroll
+    // восстанавливал старое рейтинговое задание вместе с известными врагами.
+    // A request for /draft/random may still be in flight. Advancing the
+    // generation makes its eventual response a no-op instead of allowing it
+    // to repopulate a challenge after Analysis has already been opened.
+    _drafterLoadGeneration += 1;
+    _drafterMatchLoaded = false;
+    _drafterChallengeId = null;
+    _drafterEnemyPick = [];
+    _drafterAllyPick = [null, null, null, null, null];
+    _drafterActiveSlot = 0;
+    _drafterEnemyManualMode = false;
+    _drafterActiveEnemySlot = -1;
+    _updateManualBtn();
+    renderDrafterSlots();
+    renderDrafterGrid();
+}
+
+function _invalidateRankedDraftForAnalysis() {
+    var epoch = ++_drafterTrainingEpoch;
+    _clearRankedDrafterState();
+    var controller = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timeout = controller ? setTimeout(function() { controller.abort(); }, 8000) : null;
+    var promise = apiFetch(window.API_BASE_URL + '/draft/challenge/invalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: USER_TOKEN || '' }),
+        signal: controller ? controller.signal : undefined
+    }).then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return true;
+    }).catch(function(error) {
+        // Анализ остаётся доступен, но возврат в Тренировку пойдёт через
+        // атомарный reroll. Старый challenge_id локально уже уничтожен.
+        console.warn('[drafter] challenge invalidation failed:', error);
+        return false;
+    }).finally(function() {
+        if (timeout) clearTimeout(timeout);
+    });
+    _drafterChallengeInvalidation = { epoch: epoch, promise: promise };
+    return epoch;
+}
+
+function _resumeTrainingWithFreshDraft() {
+    var transition = _drafterChallengeInvalidation;
+    var epoch = transition ? transition.epoch : ++_drafterTrainingEpoch;
+    var invalidation = transition ? transition.promise : Promise.resolve(false);
+
+    var enemySlotsEl = document.getElementById('drafter-enemy-slots');
+    if (enemySlotsEl) {
+        enemySlotsEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Подготавливаем новый драфт...</div>';
+    }
+    invalidation.then(function(invalidated) {
+        if (_drafterMode !== 'training' || epoch !== _drafterTrainingEpoch) return;
+        // Успешная invalidation уже удалила старое задание: обычный запрос
+        // создаст новое. Если invalidation не дошла, reroll сделает замену
+        // атомарно под серверным lock'ом.
+        return loadDrafterMatch(!invalidated).then(function(loaded) {
+            if (epoch !== _drafterTrainingEpoch) return;
+            if (loaded) _drafterChallengeInvalidation = null;
+        });
+    });
+}
+
+function setDrafterMode(mode, isInitial) {
     if (mode !== 'training' && mode !== 'analysis') mode = 'analysis';
     var prevMode = _drafterMode;
+    var changed = prevMode !== mode;
     _drafterMode = mode;
     try { localStorage.setItem('drafter_mode_v2', mode); } catch (e) {}
 
@@ -7954,18 +8032,22 @@ function setDrafterMode(mode) {
     if (mode === 'analysis') {
         _ensureAnalysisData();
         renderAnalysisSlots();
+        // Первый запуск сразу в Анализе тоже аннулирует незавершённое задание
+        // от прошлой сессии. Повторный рендер той же вкладки запрос не плодит.
+        if ((changed && prevMode === 'training') || (isInitial && !_drafterChallengeInvalidation)) {
+            _invalidateRankedDraftForAnalysis();
+        }
     } else {
         // При выходе из Анализа закрыть любой открытый sheet и undo-toast
         closeAnalysisSheet();
         closeHeroDetailSheet();
         _hideAnalysisUndoToast();
         _analysisPickerIntent = 'pick';
-        // При возврате из Анализа в Тренировку — обновить вражеский драфт.
-        // Гард по _drafterMatchLoaded отсекает первый init-вызов: там матч ещё
-        // грузится отдельным loadDrafterMatch() и второй параллельный запрос
-        // не нужен.
-        if (prevMode === 'analysis' && _drafterMatchLoaded) {
-            loadDrafterMatch(true);
+        // Возврат из Анализа всегда проходит через серверно новое задание.
+        // Здесь больше нет fail-open гарда по _drafterMatchLoaded: именно он
+        // позволял сохранить старых врагов, если первая загрузка ещё шла.
+        if (changed && prevMode === 'analysis' && !isInitial) {
+            _resumeTrainingWithFreshDraft();
         }
     }
 }
@@ -8942,6 +9024,7 @@ function selectAnalysisHero(heroId) {
 }
 
 async function loadDrafterMatch(forceNewEnemies) {
+    var loadGeneration = ++_drafterLoadGeneration;
     var refreshBtn = document.getElementById('drafter-refresh-btn');
     var refreshBtnText = refreshBtn ? refreshBtn.textContent : '';
     if (refreshBtn) {
@@ -9002,6 +9085,7 @@ async function loadDrafterMatch(forceNewEnemies) {
             throw requestError;
         }
         var data = await resp.json();
+        if (loadGeneration !== _drafterLoadGeneration) return false;
 
         _drafterChallengeId = data.challenge_id || null;
         _drafterEnemyPick = (data.enemy || []).slice(0, 5);
@@ -9016,6 +9100,7 @@ async function loadDrafterMatch(forceNewEnemies) {
         }
         _drafterMatchLoaded = true;
     } catch (e) {
+        if (loadGeneration !== _drafterLoadGeneration) return false;
         console.error('[drafter] loadDrafterMatch error:', e);
         if (previousState.loaded) {
             _drafterMatchLoaded = true;
@@ -9038,9 +9123,9 @@ async function loadDrafterMatch(forceNewEnemies) {
             errorEl.textContent = e.userMessage || 'Не удалось загрузить врагов. Попробуйте ещё раз.';
             enemySlotsEl.appendChild(errorEl);
         }
-        return;
+        return false;
     } finally {
-        if (refreshBtn) {
+        if (refreshBtn && loadGeneration === _drafterLoadGeneration) {
             refreshBtn.disabled = false;
             refreshBtn.removeAttribute('aria-busy');
             refreshBtn.textContent = refreshBtnText;
@@ -9049,6 +9134,7 @@ async function loadDrafterMatch(forceNewEnemies) {
 
     renderDrafterSlots();
     renderDrafterGrid();
+    return true;
 }
 
 function renderDrafterSlots() {

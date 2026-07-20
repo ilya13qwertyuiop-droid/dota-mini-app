@@ -803,6 +803,73 @@ class ApiIntegrationTests(unittest.TestCase):
         with self.api.SessionLocal() as session:
             self.assertEqual(session.query(DraftResult).filter_by(user_id=9330).count(), 1)
 
+    def test_opening_analysis_invalidates_the_ranked_draft_server_side(self):
+        from backend.models import DraftChallenge, UserProfile
+
+        user_id = 9340
+        token = self.api.create_token_for_user(user_id)
+        with self.api.SessionLocal() as session:
+            session.add(UserProfile(user_id=user_id, favorite_heroes=[], settings={}))
+            session.commit()
+
+        issued = self.client.get(
+            "/api/draft/random",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(issued.status_code, 200, issued.text)
+        old_challenge = issued.json()
+
+        with patch.object(self.api, "_enforce_rate") as enforce:
+            invalidated = self.client.post(
+                "/api/draft/challenge/invalidate",
+                json={"token": token},
+            )
+            repeated = self.client.post(
+                "/api/draft/challenge/invalidate",
+                json={"token": token},
+            )
+        self.assertEqual(invalidated.status_code, 200, invalidated.text)
+        self.assertEqual(invalidated.json()["invalidated"], 1)
+        self.assertEqual(repeated.status_code, 200, repeated.text)
+        self.assertEqual(repeated.json()["invalidated"], 0)
+        enforce.assert_any_call(
+            "draft_reroll",
+            user_id,
+            limit=120,
+            window_seconds=3600,
+            detail="Слишком много обновлений вражеского драфта.",
+        )
+        with self.api.SessionLocal() as session:
+            self.assertIsNone(
+                session.get(DraftChallenge, old_challenge["challenge_id"])
+            )
+
+        enemy_ids = {row["hero_id"] for row in old_challenge["enemy"]}
+        known = [int(key) for key in self.api._load_hero_matchups_file().keys()]
+        ally_ids = [hero_id for hero_id in known if hero_id not in enemy_ids][:5]
+        rejected = self.client.post(
+            "/api/draft/evaluate",
+            json={
+                "token": token,
+                "challenge_id": old_challenge["challenge_id"],
+                "ally": [
+                    {"hero_id": hero_id, "position": f"pos {index}"}
+                    for index, hero_id in enumerate(ally_ids, 1)
+                ],
+                "enemy": old_challenge["enemy"],
+            },
+        )
+        self.assertEqual(rejected.status_code, 404, rejected.text)
+
+        fresh = self.client.get(
+            "/api/draft/random",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(fresh.status_code, 200, fresh.text)
+        self.assertNotEqual(
+            fresh.json()["challenge_id"], old_challenge["challenge_id"]
+        )
+
     def test_authorization_token_is_removed_from_asgi_scope_after_request(self):
         from starlette.requests import Request
         from starlette.responses import Response
@@ -1226,7 +1293,7 @@ class ApiIntegrationTests(unittest.TestCase):
             "https://t.me/test_bot?start=db_INV942",
         )
 
-    def test_repeated_pair_cannot_farm_battle_rating(self):
+    def test_pair_rating_limit_allows_twenty_battles_then_blocks_the_next(self):
         from backend.models import DraftBattle, UserProfile
 
         now = datetime.now(timezone.utc)
@@ -1240,32 +1307,52 @@ class ApiIntegrationTests(unittest.TestCase):
                 battle_rating=1200, battle_games_played=0,
             )
             session.add_all([host, guest])
-            for index in range(3):
+            # Nineteen previous meetings: the twentieth battle is still rated.
+            for index in range(19):
                 session.add(DraftBattle(
                     code=f"PAIR{index}", mode="cm", status="finished",
                     host_id=9901, guest_id=9902, is_bot=False,
                     is_friendly=False, winner="host", result={"final": {}},
                     created_at=now, finished_at=now,
                 ))
-            current = DraftBattle(
-                code="PAIRNOW", mode="cm", status="finished",
+            twentieth = DraftBattle(
+                code="PAIR20", mode="cm", status="finished",
                 host_id=9901, guest_id=9902, is_bot=False,
                 is_friendly=False, winner="host", result={"final": {}},
                 created_at=now, finished_at=now,
             )
-            session.add(current)
+            session.add(twentieth)
             session.flush()
-            self.api._bt_apply_ratings(session, current)
+            self.api._bt_apply_ratings(session, twentieth)
+            self.assertGreater(twentieth.host_rating_after, twentieth.host_rating_before)
+            self.assertLess(twentieth.guest_rating_after, twentieth.guest_rating_before)
+
+            twenty_first = DraftBattle(
+                code="PAIR21", mode="cm", status="finished",
+                host_id=9901, guest_id=9902, is_bot=False,
+                is_friendly=False, winner="host", result={"final": {}},
+                created_at=now, finished_at=now,
+            )
+            session.add(twenty_first)
+            session.flush()
+            self.api._bt_apply_ratings(session, twenty_first)
             session.commit()
             session.refresh(host)
             session.refresh(guest)
-            session.refresh(current)
-            self.assertEqual(host.battle_rating, 1200)
-            self.assertEqual(guest.battle_rating, 1200)
-            self.assertEqual(host.battle_games_played, 0)
-            self.assertEqual(guest.battle_games_played, 0)
-            self.assertEqual(current.host_rating_after, 1200)
-            self.assertEqual(current.guest_rating_after, 1200)
+            session.refresh(twentieth)
+            session.refresh(twenty_first)
+            self.assertEqual(host.battle_rating, twentieth.host_rating_after)
+            self.assertEqual(guest.battle_rating, twentieth.guest_rating_after)
+            self.assertEqual(host.battle_games_played, 1)
+            self.assertEqual(guest.battle_games_played, 1)
+            self.assertEqual(
+                twenty_first.host_rating_after,
+                twenty_first.host_rating_before,
+            )
+            self.assertEqual(
+                twenty_first.guest_rating_after,
+                twenty_first.guest_rating_before,
+            )
 
     def test_battle_leaderboard_keeps_pawn_tier_beyond_global_top_2000(self):
         from backend.models import UserProfile
@@ -1519,14 +1606,14 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("role = _bt_require_role(battle, uid)", api_source)
         self.assertIn("role = _bt_require_role(battle, user_id)", api_source)
         self.assertIn("token=_token_digest(token_str)", (PROJECT_ROOT / "backend" / "db.py").read_text(encoding="utf-8"))
-        self.assertIn('script.js?v=320', html_source)
+        self.assertIn('script.js?v=321', html_source)
         self.assertIn('styles.css?v=254', html_source)
         self.assertNotIn("frozenset({556944111})", bot_source)
         self.assertNotIn("traceback.print_exc()", bot_source)
         self.assertIn("client-supplied scores are not accepted", api_source)
         self.assertIn("function discardTokenFromUrl()", script_source)
         self.assertNotIn("function getTokenFromUrl()", script_source)
-        self.assertIn("_BT_RATED_PAIR_LIMIT_24H = 3", api_source)
+        self.assertIn("_BT_RATED_PAIR_LIMIT_24H = 20", api_source)
         self.assertGreaterEqual(api_source.count("_bt_lock_user(db, uid)"), 3)
         self.assertIn("with_for_update()", api_source)
         self.assertIn("/hero-images/${slug}.webp", hero_images_source)
@@ -1537,6 +1624,9 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("hero_identity(run.reference_id)", api_source)
         self.assertIn("hero_identity(run.challenger_id)", api_source)
         self.assertIn("resp.headers.get('Retry-After')", script_source)
+        self.assertIn("/draft/challenge/invalidate", api_source)
+        self.assertIn("/draft/challenge/invalidate", script_source)
+        self.assertIn("loadGeneration !== _drafterLoadGeneration", script_source)
         self.assertIn("Лимит обновлений достигнут", script_source)
         self.assertIn("limit=120", api_source)
         self.assertIn("SPONSOR_CHANNEL_URL", bot_source)

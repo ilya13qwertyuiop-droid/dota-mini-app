@@ -1518,6 +1518,53 @@ def _generate_random_enemy_draft(exclude=None) -> list[dict]:
     return enemy
 
 
+class DraftChallengeInvalidateRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+
+@app.post("/api/draft/challenge/invalidate")
+def api_draft_challenge_invalidate(
+    data: DraftChallengeInvalidateRequest,
+    db: Session = Depends(get_db),
+):
+    """Invalidate every unplayed ranked draft before opening Analysis.
+
+    This is deliberately server-side. Clearing only the browser state would
+    leave the old ``challenge_id`` valid and let a player calculate an ideal
+    answer in Analysis, then submit it against the same ranked enemy draft.
+    The profile row serializes this transition with concurrent rerolls across
+    all API workers; calling the endpoint more than once is harmless.
+    """
+    user_id = get_user_id_by_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    _enforce_rate(
+        "draft_reroll",
+        user_id,
+        limit=120,
+        window_seconds=3600,
+        detail="Слишком много обновлений вражеского драфта.",
+    )
+
+    profile = (
+        db.query(DBUserProfile)
+        .filter(DBUserProfile.user_id == user_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if profile is None:
+        raise HTTPException(status_code=409, detail="profile is not initialized")
+
+    invalidated = (
+        db.query(DBDraftChallenge)
+        .filter(DBDraftChallenge.user_id == user_id)
+        .filter(DBDraftChallenge.consumed_at.is_(None))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"invalidated": int(invalidated)}
+
+
 @app.get("/api/draft/random")
 def api_draft_random(
     token: str,
@@ -5232,7 +5279,7 @@ _BT_MATCH_WINDOW_MID = 1200    # подождал — окно шире
 _BT_MATCH_WIDEN_1_SEC = 10
 _BT_MATCH_WIDEN_2_SEC = 25
 _BT_MATCH_SCAN_LIMIT = 20      # сколько кандидатов осматриваем за раз
-_BT_RATED_PAIR_LIMIT_24H = 3   # anti-win-trading: further pair games are unranked
+_BT_RATED_PAIR_LIMIT_24H = 20  # anti-win-trading: further pair games are unranked
 # Тест-режим (staging): BT_MATCH_ANY=1 полностью выключает окно рейтинга —
 # любые два игрока матчатся сразу. На проде НЕ ставить.
 _BT_MATCH_ANY = os.environ.get("BT_MATCH_ANY", "0") == "1"
