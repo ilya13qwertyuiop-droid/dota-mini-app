@@ -9,6 +9,7 @@ import secrets
 import threading
 import time
 import httpx
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -247,15 +248,16 @@ def _enforce_rate(
     *,
     limit: int,
     window_seconds: int,
-    detail: str = "Too many requests",
+    detail: str | Callable[[int], str] = "Too many requests",
 ) -> None:
     allowed, _count, retry_after = check_rate_limit(
         scope, subject, limit=limit, window_seconds=window_seconds
     )
     if not allowed:
+        message = detail(retry_after) if callable(detail) else detail
         raise HTTPException(
             status_code=429,
-            detail=detail,
+            detail=message,
             headers={"Retry-After": str(retry_after)},
         )
 
@@ -6601,7 +6603,16 @@ def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
     его обходить (прямой startapp-линк открыл бы апп без подписок). Рейтинг
     товарищеские бои не двигают (win-trading через твинков)."""
     uid = _tm_require_user(token=data.token)
-    _enforce_rate("battle_challenge", uid, limit=5, window_seconds=3600)
+    _enforce_rate(
+        "battle_challenge",
+        uid,
+        limit=70,
+        window_seconds=3600,
+        detail=lambda retry_after: (
+            "Лимит новых вызовов достигнут. Повторно отправьте уже созданный "
+            f"вызов или попробуйте через {max(1, (retry_after + 59) // 60)} мин."
+        ),
+    )
     if data.mode not in _BT_MODES:
         raise HTTPException(status_code=422, detail="invalid mode")
     mode = _BT_AP2_MODE if (data.mode == "ap" and _BT_AP_STAGED) else data.mode

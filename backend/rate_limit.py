@@ -6,7 +6,7 @@ import hashlib
 import math
 import time
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 from backend.database import SessionLocal
 from backend.models import ApiRateLimitEvent
@@ -57,11 +57,11 @@ def check_rate_limit(
             ApiRateLimitEvent.occurred_at > cutoff,
         ).count()
         if count >= limit:
-            oldest = session.query(ApiRateLimitEvent.occurred_at).filter(
+            oldest = session.query(func.min(ApiRateLimitEvent.occurred_at)).filter(
                 ApiRateLimitEvent.scope == scope,
                 ApiRateLimitEvent.subject == subject,
                 ApiRateLimitEvent.occurred_at > cutoff,
-            ).order_by(ApiRateLimitEvent.occurred_at.asc()).scalar()
+            ).scalar()
             retry_after = max(
                 1,
                 math.ceil((oldest if oldest is not None else now) + window_seconds - now),

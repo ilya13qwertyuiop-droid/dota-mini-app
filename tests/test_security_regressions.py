@@ -482,6 +482,23 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(allowed, (True, 1, 0))
         self.assertEqual(denied, (False, 1, 60))
 
+        # Regression: Query.scalar() raises MultipleResultsFound when the
+        # limiter contains more than one matching event. Reaching a limit must
+        # return a normal denial instead of turning an expected 429 into 500.
+        with patch.object(rate_limit.time, "time", return_value=2_000.0):
+            first = rate_limit.check_rate_limit(
+                "multiple_event_retry_test", 9332, limit=2, window_seconds=60
+            )
+            second = rate_limit.check_rate_limit(
+                "multiple_event_retry_test", 9332, limit=2, window_seconds=60
+            )
+            multiple_event_denied = rate_limit.check_rate_limit(
+                "multiple_event_retry_test", 9332, limit=2, window_seconds=60
+            )
+        self.assertEqual(first, (True, 1, 0))
+        self.assertEqual(second, (True, 2, 0))
+        self.assertEqual(multiple_event_denied, (False, 2, 60))
+
         with patch.object(self.api, "check_rate_limit", return_value=denied):
             with self.assertRaises(self.api.HTTPException) as raised:
                 self.api._enforce_rate(
@@ -496,6 +513,27 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(
             raised.exception.detail,
             "Слишком много обновлений вражеского драфта.",
+        )
+
+        with patch.object(self.api, "check_rate_limit", return_value=(False, 70, 125)):
+            with self.assertRaises(self.api.HTTPException) as challenge_raised:
+                self.api._enforce_rate(
+                    "battle_challenge",
+                    9331,
+                    limit=70,
+                    window_seconds=3600,
+                    detail=lambda retry_after: (
+                        "Лимит новых вызовов достигнут. Повторно отправьте уже "
+                        "созданный вызов или попробуйте через "
+                        f"{max(1, (retry_after + 59) // 60)} мин."
+                    ),
+                )
+        self.assertEqual(challenge_raised.exception.status_code, 429)
+        self.assertEqual(challenge_raised.exception.headers, {"Retry-After": "125"})
+        self.assertEqual(
+            challenge_raised.exception.detail,
+            "Лимит новых вызовов достигнут. Повторно отправьте уже созданный "
+            "вызов или попробуйте через 3 мин.",
         )
 
     def test_browser_asserted_minigame_score_is_rejected(self):
