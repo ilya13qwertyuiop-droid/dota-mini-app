@@ -162,6 +162,18 @@ from backend.rate_limit import check_rate_limit
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
 SPONSOR_CHAT_ID = (os.environ.get("SPONSOR_CHAT_ID") or "").strip() or None
+_creator_channel_raw = (
+    os.environ.get("CREATOR_CHANNEL_URL") or "https://t.me/kasumi_tt"
+).strip()
+_creator_channel_parts = urlsplit(_creator_channel_raw)
+CREATOR_CHANNEL_URL = (
+    _creator_channel_raw
+    if _creator_channel_parts.scheme == "https"
+    and (_creator_channel_parts.hostname or "").lower() in {
+        "t.me", "telegram.me", "www.telegram.me",
+    }
+    else "https://t.me/kasumi_tt"
+)
 SKIP_SUBSCRIPTION_CHECK_IDS: frozenset[int] = frozenset(
     int(value)
     for value in os.environ.get("SKIP_SUBSCRIPTION_CHECK_IDS", "").split(",")
@@ -4739,6 +4751,7 @@ from backend.database import SessionLocal  # noqa: E402
 from backend.battle_bus import notify_battle_changed as _bt_notify  # noqa: E402
 from backend.battle_bus import wait_for_change as _bt_wait  # noqa: E402
 from backend.models import (  # noqa: E402
+    BattlePendingInvite as DBBattlePendingInvite,
     DraftBattle as DBDraftBattle,
     DraftBattleAction as DBDraftBattleAction,
 )
@@ -4759,11 +4772,11 @@ _BT_WAITING_TTL_MIN = int(os.environ.get("BT_WAITING_TTL_MIN", "10"))
 _BT_DEAD_GRACE_SEC = int(os.environ.get("BT_DEAD_GRACE_SEC", "120"))
 _BT_SWEEP_INTERVAL_SEC = 60.0   # период фоновой уборки брошенных битв
 _BT_MODES = ("cm", "ap")
-# 'waiting' (легаси приватных комнат) исключён из активных: сервер такие
-# строки больше не создаёт, а редкую древнюю добьёт sweep — она не должна
-# блокировать «ты уже в активной битве». Ветки чтения ('waiting','searching')
-# в timeouts/leave/sweep оставлены как дешёвая страховка чтения старых строк.
+# waiting создаётся дружеским вызовом, но не блокирует переход хоста в быстрый
+# поиск: queue/challenge сами атомарно гасят старый неиспользованный вызов.
+# Для восстановления интерфейса используется отдельный RESUMABLE-набор.
 _BT_ACTIVE_STATUSES = ("searching", "drafting", "assigning")
+_BT_RESUMABLE_STATUSES = ("waiting",) + _BT_ACTIVE_STATUSES
 # Позиционный штраф (счёт v2, 2026-07-16): доля матчей героя на назначенной
 # позиции < 4% → «не позиция» (−12), < 12% → «редкий флекс» (−5), иначе 0.
 # Источник долей — dota_builds (D2PT, обновляется юзером вручную). Пороги
@@ -6083,6 +6096,41 @@ def _bt_send_match_push(host_id, guest_id, code: str) -> None:
     ).start()
 
 
+def _bt_send_friend_accepted_push_sync(host_id: int, code: str) -> None:
+    """Backup notification for a host whose WebView was fully closed."""
+    if not BOT_TOKEN or not _TM_MINI_APP_URL:
+        return
+    deep = f"{_TM_MINI_APP_URL}?battle={code}"
+    payload = {
+        "chat_id": host_id,
+        "text": "Друг принял вызов. Битва драфтов уже началась.",
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[{
+                "text": "Открыть битву",
+                "web_app": {"url": deep},
+            }]],
+        },
+    }
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json=payload,
+            )
+    except Exception as exc:
+        logger.warning("[battle] friend accepted push to %s failed: %s", host_id, exc)
+
+
+def _bt_send_friend_accepted_push(host_id: int, code: str) -> None:
+    threading.Thread(
+        target=_bt_send_friend_accepted_push_sync,
+        args=(host_id, code),
+        daemon=True,
+        name="bt-friend-accepted-push",
+    ).start()
+
+
 def _bt_start_battle_vs_bot(battle: DBDraftBattle, now: datetime) -> None:
     """Подсадка бота в зависшую searching-комнату. guest_id остаётся NULL.
     Стартовый отсчёт — как у живого матча (интерстишл не ест время игрока)."""
@@ -6314,13 +6362,19 @@ def _bt_get_battle(db: Session, code: str, for_update: bool = False) -> DBDraftB
     return battle
 
 
-def _bt_active_battle(db: Session, user_id: int):
+def _bt_active_battle(
+    db: Session,
+    user_id: int,
+    *,
+    include_waiting: bool = False,
+):
+    statuses = _BT_RESUMABLE_STATUSES if include_waiting else _BT_ACTIVE_STATUSES
     return (
         db.query(DBDraftBattle)
         .filter(
             (DBDraftBattle.host_id == user_id) | (DBDraftBattle.guest_id == user_id)
         )
-        .filter(DBDraftBattle.status.in_(_BT_ACTIVE_STATUSES))
+        .filter(DBDraftBattle.status.in_(statuses))
         .order_by(DBDraftBattle.id.desc())
         .first()
     )
@@ -6395,6 +6449,20 @@ class BattleActionReq(BaseModel):
     hero_id: int = Field(gt=0, le=1000)
 
 
+class BattleInviteBootstrapReq(BaseModel):
+    init_data: str = Field(min_length=1, max_length=16_384)
+    code: str | None = Field(
+        default=None,
+        min_length=4,
+        max_length=8,
+        pattern=r"^[A-Za-z0-9]+$",
+    )
+
+
+class BattleInviteDismissReq(BaseModel):
+    init_data: str = Field(min_length=1, max_length=16_384)
+
+
 # ── Эндпоинты ───────────────────────────────────────────────────────────────
 
 _bt_online_cache = {"n": 0, "at": 0.0}
@@ -6435,16 +6503,32 @@ def api_battle_online(token: str, db: Session = Depends(get_db)):
 def api_battle_active(token: str, db: Session = Depends(get_db)):
     """Активная битва юзера (для resume при входе в раздел) или null."""
     uid = _tm_require_user(token=token)
+    # A live draft always wins over a newer unused outgoing invitation.
     battle = _bt_active_battle(db, uid)
+    if battle is None:
+        battle = _bt_active_battle(db, uid, include_waiting=True)
     if battle is None:
         return {"code": None}
     now = _bt_now()
     if _bt_tick(db, battle, now):
         db.commit()
         _bt_notify(battle.id)
-        if battle.status not in _BT_ACTIVE_STATUSES:
+        if battle.status not in _BT_RESUMABLE_STATUSES:
             return {"code": None}
-    return {"code": battle.code, "status": battle.status, "mode": battle.mode}
+    response = {
+        "code": battle.code,
+        "status": battle.status,
+        "mode": battle.mode,
+        "friendly": bool(battle.is_friendly),
+    }
+    if battle.status == "waiting" and battle.host_id == uid and battle.is_friendly:
+        response["invite_url"] = _bt_invite_url(battle.code)
+        created = _bt_aware(battle.created_at)
+        if created is not None:
+            response["expires_at"] = (
+                created + _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+            ).isoformat()
+    return response
 
 
 @app.post("/api/battle/queue")
@@ -6556,6 +6640,241 @@ def _bt_bot_username() -> str | None:
         return None
 
 
+def _bt_invite_url(code: str) -> str | None:
+    """Stable bot deep-link used by both initial share and restored waiting UI.
+
+    The bot opens one signed WebApp button for this code. Subscription and
+    joining are enforced inside the API; the link itself grants no authority.
+    """
+    username = _bt_bot_username()
+    return f"https://t.me/{username}?start=db_{code}" if username else None
+
+
+def _bt_lock_invite_identity(db: Session, user_id: int) -> None:
+    """Serialize pending-row creation even before a user profile exists."""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": int(user_id)},
+        )
+
+
+def _bt_pending_invite_preview_sync(user_id: int, code: str | None) -> dict:
+    """Resolve/store one pending invite after Telegram identity validation."""
+    now = _bt_now()
+    normalized_code = (code or "").strip().upper() or None
+    with SessionLocal() as db:
+        _bt_lock_invite_identity(db, user_id)
+        pending = db.get(DBBattlePendingInvite, user_id)
+        if pending is not None:
+            pending_expires = _bt_aware(pending.expires_at)
+            if pending_expires is None or pending_expires <= now:
+                db.delete(pending)
+                db.flush()
+                pending = None
+
+        battle = None
+        if normalized_code:
+            battle = (
+                db.query(DBDraftBattle)
+                .filter(DBDraftBattle.code == normalized_code)
+                .one_or_none()
+            )
+        elif pending is not None:
+            battle = db.get(DBDraftBattle, pending.battle_id)
+
+        if battle is None:
+            db.commit()
+            return {
+                "found": bool(normalized_code),
+                "state": "expired" if normalized_code else "none",
+            }
+
+        created = _bt_aware(battle.created_at)
+        expires_at = (
+            created + _tm_timedelta(minutes=_BT_WAITING_TTL_MIN)
+            if created is not None else now
+        )
+        role = _bt_role(battle, user_id)
+        state = "expired"
+        if role == "host" and battle.status in _BT_RESUMABLE_STATUSES:
+            state = "host"
+        elif role == "guest" and battle.status in _BT_ACTIVE_STATUSES:
+            state = "joined"
+        elif (
+            battle.status == "waiting"
+            and battle.is_friendly
+            and battle.guest_id is None
+            and battle.host_id != user_id
+            and expires_at > now
+        ):
+            state = "pending"
+            if pending is None:
+                pending = DBBattlePendingInvite(
+                    user_id=user_id,
+                    battle_id=battle.id,
+                    created_at=now,
+                    expires_at=expires_at,
+                    subscription_verified_at=None,
+                )
+                db.add(pending)
+            else:
+                if pending.battle_id != battle.id:
+                    pending.subscription_verified_at = None
+                pending.battle_id = battle.id
+                pending.created_at = now
+                pending.expires_at = expires_at
+
+        if state == "expired":
+            if pending is not None and pending.battle_id == battle.id:
+                db.delete(pending)
+            db.commit()
+            return {"found": True, "state": "expired", "code": battle.code}
+
+        host_settings = _tm_load_user_settings(db, [battle.host_id]).get(
+            battle.host_id, {}
+        )
+        host_name = (
+            host_settings.get("first_name")
+            or host_settings.get("username")
+            or "Игрок"
+        ).strip() or "Игрок"
+        db.commit()
+        return {
+            "found": True,
+            "state": state,
+            "code": battle.code,
+            "mode": "ap" if battle.mode == _BT_AP2_MODE else battle.mode,
+            "expires_at": expires_at.isoformat(),
+            "remaining_seconds": max(0, int((expires_at - now).total_seconds())),
+            "inviter": {
+                "name": host_name,
+                "photo_url": public_avatar_url(host_settings),
+            },
+        }
+
+
+def _bt_dismiss_pending_invite_sync(user_id: int) -> None:
+    with SessionLocal() as db:
+        _bt_lock_invite_identity(db, user_id)
+        pending = db.get(DBBattlePendingInvite, user_id)
+        if pending is not None:
+            db.delete(pending)
+            db.commit()
+
+
+def _bt_record_invite_subscription_sync(
+    user_id: int,
+    code: str,
+    subscribed: bool,
+) -> None:
+    """Bind the latest membership result to this user and invitation only."""
+    now = _bt_now()
+    with SessionLocal() as db:
+        _bt_lock_invite_identity(db, user_id)
+        pending = db.get(DBBattlePendingInvite, user_id)
+        if pending is None:
+            return
+        battle = db.get(DBDraftBattle, pending.battle_id)
+        if battle is None or battle.code != code:
+            return
+        pending.subscription_verified_at = now if subscribed else None
+        db.commit()
+
+
+def _bt_ensure_invite_profile_sync(user_payload: dict) -> None:
+    """Create the FK target only after the subscription gate is passed."""
+    user_id = int(user_payload["id"])
+    with SessionLocal() as db:
+        profile = db.get(DBUserProfile, user_id)
+        if profile is None:
+            profile = DBUserProfile(user_id=user_id, favorite_heroes=[], settings={})
+            db.add(profile)
+            db.flush()
+        settings = dict(profile.settings or {})
+        settings.update({
+            "username": user_payload.get("username"),
+            "first_name": user_payload.get("first_name"),
+            "last_name": user_payload.get("last_name"),
+        })
+        settings.pop("photo_url", None)
+        profile.settings = settings
+        flag_modified(profile, "settings")
+        db.commit()
+
+
+@app.post("/api/battle/invite/bootstrap")
+async def api_battle_invite_bootstrap(
+    data: BattleInviteBootstrapReq,
+    request: Request,
+):
+    """Show an invite before session issuance, without bypassing membership.
+
+    The signed Telegram identity may remember and preview an invite. Joining is
+    still impossible until refresh_token verifies the required subscriptions
+    and /battle/join authenticates the resulting short-lived session.
+    """
+    _enforce_rate(
+        "battle_invite_bootstrap_ip",
+        _request_subject(request),
+        limit=60,
+        window_seconds=300,
+    )
+    params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
+    if params is None:
+        raise HTTPException(status_code=401, detail="Invalid initData signature")
+    try:
+        user_payload = json.loads(params["user"])
+        user_id = int(user_payload["id"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid user payload")
+    _enforce_rate("battle_invite_bootstrap_user", user_id, limit=30, window_seconds=300)
+
+    preview = await asyncio.to_thread(
+        _bt_pending_invite_preview_sync,
+        user_id,
+        data.code,
+    )
+    preview["creator_channel_url"] = CREATOR_CHANNEL_URL
+    if preview.get("state") in {"pending", "host", "joined"}:
+        preview["subscribed"] = await _has_required_subscriptions(user_id)
+        if preview.get("state") == "pending":
+            await asyncio.to_thread(
+                _bt_record_invite_subscription_sync,
+                user_id,
+                preview["code"],
+                preview["subscribed"],
+            )
+        if preview["subscribed"]:
+            await asyncio.to_thread(_bt_ensure_invite_profile_sync, user_payload)
+    else:
+        preview["subscribed"] = False
+    return preview
+
+
+@app.post("/api/battle/invite/dismiss")
+async def api_battle_invite_dismiss(
+    data: BattleInviteDismissReq,
+    request: Request,
+):
+    _enforce_rate(
+        "battle_invite_dismiss_ip",
+        _request_subject(request),
+        limit=30,
+        window_seconds=300,
+    )
+    params = _validate_telegram_init_data(data.init_data, BOT_TOKEN)
+    if params is None:
+        raise HTTPException(status_code=401, detail="Invalid initData signature")
+    try:
+        user_id = int(json.loads(params["user"])["id"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid user payload")
+    _enforce_rate("battle_invite_dismiss_user", user_id, limit=10, window_seconds=300)
+    await asyncio.to_thread(_bt_dismiss_pending_invite_sync, user_id)
+    return {"ok": True}
+
+
 def _bt_prepare_invite_message(uid: int, code: str, invite_url: str):
     """PreparedInlineMessage для shareMessage: карточка вызова с инлайн-кнопкой
     «Принять вызов» прямо в сообщении (вместо голой ссылки текстом).
@@ -6598,9 +6917,9 @@ def _bt_prepare_invite_message(uid: int, code: str, invite_url: str):
 def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
     """«Сыграть с другом»: приватная товарищеская комната + ссылка-вызов.
 
-    Ссылка ведёт в БОТА (t.me/<bot>?start=db_КОД), не напрямую в мини-апп:
-    /start бота держит гейт обязательных подписок — вызов от друга не должен
-    его обходить (прямой startapp-линк открыл бы апп без подписок). Рейтинг
+    Ссылка ведёт в бота, который отправляет ровно одну WebApp-кнопку. Внутри
+    приложения подписанные Telegram initData показывают экран вызова, а вход
+    остаётся заблокирован до серверной проверки подписки. Рейтинг
     товарищеские бои не двигают (win-trading через твинков)."""
     uid = _tm_require_user(token=data.token)
     _enforce_rate(
@@ -6638,8 +6957,7 @@ def api_battle_challenge(data: BattleStartReq, db: Session = Depends(get_db)):
     db.add(battle)
     db.commit()
 
-    username = _bt_bot_username()
-    invite_url = f"https://t.me/{username}?start=db_{battle.code}" if username else None
+    invite_url = _bt_invite_url(battle.code)
     # Красивое сообщение-вызов с КНОПКОЙ (Bot API 8.0, prepared inline message):
     # фронт отправит его через Telegram.WebApp.shareMessage. Best-effort —
     # без него фронт падает на обычный t.me/share/url со ссылкой текстом.
@@ -6663,12 +6981,20 @@ def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
 
     role = _bt_role(battle, uid)
     if role is not None:
+        db.query(DBBattlePendingInvite).filter(
+            DBBattlePendingInvite.user_id == uid
+        ).delete(synchronize_session=False)
+        db.commit()
         return {"code": battle.code, "status": battle.status, "you": role}
 
     _bt_lock_user(db, uid)
     locked = _bt_get_battle(db, code, for_update=True)
     role = _bt_role(locked, uid)
     if role is not None:
+        db.query(DBBattlePendingInvite).filter(
+            DBBattlePendingInvite.user_id == uid
+        ).delete(synchronize_session=False)
+        db.commit()
         return {"code": locked.code, "status": locked.status, "you": role}
 
     if not (locked.status == "waiting" and locked.is_friendly):
@@ -6700,9 +7026,40 @@ def api_battle_join(data: BattleCodeReq, db: Session = Depends(get_db)):
     )
     if host_busy is not None:
         raise HTTPException(status_code=409, detail="Приглашение устарело.")
+    membership = (
+        db.query(DBBattlePendingInvite)
+        .filter(
+            DBBattlePendingInvite.user_id == uid,
+            DBBattlePendingInvite.battle_id == locked.id,
+        )
+        .with_for_update()
+        .one_or_none()
+    )
+    verified_at = (
+        _bt_aware(membership.subscription_verified_at)
+        if membership is not None else None
+    )
+    if verified_at is None or now - verified_at > _tm_timedelta(minutes=10):
+        raise HTTPException(
+            status_code=403,
+            detail="Сначала открой вызов и подтверди подписку на канал.",
+        )
+    # Accepting somebody else's invite invalidates this user's own unused
+    # invitations. Otherwise a newer waiting row can mask the live draft in
+    # resume UI and can still be tapped by a third person.
+    db.query(DBDraftBattle).filter(
+        DBDraftBattle.host_id == uid,
+        DBDraftBattle.status == "waiting",
+    ).update({"status": "abandoned"}, synchronize_session=False)
     _bt_start_battle(locked, uid, now)
+    db.query(DBBattlePendingInvite).filter(
+        DBBattlePendingInvite.user_id == uid
+    ).delete(synchronize_session=False)
+    host_id = locked.host_id
+    battle_id = locked.id
     db.commit()
-    _bt_notify(locked.id)
+    _bt_notify(battle_id)
+    _bt_send_friend_accepted_push(host_id, locked.code)
     return {"code": locked.code, "status": locked.status, "you": "guest"}
 
 
@@ -7295,10 +7652,17 @@ def _bt_sweep_stale_battles() -> int:
             ),
             {"cutoff": dead_cutoff},
         )
+        # Pending intent is UX state, not authority. Once its invite expires it
+        # must disappear even if that user never opens the Mini App again.
+        r3 = session.query(DBBattlePendingInvite).filter(
+            DBBattlePendingInvite.expires_at < now
+        ).delete(synchronize_session=False)
         session.commit()
         total = (r1.rowcount or 0) + (r2.rowcount or 0)
     if total:
         logger.info("[bt_sweep] swept %d stale battle(s) → abandoned", total)
+    if r3:
+        logger.info("[bt_sweep] removed %d expired pending invite(s)", r3)
     return total
 
 

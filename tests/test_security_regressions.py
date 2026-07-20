@@ -469,6 +469,17 @@ class ApiIntegrationTests(unittest.TestCase):
         enforce.assert_called_once()
         self.assertEqual(enforce.call_args.args[0], "auth_refresh_ip")
 
+        with patch.object(self.api, "_enforce_rate") as invite_enforce:
+            invite = self.client.post(
+                "/api/battle/invite/bootstrap",
+                json={"init_data": "not-signed", "code": "SAFE12"},
+            )
+        self.assertEqual(invite.status_code, 401)
+        invite_enforce.assert_called_once()
+        self.assertEqual(
+            invite_enforce.call_args.args[0], "battle_invite_bootstrap_ip"
+        )
+
     def test_rate_limit_returns_exact_retry_after_and_api_exposes_it(self):
         from backend import rate_limit
 
@@ -881,6 +892,194 @@ class ApiIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(participant.status_code, 200)
 
+    def test_friend_invite_is_remembered_without_creating_unsubscribed_profile(self):
+        from backend.models import BattlePendingInvite, DraftBattle, UserProfile
+
+        now = datetime.now(timezone.utc)
+        host_id = 9401
+        guest_id = 9402
+        with self.api.SessionLocal() as session:
+            session.add(UserProfile(
+                user_id=host_id,
+                favorite_heroes=[],
+                settings={"first_name": "Invoker"},
+            ))
+            session.add(DraftBattle(
+                code="INV940",
+                mode="cm",
+                status="waiting",
+                host_id=host_id,
+                is_bot=False,
+                is_friendly=True,
+                created_at=now,
+            ))
+            session.commit()
+
+        init_data = _signed_init_data(
+            os.environ["BOT_TOKEN"], guest_id, int(time.time())
+        )
+        with patch.object(
+            self.api,
+            "_has_required_subscriptions",
+            new=AsyncMock(return_value=False),
+        ):
+            opened = self.client.post(
+                "/api/battle/invite/bootstrap",
+                json={"init_data": init_data, "code": "inv940"},
+            )
+            restored = self.client.post(
+                "/api/battle/invite/bootstrap",
+                json={"init_data": init_data},
+            )
+
+        self.assertEqual(opened.status_code, 200, opened.text)
+        self.assertEqual(opened.json()["state"], "pending")
+        self.assertFalse(opened.json()["subscribed"])
+        self.assertEqual(opened.json()["inviter"]["name"], "Invoker")
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertEqual(restored.json()["code"], "INV940")
+        with self.api.SessionLocal() as session:
+            pending = session.get(BattlePendingInvite, guest_id)
+            self.assertIsNotNone(pending)
+            self.assertIsNone(pending.subscription_verified_at)
+            self.assertIsNone(session.get(UserProfile, guest_id))
+
+    def test_friend_join_requires_fresh_subscription_proof_for_exact_invite(self):
+        from backend.models import BattlePendingInvite, DraftBattle, UserProfile
+
+        now = datetime.now(timezone.utc)
+        host_id = 9411
+        guest_id = 9412
+        with self.api.SessionLocal() as session:
+            session.add_all([
+                UserProfile(
+                    user_id=host_id,
+                    favorite_heroes=[],
+                    settings={"first_name": "Host"},
+                ),
+                # Existing profile/session simulates a returning user trying to
+                # bypass the invite subscription screen with direct API calls.
+                UserProfile(
+                    user_id=guest_id,
+                    favorite_heroes=[],
+                    settings={"first_name": "Guest"},
+                ),
+            ])
+            session.add(DraftBattle(
+                code="INV941",
+                mode="cm",
+                status="waiting",
+                host_id=host_id,
+                is_bot=False,
+                is_friendly=True,
+                created_at=now,
+            ))
+            session.add(DraftBattle(
+                code="OWN941",
+                mode="cm",
+                status="waiting",
+                host_id=guest_id,
+                is_bot=False,
+                is_friendly=True,
+                created_at=now,
+            ))
+            session.commit()
+
+        init_data = _signed_init_data(
+            os.environ["BOT_TOKEN"], guest_id, int(time.time())
+        )
+        stale_session = self.api.create_token_for_user(guest_id)
+        with patch.object(
+            self.api,
+            "_has_required_subscriptions",
+            new=AsyncMock(return_value=False),
+        ):
+            denied_preview = self.client.post(
+                "/api/battle/invite/bootstrap",
+                json={"init_data": init_data, "code": "INV941"},
+            )
+        self.assertEqual(denied_preview.status_code, 200, denied_preview.text)
+        self.assertFalse(denied_preview.json()["subscribed"])
+        direct_join = self.client.post(
+            "/api/battle/join",
+            json={"token": stale_session, "code": "INV941"},
+        )
+        self.assertEqual(direct_join.status_code, 403, direct_join.text)
+
+        with patch.object(
+            self.api,
+            "_has_required_subscriptions",
+            new=AsyncMock(return_value=True),
+        ):
+            allowed_preview = self.client.post(
+                "/api/battle/invite/bootstrap",
+                json={"init_data": init_data, "code": "INV941"},
+            )
+            # Bootstrap validates but deliberately does not consume initData;
+            # refresh_token must still be able to issue the normal API session.
+            refreshed = self.client.post(
+                "/api/refresh_token", json={"init_data": init_data}
+            )
+        self.assertTrue(allowed_preview.json()["subscribed"])
+        self.assertEqual(refreshed.status_code, 200, refreshed.text)
+        with patch.object(self.api, "_bt_send_friend_accepted_push"), \
+                patch.object(self.api, "_bt_log"):
+            joined = self.client.post(
+                "/api/battle/join",
+                json={"token": refreshed.json()["token"], "code": "INV941"},
+            )
+        self.assertEqual(joined.status_code, 200, joined.text)
+        self.assertEqual(joined.json()["status"], "drafting")
+        with self.api.SessionLocal() as session:
+            battle = session.query(DraftBattle).filter_by(code="INV941").one()
+            self.assertEqual(battle.guest_id, guest_id)
+            own_invite = session.query(DraftBattle).filter_by(code="OWN941").one()
+            self.assertEqual(own_invite.status, "abandoned")
+            self.assertIsNone(session.get(BattlePendingInvite, guest_id))
+        active = self.client.get(
+            "/api/battle/active",
+            headers={"Authorization": f"Bearer {refreshed.json()['token']}"},
+        )
+        self.assertEqual(active.status_code, 200, active.text)
+        self.assertEqual(active.json()["code"], "INV941")
+        self.assertEqual(active.json()["status"], "drafting")
+
+    def test_host_can_resume_waiting_friend_invite(self):
+        from backend.models import DraftBattle, UserProfile
+
+        host_id = 9421
+        token = self.api.create_token_for_user(host_id)
+        with self.api.SessionLocal() as session:
+            session.add(UserProfile(
+                user_id=host_id, favorite_heroes=[], settings={"first_name": "Host"}
+            ))
+            session.add(DraftBattle(
+                code="INV942",
+                mode="cm",
+                status="waiting",
+                host_id=host_id,
+                is_bot=False,
+                is_friendly=True,
+                created_at=datetime.now(timezone.utc),
+            ))
+            session.commit()
+        with patch.object(
+            self.api,
+            "_bt_invite_url",
+            return_value="https://t.me/test_bot?start=db_INV942",
+        ):
+            response = self.client.get(
+                "/api/battle/active",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "waiting")
+        self.assertTrue(response.json()["friendly"])
+        self.assertEqual(
+            response.json()["invite_url"],
+            "https://t.me/test_bot?start=db_INV942",
+        )
+
     def test_repeated_pair_cannot_farm_battle_rating(self):
         from backend.models import DraftBattle, UserProfile
 
@@ -1058,6 +1257,38 @@ class MigrationTests(unittest.TestCase):
                 connection.execute(sa.text("SELECT COUNT(*) FROM draft_results")).scalar_one(), 0
             )
 
+    def test_pending_battle_invite_migration_has_membership_proof(self):
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+
+        migration_path = (
+            PROJECT_ROOT / "alembic" / "versions" /
+            "0027_add_battle_pending_invites.py"
+        )
+        spec = importlib.util.spec_from_file_location("migration_0027", migration_path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        engine = sa.create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.execute(sa.text(
+                "CREATE TABLE draft_battles (id INTEGER PRIMARY KEY)"
+            ))
+            operations = Operations(MigrationContext.configure(connection))
+            with patch.object(migration, "op", operations):
+                migration.upgrade()
+            inspector = sa.inspect(connection)
+            columns = {
+                item["name"]
+                for item in inspector.get_columns("battle_pending_invites")
+            }
+            self.assertIn("subscription_verified_at", columns)
+            indexes = {
+                item["name"]
+                for item in inspector.get_indexes("battle_pending_invites")
+            }
+            self.assertIn("ix_battle_pending_invites_battle_id", indexes)
+            self.assertIn("ix_battle_pending_invites_expires_at", indexes)
+
 
 class SourceBoundaryTests(unittest.TestCase):
     def test_privileged_bot_handlers_recheck_server_admin_ids(self):
@@ -1142,7 +1373,7 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("role = _bt_require_role(battle, uid)", api_source)
         self.assertIn("role = _bt_require_role(battle, user_id)", api_source)
         self.assertIn("token=_token_digest(token_str)", (PROJECT_ROOT / "backend" / "db.py").read_text(encoding="utf-8"))
-        self.assertIn('script.js?v=318', html_source)
+        self.assertIn('script.js?v=319', html_source)
         self.assertNotIn("frozenset({556944111})", bot_source)
         self.assertNotIn("traceback.print_exc()", bot_source)
         self.assertIn("client-supplied scores are not accepted", api_source)
@@ -1164,6 +1395,15 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("SPONSOR_CHANNEL_URL", bot_source)
         self.assertNotIn("https://t.me/+NtPbXaoKbeo2YjEy", bot_source)
         self.assertEqual(bot_source.count("await _reply_subscription_gate("), 6)
+        battle_branch = bot_source.index(
+            'if _start_payload and _start_payload.startswith("db_"):'
+        )
+        avatar_fetch = bot_source.index('avatar_state = "error"')
+        self.assertLess(battle_branch, avatar_fetch)
+        self.assertIn('"Открыть вызов"', bot_source[battle_branch:avatar_fetch])
+        self.assertNotIn("_PENDING_BATTLE_INVITES", bot_source)
+        self.assertIn("/battle/invite/bootstrap", script_source)
+        self.assertIn("['waiting', 'searching', 'drafting', 'assigning']", script_source)
 
 
 if __name__ == "__main__":

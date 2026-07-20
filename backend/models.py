@@ -767,8 +767,7 @@ class DraftBattle(Base):
 
     status lifecycle:
       searching — в очереди быстрого матча (виден матчеру своего mode)
-      waiting   — ЛЕГАСИ: приватная комната по коду (механика убрана; новые
-                  не создаются, ветки чтения/sweep оставлены для старых строк)
+      waiting   — дружеский вызов создан, ожидает принятия приглашённым
       drafting  — драфт идёт
       finished  — завершена (result заполнен; при форфейте result.forfeit)
       abandoned — протухла в waiting/searching или отменена хостом
@@ -859,6 +858,28 @@ class DraftBattleAction(Base):
         DateTime(timezone=True), nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+class BattlePendingInvite(Base):
+    """Последний открытый пользователем дружеский вызов.
+
+    Запись создаётся только после проверки подписанных Telegram initData.
+    Она не даёт права войти в бой: /battle/join требует обычную серверную
+    сессию и свежую серверную отметку проверки подписки для этого battle_id.
+    """
+    __tablename__ = "battle_pending_invites"
+
+    # У нового приглашённого ещё может не быть user_profiles, поэтому FK на
+    # профиль здесь намеренно нет. Telegram identity подтверждает initData.
+    user_id = Column(BigInteger, primary_key=True)
+    battle_id = Column(
+        Integer, ForeignKey("draft_battles.id"), nullable=False, index=True
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    # Fresh server-side membership proof for this exact invitation.  A normal
+    # API session alone is deliberately insufficient to claim a friend battle.
+    subscription_verified_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ─── Bot-editable text templates ──────────────────────────────────────────

@@ -200,14 +200,6 @@ SKIP_CHECK_USER_IDS: frozenset[int] = frozenset(
     int(x) for x in os.environ.get("SKIP_SUBSCRIPTION_CHECK_IDS", "").split(",") if x.strip().lstrip("-").isdigit()
 )
 
-# Отложенные товарищеские вызовы: неподписанный тапнул ссылку db_<КОД> →
-# гейт отправил подписываться, а код из ссылки к повторному /start теряется
-# (человек жмёт команду, не ссылку). Помним код на TTL комнаты и доигрываем
-# после подписки. In-memory: бот однопроцессный, рестарат теряет — не страшно
-# (вызов живёт 10 минут, друг может тапнуть ссылку повторно).
-_PENDING_BATTLE_INVITES: dict[int, tuple[str, float]] = {}
-_PENDING_BATTLE_TTL_SEC = 600
-
 # Telegram user_id administrators. Never grant admin authority from source-code
 # defaults: deployment configuration is the only trust source.
 ADMIN_IDS: frozenset[int] = frozenset(
@@ -303,6 +295,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if _start_payload:
         logger.info("[start] deep-link payload=%s user=%s", _start_payload, user_id)
 
+    # All WebApp buttons use the configured origin/path without fragments.
+    _mini_parts = urlsplit(MINI_APP_URL)
+    mini_app_url = urlunsplit((
+        _mini_parts.scheme,
+        _mini_parts.netloc,
+        _mini_parts.path,
+        _mini_parts.query,
+        "",
+    ))
+
+    # Friend-battle deep-link: one message and one unambiguous action. The
+    # regular welcome flow is intentionally skipped. Inside the WebApp the API
+    # verifies signed Telegram identity and blocks joining until subscription.
+    if _start_payload and _start_payload.startswith("db_"):
+        _battle_code = _start_payload[3:].strip().upper()
+        if not re.fullmatch(r"[A-Z0-9]{4,8}", _battle_code):
+            await update.message.reply_text(
+                "Ссылка вызова повреждена или устарела. "
+                "Попроси друга отправить её ещё раз."
+            )
+            return
+        _battle_query = parse_qsl(_mini_parts.query, keep_blank_values=True)
+        _battle_query.append(("battle", _battle_code))
+        battle_url = urlunsplit((
+            _mini_parts.scheme,
+            _mini_parts.netloc,
+            _mini_parts.path,
+            urlencode(_battle_query),
+            "",
+        ))
+        await update.message.reply_text(
+            "Тебя вызвали на Битву драфтов.\n"
+            "Открой вызов — внутри увидишь соперника и следующий шаг.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "Открыть вызов",
+                    web_app=WebAppInfo(url=battle_url),
+                )
+            ]]),
+        )
+        return
+
     # Получаем байты фото на сервере. Telegram file URL содержит BOT_TOKEN и
     # поэтому никогда не сохраняется и не возвращается клиенту.
     avatar_state = "error"
@@ -324,61 +358,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subscribed = await is_subscriber(context.bot, user_id)
 
     if not subscribed:
-        # Вызов друга у неподписанного: код из ссылки потеряется к моменту
-        # повторного /start (человек жмёт команду, не ссылку) — запоминаем
-        # на TTL комнаты и доиграем после подписки.
-        if _start_payload and _start_payload.startswith("db_"):
-            _PENDING_BATTLE_INVITES[user_id] = (_start_payload[3:][:12], time.time())
-        await _reply_subscription_gate(
-            update,
-            "\n\n⚔️ Вызов друга не потеряется — после подписки "
-            "пришлю кнопку боя." if user_id in _PENDING_BATTLE_INVITES else "",
-        )
+        await _reply_subscription_gate(update)
         return
-
-    # Never embed an API session in a Telegram button. The WebApp obtains a
-    # short-lived session from signed Telegram initData after it opens.
-    _mini_parts = urlsplit(MINI_APP_URL)
-    mini_app_url = urlunsplit((
-        _mini_parts.scheme,
-        _mini_parts.netloc,
-        _mini_parts.path,
-        _mini_parts.query,
-        "",
-    ))
-
-    # Товарищеский вызов («Сыграть с другом»): deep-link db_<КОД> из шаринга.
-    # Гейт подписок выше УЖЕ пройден — неподписанный друг сперва подпишется
-    # (это осознанно: вызовы не должны обходить обязательные каналы).
-    # Код берём из payload ИЛИ из отложенного вызова: после подписки человек
-    # жмёт /start без payload — доигрываем сохранённый код.
-    _battle_code = None
-    if _start_payload and _start_payload.startswith("db_"):
-        _battle_code = _start_payload[3:][:12]
-    else:
-        _pending = _PENDING_BATTLE_INVITES.pop(user_id, None)
-        if _pending and time.time() - _pending[1] <= _PENDING_BATTLE_TTL_SEC:
-            _battle_code = _pending[0]
-    if _battle_code:
-        _battle_query = parse_qsl(_mini_parts.query, keep_blank_values=True)
-        _battle_query.append(("battle", _battle_code))
-        battle_url = urlunsplit((
-            _mini_parts.scheme,
-            _mini_parts.netloc,
-            _mini_parts.path,
-            urlencode(_battle_query),
-            "",
-        ))
-        await update.message.reply_text(
-            "⚔️ Тебя вызвали на битву драфтов!\n"
-            "В товарищеском матче рейтинг не меняется.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(
-                    "⚔️ Принять вызов",
-                    web_app=WebAppInfo(url=battle_url),
-                )
-            ]]),
-        )
 
     # Пишем данные профиля напрямую в БД — без HTTP-запроса к самому себе.
     # Старый token-bearing photo_url удаляется при любом успешном /start.

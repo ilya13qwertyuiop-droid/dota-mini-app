@@ -785,10 +785,84 @@
           </div>
         </div>
 
+        <!-- Единый вход в дружеский вызов. Экран доступен до выдачи API-сессии:
+             подписка проверяется сервером по signed Telegram initData, а
+             /battle/join остаётся недоступен до успешной проверки. -->
+        <div id="bt-invite" hidden>
+          <div class="bt-invite-loading" id="bt-invite-loading" aria-live="polite">
+            <div class="bt-invite-skeleton bt-invite-skeleton--avatar"></div>
+            <div class="bt-invite-skeleton bt-invite-skeleton--title"></div>
+            <div class="bt-invite-skeleton bt-invite-skeleton--line"></div>
+          </div>
+
+          <div class="bt-invite-body" id="bt-invite-body" hidden>
+            <div id="bt-invite-main">
+              <div class="bt-invite-kicker">Товарищеский матч</div>
+              <div class="bt-invite-title">Вас вызывают на Битву драфтов</div>
+
+              <div class="bt-invite-player">
+                <span class="bt-invite-avatar-wrap">
+                  <img class="bt-invite-avatar" id="bt-invite-avatar" alt="" hidden
+                       onerror="this.hidden=true;document.getElementById('bt-invite-initial').hidden=false">
+                  <span class="bt-invite-initial" id="bt-invite-initial">И</span>
+                </span>
+                <span class="bt-invite-player-copy">
+                  <strong id="bt-invite-name">Игрок</strong>
+                  <span>приглашает сыграть один на один</span>
+                </span>
+              </div>
+
+              <div class="bt-invite-meta">
+                <span><i class="ph ph-strategy" aria-hidden="true"></i><b id="bt-invite-mode">С банами</b></span>
+                <span id="bt-invite-expiry">Проверяем время приглашения…</span>
+              </div>
+
+              <div class="bt-invite-gate" id="bt-invite-gate" hidden>
+                <div class="bt-invite-step">
+                  <span class="bt-invite-step-num">1</span>
+                  <span><strong>Подпишитесь на канал создателя</strong>
+                    <small>Без подписки сервер не разрешит войти в бой.</small></span>
+                </div>
+                <button type="button" class="tm-primary-btn" id="bt-invite-channel"
+                        onclick="btInviteOpenChannel()">Открыть канал</button>
+                <div class="bt-invite-step bt-invite-step--muted">
+                  <span class="bt-invite-step-num">2</span>
+                  <span><strong>Вернитесь и подтвердите подписку</strong>
+                    <small>Обычно проверка срабатывает автоматически.</small></span>
+                </div>
+                <button type="button" class="tm-ghost-btn" id="bt-invite-check"
+                        onclick="btInviteCheck()">Проверить подписку</button>
+              </div>
+
+              <div class="bt-invite-ready" id="bt-invite-ready" hidden>
+                <div class="bt-invite-ready-mark"><i class="ph ph-check" aria-hidden="true"></i></div>
+                <div>
+                  <strong>Всё готово</strong>
+                  <span>После принятия драфт начнётся у обоих игроков.</span>
+                </div>
+                <button type="button" class="tm-primary-btn" id="bt-invite-accept"
+                        onclick="btInviteAccept()">Принять вызов</button>
+              </div>
+            </div>
+
+            <div class="bt-invite-expired" id="bt-invite-expired" hidden>
+              <i class="ph ph-clock-countdown" aria-hidden="true"></i>
+              <strong>Вызов недоступен</strong>
+              <span id="bt-invite-expired-text">Приглашение уже завершено.</span>
+              <button type="button" class="tm-ghost-btn" onclick="btInviteRetry()">Проверить ещё раз</button>
+            </div>
+
+            <div class="bt-invite-status" id="bt-invite-status" aria-live="polite"></div>
+            <button type="button" class="bt-invite-decline" id="bt-invite-decline"
+                    onclick="btInviteDecline()">Отказаться и закрыть</button>
+          </div>
+        </div>
+
         <!-- Ожидание: поиск соперника (быстрый матч) -->
         <div id="bt-wait" hidden>
           <div class="bt-wait-spinner" aria-hidden="true"></div>
           <div class="bt-wait-title" id="bt-wait-title">Ищем соперника…</div>
+          <div class="bt-wait-sub" id="bt-wait-sub">Оставайся в приложении — сообщим, когда найдём соперника.</div>
           <div class="bt-online" id="bt-online-wait" hidden>
             <span class="bt-online-dot" aria-hidden="true"></span>
             <span class="bt-online-text" id="bt-online-wait-text"></span>
@@ -1914,6 +1988,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=2"></script>
-    <script defer src="script.js?v=318"></script>
+    <script defer src="script.js?v=319"></script>
   </body>
 </html>

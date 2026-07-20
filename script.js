@@ -339,6 +339,7 @@
         // initData. They are never accepted from a URL.
         const _rawFetch = window.fetch.bind(window);
         let _refreshInFlight = null;
+        let _lastAuthFailure = null;
 
         function _getInitData() {
             const tg = window.Telegram && window.Telegram.WebApp;
@@ -375,11 +376,13 @@
                         body: JSON.stringify({ init_data: initData })
                     });
                     if (!resp.ok) {
+                        _lastAuthFailure = resp.status === 403 ? 'subscription' : 'session';
                         console.warn('[auth] refresh_token HTTP', resp.status);
                         return null;
                     }
                     const data = await resp.json();
                     if (data && data.token) {
+                        _lastAuthFailure = null;
                         USER_TOKEN = data.token;
                         return data.token;
                     }
@@ -465,7 +468,12 @@
 
             const newToken = await refreshToken();
             if (!newToken) {
-                if (_getInitData()) _showAuthError('Сессия истекла. Обновите страницу.');
+                // Неподписанный приглашённый получает отдельный понятный
+                // экран вызова. Красная «сессия истекла» здесь была ложной и
+                // заставляла людей обновлять страницу без результата.
+                if (_getInitData() && _lastAuthFailure !== 'subscription') {
+                    _showAuthError('Сессия истекла. Обновите страницу.');
+                }
                 return resp;
             }
             if (newToken === oldToken) return resp;
@@ -1283,12 +1291,16 @@
             selHero: null,        // выбранный в гриде герой (до подтверждения)
             timerInt: null,
             anchor: null,         // {at, main, total} для отрисовки таймера
+            invite: null,
+            inviteCode: null,
+            inviteBusy: false,
+            inviteTimer: null,
         };
 
         function _btTok() { return (typeof USER_TOKEN === 'string') ? USER_TOKEN : ''; }
         function _btShow(screen) {
             if (screen !== 'bt-help') _bt.screen = screen;   // для возврата из справки
-            ['bt-menu', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help', 'bt-rank-reveal', 'bt-lb'].forEach(function (id) {
+            ['bt-menu', 'bt-invite', 'bt-wait', 'bt-draft', 'bt-assign', 'bt-result', 'bt-found', 'bt-help', 'bt-rank-reveal', 'bt-lb'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.hidden = (id !== screen);
             });
@@ -1628,6 +1640,235 @@
             _btShow(_bt.helpReturn || 'bt-menu');
         };
 
+        function _btClearInviteTimer() {
+            if (_bt.inviteTimer) {
+                clearInterval(_bt.inviteTimer);
+                _bt.inviteTimer = null;
+            }
+        }
+
+        function _btInviteCountdown() {
+            var el = document.getElementById('bt-invite-expiry');
+            if (!el || !_bt.invite || !_bt.invite.expires_at) return;
+            var left = Math.max(0, Math.ceil(
+                (Date.parse(_bt.invite.expires_at) - Date.now()) / 1000
+            ));
+            if (left <= 0) {
+                el.textContent = 'Приглашение истекло';
+                _btClearInviteTimer();
+                _btLoadInvite(_bt.inviteCode, { keepScreen: true });
+                return;
+            }
+            var mm = Math.floor(left / 60);
+            var ss = ('0' + (left % 60)).slice(-2);
+            el.textContent = 'Приглашение активно ещё ' + mm + ':' + ss;
+        }
+
+        function _btSetInviteBusy(busy, label) {
+            _bt.inviteBusy = !!busy;
+            ['bt-invite-check', 'bt-invite-accept', 'bt-invite-decline'].forEach(function (id) {
+                var btn = document.getElementById(id);
+                if (btn) btn.disabled = !!busy;
+            });
+            var status = document.getElementById('bt-invite-status');
+            if (status) status.textContent = label || '';
+        }
+
+        function _btRenderInvite(data) {
+            _bt.invite = data || null;
+            _bt.inviteCode = data && data.code ? data.code : _bt.inviteCode;
+            var loading = document.getElementById('bt-invite-loading');
+            var body = document.getElementById('bt-invite-body');
+            var main = document.getElementById('bt-invite-main');
+            var expired = document.getElementById('bt-invite-expired');
+            var gate = document.getElementById('bt-invite-gate');
+            var ready = document.getElementById('bt-invite-ready');
+            if (loading) loading.hidden = true;
+            if (body) body.hidden = false;
+            if (main) main.hidden = false;
+            if (expired) expired.hidden = true;
+            if (gate) gate.hidden = true;
+            if (ready) ready.hidden = true;
+
+            if (!data || !data.found || data.state === 'expired') {
+                if (main) main.hidden = true;
+                if (expired) expired.hidden = false;
+                var expiredText = document.getElementById('bt-invite-expired-text');
+                if (expiredText) expiredText.textContent =
+                    'Приглашение уже принято, отменено или срок его действия закончился.';
+                _btClearInviteTimer();
+                return;
+            }
+
+            var inviter = data.inviter || {};
+            var name = document.getElementById('bt-invite-name');
+            if (name) name.textContent = inviter.name || 'Игрок';
+            var avatar = document.getElementById('bt-invite-avatar');
+            var initial = document.getElementById('bt-invite-initial');
+            if (avatar) {
+                avatar.hidden = !inviter.photo_url;
+                if (inviter.photo_url) avatar.src = inviter.photo_url;
+            }
+            if (initial) {
+                initial.hidden = !!inviter.photo_url;
+                initial.textContent = (inviter.name || 'И').trim().charAt(0).toUpperCase();
+            }
+            var mode = document.getElementById('bt-invite-mode');
+            if (mode) mode.textContent = data.mode === 'ap' ? 'Без банов' : 'С банами';
+            var channel = document.getElementById('bt-invite-channel');
+            if (channel) channel.dataset.url = data.creator_channel_url || '';
+
+            _btClearInviteTimer();
+            _btInviteCountdown();
+            _bt.inviteTimer = setInterval(_btInviteCountdown, 1000);
+            if (data.subscribed) {
+                if (ready) ready.hidden = false;
+            } else {
+                if (gate) gate.hidden = false;
+            }
+        }
+
+        function _btCleanInviteUrl() {
+            try {
+                var url = new URL(window.location.href);
+                if (!url.searchParams.has('battle')) return;
+                url.searchParams.delete('battle');
+                window.history.replaceState(null, document.title,
+                    url.pathname + (url.search ? url.search : '') + (url.hash || ''));
+            } catch (e) {}
+        }
+
+        async function _btLoadInvite(code, options) {
+            options = options || {};
+            if (_bt.inviteBusy) return false;
+            var initData = _getInitData();
+            if (!initData) {
+                if (code) _showAuthError('Откройте вызов из чата с ботом.');
+                return false;
+            }
+            if (code) {
+                _bt.inviteCode = String(code).trim().toUpperCase();
+                switchPage('draft-battle');
+                _btShow('bt-invite');
+                var loading = document.getElementById('bt-invite-loading');
+                var body = document.getElementById('bt-invite-body');
+                if (loading && !options.keepScreen) loading.hidden = false;
+                if (body && !options.keepScreen) body.hidden = true;
+            }
+            _btSetInviteBusy(true, options.checking ? 'Проверяем подписку…' : '');
+            try {
+                var payload = { init_data: initData };
+                if (_bt.inviteCode) payload.code = _bt.inviteCode;
+                var resp = await _rawFetch(
+                    window.API_BASE_URL + '/battle/invite/bootstrap',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    }
+                );
+                if (!resp.ok) throw new Error('Не удалось проверить приглашение.');
+                var data = await resp.json();
+                _bt.inviteCheckedAt = Date.now();
+                if (!data.found && !code) return false;
+                switchPage('draft-battle');
+                _btShow('bt-invite');
+                _btRenderInvite(data);
+                _btCleanInviteUrl();
+                if (data.subscribed && (data.state === 'host' || data.state === 'joined')) {
+                    var token = USER_TOKEN || await refreshToken();
+                    if (token) _btEnter(data.code);
+                }
+                return true;
+            } catch (e) {
+                if (code || _bt.inviteCode) {
+                    switchPage('draft-battle');
+                    _btShow('bt-invite');
+                    _btRenderInvite({ found: true, state: 'expired' });
+                    var expiredText = document.getElementById('bt-invite-expired-text');
+                    if (expiredText) expiredText.textContent =
+                        'Не удалось загрузить вызов. Проверь соединение и попробуй ещё раз.';
+                }
+                return false;
+            } finally {
+                _btSetInviteBusy(false, '');
+            }
+        }
+
+        window.btInviteOpenChannel = function () {
+            var btn = document.getElementById('bt-invite-channel');
+            var url = btn && btn.dataset ? btn.dataset.url : '';
+            if (!url) return;
+            var webapp = window.Telegram && window.Telegram.WebApp;
+            if (webapp && typeof webapp.openTelegramLink === 'function') {
+                webapp.openTelegramLink(url);
+            } else {
+                window.open(url, '_blank', 'noopener');
+            }
+        };
+
+        window.btInviteCheck = function () {
+            return _btLoadInvite(_bt.inviteCode, {
+                keepScreen: true,
+                checking: true,
+            });
+        };
+
+        window.btInviteAccept = async function () {
+            if (_bt.inviteBusy || !_bt.inviteCode) return;
+            _btSetInviteBusy(true, 'Подключаем к битве…');
+            try {
+                var token = USER_TOKEN || await refreshToken();
+                if (!token) {
+                    if (_lastAuthFailure === 'subscription') {
+                        _btSetInviteBusy(false, '');
+                        await _btLoadInvite(_bt.inviteCode, { keepScreen: true });
+                    }
+                    return;
+                }
+                var data = await _btPost('/battle/join', { code: _bt.inviteCode });
+                _btClearInviteTimer();
+                _btEnter(data.code);
+            } catch (e) {
+                if (typeof showToast === 'function') showToast(e.message);
+                _btSetInviteBusy(false, '');
+                await _btLoadInvite(_bt.inviteCode, { keepScreen: true });
+            } finally {
+                _btSetInviteBusy(false, '');
+            }
+        };
+
+        window.btInviteDecline = async function () {
+            if (_bt.inviteBusy) return;
+            _btSetInviteBusy(true, '');
+            try {
+                var initData = _getInitData();
+                if (initData) {
+                    await _rawFetch(window.API_BASE_URL + '/battle/invite/dismiss', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ init_data: initData }),
+                    });
+                }
+            } finally {
+                _btClearInviteTimer();
+                _bt.invite = null;
+                _bt.inviteCode = null;
+                if (USER_TOKEN) {
+                    _btShow('bt-menu');
+                    btInit();
+                } else {
+                    var webapp = window.Telegram && window.Telegram.WebApp;
+                    if (webapp && typeof webapp.close === 'function') webapp.close();
+                }
+                _btSetInviteBusy(false, '');
+            }
+        };
+
+        window.btInviteRetry = function () {
+            return _btLoadInvite(_bt.inviteCode, { keepScreen: true });
+        };
+
         async function btInit() {
             // Меню — сразу (без пустого экрана на время запроса); баннер
             // незавершённой битвы доедет асинхронно.
@@ -1646,8 +1887,16 @@
                 var r = await apiFetch(window.API_BASE_URL + '/battle/active?token=' + encodeURIComponent(_btTok()));
                 var d = await r.json();
                 if (d && d.code) {
-                    if (d.status === 'drafting') {
+                    if (d.status === 'drafting' || d.status === 'assigning') {
                         // Драфт уже идёт — таймер тикает, входим немедленно.
+                        _btEnter(d.code);
+                        return;
+                    }
+                    if (d.status === 'waiting' && d.friendly) {
+                        // Создатель снова открыл приложение: возвращаем именно
+                        // экран ожидания друга вместе с рабочим re-share.
+                        _bt.inviteUrl = d.invite_url || null;
+                        _bt.searchStartedAt = Date.now();
                         _btEnter(d.code);
                         return;
                     }
@@ -1766,6 +2015,7 @@
             // получает очередь окон шаринга (прод-жалоба).
             if (_bt.challengeBusy) return;
             _bt.challengeBusy = true;
+            _bt.searchStartedAt = Date.now();
             var title = document.getElementById('bt-wait-title');
             if (title) title.textContent = 'Создаём вызов…';
             _btShow('bt-wait');
@@ -1813,16 +2063,18 @@
             var status = st && st.status;
             var page = document.getElementById('page-draft-battle');
             var onBattlePage = !!(page && page.classList.contains('active'));
-            var searching = _bt.polling && status === 'searching';
+            var searching = _bt.polling && (status === 'searching' || status === 'waiting');
             var inBattle = _bt.polling && (status === 'drafting' || status === 'assigning');
             var show = (searching && (!onBattlePage || _bt.screen !== 'bt-wait'))
                     || (inBattle && !onBattlePage);
             if (!show) { pill.hidden = true; return; }
             var txt = pill.querySelector('.bt-pill-text');
             if (searching) {
+                var isWaitingFriend = status === 'waiting';
                 var secs = Math.max(0, Math.floor((Date.now() - (_bt.searchStartedAt || Date.now())) / 1000));
                 var mm = Math.floor(secs / 60), ss = ('0' + (secs % 60)).slice(-2);
-                if (txt) txt.textContent = 'Ищем соперника · ' + mm + ':' + ss;
+                if (txt) txt.textContent = (isWaitingFriend ? 'Ждём друга' : 'Ищем соперника') +
+                    ' · ' + mm + ':' + ss;
                 pill.classList.remove('bt-search-pill--live');
             } else {
                 // Матч начался, пока юзер гулял — таймер хода уже горит.
@@ -1918,26 +2170,43 @@
         // Усыпление WebView: поллинг стоп; при возврате — мгновенный догон.
         if (!window._btVisBound) {
             window._btVisBound = true;
+            var _btResumeAfterForeground = function () {
+                if (document.visibilityState === 'hidden') return;
+                var page = document.getElementById('page-draft-battle');
+                if (!(page && page.classList.contains('active'))) return;
+                // Ре-поллим только живые статусы: finished/abandoned не
+                // изменятся никогда — вечный полл впустую. waiting здесь
+                // критичен: именно его оставляет окно отправки приглашения.
+                var stStatus = _bt.state && _bt.state.status;
+                var alive = !stStatus ||
+                    ['waiting', 'searching', 'drafting', 'assigning'].indexOf(stStatus) !== -1;
+                if (_bt.code && alive) _btStartPolling();
+                var menu = document.getElementById('bt-menu');
+                var wait = document.getElementById('bt-wait');
+                if ((menu && !menu.hidden) || (wait && !wait.hidden)) _btStartOnline();
+
+                // После возврата из канала проверяем подписку автоматически.
+                var invite = document.getElementById('bt-invite');
+                if (invite && !invite.hidden && _bt.invite && !_bt.invite.subscribed) {
+                    var checkedAt = _bt.inviteCheckedAt || 0;
+                    if (Date.now() - checkedAt > 1500) {
+                        _btLoadInvite(_bt.inviteCode, {
+                            keepScreen: true,
+                            checking: true,
+                        });
+                    }
+                }
+            };
             document.addEventListener('visibilitychange', function () {
                 if (document.visibilityState === 'hidden') {
                     _btStopPolling();
                     _btStopOnline();
                 } else {
-                    var page = document.getElementById('page-draft-battle');
-                    if (!(page && page.classList.contains('active'))) return;
-                    // Ре-поллим только живые статусы: finished/abandoned не
-                    // изменятся никогда — вечный полл впустую. !state = только
-                    // вошли (состояние ещё не прочитано) — поллим.
-                    var stStatus = _bt.state && _bt.state.status;
-                    var alive = !stStatus ||
-                        ['searching', 'drafting', 'assigning'].indexOf(stStatus) !== -1;
-                    if (_bt.code && alive) _btStartPolling();
-                    // Онлайн возобновляем, если открыт экран меню/поиска.
-                    var menu = document.getElementById('bt-menu');
-                    var wait = document.getElementById('bt-wait');
-                    if ((menu && !menu.hidden) || (wait && !wait.hidden)) _btStartOnline();
+                    _btResumeAfterForeground();
                 }
             });
+            window.addEventListener('pageshow', _btResumeAfterForeground);
+            window.addEventListener('focus', _btResumeAfterForeground);
         }
 
         // ── Применение состояния ──────────────────────────────────────────
@@ -1959,8 +2228,9 @@
             var prevStatus = prev && prev.status;
             var prevActor = prev && prev.current && prev.current.actor;
             _bt.state = st;
-            // Таймер пилюли: старт при входе в searching, сброс при выходе.
-            if (st.status === 'searching') {
+            // Таймер пилюли: быстрый поиск и ожидание друга — оба живые
+            // состояния ожидания; сбрасываем только после начала/завершения.
+            if (st.status === 'searching' || st.status === 'waiting') {
                 if (!_bt.searchStartedAt) _bt.searchStartedAt = Date.now();
             } else {
                 _bt.searchStartedAt = null;
@@ -2075,6 +2345,10 @@
             var isFriend = st.status === 'waiting';
             var title = document.getElementById('bt-wait-title');
             if (title) title.textContent = isFriend ? 'Ждём друга…' : 'Ищем соперника…';
+            var sub = document.getElementById('bt-wait-sub');
+            if (sub) sub.textContent = isFriend
+                ? 'Драфт откроется автоматически, когда друг примет вызов.'
+                : 'Оставайся в приложении — сообщим, когда найдём соперника.';
             // Товарищеский вызов: кнопка повторного шаринга.
             var reshare = document.getElementById('bt-wait-reshare');
             if (reshare) reshare.hidden = !(isFriend && _bt.inviteUrl);
@@ -3579,16 +3853,17 @@
             btRenderRank();      // рейтинг мог измениться
         };
 
-        // Deep-link: ?battle=КОД — кнопка из пуша «соперник найден» (живой
-        // быстрый матч). Игрок уже участник пары → btJoinByCode = resume.
+        // Deep-link: ?battle=КОД. Для нового дружеского вызова сначала
+        // показываем единый экран приглашения и подписки. Для уже начавшейся
+        // битвы bootstrap распознает участника и сразу восстановит матч.
+        // Без query ищем сохранённый pending-вызов: так обычное открытие
+        // мини-аппа после подписки не теряет контекст друга.
         (function () {
             var code = null;
             try { code = new URLSearchParams(window.location.search).get('battle'); }
             catch (e) { return; }
-            if (!code) return;
             document.addEventListener('DOMContentLoaded', function () {
-                switchPage('draft-battle');
-                btJoinByCode(String(code).toUpperCase());
+                _btLoadInvite(code ? String(code).toUpperCase() : null);
             }, { once: true });
         })();
 
