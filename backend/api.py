@@ -160,7 +160,7 @@ from backend.rate_limit import check_rate_limit
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
-SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "-1002005211472")
+SPONSOR_CHAT_ID = (os.environ.get("SPONSOR_CHAT_ID") or "").strip() or None
 SKIP_SUBSCRIPTION_CHECK_IDS: frozenset[int] = frozenset(
     int(value)
     for value in os.environ.get("SKIP_SUBSCRIPTION_CHECK_IDS", "").split(",")
@@ -172,8 +172,6 @@ if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
 if not CHECK_CHAT_ID:
     raise RuntimeError("CHECK_CHAT_ID is not set")
-if not SPONSOR_CHAT_ID:
-    raise RuntimeError("SPONSOR_CHAT_ID is not set")
 
 configure_secure_logging(BOT_TOKEN, os.environ.get("DATABASE_URL"))
 
@@ -493,14 +491,17 @@ _SUBSCRIBER_STATUSES = frozenset({"member", "administrator", "creator"})
 
 
 async def _has_required_subscriptions(user_id: int) -> bool:
-    """Fail closed unless Telegram confirms membership in both channels."""
+    """Fail closed for every currently configured required channel."""
     if user_id in SKIP_SUBSCRIPTION_CHECK_IDS:
         return True
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
     timeout = httpx.Timeout(8.0, connect=3.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        for chat_id in (CHECK_CHAT_ID, SPONSOR_CHAT_ID):
+        required_chat_ids = (CHECK_CHAT_ID,) + (
+            (SPONSOR_CHAT_ID,) if SPONSOR_CHAT_ID else ()
+        )
+        for chat_id in required_chat_ids:
             try:
                 response = await client.get(
                     url,
@@ -553,7 +554,7 @@ async def refresh_token(data: RefreshTokenRequest, request: Request):
     if not await _has_required_subscriptions(user_id):
         raise HTTPException(
             status_code=403,
-            detail="Subscription to both required channels is required",
+            detail="Subscription to all currently required channels is required",
         )
     claimed = await asyncio.to_thread(claim_telegram_init_data, data.init_data, user_id)
     if not claimed:
@@ -564,7 +565,7 @@ async def refresh_token(data: RefreshTokenRequest, request: Request):
 
 @app.post("/api/check-subscription", response_model=CheckResponse)
 async def check_subscription(data: CheckRequest):
-    """Проверяет подписку пользователя на оба обязательных канала."""
+    """Проверяет подписку на все включённые обязательные каналы."""
     user_id = get_user_id_by_token(data.token)
     if not user_id:
         return CheckResponse(allowed=False)

@@ -184,7 +184,16 @@ load_env()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 MINI_APP_URL = os.environ.get("MINI_APP_URL")
 CHECK_CHAT_ID = os.environ.get("CHECK_CHAT_ID")  # chat_id канала для проверки
-SPONSOR_CHAT_ID = os.environ.get("SPONSOR_CHAT_ID", "-1002005211472")  # chat_id канала спонсора
+CREATOR_CHANNEL_URL = (
+    os.environ.get("CREATOR_CHANNEL_URL") or "https://t.me/kasumi_tt"
+).strip()
+SPONSOR_CHAT_ID = (os.environ.get("SPONSOR_CHAT_ID") or "").strip() or None
+SPONSOR_CHANNEL_URL = (os.environ.get("SPONSOR_CHANNEL_URL") or "").strip() or None
+
+if bool(SPONSOR_CHAT_ID) != bool(SPONSOR_CHANNEL_URL):
+    raise RuntimeError(
+        "SPONSOR_CHAT_ID and SPONSOR_CHANNEL_URL must be configured together"
+    )
 
 # user_id, для которых проверка подписки пропускается (список через запятую в SKIP_SUBSCRIPTION_CHECK_IDS)
 SKIP_CHECK_USER_IDS: frozenset[int] = frozenset(
@@ -217,8 +226,38 @@ HERO_IMAGE_BASE_URL: str = os.environ.get(
     "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes",
 )
 
+
+def _subscription_gate_markup() -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton("📢 Канал создателя", url=CREATOR_CHANNEL_URL)
+    ]
+    if SPONSOR_CHAT_ID and SPONSOR_CHANNEL_URL:
+        buttons.append(
+            InlineKeyboardButton("📢 Канал спонсора", url=SPONSOR_CHANNEL_URL)
+        )
+    return InlineKeyboardMarkup([buttons])
+
+
+def _subscription_gate_text() -> str:
+    if SPONSOR_CHAT_ID:
+        return (
+            "⛔ Бот доступен подписчикам наших каналов.\n\n"
+            "Подпишись на оба канала и нажми /start ещё раз."
+        )
+    return (
+        "⛔ Бот доступен подписчикам канала создателя.\n\n"
+        "Подпишись на канал и нажми /start ещё раз."
+    )
+
+
+async def _reply_subscription_gate(update: Update, extra_text: str = "") -> None:
+    await update.message.reply_text(
+        _subscription_gate_text() + extra_text,
+        reply_markup=_subscription_gate_markup(),
+    )
+
 async def is_subscriber(bot: Bot, user_id: int) -> bool:
-    """Проверяет подписку пользователя на оба канала: CHECK_CHAT_ID и SPONSOR_CHAT_ID.
+    """Проверяет основной и, если включён, спонсорский канал.
 
     Каждый вызов делает свежий запрос getChatMember к Telegram API.
     При любой ошибке возвращает False и не падает.
@@ -290,18 +329,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # на TTL комнаты и доиграем после подписки.
         if _start_payload and _start_payload.startswith("db_"):
             _PENDING_BATTLE_INVITES[user_id] = (_start_payload[3:][:12], time.time())
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
-            ]
-        ])
-        await update.message.reply_text(
-            "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз."
-            + ("\n\n⚔️ Вызов друга не потеряется — после подписки "
-               "пришлю кнопку боя." if user_id in _PENDING_BATTLE_INVITES else ""),
-            reply_markup=kb,
+        await _reply_subscription_gate(
+            update,
+            "\n\n⚔️ Вызов друга не потеряется — после подписки "
+            "пришлю кнопку боя." if user_id in _PENDING_BATTLE_INVITES else "",
         )
         return
 
@@ -469,17 +500,7 @@ async def last_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
-            ]
-        ])
-        await update.message.reply_text(
-            "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз.",
-            reply_markup=kb,
-        )
+        await _reply_subscription_gate(update)
         return
 
     row = await asyncio.to_thread(get_last_quiz_result, user_id)
@@ -762,17 +783,7 @@ async def hero_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
-            ]
-        ])
-        await update.message.reply_text(
-            "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз.",
-            reply_markup=kb,
-        )
+        await _reply_subscription_gate(update)
         return
 
     row = await asyncio.to_thread(get_last_quiz_result, user_id)
@@ -1157,17 +1168,7 @@ async def counters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
-            ]
-        ])
-        await update.message.reply_text(
-            "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз.",
-            reply_markup=kb,
-        )
+        await _reply_subscription_gate(update)
         return
 
     _user_state[user_id] = "awaiting_counters_hero"
@@ -1194,17 +1195,7 @@ async def synergy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
-            ]
-        ])
-        await update.message.reply_text(
-            "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз.",
-            reply_markup=kb,
-        )
+        await _reply_subscription_gate(update)
         return
 
     _user_state[user_id] = "awaiting_synergy_hero"
@@ -1424,17 +1415,7 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_subscriber(context.bot, user_id):
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Канал создателя", url="https://t.me/kasumi_tt"),
-                InlineKeyboardButton("📢 Канал спонсора", url="https://t.me/+NtPbXaoKbeo2YjEy"),
-            ]
-        ])
-        await update.message.reply_text(
-            "⛔ Бот доступен подписчикам наших каналов.\n\n"
-            "Подпишись на оба канала и нажми /start ещё раз.",
-            reply_markup=kb,
-        )
+        await _reply_subscription_gate(update)
         return
 
     _user_state[user_id] = "awaiting_feedback_message"
@@ -2337,7 +2318,7 @@ async def _set_commands(application: Application) -> None:
     """Registers the visible command menu shown when the user types / in Telegram."""
     # Keep the persistent chat menu as a command list. A WebApp menu button
     # opens the app without passing through /start and therefore bypasses the
-    # two-channel subscription gate. Setting this explicitly also replaces
+    # configured subscription gate. Setting this explicitly also replaces
     # any attacker-controlled menu left after a bot-token compromise.
     await application.bot.set_chat_menu_button(
         menu_button=MenuButtonCommands()

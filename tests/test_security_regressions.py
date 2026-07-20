@@ -402,6 +402,7 @@ class ApiIntegrationTests(unittest.TestCase):
 
     def test_subscription_check_requires_main_and_sponsor_channels(self):
         calls = []
+        sponsor_chat_id = "-1002005211472"
         statuses = iter(["member", "left"])
 
         class FakeResponse:
@@ -424,11 +425,40 @@ class ApiIntegrationTests(unittest.TestCase):
                 calls.append(params["chat_id"])
                 return FakeResponse(next(statuses))
 
-        with patch.object(self.api.httpx, "AsyncClient", return_value=FakeClient()):
+        with patch.object(self.api, "SPONSOR_CHAT_ID", sponsor_chat_id), \
+                patch.object(self.api.httpx, "AsyncClient", return_value=FakeClient()):
             allowed = asyncio.run(self.api._has_required_subscriptions(9009))
 
         self.assertFalse(allowed)
-        self.assertEqual(calls, [self.api.CHECK_CHAT_ID, self.api.SPONSOR_CHAT_ID])
+        self.assertEqual(calls, [self.api.CHECK_CHAT_ID, sponsor_chat_id])
+
+    def test_subscription_check_skips_sponsor_when_not_configured(self):
+        calls = []
+
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"result": {"status": "member"}}
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def get(self, _url, *, params):
+                calls.append(params["chat_id"])
+                return FakeResponse()
+
+        with patch.object(self.api, "SPONSOR_CHAT_ID", None), \
+                patch.object(self.api.httpx, "AsyncClient", return_value=FakeClient()):
+            allowed = asyncio.run(self.api._has_required_subscriptions(9010))
+
+        self.assertTrue(allowed)
+        self.assertEqual(calls, [self.api.CHECK_CHAT_ID])
 
     def test_invalid_init_data_is_rate_limited_before_signature_validation(self):
         with patch.object(self.api, "_enforce_rate") as enforce:
@@ -1093,6 +1123,9 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("resp.headers.get('Retry-After')", script_source)
         self.assertIn("Лимит обновлений достигнут", script_source)
         self.assertIn("limit=120", api_source)
+        self.assertIn("SPONSOR_CHANNEL_URL", bot_source)
+        self.assertNotIn("https://t.me/+NtPbXaoKbeo2YjEy", bot_source)
+        self.assertEqual(bot_source.count("await _reply_subscription_gate("), 6)
 
 
 if __name__ == "__main__":
