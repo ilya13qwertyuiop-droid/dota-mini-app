@@ -439,6 +439,35 @@ class ApiIntegrationTests(unittest.TestCase):
         enforce.assert_called_once()
         self.assertEqual(enforce.call_args.args[0], "auth_refresh_ip")
 
+    def test_rate_limit_returns_exact_retry_after_and_api_exposes_it(self):
+        from backend import rate_limit
+
+        with patch.object(rate_limit.time, "time", return_value=1_000.0):
+            allowed = rate_limit.check_rate_limit(
+                "retry_after_test", 9331, limit=1, window_seconds=60
+            )
+            denied = rate_limit.check_rate_limit(
+                "retry_after_test", 9331, limit=1, window_seconds=60
+            )
+        self.assertEqual(allowed, (True, 1, 0))
+        self.assertEqual(denied, (False, 1, 60))
+
+        with patch.object(self.api, "check_rate_limit", return_value=denied):
+            with self.assertRaises(self.api.HTTPException) as raised:
+                self.api._enforce_rate(
+                    "draft_reroll",
+                    9331,
+                    limit=120,
+                    window_seconds=3600,
+                    detail="Слишком много обновлений вражеского драфта.",
+                )
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(raised.exception.headers, {"Retry-After": "60"})
+        self.assertEqual(
+            raised.exception.detail,
+            "Слишком много обновлений вражеского драфта.",
+        )
+
     def test_browser_asserted_minigame_score_is_rejected(self):
         raw_token = self.api.create_token_for_user(9201)
         response = self.client.post(
@@ -598,18 +627,74 @@ class ApiIntegrationTests(unittest.TestCase):
         with self.api.SessionLocal() as session:
             session.add(UserProfile(user_id=9330, favorite_heroes=[], settings={}))
             session.commit()
-        issued = self.client.get(
-            "/api/draft/random",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        with patch.object(self.api, "_enforce_rate") as initial_enforce:
+            issued = self.client.get(
+                "/api/draft/random",
+                headers={"Authorization": f"Bearer {token}"},
+            )
         self.assertEqual(issued.status_code, 200, issued.text)
-        challenge = issued.json()
-        repeated = self.client.get(
-            "/api/draft/random",
-            headers={"Authorization": f"Bearer {token}"},
+        initial_enforce.assert_any_call(
+            "draft_challenge",
+            9330,
+            limit=120,
+            window_seconds=3600,
+            detail="Слишком много новых драфтов за короткое время.",
         )
+        challenge = issued.json()
+        with patch.object(self.api, "_enforce_rate") as enforce:
+            repeated = self.client.get(
+                "/api/draft/random",
+                headers={"Authorization": f"Bearer {token}"},
+            )
         self.assertEqual(repeated.status_code, 200, repeated.text)
         self.assertEqual(repeated.json()["challenge_id"], challenge["challenge_id"])
+        self.assertNotIn(
+            "draft_challenge",
+            [call.args[0] for call in enforce.call_args_list],
+        )
+
+        with patch.object(self.api.random, "choice", side_effect=lambda rows: rows[-1]), \
+                patch.object(self.api, "_enforce_rate") as enforce:
+            rerolled = self.client.get(
+                "/api/draft/random?reroll=true",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        self.assertEqual(rerolled.status_code, 200, rerolled.text)
+        self.assertIsNotNone(rerolled.json()["challenge_id"])
+        self.assertNotEqual(
+            rerolled.json()["challenge_id"], challenge["challenge_id"]
+        )
+        self.assertTrue(rerolled.json()["ranked"])
+        self.assertNotEqual(rerolled.json()["enemy"], challenge["enemy"])
+        enforce.assert_any_call(
+            "draft_reroll",
+            9330,
+            limit=120,
+            window_seconds=3600,
+            detail="Слишком много обновлений вражеского драфта.",
+        )
+        self.assertEqual(
+            sum(call.args[0] == "draft_reroll" for call in enforce.call_args_list),
+            1,
+        )
+
+        from backend.models import DraftChallenge
+        with self.api.SessionLocal() as session:
+            replaced = session.get(DraftChallenge, challenge["challenge_id"])
+            self.assertIsNone(replaced)
+
+        # Only the newest server-issued challenge remains active and eligible
+        # for a ranked leaderboard result.
+        still_active = self.client.get(
+            "/api/draft/random",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(still_active.status_code, 200, still_active.text)
+        self.assertEqual(
+            still_active.json()["challenge_id"], rerolled.json()["challenge_id"]
+        )
+
+        challenge = rerolled.json()
         enemy_ids = {row["hero_id"] for row in challenge["enemy"]}
         known = [int(k) for k in self.api._load_hero_matchups_file().keys()]
         ally_ids = [hero_id for hero_id in known if hero_id not in enemy_ids][:5]
@@ -989,7 +1074,7 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertIn("role = _bt_require_role(battle, uid)", api_source)
         self.assertIn("role = _bt_require_role(battle, user_id)", api_source)
         self.assertIn("token=_token_digest(token_str)", (PROJECT_ROOT / "backend" / "db.py").read_text(encoding="utf-8"))
-        self.assertIn('script.js?v=317', html_source)
+        self.assertIn('script.js?v=318', html_source)
         self.assertNotIn("frozenset({556944111})", bot_source)
         self.assertNotIn("traceback.print_exc()", bot_source)
         self.assertIn("client-supplied scores are not accepted", api_source)
@@ -1005,6 +1090,9 @@ class SourceBoundaryTests(unittest.TestCase):
         self.assertNotIn("dota_react/abilities/", script_source)
         self.assertIn("hero_identity(run.reference_id)", api_source)
         self.assertIn("hero_identity(run.challenger_id)", api_source)
+        self.assertIn("resp.headers.get('Retry-After')", script_source)
+        self.assertIn("Лимит обновлений достигнут", script_source)
+        self.assertIn("limit=120", api_source)
 
 
 if __name__ == "__main__":

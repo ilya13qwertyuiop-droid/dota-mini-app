@@ -249,12 +249,17 @@ def _enforce_rate(
     *,
     limit: int,
     window_seconds: int,
+    detail: str = "Too many requests",
 ) -> None:
-    allowed, _count = check_rate_limit(
+    allowed, _count, retry_after = check_rate_limit(
         scope, subject, limit=limit, window_seconds=window_seconds
     )
     if not allowed:
-        raise HTTPException(status_code=429, detail="Too many requests")
+        raise HTTPException(
+            status_code=429,
+            detail=detail,
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 def _gateway_auth_required(path: str) -> bool:
@@ -1454,17 +1459,69 @@ _DRAFT_POOLS_BY_POS = {
 }
 
 
+def _enemy_draft_signature(enemy) -> tuple[tuple[int, str], ...]:
+    return tuple(
+        (int(item.get("hero_id") or 0), str(item.get("position") or ""))
+        for item in (enemy or [])
+    )
+
+
+def _generate_random_enemy_draft(exclude=None) -> list[dict]:
+    """Generate one unique hero per position, different from ``exclude``."""
+    enemy = []
+    used_ids: set[int] = set()
+    for pos in (1, 2, 3, 4, 5):
+        candidates = [hid for hid in _DRAFT_POOLS_BY_POS[pos] if hid not in used_ids]
+        hero_id = random.choice(candidates)
+        used_ids.add(hero_id)
+        enemy.append({"hero_id": hero_id, "position": f"pos {pos}"})
+
+    excluded_signature = _enemy_draft_signature(exclude)
+    if not excluded_signature or _enemy_draft_signature(enemy) != excluded_signature:
+        return enemy
+
+    # An exact five-hero repeat is extremely unlikely, but the button promises
+    # new enemies. Force one valid slot to differ so tests and UX do not depend
+    # on probability (or on a deterministic random seed after worker restart).
+    for index, pos in enumerate((1, 2, 3, 4, 5)):
+        other_ids = {
+            int(item["hero_id"])
+            for item_index, item in enumerate(enemy)
+            if item_index != index
+        }
+        current_id = int(enemy[index]["hero_id"])
+        alternatives = [
+            hid for hid in _DRAFT_POOLS_BY_POS[pos]
+            if hid != current_id and hid not in other_ids
+        ]
+        if alternatives:
+            enemy[index] = {
+                "hero_id": random.choice(alternatives),
+                "position": f"pos {pos}",
+            }
+            break
+    return enemy
+
+
 @app.get("/api/draft/random")
-def api_draft_random(token: str, db: Session = Depends(get_db)):
-    """Returns a random enemy draft generated from per-position hero pools."""
+def api_draft_random(
+    token: str,
+    reroll: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Return an enemy draft for the solo drafter.
+
+    The active server challenge is stable on ordinary page reloads. An explicit
+    reroll invalidates it and creates a new ranked challenge, so every enemy
+    draft shown by the training mode can be submitted to the leaderboard.
+    """
     user_id = get_user_id_by_token(token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="unauthorized")
-    _enforce_rate("draft_challenge", user_id, limit=20, window_seconds=3600)
 
     # One active challenge per player. The profile row serializes concurrent
-    # reroll attempts across workers; returning the same challenge prevents
-    # cherry-picking an easy enemy draft for the ranked leaderboard.
+    # challenge creation across workers. An ordinary reload returns the same
+    # challenge; only an explicit reroll replaces it.
     profile = (
         db.query(DBUserProfile)
         .filter(DBUserProfile.user_id == user_id)
@@ -1482,20 +1539,41 @@ def api_draft_random(token: str, db: Session = Depends(get_db)):
         .order_by(DBDraftChallenge.created_at.desc())
         .first()
     )
-    if active is not None:
+    if active is not None and not reroll:
         return {
             "match_id": 0,
             "challenge_id": active.challenge_id,
             "enemy": active.enemy,
+            "ranked": True,
         }
 
-    enemy = []
-    used_ids: set[int] = set()
-    for pos in (1, 2, 3, 4, 5):
-        candidates = [hid for hid in _DRAFT_POOLS_BY_POS[pos] if hid not in used_ids]
-        hero_id = random.choice(candidates)
-        used_ids.add(hero_id)
-        enemy.append({"hero_id": hero_id, "position": f"pos {pos}"})
+    if reroll:
+        _enforce_rate(
+            "draft_reroll",
+            user_id,
+            limit=120,
+            window_seconds=3600,
+            detail="Слишком много обновлений вражеского драфта.",
+        )
+        enemy = _generate_random_enemy_draft(active.enemy if active else None)
+        if active is not None:
+            # A rerolled, unplayed challenge has no historical value. Delete it
+            # before inserting the replacement so frequent legitimate rerolls
+            # do not grow draft_challenges indefinitely.
+            db.delete(active)
+            db.flush()
+    else:
+        # Reopening an existing challenge above is free. Rate-limit only actual
+        # allocations, otherwise ordinary page/mode reloads can lock the user
+        # out of the entire hero picker while doing no server-side work.
+        _enforce_rate(
+            "draft_challenge",
+            user_id,
+            limit=120,
+            window_seconds=3600,
+            detail="Слишком много новых драфтов за короткое время.",
+        )
+        enemy = _generate_random_enemy_draft()
 
     db.query(DBDraftChallenge).filter(
         DBDraftChallenge.user_id == user_id,
@@ -1510,7 +1588,12 @@ def api_draft_random(token: str, db: Session = Depends(get_db)):
     )
     db.add(challenge)
     db.commit()
-    return {"match_id": 0, "challenge_id": challenge.challenge_id, "enemy": enemy}
+    return {
+        "match_id": 0,
+        "challenge_id": challenge.challenge_id,
+        "enemy": enemy,
+        "ranked": True,
+    }
 
 
 # Cache for popularity payload — derived from dota_builds.json once per process.

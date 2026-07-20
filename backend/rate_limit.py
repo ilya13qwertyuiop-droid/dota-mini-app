@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import time
 
 from sqlalchemy import text
@@ -22,8 +23,8 @@ def check_rate_limit(
     *,
     limit: int,
     window_seconds: int,
-) -> tuple[bool, int]:
-    """Atomically record an event and return ``(allowed, count)``.
+) -> tuple[bool, int, int]:
+    """Atomically record an event and return ``(allowed, count, retry_after)``.
 
     PostgreSQL uses a transaction advisory lock, so separate Uvicorn workers
     cannot race the count/insert boundary. SQLite is used only for local tests.
@@ -56,8 +57,17 @@ def check_rate_limit(
             ApiRateLimitEvent.occurred_at > cutoff,
         ).count()
         if count >= limit:
+            oldest = session.query(ApiRateLimitEvent.occurred_at).filter(
+                ApiRateLimitEvent.scope == scope,
+                ApiRateLimitEvent.subject == subject,
+                ApiRateLimitEvent.occurred_at > cutoff,
+            ).order_by(ApiRateLimitEvent.occurred_at.asc()).scalar()
+            retry_after = max(
+                1,
+                math.ceil((oldest if oldest is not None else now) + window_seconds - now),
+            )
             session.commit()
-            return False, count
+            return False, count, retry_after
         session.add(ApiRateLimitEvent(scope=scope, subject=subject, occurred_at=now))
         session.commit()
-        return True, count + 1
+        return True, count + 1, 0

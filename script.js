@@ -7489,7 +7489,7 @@ function setDrafterMode(mode) {
         // грузится отдельным loadDrafterMatch() и второй параллельный запрос
         // не нужен.
         if (prevMode === 'analysis' && _drafterMatchLoaded) {
-            loadDrafterMatch();
+            loadDrafterMatch(true);
         }
     }
 }
@@ -8465,7 +8465,23 @@ function selectAnalysisHero(heroId) {
     renderAnalysisSlots();
 }
 
-async function loadDrafterMatch() {
+async function loadDrafterMatch(forceNewEnemies) {
+    var refreshBtn = document.getElementById('drafter-refresh-btn');
+    var refreshBtnText = refreshBtn ? refreshBtn.textContent : '';
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.setAttribute('aria-busy', 'true');
+        if (forceNewEnemies) refreshBtn.textContent = 'Обновляем...';
+    }
+    var previousState = {
+        loaded: _drafterMatchLoaded,
+        ally: _drafterAllyPick.slice(),
+        enemy: _drafterEnemyPick.slice(),
+        activeSlot: _drafterActiveSlot,
+        challengeId: _drafterChallengeId,
+        manualMode: _drafterEnemyManualMode,
+        activeEnemySlot: _drafterActiveEnemySlot
+    };
     _drafterMatchLoaded = false;
     _drafterAllyPick = [null, null, null, null, null];
     _drafterActiveSlot = 0;
@@ -8480,11 +8496,35 @@ async function loadDrafterMatch() {
     document.getElementById('drafter-evaluate-wrap').style.display = 'none';
 
     var enemySlotsEl = document.getElementById('drafter-enemy-slots');
+
+    // The hero picker is local catalog data and must remain usable even when
+    // the enemy-draft request is slow, rate-limited, or temporarily fails.
+    // Previously the catch returned before the first grid render, making a
+    // single /draft/random error look like the whole hero catalog was broken.
+    if (document.getElementById('drafter-search')) {
+        document.getElementById('drafter-search').value = '';
+    }
+    var filtersEl = document.getElementById('drafter-pos-filters');
+    if (filtersEl) filtersEl.style.opacity = '1';
+    _renderPosFilterBtns();
+    renderDrafterSlots();
+    renderDrafterGrid();
     if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">Загрузка...</div>';
 
     try {
-        var resp = await apiFetch(window.API_BASE_URL + '/draft/random');
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var randomUrl = window.API_BASE_URL + '/draft/random' +
+            (forceNewEnemies ? '?reroll=true' : '');
+        var resp = await apiFetch(randomUrl);
+        if (!resp.ok) {
+            var requestError = new Error('HTTP ' + resp.status);
+            if (resp.status === 429) {
+                var retryAfter = parseInt(resp.headers.get('Retry-After') || '0', 10);
+                var waitMinutes = Math.max(1, Math.ceil((Number.isFinite(retryAfter) ? retryAfter : 60) / 60));
+                requestError.userMessage = 'Лимит обновлений достигнут. Новые враги будут доступны через ' +
+                    waitMinutes + ' мин.';
+            }
+            throw requestError;
+        }
         var data = await resp.json();
 
         _drafterChallengeId = data.challenge_id || null;
@@ -8501,16 +8541,36 @@ async function loadDrafterMatch() {
         _drafterMatchLoaded = true;
     } catch (e) {
         console.error('[drafter] loadDrafterMatch error:', e);
-        if (enemySlotsEl) enemySlotsEl.innerHTML = '<div style="color:#f44;font-size:12px;">Ошибка загрузки</div>';
+        if (previousState.loaded) {
+            _drafterMatchLoaded = true;
+            _drafterAllyPick = previousState.ally;
+            _drafterEnemyPick = previousState.enemy;
+            _drafterActiveSlot = previousState.activeSlot;
+            _drafterChallengeId = previousState.challengeId;
+            _drafterEnemyManualMode = previousState.manualMode;
+            _drafterActiveEnemySlot = previousState.activeEnemySlot;
+            _updateManualBtn();
+            renderDrafterSlots();
+            renderDrafterGrid();
+            if (typeof showToast === 'function') {
+                showToast(e.userMessage || 'Не удалось обновить врагов. Предыдущий драфт сохранён.');
+            }
+        } else if (enemySlotsEl) {
+            enemySlotsEl.innerHTML = '';
+            var errorEl = document.createElement('div');
+            errorEl.style.cssText = 'color:#f44;font-size:12px;';
+            errorEl.textContent = e.userMessage || 'Не удалось загрузить врагов. Попробуйте ещё раз.';
+            enemySlotsEl.appendChild(errorEl);
+        }
         return;
+    } finally {
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.removeAttribute('aria-busy');
+            refreshBtn.textContent = refreshBtnText;
+        }
     }
 
-    if (document.getElementById('drafter-search')) {
-        document.getElementById('drafter-search').value = '';
-    }
-    var filtersEl = document.getElementById('drafter-pos-filters');
-    if (filtersEl) filtersEl.style.opacity = '1';
-    _renderPosFilterBtns();
     renderDrafterSlots();
     renderDrafterGrid();
 }
