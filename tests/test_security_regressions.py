@@ -769,6 +769,55 @@ class ApiIntegrationTests(unittest.TestCase):
             self.assertEqual(current.host_rating_after, 1200)
             self.assertEqual(current.guest_rating_after, 1200)
 
+    def test_battle_leaderboard_keeps_pawn_tier_beyond_global_top_2000(self):
+        from backend.models import UserProfile
+
+        viewer_id = 120_001
+        viewer_token = self.api.create_token_for_user(viewer_id)
+        with self.api.SessionLocal() as session:
+            profiles = [
+                UserProfile(
+                    user_id=viewer_id,
+                    favorite_heroes=[],
+                    settings={"first_name": "Viewer"},
+                    battle_rating=1500,
+                    battle_games_played=5,
+                )
+            ]
+            profiles.extend(
+                UserProfile(
+                    user_id=121_000 + index,
+                    favorite_heroes=[],
+                    settings={"first_name": f"Harbinger {index}"},
+                    battle_rating=1000,
+                    battle_games_played=5,
+                )
+                for index in range(2005)
+            )
+            profiles.extend(
+                UserProfile(
+                    user_id=124_000 + index,
+                    favorite_heroes=[],
+                    settings={"first_name": f"Pawn {index}"},
+                    battle_rating=999 - index,
+                    battle_games_played=5,
+                )
+                for index in range(3)
+            )
+            session.add_all(profiles)
+            session.commit()
+
+        response = self.client.get(
+            "/api/battle/leaderboard",
+            headers={"Authorization": f"Bearer {viewer_token}"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        pawn_rows = [row for row in payload["top"] if row["rank_key"] == "pawn"]
+        self.assertEqual(len(pawn_rows), 3)
+        self.assertGreater(pawn_rows[0]["place"], 2000)
+        self.assertEqual(payload["total"], 2009)
+
 
 @unittest.skipIf(sa is None, "SQLAlchemy is not installed in the local test runtime")
 class MigrationTests(unittest.TestCase):

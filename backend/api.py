@@ -6745,37 +6745,53 @@ def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
     banned = set(get_banned_user_ids())
     PER_TIER = 10
 
-    rows = (
+    # Сначала читаем только лёгкие поля ВСЕХ established-игроков. Нельзя
+    # ограничивать эту выборку глобальным top-N: самый высокий игрок ранга
+    # «Пешка» по определению может находиться сколь угодно далеко за общим
+    # top-N, и тогда вся секция ранга снова исчезнет. Settings (JSON) загружаем
+    # отдельно только для максимум PER_TIER игроков каждого ранга.
+    ranked_rows = (
         db.query(
             DBUserProfile.user_id,
             DBUserProfile.battle_rating,
             DBUserProfile.battle_games_played,
-            DBUserProfile.settings,
         )
         .filter(DBUserProfile.battle_games_played >= _BT_CALIBRATION_GAMES)
         .order_by(DBUserProfile.battle_rating.desc(), DBUserProfile.user_id)
-        .limit(2000)
         .all()
     )
-    rows = [r for r in rows if r.user_id not in banned]
+    ranked_rows = [r for r in ranked_rows if r.user_id not in banned]
 
-    # Глобальное место (после исключения banned) + отсев по PER_TIER на ранг.
-    top = []
+    # Глобальное место (после исключения banned) + top-N отдельно на ранг.
+    selected = []
     tier_counts: dict[str, int] = {}
-    for place, r in enumerate(rows, start=1):
+    for place, r in enumerate(ranked_rows, start=1):
         rating = r.battle_rating if r.battle_rating is not None else _BT_RATING_BASE
         key = _bt_public_rank_key(rating, r.battle_games_played)
         if tier_counts.get(key, 0) >= PER_TIER:
             continue
         tier_counts[key] = tier_counts.get(key, 0) + 1
-        s = r.settings or {}
+        selected.append((place, r.user_id, rating, key))
+
+    selected_ids = [user_id for _place, user_id, _rating, _key in selected]
+    settings_by_user = {}
+    if selected_ids:
+        settings_by_user = dict(
+            db.query(DBUserProfile.user_id, DBUserProfile.settings)
+            .filter(DBUserProfile.user_id.in_(selected_ids))
+            .all()
+        )
+
+    top = []
+    for place, user_id, rating, key in selected:
+        s = settings_by_user.get(user_id) or {}
         top.append({
             "place": place,
             "name": (s.get("first_name") or s.get("username") or "Игрок").strip() or "Игрок",
             "photo_url": public_avatar_url(s),
             "rank_key": key,
             "rating": rating,
-            "you": r.user_id == uid,
+            "you": user_id == uid,
         })
 
     me = (
@@ -6803,7 +6819,7 @@ def api_battle_leaderboard(token: str, db: Session = Depends(get_db)):
         )
         you["rank"] = sum(1 for h in higher if h.user_id not in banned) + 1
 
-    return {"top": top, "you": you, "total": len(rows)}
+    return {"top": top, "you": you, "total": len(ranked_rows)}
 
 
 @app.post("/api/battle/action")
