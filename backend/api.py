@@ -135,6 +135,7 @@ from backend.models import BannedUser as DBBannedUser, UserProfile as DBUserProf
 from backend.db import get_user_id_by_token, create_token_for_user, claim_telegram_init_data, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids, is_user_banned, get_banned_user_ids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
+from backend.fantasy_config import FANTASY_LEAGUES, get_fantasy_config
 from backend.stats_db import (
     init_stats_tables,
     get_hero_matchup_rows,
@@ -284,6 +285,7 @@ def _gateway_auth_required(path: str) -> bool:
         "/api/draft/random",
         "/api/draft/matchups_all",
         "/api/draft/popularity",
+        "/api/fantasy/config",
         "/api/fantasy/players",
         "/api/teammates/founders",
     }
@@ -2175,39 +2177,88 @@ def api_draft_history(token: str, db: Session = Depends(get_db)):
 
 # ========== Фэнтези TI (данные собирает переписанный stats_updater.py) ======
 
-@app.get("/api/fantasy/players")
-def api_fantasy_players(db: Session = Depends(get_db)):
-    """Игроки TI-команд со средними фэнтези-показателями за все турниры.
+@app.get("/api/fantasy/config")
+def api_fantasy_config():
+    """Схема экрана, ролей, слотов и расчёта.
 
-    Витрина этапа 1 (проверка данных + фундамент UX этапа 2). Сырые средние —
-    очки компендиума посчитает этап 2, когда Valve опубликует механику."""
+    Клиент строит контролы по этой конфигурации, поэтому смена механики
+    компендиума не требует зашивать новые коэффициенты в script.js.
+    """
+    return get_fantasy_config()
+
+
+@app.get("/api/fantasy/players")
+def api_fantasy_players(
+    league_id: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Игроки TI-команд со средними сырыми показателями.
+
+    Формулы и набор слотов приходят отдельной конфигурацией. Турниры можно
+    ограничить повторяющимся query-параметром ``league_id``.
+    """
+    selected_leagues = list(dict.fromkeys(league_id or []))
+    unknown = [item for item in selected_leagues if item not in FANTASY_LEAGUES]
+    if unknown:
+        raise HTTPException(status_code=422, detail="unknown fantasy league")
+
+    params: dict[str, int] = {}
+    where_sql = ""
+    if selected_leagues:
+        placeholders = []
+        for index, value in enumerate(selected_leagues):
+            key = f"league_{index}"
+            placeholders.append(f":{key}")
+            params[key] = value
+        where_sql = f"WHERE s.league_id IN ({', '.join(placeholders)})"
+
     try:
-        rows = db.execute(text("""
+        rows = db.execute(text(f"""
             SELECT p.account_id, p.name, p.team_name, p.position,
                    COUNT(s.match_id)      AS matches_count,
                    AVG(s.kills)           AS avg_kills,
                    AVG(s.deaths)          AS avg_deaths,
                    AVG(s.assists)         AS avg_assists,
                    AVG(s.last_hits)       AS avg_last_hits,
+                   AVG(s.denies)          AS avg_denies,
+                   AVG(s.last_hits + s.denies) AS avg_creep_score,
                    AVG(s.gold_per_min)    AS avg_gpm,
                    AVG(s.xp_per_min)      AS avg_xpm,
+                   AVG(s.net_worth)       AS avg_net_worth,
+                   AVG(s.hero_damage)     AS avg_hero_damage,
+                   AVG(s.hero_healing)    AS avg_hero_healing,
+                   AVG(s.tower_damage)    AS avg_tower_damage,
                    AVG(s.stuns)           AS avg_stuns,
                    AVG(s.obs_placed)      AS avg_obs,
+                   AVG(s.sen_placed)      AS avg_sen,
                    AVG(s.camps_stacked)   AS avg_camps,
+                   AVG(s.rune_pickups)    AS avg_runes,
+                   AVG(s.teamfight_participation) AS avg_teamfight,
+                   AVG(s.courier_kills)   AS avg_courier_kills,
+                   AVG(s.firstblood_claimed) AS avg_firstblood,
+                   AVG(s.smokes_used)     AS avg_smokes,
+                   AVG(s.watchers_taken)  AS avg_watchers,
+                   AVG(s.madstones_used)  AS avg_madstones,
+                   AVG(s.tormentor_kills) AS avg_tormentor_kills,
+                   AVG(s.lotuses_used)    AS avg_lotuses,
+                   AVG(s.buyback_count)   AS avg_buybacks,
                    AVG(s.tower_kills)     AS avg_tower_kills,
                    AVG(s.roshan_kills)    AS avg_roshan_kills
             FROM fantasy_players p
             JOIN fantasy_player_stats s ON s.account_id = p.account_id
+            {where_sql}
             GROUP BY p.account_id, p.name, p.team_name, p.position
             ORDER BY p.team_name, p.name
-        """)).mappings().all()
+        """), params).mappings().all()
     except Exception as e:
         # Таблиц ещё нет (воркер не запускался) — пустой список, не 500.
         logger.warning("[fantasy] players query failed: %s", e)
-        return {"players": []}
+        return {"players": [], "league_ids": selected_leagues}
 
-    def _r1(v):
-        return round(float(v), 1) if v is not None else 0.0
+    def _avg(v):
+        # Низкочастотные события (Roshan/FB/Tormentor) нельзя округлять до
+        # десятых до применения больших коэффициентов Fantasy.
+        return round(float(v), 4) if v is not None else 0.0
 
     return {"players": [
         {
@@ -2216,20 +2267,37 @@ def api_fantasy_players(db: Session = Depends(get_db)):
             "team_name": r["team_name"],
             "position": r["position"],
             "matches_count": r["matches_count"],
-            "avg_kills": _r1(r["avg_kills"]),
-            "avg_deaths": _r1(r["avg_deaths"]),
-            "avg_assists": _r1(r["avg_assists"]),
-            "avg_last_hits": _r1(r["avg_last_hits"]),
-            "avg_gpm": _r1(r["avg_gpm"]),
-            "avg_xpm": _r1(r["avg_xpm"]),
-            "avg_stuns": _r1(r["avg_stuns"]),
-            "avg_obs": _r1(r["avg_obs"]),
-            "avg_camps": _r1(r["avg_camps"]),
-            "avg_tower_kills": _r1(r["avg_tower_kills"]),
-            "avg_roshan_kills": _r1(r["avg_roshan_kills"]),
+            "avg_kills": _avg(r["avg_kills"]),
+            "avg_deaths": _avg(r["avg_deaths"]),
+            "avg_assists": _avg(r["avg_assists"]),
+            "avg_last_hits": _avg(r["avg_last_hits"]),
+            "avg_denies": _avg(r["avg_denies"]),
+            "avg_creep_score": _avg(r["avg_creep_score"]),
+            "avg_gpm": _avg(r["avg_gpm"]),
+            "avg_xpm": _avg(r["avg_xpm"]),
+            "avg_net_worth": _avg(r["avg_net_worth"]),
+            "avg_hero_damage": _avg(r["avg_hero_damage"]),
+            "avg_hero_healing": _avg(r["avg_hero_healing"]),
+            "avg_tower_damage": _avg(r["avg_tower_damage"]),
+            "avg_stuns": _avg(r["avg_stuns"]),
+            "avg_obs": _avg(r["avg_obs"]),
+            "avg_sen": _avg(r["avg_sen"]),
+            "avg_camps": _avg(r["avg_camps"]),
+            "avg_runes": _avg(r["avg_runes"]),
+            "avg_teamfight": _avg(r["avg_teamfight"]),
+            "avg_courier_kills": _avg(r["avg_courier_kills"]),
+            "avg_firstblood": _avg(r["avg_firstblood"]),
+            "avg_smokes": _avg(r["avg_smokes"]),
+            "avg_watchers": _avg(r["avg_watchers"]),
+            "avg_madstones": _avg(r["avg_madstones"]),
+            "avg_tormentor_kills": _avg(r["avg_tormentor_kills"]),
+            "avg_lotuses": _avg(r["avg_lotuses"]),
+            "avg_buybacks": _avg(r["avg_buybacks"]),
+            "avg_tower_kills": _avg(r["avg_tower_kills"]),
+            "avg_roshan_kills": _avg(r["avg_roshan_kills"]),
         }
         for r in rows
-    ]}
+    ], "league_ids": selected_leagues}
 
 
 # ========== Analytics ==========
@@ -2246,6 +2314,7 @@ _ANALYTICS_ALLOWED_EVENTS: frozenset[str] = frozenset({
     "page_drafter",
     "page_quiz",
     "page_database",
+    "page_fantasy",
     "page_profile",
     "page_teammates",
     "page_teammate_review",

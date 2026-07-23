@@ -57,6 +57,10 @@ WARNS: list[str] = []
 _STAT_FIELDS = (
     "kills", "deaths", "assists", "last_hits", "gold_per_min", "xp_per_min",
     "stuns", "obs_placed", "camps_stacked", "tower_kills", "roshan_kills",
+    "denies", "net_worth", "hero_damage", "hero_healing", "tower_damage",
+    "sen_placed", "rune_pickups", "teamfight_participation", "courier_kills",
+    "firstblood_claimed", "smokes_used", "watchers_taken", "madstones_used",
+    "tormentor_kills", "lotuses_used", "buyback_count", "duration", "win",
 )
 
 # Санитарные диапазоны для про-матча (за пределами — не «невозможно»,
@@ -66,6 +70,14 @@ _RANGES = {
     "last_hits": (0, 1600), "gold_per_min": (80, 1500),
     "xp_per_min": (80, 1800), "stuns": (0, 300), "obs_placed": (0, 80),
     "camps_stacked": (0, 40), "tower_kills": (0, 12), "roshan_kills": (0, 8),
+    "denies": (0, 200), "net_worth": (0, 100000),
+    "hero_damage": (0, 500000), "hero_healing": (0, 200000),
+    "tower_damage": (0, 100000), "sen_placed": (0, 80),
+    "rune_pickups": (0, 100), "teamfight_participation": (0, 1),
+    "courier_kills": (0, 20), "firstblood_claimed": (0, 1),
+    "smokes_used": (0, 30), "watchers_taken": (0, 30),
+    "madstones_used": (0, 50), "tormentor_kills": (0, 10),
+    "lotuses_used": (0, 50), "buyback_count": (0, 10),
 }
 
 
@@ -116,6 +128,17 @@ def check_invariants() -> list[int]:
         if not total:
             _fail("таблица fantasy_player_stats пуста")
             return []
+
+        missing_snapshots = conn.execute(text("""
+            SELECT COUNT(DISTINCT s.match_id)
+            FROM fantasy_player_stats s
+            LEFT JOIN fantasy_match_snapshots m ON m.match_id = s.match_id
+            WHERE m.match_id IS NULL OR m.payload_gzip IS NULL
+        """)).scalar()
+        if missing_snapshots:
+            _fail(f"{missing_snapshots} матчей без полного gzip-снимка OpenDota")
+        else:
+            _ok("у каждого матча есть полный gzip-снимок OpenDota")
 
         # Лиги строго из вайтлиста.
         bad_leagues = conn.execute(text(
@@ -185,12 +208,13 @@ def check_invariants() -> list[int]:
         else:
             _ok("матчей-«нулевиков» нет (все записаны пропаршенными)")
 
-        # Игроки без позиции (position NULL) — этап 2 требует ручной разметки.
+        # Игроки без позиции (position NULL) — только fallback для тех, кого
+        # OpenDota пока не включил в /proPlayers.
         nopos = conn.execute(text(
             "SELECT COUNT(*) FROM fantasy_players WHERE position IS NULL")).scalar()
         if nopos:
             _warn(f"{nopos} игроков без position (не было в /proPlayers) — "
-                  f"для этапа 2 нужна ручная разметка")
+                  f"проверить вручную только этих игроков")
         else:
             _ok("у всех игроков есть position")
     return zero_ids
@@ -230,7 +254,7 @@ def check_spot(client: httpx.Client, n: int) -> None:
             fresh = _extract_player_stats(p)
             for f in _STAT_FIELDS:
                 db_v, od_v = row[f], fresh[f]
-                if f == "stuns":
+                if f in {"stuns", "teamfight_participation"}:
                     same = abs(float(db_v) - float(od_v)) < 0.01
                 else:
                     same = int(db_v) == int(od_v)

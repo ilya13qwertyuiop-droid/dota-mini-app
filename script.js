@@ -573,6 +573,9 @@
                 // bottom-nav оставлял страницу без подгруженного профиля.
                 if (typeof window._tmInitPage === 'function') window._tmInitPage();
             }
+            if (pageName === 'fantasy') {
+                initFantasy();
+            }
 
             // Синхронизация навигации: активный таб дока (4 раздела) +
             // активный секционный таб (Пати/Квизы, Драфтер/Герои).
@@ -594,6 +597,7 @@
             'teammate-review': 'play',
             drafter: 'tools',
             database: 'tools',
+            fantasy: 'tools',
             profile: 'profile',
         };
         // Основная (стартовая) фича каждого раздела — куда ведёт таб дока.
@@ -604,7 +608,7 @@
             profile: 'profile',
         };
 
-        // Содержимое popover-меню для разделов с двумя фичами.
+        // Содержимое popover-меню разделов.
         var _DOCK_MENU = {
             play: [
                 // Флагман — первым, напрямую и с плашкой NEW.
@@ -615,6 +619,7 @@
             tools: [
                 { label: 'Драфтер', page: 'drafter',  icon: 'ph-strategy' },
                 { label: 'Герои',   page: 'database', icon: 'ph-shield' },
+                { label: 'Фэнтези', page: 'fantasy',  icon: 'ph-trophy' },
             ],
         };
         var _dockMenuSection = null;   // какой раздел сейчас открыт в popover, или null
@@ -677,6 +682,366 @@
             if (_dockMenuSection === section) { _closeDockMenu(); return; }
             var anchor = event && event.currentTarget;
             if (anchor) _openDockMenu(section, anchor);
+        };
+
+        // ── Fantasy assistant ─────────────────────────────────────────────
+        // Экран не содержит зашитых коэффициентов или списков показателей:
+        // backend/fantasy_config.py описывает роли, слоты, множители и формулы.
+        var _fantasy = {
+            config: null,
+            players: [],
+            role: 'core',
+            league: '',
+            loadedLeague: null,
+            loading: false,
+            requestId: 0,
+            selections: {},
+        };
+
+        function _fantasyEsc(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+                return {
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;',
+                    '"': '&quot;', "'": '&#39;',
+                }[char];
+            });
+        }
+
+        function _fantasyRole() {
+            var roles = (_fantasy.config && _fantasy.config.roles) || [];
+            return roles.find(function (role) { return role.id === _fantasy.role; }) ||
+                roles[0] || null;
+        }
+
+        function _fantasyMetric(metricId) {
+            var metrics = (_fantasy.config && _fantasy.config.metrics) || [];
+            return metrics.find(function (metric) { return metric.id === metricId; }) || null;
+        }
+
+        function _fantasyEnsureSelections() {
+            var role = _fantasyRole();
+            if (!role) return [];
+            var slots = role.slots || [];
+            var current = _fantasy.selections[role.id];
+            var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
+            var defaultMultiplier = Number(multiplier.default || 1);
+            if (!Array.isArray(current) || current.length !== slots.length) {
+                current = slots.map(function (slot) {
+                    return {
+                        metric: slot.default_metric,
+                        multiplier: defaultMultiplier,
+                    };
+                });
+                _fantasy.selections[role.id] = current;
+            }
+            slots.forEach(function (slot, index) {
+                var allowed = (_fantasy.config.metrics || []).filter(function (metric) {
+                    return metric.color === slot.color;
+                });
+                var selected = _fantasyMetric(current[index].metric);
+                if (!selected || selected.color !== slot.color) {
+                    current[index].metric =
+                        (allowed[0] && allowed[0].id) || slot.default_metric;
+                }
+                if (!Number.isFinite(Number(current[index].multiplier))) {
+                    current[index].multiplier = defaultMultiplier;
+                }
+            });
+            return current;
+        }
+
+        function _fantasyRenderControls() {
+            var config = _fantasy.config;
+            if (!config) return;
+
+            var tournament = document.getElementById('fantasy-tournament-select');
+            if (tournament) {
+                tournament.innerHTML =
+                    '<option value="">Все турниры</option>' +
+                    (config.tournaments || []).map(function (item) {
+                        var selected = String(item.id) === String(_fantasy.league)
+                            ? ' selected' : '';
+                        return '<option value="' + _fantasyEsc(item.id) + '"' + selected + '>' +
+                            _fantasyEsc(item.label) + '</option>';
+                    }).join('');
+            }
+
+            var tabs = document.getElementById('fantasy-role-tabs');
+            if (tabs) {
+                tabs.innerHTML = (config.roles || []).map(function (role) {
+                    var active = role.id === _fantasy.role;
+                    return '<button type="button" class="fantasy-role-tab' +
+                        (active ? ' active' : '') + '" role="tab" aria-selected="' +
+                        (active ? 'true' : 'false') + '" onclick="fantasySetRole(\'' +
+                        _fantasyEsc(role.id) + '\')">' + _fantasyEsc(role.label) + '</button>';
+                }).join('');
+            }
+        }
+
+        function _fantasyRenderBuilder() {
+            var config = _fantasy.config;
+            var role = _fantasyRole();
+            var container = document.getElementById('fantasy-slots');
+            var builder = document.getElementById('fantasy-builder');
+            if (!config || !role || !container || !builder) return;
+
+            var mechanics = config.mechanics || {};
+            var slotsEnabled = mechanics.slots_enabled !== false;
+            builder.hidden = !slotsEnabled;
+            if (!slotsEnabled) return;
+
+            var selections = _fantasyEnsureSelections();
+            var multiplier = mechanics.multiplier || {};
+            var multiplierEnabled = multiplier.enabled !== false;
+            var multiplierValues = multiplier.values || [multiplier.default || 1];
+            var meta = document.getElementById('fantasy-builder-meta');
+            if (meta) meta.textContent = (role.slots || []).length + ' слотов';
+
+            container.innerHTML = (role.slots || []).map(function (slot, index) {
+                var allowed = (config.metrics || []).filter(function (metric) {
+                    return metric.color === slot.color;
+                });
+                var metricOptions = allowed.map(function (metric) {
+                    return '<option value="' + _fantasyEsc(metric.id) + '"' +
+                        (metric.id === selections[index].metric ? ' selected' : '') + '>' +
+                        _fantasyEsc(metric.label) + '</option>';
+                }).join('');
+                var multiplierSelect = '';
+                if (multiplierEnabled) {
+                    multiplierSelect =
+                        '<select class="fantasy-slot-multiplier" aria-label="Множитель слота ' +
+                        (index + 1) + '" onchange="fantasySetMultiplier(' + index +
+                        ', this.value)">' +
+                        multiplierValues.map(function (value) {
+                            var numeric = Number(value);
+                            return '<option value="' + numeric + '"' +
+                                (numeric === Number(selections[index].multiplier)
+                                    ? ' selected' : '') + '>×' +
+                                numeric.toFixed(1) + '</option>';
+                        }).join('') + '</select>';
+                }
+                return '<div class="fantasy-slot' +
+                    (multiplierEnabled ? '' : ' fantasy-slot--no-multiplier') + '">' +
+                    '<span class="fantasy-slot-dot fantasy-slot-dot--' +
+                    _fantasyEsc(slot.color) + '" aria-hidden="true"></span>' +
+                    '<select aria-label="Показатель слота ' + (index + 1) +
+                    '" onchange="fantasySetMetric(' + index + ', this.value)">' +
+                    metricOptions + '</select>' + multiplierSelect + '</div>';
+            }).join('');
+        }
+
+        function _fantasyMetricPoints(player, metric, multiplier) {
+            if (!metric) return 0;
+            var raw = Number(player[metric.field] || 0);
+            var formula = metric.formula || {};
+            var value;
+            if (formula.type === 'inverse') {
+                value = Number(formula.base || 0) - raw * Number(formula.factor || 0);
+                value = Math.max(Number(formula.floor || 0), value);
+            } else {
+                value = raw * Number(formula.factor || 0);
+            }
+            return Math.max(0, value * Number(multiplier || 1));
+        }
+
+        function _fantasyFormatNumber(value) {
+            return String(Math.round(Number(value) || 0))
+                .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        }
+
+        function _fantasyPlayerWord(count) {
+            var mod100 = count % 100;
+            var mod10 = count % 10;
+            if (mod100 >= 11 && mod100 <= 14) return 'игроков';
+            if (mod10 === 1) return 'игрок';
+            if (mod10 >= 2 && mod10 <= 4) return 'игрока';
+            return 'игроков';
+        }
+
+        function _fantasyRenderRanking() {
+            var list = document.getElementById('fantasy-ranking-list');
+            var count = document.getElementById('fantasy-player-count');
+            var role = _fantasyRole();
+            if (!list || !role || !_fantasy.config) return;
+
+            var selections = _fantasyEnsureSelections();
+            var rows = (_fantasy.players || []).filter(function (player) {
+                return player.position === role.id;
+            }).map(function (player) {
+                var contributions = selections.map(function (selection) {
+                    var metric = _fantasyMetric(selection.metric);
+                    return {
+                        metric: metric,
+                        points: _fantasyMetricPoints(
+                            player, metric, selection.multiplier
+                        ),
+                    };
+                });
+                return {
+                    player: player,
+                    contributions: contributions,
+                    score: contributions.reduce(function (sum, item) {
+                        return sum + item.points;
+                    }, 0),
+                };
+            }).sort(function (a, b) {
+                if (b.score !== a.score) return b.score - a.score;
+                return Number(b.player.matches_count || 0) -
+                    Number(a.player.matches_count || 0);
+            });
+
+            if (count) {
+                count.textContent = rows.length + ' ' + _fantasyPlayerWord(rows.length);
+            }
+            if (!rows.length) {
+                list.innerHTML = '<div class="fantasy-empty">' +
+                    'Нет матчей для этой роли и выбранного турнира.</div>';
+                return;
+            }
+
+            list.innerHTML = rows.slice(0, 20).map(function (row, index) {
+                var player = row.player;
+                var matches = Number(player.matches_count || 0);
+                var breakdown = row.contributions
+                    .slice()
+                    .sort(function (a, b) { return b.points - a.points; })
+                    .slice(0, 3)
+                    .map(function (item) {
+                        var metric = item.metric || {};
+                        return '<span class="fantasy-contribution fantasy-contribution--' +
+                            _fantasyEsc(metric.color || 'blue') + '">' +
+                            _fantasyEsc(metric.short_label || metric.label || '') + ' ' +
+                            _fantasyFormatNumber(item.points) + '</span>';
+                    }).join('');
+                return '<article class="fantasy-player">' +
+                    '<div class="fantasy-player-rank">' + (index + 1) + '</div>' +
+                    '<div class="fantasy-player-main">' +
+                    '<div class="fantasy-player-name">' +
+                    _fantasyEsc(player.name || 'Без ника') + '</div>' +
+                    '<div class="fantasy-player-team">' +
+                    _fantasyEsc(player.team_name || 'Без команды') + '</div>' +
+                    '<div class="fantasy-player-breakdown">' + breakdown + '</div>' +
+                    '</div>' +
+                    '<div class="fantasy-player-score">' +
+                    '<strong>' + _fantasyFormatNumber(row.score) + '</strong>' +
+                    '<span' + (matches < 5 ? ' class="low-sample"' : '') + '>' +
+                    matches + ' матч.' + '</span></div>' +
+                    '</article>';
+            }).join('');
+        }
+
+        function _fantasyLoading() {
+            var list = document.getElementById('fantasy-ranking-list');
+            if (list) {
+                list.innerHTML = '<div class="fantasy-loading">' +
+                    '<span></span><span></span><span></span></div>';
+            }
+        }
+
+        async function _fantasyLoadPlayers() {
+            _fantasyLoading();
+            var league = _fantasy.league;
+            var requestId = ++_fantasy.requestId;
+            var query = league
+                ? '?league_id=' + encodeURIComponent(league) : '';
+            var response = await apiFetch(
+                window.API_BASE_URL + '/fantasy/players' + query
+            );
+            if (!response.ok) throw new Error('fantasy players HTTP ' + response.status);
+            var data = await response.json();
+            if (requestId !== _fantasy.requestId) return;
+            _fantasy.players = Array.isArray(data.players) ? data.players : [];
+            _fantasy.loadedLeague = league;
+            _fantasyRenderRanking();
+        }
+
+        async function initFantasy() {
+            if (_fantasy.loading) return;
+            if (_fantasy.config && _fantasy.loadedLeague === _fantasy.league) {
+                _fantasyRenderControls();
+                _fantasyRenderBuilder();
+                _fantasyRenderRanking();
+                return;
+            }
+            _fantasy.loading = true;
+            _fantasyLoading();
+            try {
+                if (!_fantasy.config) {
+                    var configResponse = await apiFetch(
+                        window.API_BASE_URL + '/fantasy/config'
+                    );
+                    if (!configResponse.ok) {
+                        throw new Error('fantasy config HTTP ' + configResponse.status);
+                    }
+                    _fantasy.config = await configResponse.json();
+                    var roles = _fantasy.config.roles || [];
+                    if (!roles.some(function (role) { return role.id === _fantasy.role; })) {
+                        _fantasy.role = (roles[0] || {}).id || 'core';
+                    }
+                    _fantasyRenderControls();
+                    _fantasyRenderBuilder();
+                }
+                await _fantasyLoadPlayers();
+            } catch (error) {
+                console.warn('[fantasy] load failed:', error);
+                var list = document.getElementById('fantasy-ranking-list');
+                if (list) {
+                    list.innerHTML =
+                        '<div class="fantasy-error">Не удалось загрузить статистику.</div>';
+                }
+            } finally {
+                _fantasy.loading = false;
+            }
+        }
+
+        window.fantasySetRole = function (roleId) {
+            if (!_fantasy.config || !(_fantasy.config.roles || []).some(function (role) {
+                return role.id === roleId;
+            })) return;
+            _fantasy.role = roleId;
+            _fantasyRenderControls();
+            _fantasyRenderBuilder();
+            _fantasyRenderRanking();
+        };
+
+        window.fantasySetLeague = function (leagueId) {
+            var valid = !leagueId || (_fantasy.config.tournaments || []).some(function (item) {
+                return String(item.id) === String(leagueId);
+            });
+            if (!valid || String(_fantasy.league) === String(leagueId)) return;
+            _fantasy.league = String(leagueId || '');
+            _fantasyLoadPlayers().catch(function (error) {
+                console.warn('[fantasy] league load failed:', error);
+                var list = document.getElementById('fantasy-ranking-list');
+                if (list) {
+                    list.innerHTML =
+                        '<div class="fantasy-error">Не удалось загрузить турнир.</div>';
+                }
+            });
+        };
+
+        window.fantasySetMetric = function (slotIndex, metricId) {
+            var selections = _fantasyEnsureSelections();
+            var role = _fantasyRole();
+            var slot = role && (role.slots || [])[slotIndex];
+            var metric = _fantasyMetric(metricId);
+            if (!slot || !metric || slot.color !== metric.color || !selections[slotIndex]) {
+                return;
+            }
+            selections[slotIndex].metric = metricId;
+            _fantasyRenderRanking();
+        };
+
+        window.fantasySetMultiplier = function (slotIndex, value) {
+            var selections = _fantasyEnsureSelections();
+            var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
+            var numeric = Number(value);
+            var valid = (multiplier.values || []).some(function (item) {
+                return Number(item) === numeric;
+            });
+            if (!valid || !selections[slotIndex]) return;
+            selections[slotIndex].multiplier = numeric;
+            _fantasyRenderRanking();
         };
 
         // Закрытие popover по тапу вне его (и не по табу дока) + при скролле.

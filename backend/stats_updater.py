@@ -19,7 +19,8 @@ TI-команд с крупных турниров сезона через OpenD
      матча, position из /proPlayers fantasy_role);
   4) сон FANTASY_POLL_MINUTES, повтор.
 
-Идемпотентность: match_id уже в fantasy_player_stats → пропуск.
+Идемпотентность: матч с заполненными metrics_json и полным gzip-снимком
+OpenDota → пропуск. Старые строки без снимка автоматически перечитываются.
 Rate limit: >=1.1с между запросами (OpenDota без ключа: 60/мин, ~3000/день).
 
 ВАЖНО (исследование 2026-07-15): league_id проверены живыми запросами —
@@ -27,6 +28,8 @@ Rate limit: >=1.1с между запросами (OpenDota без ключа: 6
 Храним СЫРЫЕ показатели, не фэнтези-очки: механика TI2026 неизвестна,
 формула станет конфигом после выхода компендиума.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -36,12 +39,22 @@ from datetime import datetime, timezone
 
 import httpx
 from dotenv import load_dotenv
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from backend.database import engine  # noqa: E402
+from backend.fantasy_config import (  # noqa: E402
+    FANTASY_LEAGUES,
+    FANTASY_POSITION_OVERRIDES,
+    OPENDOTA_FANTASY_ROLES,
+)
+from backend.fantasy_metrics import (  # noqa: E402
+    _num,
+    compress_match_snapshot,
+    extract_player_stats as _extract_player_stats,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,7 +88,8 @@ TI_TEAMS: dict[int, str] = {
     9823272: "Team Yandex",
     8261500: "Xtreme Gaming",
     7119388: "Team Spirit",
-    9572001: "PARIVISION",          # в OpenDota — «TEAM VISION»
+    9824702: "PARIVISION",          # актуальный OpenDota id (EWC 2026)
+    9572001: "PARIVISION",          # прежний id, оставлен для истории
     10136357: "Nigma Galaxy",
     10149530: "HULIGANI",
     5017210: "Team Resilience",
@@ -85,25 +99,42 @@ TI_TEAMS: dict[int, str] = {
     10150538: "LGD Gaming",
 }
 
-# ── Турниры сезона: id ПРОВЕРЕНЫ (изначальные 171xx были чужими лигами). ──
-FANTASY_LEAGUES: dict[int, str] = {
-    19785: "EWC 2026",
-    19101: "BLAST SLAM VII",
-    19099: "BLAST SLAM VI",
-    19269: "DreamLeague S28",
-    19696: "DreamLeague S29",
-    19435: "PGL Wallachia S7",
-    19543: "PGL Wallachia S8",
-    19422: "ESL One Birmingham 2026",
-}
+# OpenDota различает все три группы официального Fantasy:
+# 1 — core, 2 — support, 4 — mid.
+_FANTASY_ROLE_TO_POSITION = OPENDOTA_FANTASY_ROLES
 
-# OpenDota fantasy_role → наша position ('mid' OpenDota не различает —
-# уточнится ручной разметкой на этапе 2, когда выйдет компендиум).
-_FANTASY_ROLE_TO_POSITION = {1: "core", 2: "support"}
+
+# Типизированные колонки покрывают вероятные показатели компендиума и быстрые
+# SQL-агрегаты. metrics_json ниже остаётся страховкой для новых счётчиков,
+# которые Valve может объявить уже после релиза парсера.
+_EXTRA_COLUMN_DDL: dict[str, str] = {
+    "hero_id": "INTEGER",
+    "duration": "INTEGER NOT NULL DEFAULT 0",
+    "start_time": "BIGINT",
+    "patch": "INTEGER",
+    "win": "INTEGER NOT NULL DEFAULT 0",
+    "denies": "INTEGER NOT NULL DEFAULT 0",
+    "net_worth": "INTEGER NOT NULL DEFAULT 0",
+    "hero_damage": "INTEGER NOT NULL DEFAULT 0",
+    "hero_healing": "INTEGER NOT NULL DEFAULT 0",
+    "tower_damage": "INTEGER NOT NULL DEFAULT 0",
+    "sen_placed": "INTEGER NOT NULL DEFAULT 0",
+    "rune_pickups": "INTEGER NOT NULL DEFAULT 0",
+    "teamfight_participation": "FLOAT NOT NULL DEFAULT 0",
+    "courier_kills": "INTEGER NOT NULL DEFAULT 0",
+    "firstblood_claimed": "INTEGER NOT NULL DEFAULT 0",
+    "smokes_used": "INTEGER NOT NULL DEFAULT 0",
+    "watchers_taken": "INTEGER NOT NULL DEFAULT 0",
+    "madstones_used": "INTEGER NOT NULL DEFAULT 0",
+    "tormentor_kills": "INTEGER NOT NULL DEFAULT 0",
+    "lotuses_used": "INTEGER NOT NULL DEFAULT 0",
+    "buyback_count": "INTEGER NOT NULL DEFAULT 0",
+    "metrics_json": "TEXT",
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Схема (идемпотентно; прод — alembic 0023, dev-SQLite — этот же DDL)
+#  Схема (идемпотентно; прод — alembic 0023+0028, dev-SQLite — этот же DDL)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ensure_tables() -> None:
@@ -133,10 +164,52 @@ def ensure_tables() -> None:
                 camps_stacked INTEGER NOT NULL DEFAULT 0,
                 tower_kills   INTEGER NOT NULL DEFAULT 0,
                 roshan_kills  INTEGER NOT NULL DEFAULT 0,
+                hero_id       INTEGER,
+                duration      INTEGER NOT NULL DEFAULT 0,
+                start_time    BIGINT,
+                patch         INTEGER,
+                win           INTEGER NOT NULL DEFAULT 0,
+                denies        INTEGER NOT NULL DEFAULT 0,
+                net_worth     INTEGER NOT NULL DEFAULT 0,
+                hero_damage   INTEGER NOT NULL DEFAULT 0,
+                hero_healing  INTEGER NOT NULL DEFAULT 0,
+                tower_damage  INTEGER NOT NULL DEFAULT 0,
+                sen_placed    INTEGER NOT NULL DEFAULT 0,
+                rune_pickups  INTEGER NOT NULL DEFAULT 0,
+                teamfight_participation FLOAT NOT NULL DEFAULT 0,
+                courier_kills INTEGER NOT NULL DEFAULT 0,
+                firstblood_claimed INTEGER NOT NULL DEFAULT 0,
+                smokes_used   INTEGER NOT NULL DEFAULT 0,
+                watchers_taken INTEGER NOT NULL DEFAULT 0,
+                madstones_used INTEGER NOT NULL DEFAULT 0,
+                tormentor_kills INTEGER NOT NULL DEFAULT 0,
+                lotuses_used  INTEGER NOT NULL DEFAULT 0,
+                buyback_count INTEGER NOT NULL DEFAULT 0,
+                metrics_json  TEXT,
                 parsed_at     TIMESTAMP,
                 PRIMARY KEY (match_id, account_id)
             )
         """))
+        payload_type = "BYTEA" if conn.dialect.name == "postgresql" else "BLOB"
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS fantasy_match_snapshots (
+                match_id       BIGINT PRIMARY KEY,
+                league_id      INTEGER NOT NULL,
+                payload_gzip   {payload_type} NOT NULL,
+                schema_version INTEGER NOT NULL DEFAULT 1,
+                parsed_at      TIMESTAMP
+            )
+        """))
+        existing_columns = {
+            column["name"]
+            for column in inspect(conn).get_columns("fantasy_player_stats")
+        }
+        for column_name, ddl in _EXTRA_COLUMN_DDL.items():
+            if column_name not in existing_columns:
+                # Имена/DDL — только из константы выше, пользовательского ввода нет.
+                conn.execute(text(
+                    f"ALTER TABLE fantasy_player_stats ADD COLUMN {column_name} {ddl}"
+                ))
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_fantasy_player_stats_account "
             "ON fantasy_player_stats (account_id)"
@@ -172,28 +245,6 @@ async def _od_get(client: httpx.AsyncClient, path: str) -> list | dict | None:
     return None
 
 
-def _num(v, default=0):
-    """tower_kills/roshan_kills и пр. бывают null → 0."""
-    return default if v is None else v
-
-
-def _extract_player_stats(p: dict) -> dict:
-    return {
-        "kills": int(_num(p.get("kills"))),
-        "deaths": int(_num(p.get("deaths"))),
-        "assists": int(_num(p.get("assists"))),
-        "last_hits": int(_num(p.get("last_hits"))),
-        "gold_per_min": int(_num(p.get("gold_per_min"))),
-        "xp_per_min": int(_num(p.get("xp_per_min"))),
-        "stuns": float(_num(p.get("stuns"), 0.0)),
-        "obs_placed": int(_num(p.get("obs_placed"))),
-        "camps_stacked": int(_num(p.get("camps_stacked"))),
-        # оба имени существуют в API и равны — берём любое присутствующее
-        "tower_kills": int(_num(p.get("tower_kills", p.get("towers_killed")))),
-        "roshan_kills": int(_num(p.get("roshan_kills", p.get("roshans_killed")))),
-    }
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  Сбор
 # ─────────────────────────────────────────────────────────────────────────────
@@ -201,21 +252,52 @@ def _extract_player_stats(p: dict) -> dict:
 def _known_match_ids() -> set:
     with engine.begin() as conn:
         rows = conn.execute(text(
-            "SELECT DISTINCT match_id FROM fantasy_player_stats"
+            """
+            SELECT s.match_id
+            FROM fantasy_player_stats s
+            JOIN fantasy_match_snapshots m ON m.match_id = s.match_id
+            GROUP BY s.match_id
+            HAVING COUNT(*) = SUM(
+                CASE WHEN s.metrics_json IS NOT NULL THEN 1 ELSE 0 END
+            )
+            """
         )).fetchall()
     return {r[0] for r in rows}
 
 
 async def _fetch_positions(client: httpx.AsyncClient) -> dict:
-    """{account_id: 'core'|'support'} из /proPlayers (best-effort)."""
+    """{account_id: 'core'|'mid'|'support'} из /proPlayers (best-effort)."""
     data = await _od_get(client, "/proPlayers")
     out: dict[int, str] = {}
     for p in data or []:
         pos = _FANTASY_ROLE_TO_POSITION.get(p.get("fantasy_role"))
         if pos and p.get("account_id"):
             out[int(p["account_id"])] = pos
+    for account_id, position in FANTASY_POSITION_OVERRIDES.items():
+        if position in {"core", "mid", "support"}:
+            out[int(account_id)] = position
     logger.info("[fantasy] proPlayers positions loaded: %d", len(out))
     return out
+
+
+def _refresh_saved_positions(positions: dict[int, str]) -> int:
+    """Обновить роли уже известных игроков, даже если новых матчей нет."""
+    if not positions:
+        return 0
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("""
+                UPDATE fantasy_players
+                SET position = :position
+                WHERE account_id = :account_id
+                  AND (position IS NULL OR position <> :position)
+            """),
+            [
+                {"account_id": account_id, "position": position}
+                for account_id, position in positions.items()
+            ],
+        )
+    return max(int(result.rowcount or 0), 0)
 
 
 def _store_match(match: dict, positions: dict) -> int:
@@ -229,6 +311,39 @@ def _store_match(match: dict, positions: dict) -> int:
     now = datetime.now(timezone.utc)
     written = 0
     with engine.begin() as conn:
+        # Нужен и для backfill старых строк: заменяем матч атомарно, чтобы
+        # новые колонки и metrics_json не оставались с DEFAULT 0 навсегда.
+        conn.execute(
+            text("DELETE FROM fantasy_player_stats WHERE match_id = :match_id"),
+            {"match_id": match_id},
+        )
+        snapshot = compress_match_snapshot(match)
+        snapshot_exists = conn.execute(
+            text(
+                "SELECT 1 FROM fantasy_match_snapshots WHERE match_id = :match_id"
+            ),
+            {"match_id": match_id},
+        ).fetchone()
+        snapshot_values = {
+            "match_id": match_id,
+            "league_id": league_id,
+            "payload_gzip": snapshot,
+            "parsed_at": now,
+        }
+        if snapshot_exists:
+            conn.execute(text("""
+                UPDATE fantasy_match_snapshots
+                SET league_id = :league_id, payload_gzip = :payload_gzip,
+                    schema_version = 1, parsed_at = :parsed_at
+                WHERE match_id = :match_id
+            """), snapshot_values)
+        else:
+            conn.execute(text("""
+                INSERT INTO fantasy_match_snapshots
+                    (match_id, league_id, payload_gzip, schema_version, parsed_at)
+                VALUES
+                    (:match_id, :league_id, :payload_gzip, 1, :parsed_at)
+            """), snapshot_values)
         for p in match.get("players") or []:
             acc = p.get("account_id")
             if not acc:
@@ -237,15 +352,27 @@ def _store_match(match: dict, positions: dict) -> int:
             if team_id not in TI_TEAMS:
                 continue   # сторона не из TI-пула (матч TI vs не-TI)
             stats = _extract_player_stats(p)
+            stats["start_time"] = int(_num(match.get("start_time"))) or None
+            stats["patch"] = int(_num(match.get("patch"))) or None
             conn.execute(text("""
                 INSERT INTO fantasy_player_stats
                     (match_id, account_id, league_id, kills, deaths, assists,
                      last_hits, gold_per_min, xp_per_min, stuns, obs_placed,
-                     camps_stacked, tower_kills, roshan_kills, parsed_at)
+                     camps_stacked, tower_kills, roshan_kills, hero_id, duration,
+                     start_time, patch, win, denies, net_worth, hero_damage,
+                     hero_healing, tower_damage, sen_placed, rune_pickups,
+                     teamfight_participation, courier_kills, firstblood_claimed,
+                     smokes_used, watchers_taken, madstones_used, tormentor_kills,
+                     lotuses_used, buyback_count, metrics_json, parsed_at)
                 VALUES
                     (:match_id, :account_id, :league_id, :kills, :deaths, :assists,
                      :last_hits, :gold_per_min, :xp_per_min, :stuns, :obs_placed,
-                     :camps_stacked, :tower_kills, :roshan_kills, :parsed_at)
+                     :camps_stacked, :tower_kills, :roshan_kills, :hero_id, :duration,
+                     :start_time, :patch, :win, :denies, :net_worth, :hero_damage,
+                     :hero_healing, :tower_damage, :sen_placed, :rune_pickups,
+                     :teamfight_participation, :courier_kills, :firstblood_claimed,
+                     :smokes_used, :watchers_taken, :madstones_used, :tormentor_kills,
+                     :lotuses_used, :buyback_count, :metrics_json, :parsed_at)
             """), {
                 "match_id": match_id, "account_id": acc, "league_id": league_id,
                 "parsed_at": now, **stats,
@@ -283,6 +410,9 @@ async def collect_once() -> None:
     done = rows = failed = 0
     async with httpx.AsyncClient() as client:
         positions = await _fetch_positions(client)
+        refreshed = _refresh_saved_positions(positions)
+        if refreshed:
+            logger.info("[fantasy] refreshed positions for %d saved players", refreshed)
 
         # 1) Дискавери: новые match_id по командам (dict сохраняет порядок).
         todo: dict[int, int] = {}   # match_id -> leagueid

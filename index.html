@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=254" />
+    <link rel="stylesheet" href="styles.css?v=255" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
@@ -1249,6 +1249,53 @@
 
       </div>
 
+      <!-- Помощник официального Fantasy -->
+      <div id="page-fantasy" class="page">
+        <header class="fantasy-header">
+          <div class="fantasy-eyebrow">Compendium</div>
+          <h1>Фэнтези</h1>
+          <p>Собери эмблемы и сравни игроков по форме на профессиональной сцене.</p>
+        </header>
+
+        <section class="fantasy-controls" aria-label="Настройки фэнтези">
+          <label class="fantasy-tournament">
+            <span>Матчи для расчёта</span>
+            <select id="fantasy-tournament-select"
+                    onchange="fantasySetLeague(this.value)"
+                    aria-label="Турнир"></select>
+          </label>
+          <div id="fantasy-role-tabs" class="fantasy-role-tabs"
+               role="tablist" aria-label="Роль игрока"></div>
+        </section>
+
+        <section id="fantasy-builder" class="fantasy-builder" aria-labelledby="fantasy-builder-title">
+          <div class="fantasy-section-head">
+            <div>
+              <div class="fantasy-section-kicker">Расчёт</div>
+              <h2 id="fantasy-builder-title">Эмблемы</h2>
+            </div>
+            <span class="fantasy-section-meta" id="fantasy-builder-meta">5 слотов</span>
+          </div>
+          <div id="fantasy-slots" class="fantasy-slots"></div>
+        </section>
+
+        <section class="fantasy-ranking" aria-labelledby="fantasy-ranking-title">
+          <div class="fantasy-section-head">
+            <div>
+              <div class="fantasy-section-kicker">Результат</div>
+              <h2 id="fantasy-ranking-title">Лучшие игроки</h2>
+            </div>
+            <span class="fantasy-section-meta" id="fantasy-player-count">—</span>
+          </div>
+          <div id="fantasy-ranking-list" class="fantasy-ranking-list"
+               aria-live="polite">
+            <div class="fantasy-loading">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <!-- Страница матчапов -->
       <div id="page-database" class="page">
 
@@ -1906,9 +1953,9 @@
         <span class="bt-pill-text">Ищем соперника…</span>
       </button>
 
-      <!-- Floating dock: один плавающий glass-бар с 4 разделами.
+      <!-- Floating dock: один плавающий бар с 4 разделами.
            Главная/Профиль — прямой переход. Играть/Инструменты — открывают
-           всплывающее мини-меню (#dock-menu) над доком с двумя фичами. -->
+           всплывающее мини-меню (#dock-menu) над доком. -->
       <nav class="dock" aria-label="Основная навигация">
         <button type="button" class="dock-tab active" data-section="home"
                 onclick="goSection('home', event)">
@@ -1936,7 +1983,7 @@
       </nav>
 
       <!-- Всплывающее мини-меню над доком: открывается тапом по «Играть» /
-           «Инструменты», содержит 2 фичи раздела. Заполняется и позиционируется
+           «Инструменты», содержит фичи раздела. Заполняется и позиционируется
            в JS (_openDockMenu). Заменило верхние секц-табы (те стыковались с
            собственными вкладками страниц). -->
       <div id="dock-menu" class="dock-menu" role="menu" aria-hidden="true" hidden></div>
@@ -1991,6 +2038,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=2"></script>
-    <script defer src="script.js?v=321"></script>
+    <script defer src="script.js?v=322"></script>
   </body>
 </html>
