@@ -38,21 +38,22 @@ class StratzClient:
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": "STRATZ_API",
         }
         async with httpx.AsyncClient(timeout=self._timeout, headers=headers) as client:
-            for attempt in range(1, self._attempts + 1):
+            for attempt in range(self._attempts):
                 try:
                     response = await client.post(self._endpoint, json=payload)
                 except httpx.TransportError as exc:
-                    if attempt == self._attempts:
+                    if attempt == self._attempts - 1:
                         raise StratzRequestError("STRATZ network request failed") from exc
-                    await asyncio.sleep(2 ** (attempt - 1))
+                    await asyncio.sleep(min(5 * (2 ** attempt), 60))
                     continue
 
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt == self._attempts:
+                    if attempt == self._attempts - 1:
                         raise StratzRequestError(
-                            f"STRATZ returned HTTP {response.status_code} after {attempt} attempts"
+                            f"STRATZ returned HTTP {response.status_code} after {self._attempts} attempts"
                         )
                     await asyncio.sleep(_retry_delay(response, attempt))
                     continue
@@ -85,4 +86,4 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
                 return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
             except (TypeError, ValueError):
                 pass
-    return float(2 ** (attempt - 1))
+    return float(min(10 * (2 ** attempt), 60))

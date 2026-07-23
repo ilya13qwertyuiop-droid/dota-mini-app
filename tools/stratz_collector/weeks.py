@@ -1,54 +1,57 @@
-"""UTC week boundaries used for repeatable completed-week collection."""
+"""STRATZ completed-week selection used by the existing browser collector."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from math import isfinite
+from typing import Any
+
+from .aggregate import DataShapeError
+
+
+SECONDS_PER_WEEK = 604_800
 
 
 @dataclass(frozen=True)
-class CompletedWeek:
-    """A Monday-to-Monday UTC interval which has already ended."""
+class StratzWeek:
+    """A completed STRATZ week represented by its integer week number."""
 
-    start: datetime
-    end: datetime
-
-    @property
-    def iso_year(self) -> int:
-        return self.start.isocalendar().year
+    number: int
 
     @property
-    def iso_week(self) -> int:
-        return self.start.isocalendar().week
+    def timestamp(self) -> int:
+        """The value expected by ``heroStats.matchUp(week: Long!)``."""
+        return self.number * SECONDS_PER_WEEK
 
-    def substitutions(self) -> dict[str, str | int]:
-        """Values accepted in a request-template JSON file."""
-        return {
-            "week_start": self.start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "week_end": self.end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "week_iso": f"{self.iso_year}-W{self.iso_week:02d}",
-            "week_year": self.iso_year,
-            "week_number": self.iso_week,
-        }
+    @property
+    def date(self) -> str:
+        return datetime.fromtimestamp(self.timestamp, UTC).date().isoformat()
 
 
-def last_completed_weeks(count: int, *, now: datetime | None = None) -> list[CompletedWeek]:
-    """Return completed UTC weeks, oldest first, excluding the current week."""
+def completed_weeks_from_stats(rows: Any, count: int = 3) -> list[StratzWeek]:
+    """Return the last ``count`` completed weeks, excluding the current one.
+
+    STRATZ exposes its own monotonically increasing week number.  Using the
+    maximum returned by ``heroStats.stats`` exactly matches the existing
+    browser script and avoids assuming calendar-week semantics.
+    """
     if count < 1:
         raise ValueError("count must be at least 1")
+    if not isinstance(rows, list) or not rows:
+        raise DataShapeError("STRATZ returned no heroStats.stats rows")
 
-    current = (now or datetime.now(UTC)).astimezone(UTC)
-    current_monday = (current - timedelta(
-        days=current.weekday(),
-        hours=current.hour,
-        minutes=current.minute,
-        seconds=current.second,
-        microseconds=current.microsecond,
-    ))
-    return [
-        CompletedWeek(
-            start=current_monday - timedelta(days=7 * offset),
-            end=current_monday - timedelta(days=7 * (offset - 1)),
-        )
-        for offset in range(count, 0, -1)
-    ]
+    numbers: set[int] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            number = int(row.get("week"))
+        except (TypeError, ValueError):
+            continue
+        if number > 0 and isfinite(number):
+            numbers.add(number)
+    if not numbers:
+        raise DataShapeError("could not determine the current STRATZ week")
+    current_week = max(numbers)
+    return [StratzWeek(number=current_week - offset) for offset in range(1, count + 1)]

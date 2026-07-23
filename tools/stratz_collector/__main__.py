@@ -11,11 +11,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .aggregate import DataShapeError, aggregate_weeks, normalize_records, to_jsonable
+from .aggregate import DataShapeError, aggregate_weeks, parse_week, to_jsonable
 from .client import StratzClient, StratzRequestError
-from .template import RequestTemplate
+from .queries import MATCHUP_QUERY, STATS_QUERY
 from .validate import load_legacy_file, validate_against_reference
-from .weeks import last_completed_weeks
+from .weeks import completed_weeks_from_stats
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +28,16 @@ def _parser() -> argparse.ArgumentParser:
                         help="Current known-good hero_matchups.json.")
     parser.add_argument("--output", required=True, type=Path,
                         help="Destination; is atomically replaced only after validation.")
-    parser.add_argument("--request-template", required=True, type=Path,
-                        help="JSON query and response mapping copied from the browser collector.")
     parser.add_argument("--weeks", type=int, default=3,
-                        help="Number of completed UTC weeks to aggregate (default: 3).")
+                        help="Number of completed STRATZ weeks to aggregate (default: 3).")
     parser.add_argument("--token-env", default="STRATZ_API_TOKEN",
                         help="Environment variable containing the STRATZ token.")
     parser.add_argument("--endpoint", default="https://api.stratz.com/graphql",
                         help="STRATZ GraphQL endpoint.")
-    parser.add_argument("--attempts", type=int, default=4,
-                        help="Network / 429 / 5xx attempts per request (default: 4).")
+    parser.add_argument("--attempts", type=int, default=5,
+                        help="Network / 429 / 5xx attempts per request (default: 5).")
+    parser.add_argument("--request-delay", type=float, default=0.8,
+                        help="Pause between weekly GraphQL queries in seconds (default: .8).")
     parser.add_argument("--max-total-match-delta", type=float, default=0.25,
                         help="Maximum allowed total matchCount change from reference (default: .25).")
     return parser
@@ -47,26 +47,33 @@ async def _collect(args: argparse.Namespace) -> None:
     token = os.environ.get(args.token_env, "")
     if not token:
         raise DataShapeError(f"environment variable {args.token_env} is not set")
-    template = RequestTemplate.from_file(args.request_template)
     reference = load_legacy_file(args.reference)
     client = StratzClient(token, endpoint=args.endpoint, attempts=args.attempts)
 
-    weekly_data = []
-    for week in last_completed_weeks(args.weeks):
-        label = week.substitutions()["week_iso"]
-        logger.info("collecting completed week %s", label)
-        response = await client.execute(template.payload(week.substitutions()))
-        weekly_data.append(normalize_records(
-            template.records_from(response),
-            hero_id_field=template.hero_id_field,
-            pair_id_field=template.pair_id_field,
-            vs_field=template.vs_field,
-            with_field=template.with_field,
-            synergy_field=template.synergy_field,
-            match_count_field=template.match_count_field,
-        ))
+    stats = await client.execute({"query": STATS_QUERY, "variables": {}})
+    try:
+        weeks = completed_weeks_from_stats(stats["data"]["heroStats"]["stats"], args.weeks)
+    except (KeyError, TypeError) as exc:
+        raise DataShapeError("STRATZ stats response has an unexpected shape") from exc
 
-    candidate = aggregate_weeks(weekly_data)
+    weekly_data = []
+    hero_ids = reference.keys()
+    for index, week in enumerate(weeks):
+        if index:
+            await asyncio.sleep(args.request_delay)
+        logger.info("collecting %s (STRATZ week %d): %d/%d", week.date, week.number,
+                    index + 1, len(weeks))
+        matchup = await client.execute({
+            "query": MATCHUP_QUERY,
+            "variables": {"week": week.timestamp},
+        })
+        try:
+            rows = matchup["data"]["heroStats"]["matchUp"]
+        except (KeyError, TypeError) as exc:
+            raise DataShapeError("STRATZ matchUp response has an unexpected shape") from exc
+        weekly_data.append(parse_week(rows, hero_ids, description=f"{week.date}, week {week.number}"))
+
+    candidate = aggregate_weeks(weekly_data, hero_ids)
     report = validate_against_reference(
         candidate, reference, max_total_match_delta=args.max_total_match_delta
     )

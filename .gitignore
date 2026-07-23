@@ -2,7 +2,6 @@ backend/.env
 .env
 .env.*
 !.env.example
-tools/stratz_collector/*.local.json
 ARCHITECTURE.md
 .claude/
 stratz_data.json

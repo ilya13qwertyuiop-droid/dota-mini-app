@@ -8,7 +8,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Any
 
-from .aggregate import DataShapeError, normalize_records
+from .aggregate import DataShapeError, _as_id, _as_pair_stat
 from .models import Matchups
 
 
@@ -30,11 +30,12 @@ def load_legacy_file(path: Path) -> Matchups:
     if not isinstance(raw, dict):
         raise DataShapeError("reference file root must be an object")
 
-    records: list[dict[str, Any]] = []
+    result: Matchups = {}
     for hero_id, maps in raw.items():
+        parsed_hero_id = _as_id(hero_id, field="hero id")
         if not isinstance(maps, dict):
             raise DataShapeError(f"hero {hero_id} must be an object")
-        record: dict[str, Any] = {"hero": hero_id, "vs": [], "with": []}
+        hero_result: dict[str, dict] = {"vs": {}, "with": {}}
         for kind in ("vs", "with"):
             pairs = maps.get(kind, {})
             if not isinstance(pairs, dict):
@@ -42,15 +43,16 @@ def load_legacy_file(path: Path) -> Matchups:
             for other_id, stat in pairs.items():
                 if not isinstance(stat, dict):
                     raise DataShapeError(f"hero {hero_id}.{kind}.{other_id} must be an object")
-                record[kind].append({"other": other_id, **stat})
-        records.append(record)
-    return normalize_records(
-        records,
-        hero_id_field="hero",
-        pair_id_field="other",
-        vs_field="vs",
-        with_field="with",
-    )
+                parsed_other_id = _as_id(other_id, field="other hero id")
+                if parsed_other_id == parsed_hero_id:
+                    continue
+                hero_result[kind][parsed_other_id] = _as_pair_stat(
+                    stat, synergy_field="synergy", match_count_field="matchCount"
+                )
+        result[parsed_hero_id] = hero_result
+    if not result:
+        raise DataShapeError("reference file contains no heroes")
+    return result
 
 
 def _all_pairs(matchups: Matchups) -> set[tuple[str, str, str]]:
@@ -91,8 +93,8 @@ def validate_against_reference(
             f"extra={len(candidate_pairs - expected_pairs)}"
         )
 
-    total_matches = 0
-    reference_matches = 0
+    total_matches = {"vs": 0, "with": 0}
+    reference_matches = {"vs": 0, "with": 0}
     low_sample_pairs = 0
     asymmetric_pairs = 0
     for hero_id, kind, other_id in candidate_pairs:
@@ -100,8 +102,8 @@ def validate_against_reference(
         ref = reference[hero_id][kind][other_id]
         if stat.match_count < 0 or not isfinite(stat.synergy):
             raise DataShapeError(f"invalid {kind} value for {hero_id}->{other_id}")
-        total_matches += stat.match_count
-        reference_matches += ref.match_count
+        total_matches[kind] += stat.match_count
+        reference_matches[kind] += ref.match_count
         if stat.match_count < low_sample_threshold:
             low_sample_pairs += 1
         reverse = candidate.get(other_id, {}).get(kind, {}).get(hero_id)
@@ -113,17 +115,19 @@ def validate_against_reference(
             if difference > asymmetry_threshold:
                 asymmetric_pairs += 1
 
-    if reference_matches:
-        delta = abs(total_matches - reference_matches) / reference_matches
+    for kind in ("vs", "with"):
+        if not reference_matches[kind]:
+            continue
+        delta = abs(total_matches[kind] - reference_matches[kind]) / reference_matches[kind]
         if delta > max_total_match_delta:
             raise DataShapeError(
-                "total matchCount differs from reference by "
+                f"{kind} total matchCount differs from reference by "
                 f"{delta:.1%} (limit {max_total_match_delta:.1%})"
             )
     return ValidationReport(
         hero_count=len(candidate),
         pair_count=len(candidate_pairs),
-        total_matches=total_matches,
+        total_matches=total_matches["vs"] + total_matches["with"],
         low_sample_pairs=low_sample_pairs,
         asymmetric_pairs=asymmetric_pairs,
     )
