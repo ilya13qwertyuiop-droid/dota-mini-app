@@ -208,15 +208,21 @@ def check_invariants() -> list[int]:
         else:
             _ok("матчей-«нулевиков» нет (все записаны пропаршенными)")
 
-        # Игроки без позиции (position NULL) — только fallback для тех, кого
-        # OpenDota пока не включил в /proPlayers.
+        # Позиция обязательна только для активных Fantasy-игроков. Исторические
+        # стендины, тренеры и прочие исключённые записи могут оставаться NULL:
+        # они нужны справочнику, но не попадают в рекомендации.
         nopos = conn.execute(text(
-            "SELECT COUNT(*) FROM fantasy_players WHERE position IS NULL")).scalar()
+            """
+            SELECT COUNT(*)
+            FROM fantasy_players
+            WHERE position IS NULL AND is_active = TRUE
+            """
+        )).scalar()
         if nopos:
-            _warn(f"{nopos} игроков без position (не было в /proPlayers) — "
-                  f"проверить вручную только этих игроков")
+            _warn(f"{nopos} активных игроков без position — "
+                  f"проверить вручную только их")
         else:
-            _ok("у всех игроков есть position")
+            _ok("у всех активных игроков есть position")
     return zero_ids
 
 

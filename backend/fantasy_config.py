@@ -35,15 +35,32 @@ OPENDOTA_FANTASY_ROLES: dict[int, str] = {
 }
 
 # Только fallback для редких игроков, которых ещё нет или неверно разметили
-# в /proPlayers. Основной источник ролей — OpenDota, поэтому список пустой.
+# в /proPlayers. Основной источник ролей — OpenDota.
 # Формат: account_id: "core" | "mid" | "support".
-FANTASY_POSITION_OVERRIDES: dict[int, str] = {}
+FANTASY_POSITION_OVERRIDES: dict[int, str] = {
+    # Offlane относится к общей Fantasy-группе core.
+    126842529: "core",  # Ws`
+    165564598: "core",  # MieRo
+    56351509: "core",   # DM
+    92487440: "core",   # Corrupted
+    203351055: "core",  # Malik
+    145957968: "core",  # niu
+    # Отдельная официальная Fantasy-группа mid.
+    480412663: "mid",   # gpk~
+    106573901: "mid",   # No[o]ne-
+    301750126: "mid",   # Mikoto
+    154974246: "mid",   # RCY
+    324277900: "mid",   # Yopaj-
+    116865891: "mid",   # Mirele`
+    93618577: "mid",    # bzm
+}
 
 # Точечные исключения поверх OpenDota current roster. Нужны для задержек
 # источника и официальных правил Compendium (например, заявленный стендин).
 # Формат: account_id: True (допустить) | False (скрыть из рекомендаций).
 FANTASY_ELIGIBILITY_OVERRIDES: dict[int, bool] = {
     152455523: False,  # V-Tune: временный стендин Aurora, не в текущем составе
+    60943014: False,   # Jabbz: тренер/аналитик Team Liquid, не Fantasy-игрок
 }
 
 

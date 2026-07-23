@@ -52,6 +52,25 @@ class FantasyConfigTests(unittest.TestCase):
 
     def test_known_standin_is_not_eligible(self):
         self.assertIs(FANTASY_ELIGIBILITY_OVERRIDES[152455523], False)
+        self.assertIs(FANTASY_ELIGIBILITY_OVERRIDES[60943014], False)
+
+    def test_position_overrides_cover_known_opendota_gaps(self):
+        expected = {
+            126842529: "core",
+            165564598: "core",
+            56351509: "core",
+            92487440: "core",
+            203351055: "core",
+            145957968: "core",
+            480412663: "mid",
+            106573901: "mid",
+            301750126: "mid",
+            154974246: "mid",
+            324277900: "mid",
+            116865891: "mid",
+            93618577: "mid",
+        }
+        self.assertEqual(FANTASY_POSITION_OVERRIDES, expected)
 
     def test_current_roster_filter_uses_opendota_flag(self):
         players = [
