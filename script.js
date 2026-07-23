@@ -718,6 +718,30 @@
             return metrics.find(function (metric) { return metric.id === metricId; }) || null;
         }
 
+        function _fantasyEmblemBounds(role) {
+            var mechanics = (_fantasy.config && _fantasy.config.mechanics) || {};
+            var emblems = mechanics.emblems || {};
+            var available = Math.max(0, (role.slots || []).length);
+            var maximum = Math.min(
+                available,
+                Math.max(1, Number(emblems.max || available || 1))
+            );
+            var minimum = Math.min(
+                maximum,
+                Math.max(1, Number(emblems.min || maximum))
+            );
+            var defaultCount = Math.min(
+                maximum,
+                Math.max(minimum, Number(emblems.default || minimum))
+            );
+            return {
+                min: minimum,
+                defaultCount: defaultCount,
+                max: maximum,
+                adjustable: emblems.adjustable !== false,
+            };
+        }
+
         function _fantasyEnsureSelections() {
             var role = _fantasyRole();
             if (!role) return [];
@@ -725,16 +749,25 @@
             var current = _fantasy.selections[role.id];
             var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
             var defaultMultiplier = Number(multiplier.default || 1);
-            if (!Array.isArray(current) || current.length !== slots.length) {
-                current = slots.map(function (slot) {
-                    return {
-                        metric: slot.default_metric,
-                        multiplier: defaultMultiplier,
-                    };
-                });
-                _fantasy.selections[role.id] = current;
+            var bounds = _fantasyEmblemBounds(role);
+            if (!Array.isArray(current)) {
+                current = [];
             }
-            slots.forEach(function (slot, index) {
+            if (current.length > bounds.max) {
+                current = current.slice(0, bounds.max);
+            }
+            var targetCount = current.length
+                ? Math.max(bounds.min, current.length)
+                : bounds.defaultCount;
+            while (current.length < targetCount) {
+                var nextSlot = slots[current.length];
+                current.push({
+                    metric: nextSlot.default_metric,
+                    multiplier: defaultMultiplier,
+                });
+            }
+            _fantasy.selections[role.id] = current;
+            slots.slice(0, current.length).forEach(function (slot, index) {
                 var allowed = (_fantasy.config.metrics || []).filter(function (metric) {
                     return metric.color === slot.color;
                 });
@@ -793,11 +826,18 @@
             var selections = _fantasyEnsureSelections();
             var multiplier = mechanics.multiplier || {};
             var multiplierEnabled = multiplier.enabled !== false;
-            var multiplierValues = multiplier.values || [multiplier.default || 1];
+            var bounds = _fantasyEmblemBounds(role);
+            var activeSlots = (role.slots || []).slice(0, selections.length);
             var meta = document.getElementById('fantasy-builder-meta');
-            if (meta) meta.textContent = (role.slots || []).length + ' слотов';
+            if (meta) {
+                meta.textContent = selections.length === 1
+                    ? '1 эмблема'
+                    : (selections.length >= 2 && selections.length <= 4
+                        ? selections.length + ' эмблемы'
+                        : selections.length + ' эмблем');
+            }
 
-            container.innerHTML = (role.slots || []).map(function (slot, index) {
+            container.innerHTML = activeSlots.map(function (slot, index) {
                 var allowed = (config.metrics || []).filter(function (metric) {
                     return metric.color === slot.color;
                 });
@@ -809,25 +849,42 @@
                 var multiplierSelect = '';
                 if (multiplierEnabled) {
                     multiplierSelect =
-                        '<select class="fantasy-slot-multiplier" aria-label="Множитель слота ' +
-                        (index + 1) + '" onchange="fantasySetMultiplier(' + index +
-                        ', this.value)">' +
-                        multiplierValues.map(function (value) {
-                            var numeric = Number(value);
-                            return '<option value="' + numeric + '"' +
-                                (numeric === Number(selections[index].multiplier)
-                                    ? ' selected' : '') + '>×' +
-                                numeric.toFixed(1) + '</option>';
-                        }).join('') + '</select>';
+                        '<label class="fantasy-slot-multiplier">' +
+                        '<span aria-hidden="true">×</span>' +
+                        '<input type="text" inputmode="decimal" autocomplete="off" ' +
+                        'aria-label="Множитель эмблемы ' + (index + 1) + '" ' +
+                        'data-min="' + Number(multiplier.min || 0.1) + '" ' +
+                        'data-max="' + Number(multiplier.max || 3) + '" ' +
+                        'value="' + _fantasyEsc(selections[index].multiplier) + '" ' +
+                        'oninput="fantasySetMultiplier(' + index + ', this.value)" ' +
+                        'onblur="fantasyCommitMultiplier(' + index + ', this)" ' +
+                        'onkeydown="if(event.key===\'Enter\'){this.blur()}">' +
+                        '</label>';
                 }
                 return '<div class="fantasy-slot' +
                     (multiplierEnabled ? '' : ' fantasy-slot--no-multiplier') + '">' +
-                    '<span class="fantasy-slot-dot fantasy-slot-dot--' +
-                    _fantasyEsc(slot.color) + '" aria-hidden="true"></span>' +
+                    '<span class="fantasy-slot-index fantasy-slot-index--' +
+                    _fantasyEsc(slot.color) + '" aria-hidden="true">' + (index + 1) + '</span>' +
                     '<select aria-label="Показатель слота ' + (index + 1) +
                     '" onchange="fantasySetMetric(' + index + ', this.value)">' +
                     metricOptions + '</select>' + multiplierSelect + '</div>';
             }).join('');
+
+            var actions = document.getElementById('fantasy-builder-actions');
+            if (actions) {
+                var canRemove = bounds.adjustable && selections.length > bounds.min;
+                var canAdd = bounds.adjustable && selections.length < bounds.max;
+                actions.hidden = !canRemove && !canAdd;
+                actions.innerHTML =
+                    (canRemove
+                        ? '<button type="button" class="fantasy-emblem-action fantasy-emblem-action--quiet" ' +
+                          'onclick="fantasyRemoveEmblem()">Убрать</button>'
+                        : '<span></span>') +
+                    (canAdd
+                        ? '<button type="button" class="fantasy-emblem-action" ' +
+                          'onclick="fantasyAddEmblem()">+ Добавить эмблему</button>'
+                        : '');
+            }
         }
 
         function _fantasyMetricPoints(player, metric, multiplier) {
@@ -1035,12 +1092,57 @@
         window.fantasySetMultiplier = function (slotIndex, value) {
             var selections = _fantasyEnsureSelections();
             var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
-            var numeric = Number(value);
-            var valid = (multiplier.values || []).some(function (item) {
-                return Number(item) === numeric;
-            });
-            if (!valid || !selections[slotIndex]) return;
+            var numeric = Number(String(value).replace(',', '.'));
+            var minimum = Number(multiplier.min || 0.1);
+            var maximum = Number(multiplier.max || 3);
+            if (!Number.isFinite(numeric) || numeric < minimum ||
+                numeric > maximum || !selections[slotIndex]) return;
             selections[slotIndex].multiplier = numeric;
+            _fantasyRenderRanking();
+        };
+
+        window.fantasyCommitMultiplier = function (slotIndex, input) {
+            var selections = _fantasyEnsureSelections();
+            var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
+            if (!input || !selections[slotIndex]) return;
+            var minimum = Number(multiplier.min || 0.1);
+            var maximum = Number(multiplier.max || 3);
+            var numeric = Number(String(input.value).replace(',', '.'));
+            if (!Number.isFinite(numeric)) {
+                numeric = Number(selections[slotIndex].multiplier);
+            }
+            numeric = Math.min(maximum, Math.max(minimum, numeric));
+            numeric = Math.round(numeric * 100) / 100;
+            selections[slotIndex].multiplier = numeric;
+            input.value = String(numeric);
+            _fantasyRenderRanking();
+        };
+
+        window.fantasyAddEmblem = function () {
+            var role = _fantasyRole();
+            var selections = _fantasyEnsureSelections();
+            if (!role) return;
+            var bounds = _fantasyEmblemBounds(role);
+            if (!bounds.adjustable || selections.length >= bounds.max) return;
+            var slot = (role.slots || [])[selections.length];
+            if (!slot) return;
+            var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
+            selections.push({
+                metric: slot.default_metric,
+                multiplier: Number(multiplier.default || 1),
+            });
+            _fantasyRenderBuilder();
+            _fantasyRenderRanking();
+        };
+
+        window.fantasyRemoveEmblem = function () {
+            var role = _fantasyRole();
+            var selections = _fantasyEnsureSelections();
+            if (!role) return;
+            var bounds = _fantasyEmblemBounds(role);
+            if (!bounds.adjustable || selections.length <= bounds.min) return;
+            selections.pop();
+            _fantasyRenderBuilder();
             _fantasyRenderRanking();
         };
 

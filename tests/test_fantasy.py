@@ -5,8 +5,10 @@ import gzip
 import unittest
 
 from backend.fantasy_config import (
+    FANTASY_ELIGIBILITY_OVERRIDES,
     FANTASY_POSITION_OVERRIDES,
     OPENDOTA_FANTASY_ROLES,
+    current_roster_players,
     get_fantasy_config,
 )
 from backend.fantasy_metrics import compress_match_snapshot, extract_player_stats
@@ -35,10 +37,39 @@ class FantasyConfigTests(unittest.TestCase):
                 self.assertIn(default["formula"]["type"], {"linear", "inverse"})
 
     def test_multiplier_config_is_safe_for_dynamic_ui(self):
-        multiplier = get_fantasy_config()["mechanics"]["multiplier"]
-        self.assertIn(multiplier["default"], multiplier["values"])
-        self.assertEqual(multiplier["values"], sorted(set(multiplier["values"])))
-        self.assertTrue(all(value > 0 for value in multiplier["values"]))
+        config = get_fantasy_config()
+        mechanics = config["mechanics"]
+        multiplier = mechanics["multiplier"]
+        self.assertLessEqual(multiplier["min"], multiplier["default"])
+        self.assertLessEqual(multiplier["default"], multiplier["max"])
+        self.assertGreater(multiplier["step"], 0)
+
+        emblems = mechanics["emblems"]
+        self.assertLessEqual(emblems["min"], emblems["default"])
+        self.assertLessEqual(emblems["default"], emblems["max"])
+        for role in config["roles"]:
+            self.assertGreaterEqual(len(role["slots"]), emblems["max"])
+
+    def test_known_standin_is_not_eligible(self):
+        self.assertIs(FANTASY_ELIGIBILITY_OVERRIDES[152455523], False)
+
+    def test_current_roster_filter_uses_opendota_flag(self):
+        players = [
+            {
+                "account_id": 124801257,
+                "name": "Nightfall",
+                "is_current_team_member": True,
+            },
+            {
+                "account_id": 152455523,
+                "name": "V-Tune",
+                "is_current_team_member": False,
+            },
+        ]
+        self.assertEqual(
+            current_roster_players(players),
+            [{"account_id": 124801257, "name": "Nightfall"}],
+        )
 
 
 class FantasyExtractionTests(unittest.TestCase):

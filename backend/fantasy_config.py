@@ -39,6 +39,27 @@ OPENDOTA_FANTASY_ROLES: dict[int, str] = {
 # Формат: account_id: "core" | "mid" | "support".
 FANTASY_POSITION_OVERRIDES: dict[int, str] = {}
 
+# Точечные исключения поверх OpenDota current roster. Нужны для задержек
+# источника и официальных правил Compendium (например, заявленный стендин).
+# Формат: account_id: True (допустить) | False (скрыть из рекомендаций).
+FANTASY_ELIGIBILITY_OVERRIDES: dict[int, bool] = {
+    152455523: False,  # V-Tune: временный стендин Aurora, не в текущем составе
+}
+
+
+def current_roster_players(players: list[dict] | None) -> list[dict]:
+    """Нормализовать только текущих игроков из OpenDota team roster."""
+    current: list[dict] = []
+    for player in players or []:
+        account_id = player.get("account_id")
+        if not account_id or player.get("is_current_team_member") is not True:
+            continue
+        current.append({
+            "account_id": int(account_id),
+            "name": (player.get("name") or "").strip()[:64] or None,
+        })
+    return current
+
 
 # field — имя среднего значения в /api/fantasy/players.
 # formula — полностью декларативна: клиент не знает коэффициентов Valve.
@@ -227,9 +248,19 @@ def get_fantasy_config() -> dict:
             # Если Valve уберёт эмблемы, false скрывает конструктор, а рейтинг
             # продолжает работать на role.default_metrics/slots.
             "slots_enabled": True,
+            # UI рендерит только активное количество слотов, а role.slots
+            # хранит полную цветовую последовательность до максимума.
+            "emblems": {
+                "min": 3,
+                "default": 3,
+                "max": 5,
+                "adjustable": True,
+            },
             "multiplier": {
                 "enabled": True,
-                "values": [1.0, 1.2, 1.4, 1.6, 1.8, 2.0],
+                "min": 1.0,
+                "max": 3.0,
+                "step": 0.1,
                 "default": 1.0,
             },
         },

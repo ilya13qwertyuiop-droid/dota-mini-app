@@ -135,7 +135,11 @@ from backend.models import BannedUser as DBBannedUser, UserProfile as DBUserProf
 from backend.db import get_user_id_by_token, create_token_for_user, claim_telegram_init_data, init_tokens_table, init_hero_matchups_cache_table, save_feedback, get_latest_news_guids, is_user_banned, get_banned_user_ids
 from backend.hero_matchups_service import get_hero_matchups_cached, build_matchup_groups
 from backend.hero_stats_service import get_hero_base_winrate
-from backend.fantasy_config import FANTASY_LEAGUES, get_fantasy_config
+from backend.fantasy_config import (
+    FANTASY_ELIGIBILITY_OVERRIDES,
+    FANTASY_LEAGUES,
+    get_fantasy_config,
+)
 from backend.stats_db import (
     init_stats_tables,
     get_hero_matchup_rows,
@@ -2203,14 +2207,27 @@ def api_fantasy_players(
         raise HTTPException(status_code=422, detail="unknown fantasy league")
 
     params: dict[str, int] = {}
-    where_sql = ""
+    filters = ["p.is_active = TRUE"]
     if selected_leagues:
         placeholders = []
         for index, value in enumerate(selected_leagues):
             key = f"league_{index}"
             placeholders.append(f":{key}")
             params[key] = value
-        where_sql = f"WHERE s.league_id IN ({', '.join(placeholders)})"
+        filters.append(f"s.league_id IN ({', '.join(placeholders)})")
+    excluded_ids = [
+        int(account_id)
+        for account_id, eligible in FANTASY_ELIGIBILITY_OVERRIDES.items()
+        if not eligible
+    ]
+    if excluded_ids:
+        placeholders = []
+        for index, value in enumerate(excluded_ids):
+            key = f"excluded_player_{index}"
+            placeholders.append(f":{key}")
+            params[key] = value
+        filters.append(f"p.account_id NOT IN ({', '.join(placeholders)})")
+    where_sql = "WHERE " + " AND ".join(filters)
 
     try:
         rows = db.execute(text(f"""

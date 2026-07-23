@@ -46,9 +46,11 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from backend.database import engine  # noqa: E402
 from backend.fantasy_config import (  # noqa: E402
+    FANTASY_ELIGIBILITY_OVERRIDES,
     FANTASY_LEAGUES,
     FANTASY_POSITION_OVERRIDES,
     OPENDOTA_FANTASY_ROLES,
+    current_roster_players,
 )
 from backend.fantasy_metrics import (  # noqa: E402
     _num,
@@ -132,9 +134,15 @@ _EXTRA_COLUMN_DDL: dict[str, str] = {
     "metrics_json": "TEXT",
 }
 
+_EXTRA_PLAYER_COLUMN_DDL: dict[str, str] = {
+    # TRUE сохраняет совместимость со строками, собранными до 0029. После
+    # первого прохода current roster выставит точное значение.
+    "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Схема (идемпотентно; прод — alembic 0023+0028, dev-SQLite — этот же DDL)
+#  Схема (идемпотентно; прод — alembic 0023+0028+0029, dev-SQLite — этот же DDL)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ensure_tables() -> None:
@@ -145,7 +153,8 @@ def ensure_tables() -> None:
                 name       VARCHAR(64),
                 team_id    BIGINT,
                 team_name  VARCHAR(64),
-                position   VARCHAR(12)
+                position   VARCHAR(12),
+                is_active  BOOLEAN NOT NULL DEFAULT TRUE
             )
         """))
         conn.execute(text("""
@@ -200,6 +209,16 @@ def ensure_tables() -> None:
                 parsed_at      TIMESTAMP
             )
         """))
+        player_columns = {
+            column["name"]
+            for column in inspect(conn).get_columns("fantasy_players")
+        }
+        for column_name, ddl in _EXTRA_PLAYER_COLUMN_DDL.items():
+            if column_name not in player_columns:
+                conn.execute(text(
+                    f"ALTER TABLE fantasy_players ADD COLUMN {column_name} {ddl}"
+                ))
+
         existing_columns = {
             column["name"]
             for column in inspect(conn).get_columns("fantasy_player_stats")
@@ -300,7 +319,111 @@ def _refresh_saved_positions(positions: dict[int, str]) -> int:
     return max(int(result.rowcount or 0), 0)
 
 
-def _store_match(match: dict, positions: dict) -> int:
+async def _refresh_current_rosters(
+    client: httpx.AsyncClient,
+) -> dict[int, set[int]]:
+    """Синхронизировать eligibility по /teams/{id}/players.
+
+    Команда обновляется только при успешном ответе OpenDota: временная ошибка
+    API не должна скрыть весь её состав из рекомендаций.
+    """
+    active_by_team: dict[int, set[int]] = {}
+    for team_id, team_name in TI_TEAMS.items():
+        data = await _od_get(client, f"/teams/{team_id}/players")
+        if data is None or not isinstance(data, list):
+            logger.warning(
+                "[fantasy] team %s (%d): roster fetch failed",
+                team_name,
+                team_id,
+            )
+            continue
+        current = current_roster_players(data)
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE fantasy_players
+                    SET is_active = FALSE
+                    WHERE team_id = :team_id
+                """),
+                {"team_id": team_id},
+            )
+            for player in current:
+                eligible = FANTASY_ELIGIBILITY_OVERRIDES.get(
+                    player["account_id"],
+                    True,
+                )
+                existing = conn.execute(
+                    text("""
+                        SELECT 1
+                        FROM fantasy_players
+                        WHERE account_id = :account_id
+                    """),
+                    {"account_id": player["account_id"]},
+                ).fetchone()
+                values = {
+                    "account_id": player["account_id"],
+                    "name": player["name"],
+                    "team_id": team_id,
+                    "team_name": team_name,
+                    "is_active": bool(eligible),
+                }
+                if existing:
+                    conn.execute(
+                        text("""
+                            UPDATE fantasy_players
+                            SET name = COALESCE(:name, name),
+                                team_id = :team_id,
+                                team_name = :team_name,
+                                is_active = :is_active
+                            WHERE account_id = :account_id
+                        """),
+                        values,
+                    )
+                else:
+                    conn.execute(
+                        text("""
+                            INSERT INTO fantasy_players
+                                (account_id, name, team_id, team_name, position,
+                                 is_active)
+                            VALUES
+                                (:account_id, :name, :team_id, :team_name, NULL,
+                                 :is_active)
+                        """),
+                        values,
+                    )
+                if eligible:
+                    active_by_team.setdefault(team_id, set()).add(
+                        player["account_id"]
+                    )
+        active_by_team.setdefault(team_id, set())
+
+    # Override применяется и к историческим игрокам, которых OpenDota больше
+    # не возвращает в roster конкретной команды.
+    if FANTASY_ELIGIBILITY_OVERRIDES:
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE fantasy_players
+                    SET is_active = :is_active
+                    WHERE account_id = :account_id
+                """),
+                [
+                    {
+                        "account_id": int(account_id),
+                        "is_active": bool(is_active),
+                    }
+                    for account_id, is_active
+                    in FANTASY_ELIGIBILITY_OVERRIDES.items()
+                ],
+            )
+    return active_by_team
+
+
+def _store_match(
+    match: dict,
+    positions: dict,
+    active_by_team: dict[int, set[int]] | None = None,
+) -> int:
     """Пишет игроков TI-команд одного матча. Возвращает число строк."""
     league_id = match.get("leagueid")
     match_id = match.get("match_id")
@@ -380,6 +503,16 @@ def _store_match(match: dict, positions: dict) -> int:
             # Справочник: ник/команда — снапшот свежайшего матча.
             name = (p.get("name") or p.get("personaname") or "").strip()[:64] or None
             canon_team = TI_TEAMS.get(team_id) or team_name
+            team_roster = (
+                active_by_team.get(team_id)
+                if active_by_team is not None
+                else None
+            )
+            eligibility_override = FANTASY_ELIGIBILITY_OVERRIDES.get(acc)
+            if eligibility_override is not None:
+                is_active = eligibility_override
+            else:
+                is_active = acc in team_roster if team_roster is not None else None
             existing = conn.execute(text(
                 "SELECT 1 FROM fantasy_players WHERE account_id = :a"
             ), {"a": acc}).fetchone()
@@ -388,16 +521,20 @@ def _store_match(match: dict, positions: dict) -> int:
                     UPDATE fantasy_players
                     SET name = COALESCE(:name, name), team_id = :tid,
                         team_name = :tname,
-                        position = COALESCE(:pos, position)
+                        position = COALESCE(:pos, position),
+                        is_active = COALESCE(:active, is_active)
                     WHERE account_id = :a
                 """), {"a": acc, "name": name, "tid": team_id,
-                       "tname": canon_team, "pos": positions.get(acc)})
+                       "tname": canon_team, "pos": positions.get(acc),
+                       "active": is_active})
             else:
                 conn.execute(text("""
-                    INSERT INTO fantasy_players (account_id, name, team_id, team_name, position)
-                    VALUES (:a, :name, :tid, :tname, :pos)
+                    INSERT INTO fantasy_players
+                        (account_id, name, team_id, team_name, position, is_active)
+                    VALUES (:a, :name, :tid, :tname, :pos, :active)
                 """), {"a": acc, "name": name, "tid": team_id,
-                       "tname": canon_team, "pos": positions.get(acc)})
+                       "tname": canon_team, "pos": positions.get(acc),
+                       "active": True if is_active is None else is_active})
             written += 1
     return written
 
@@ -409,6 +546,17 @@ async def collect_once() -> None:
 
     done = rows = failed = 0
     async with httpx.AsyncClient() as client:
+        active_by_team = await _refresh_current_rosters(client)
+        active_account_ids = {
+            account_id
+            for account_ids in active_by_team.values()
+            for account_id in account_ids
+        }
+        logger.info(
+            "[fantasy] current rosters refreshed: %d teams, %d active players",
+            len(active_by_team),
+            len(active_account_ids),
+        )
         positions = await _fetch_positions(client)
         refreshed = _refresh_saved_positions(positions)
         if refreshed:
@@ -452,7 +600,7 @@ async def collect_once() -> None:
                 logger.info("[fantasy] match %s not parsed yet, deferred", mid)
                 continue
             try:
-                rows += _store_match(match, positions)
+                rows += _store_match(match, positions, active_by_team)
             except Exception as e:
                 logger.warning("[fantasy] store %s failed: %s", mid, e)
                 failed += 1
