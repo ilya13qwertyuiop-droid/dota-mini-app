@@ -691,8 +691,8 @@
             config: null,
             players: [],
             role: 'core',
-            league: '',
-            loadedLeague: null,
+            leagues: [],
+            loadedLeaguesKey: null,
             loading: false,
             requestId: 0,
             selections: {},
@@ -711,6 +711,41 @@
             var roles = (_fantasy.config && _fantasy.config.roles) || [];
             return roles.find(function (role) { return role.id === _fantasy.role; }) ||
                 roles[0] || null;
+        }
+
+        function _fantasyLeaguesKey() {
+            return (_fantasy.leagues || []).map(String).slice().sort().join(',');
+        }
+
+        function _fantasySelectedTournaments() {
+            var selectedIds = new Set((_fantasy.leagues || []).map(String));
+            return ((_fantasy.config && _fantasy.config.tournaments) || []).filter(
+                function (item) {
+                    return selectedIds.has(String(item.id));
+                }
+            );
+        }
+
+        function _fantasyUpdateTournamentSummary() {
+            var selected = _fantasySelectedTournaments();
+            var label = selected.length === 0
+                ? 'Все доступные'
+                : (selected.length === 1
+                    ? selected[0].label
+                    : 'Выбрано: ' + selected.length);
+            var summary = document.getElementById('fantasy-tournament-summary');
+            if (summary) {
+                summary.textContent = label;
+                summary.setAttribute('aria-label', 'Турниры: ' + label);
+            }
+            var all = document.querySelector('.fantasy-tournament-all');
+            if (all) {
+                all.classList.toggle('active', selected.length === 0);
+                all.setAttribute(
+                    'aria-pressed',
+                    selected.length === 0 ? 'true' : 'false'
+                );
+            }
         }
 
         function _fantasyMetric(metricId) {
@@ -787,17 +822,25 @@
             var config = _fantasy.config;
             if (!config) return;
 
-            var tournament = document.getElementById('fantasy-tournament-select');
-            if (tournament) {
-                tournament.innerHTML =
-                    '<option value="">Все турниры</option>' +
+            var options = document.getElementById('fantasy-tournament-options');
+            var selectedIds = new Set((_fantasy.leagues || []).map(String));
+            if (options) {
+                options.innerHTML =
+                    '<button type="button" class="fantasy-tournament-all" ' +
+                    'onclick="fantasySelectAllLeagues()" aria-pressed="false">' +
+                    '<span>Все доступные</span><span aria-hidden="true">Все</span></button>' +
                     (config.tournaments || []).map(function (item) {
-                        var selected = String(item.id) === String(_fantasy.league)
-                            ? ' selected' : '';
-                        return '<option value="' + _fantasyEsc(item.id) + '"' + selected + '>' +
-                            _fantasyEsc(item.label) + '</option>';
+                        var checked = selectedIds.has(String(item.id));
+                        return '<label class="fantasy-tournament-option">' +
+                            '<input type="checkbox" value="' + _fantasyEsc(item.id) + '"' +
+                            (checked ? ' checked' : '') +
+                            ' onchange="fantasyToggleLeague(this.value, this.checked)">' +
+                            '<span>' + _fantasyEsc(item.label) + '</span></label>';
                     }).join('');
             }
+            _fantasyUpdateTournamentSummary();
+            var reset = document.querySelector('.fantasy-reset');
+            if (reset) reset.disabled = false;
 
             var tabs = document.getElementById('fantasy-role-tabs');
             if (tabs) {
@@ -805,8 +848,11 @@
                     var active = role.id === _fantasy.role;
                     return '<button type="button" class="fantasy-role-tab' +
                         (active ? ' active' : '') + '" role="tab" aria-selected="' +
-                        (active ? 'true' : 'false') + '" onclick="fantasySetRole(\'' +
-                        _fantasyEsc(role.id) + '\')">' + _fantasyEsc(role.label) + '</button>';
+                        (active ? 'true' : 'false') + '" aria-controls="fantasy-ranking-list" ' +
+                        'tabindex="' + (active ? '0' : '-1') + '" data-role="' +
+                        _fantasyEsc(role.id) + '" onclick="fantasySetRole(\'' +
+                        _fantasyEsc(role.id) + '\')" onkeydown="fantasyRoleKeydown(event)"' +
+                        '>' + _fantasyEsc(role.label) + '</button>';
                 }).join('');
             }
         }
@@ -838,6 +884,12 @@
             }
 
             container.innerHTML = activeSlots.map(function (slot, index) {
+                var colorLabels = {
+                    red: 'Красная',
+                    green: 'Зелёная',
+                    blue: 'Синяя',
+                };
+                var colorLabel = colorLabels[slot.color] || 'Эмблема';
                 var allowed = (config.metrics || []).filter(function (metric) {
                     return metric.color === slot.color;
                 });
@@ -852,9 +904,10 @@
                         '<label class="fantasy-slot-multiplier">' +
                         '<span aria-hidden="true">×</span>' +
                         '<input type="text" inputmode="decimal" autocomplete="off" ' +
-                        'aria-label="Множитель эмблемы ' + (index + 1) + '" ' +
+                        'aria-label="Множитель: ' + _fantasyEsc(colorLabel) +
+                        ' эмблема ' + (index + 1) + '" ' +
                         'data-min="' + Number(multiplier.min || 0.1) + '" ' +
-                        'data-max="' + Number(multiplier.max || 3) + '" ' +
+                        'data-max="' + Number(multiplier.max || 4) + '" ' +
                         'value="' + _fantasyEsc(selections[index].multiplier) + '" ' +
                         'oninput="fantasySetMultiplier(' + index + ', this.value)" ' +
                         'onblur="fantasyCommitMultiplier(' + index + ', this)" ' +
@@ -863,9 +916,11 @@
                 }
                 return '<div class="fantasy-slot' +
                     (multiplierEnabled ? '' : ' fantasy-slot--no-multiplier') + '">' +
-                    '<span class="fantasy-slot-index fantasy-slot-index--' +
-                    _fantasyEsc(slot.color) + '" aria-hidden="true">' + (index + 1) + '</span>' +
-                    '<select aria-label="Показатель слота ' + (index + 1) +
+                    '<span class="fantasy-slot-label fantasy-slot-label--' +
+                    _fantasyEsc(slot.color) + '">' + _fantasyEsc(colorLabel) + ' ' +
+                    (index + 1) + '</span>' +
+                    '<select aria-label="' + _fantasyEsc(colorLabel) + ' эмблема ' +
+                    (index + 1) + ': показатель' +
                     '" onchange="fantasySetMetric(' + index + ', this.value)">' +
                     metricOptions + '</select>' + multiplierSelect + '</div>';
             }).join('');
@@ -915,13 +970,44 @@
             return 'игроков';
         }
 
+        function _fantasyMatchWord(count) {
+            var mod100 = count % 100;
+            var mod10 = count % 10;
+            if (mod100 >= 11 && mod100 <= 14) return 'матчей';
+            if (mod10 === 1) return 'матч';
+            if (mod10 >= 2 && mod10 <= 4) return 'матча';
+            return 'матчей';
+        }
+
+        function _fantasyResultContext(selections, role) {
+            var tournamentLabel = 'Все доступные турниры';
+            var selected = _fantasySelectedTournaments();
+            if (selected.length) {
+                tournamentLabel = selected.map(function (item) {
+                    return item.label;
+                }).join(' + ');
+            }
+            var recipe = selections.map(function (selection) {
+                var metric = _fantasyMetric(selection.metric) || {};
+                return (metric.short_label || metric.label || '') +
+                    ' ×' + selection.multiplier;
+            }).join(' · ');
+            return role.label + ' · ' + tournamentLabel +
+                (recipe ? ' · ' + recipe : '');
+        }
+
         function _fantasyRenderRanking() {
             var list = document.getElementById('fantasy-ranking-list');
             var count = document.getElementById('fantasy-player-count');
+            var context = document.getElementById('fantasy-result-context');
             var role = _fantasyRole();
             if (!list || !role || !_fantasy.config) return;
 
             var selections = _fantasyEnsureSelections();
+            list.removeAttribute('aria-busy');
+            if (context) {
+                context.textContent = _fantasyResultContext(selections, role);
+            }
             var rows = (_fantasy.players || []).filter(function (player) {
                 return player.position === role.id;
             }).map(function (player) {
@@ -948,7 +1034,9 @@
             });
 
             if (count) {
-                count.textContent = rows.length + ' ' + _fantasyPlayerWord(rows.length);
+                count.textContent = rows.length > 20
+                    ? 'Топ 20 из ' + rows.length
+                    : rows.length + ' ' + _fantasyPlayerWord(rows.length);
             }
             if (!rows.length) {
                 list.innerHTML = '<div class="fantasy-empty">' +
@@ -967,22 +1055,28 @@
                         var metric = item.metric || {};
                         return '<span class="fantasy-contribution fantasy-contribution--' +
                             _fantasyEsc(metric.color || 'blue') + '">' +
-                            _fantasyEsc(metric.short_label || metric.label || '') + ' ' +
-                            _fantasyFormatNumber(item.points) + '</span>';
+                            '<span class="fantasy-contribution-label">' +
+                            _fantasyEsc(metric.short_label || metric.label || '') +
+                            '</span><span>' + _fantasyFormatNumber(item.points) +
+                            '</span></span>';
                     }).join('');
-                return '<article class="fantasy-player">' +
+                var sampleText = matches + ' ' + _fantasyMatchWord(matches) +
+                    (matches < 5 ? ' · мало данных' : '');
+                return '<article class="fantasy-player' +
+                    (index === 0 ? ' fantasy-player--lead' : '') + '">' +
                     '<div class="fantasy-player-rank">' + (index + 1) + '</div>' +
                     '<div class="fantasy-player-main">' +
                     '<div class="fantasy-player-name">' +
                     _fantasyEsc(player.name || 'Без ника') + '</div>' +
-                    '<div class="fantasy-player-team">' +
-                    _fantasyEsc(player.team_name || 'Без команды') + '</div>' +
+                    '<div class="fantasy-player-team' +
+                    (matches < 5 ? ' low-sample' : '') + '">' +
+                    _fantasyEsc(player.team_name || 'Без команды') + ' · ' +
+                    _fantasyEsc(sampleText) + '</div>' +
                     '<div class="fantasy-player-breakdown">' + breakdown + '</div>' +
                     '</div>' +
                     '<div class="fantasy-player-score">' +
                     '<strong>' + _fantasyFormatNumber(row.score) + '</strong>' +
-                    '<span' + (matches < 5 ? ' class="low-sample"' : '') + '>' +
-                    matches + ' матч.' + '</span></div>' +
+                    '<span>очков</span></div>' +
                     '</article>';
             }).join('');
         }
@@ -990,31 +1084,63 @@
         function _fantasyLoading() {
             var list = document.getElementById('fantasy-ranking-list');
             if (list) {
+                list.setAttribute('aria-busy', 'true');
                 list.innerHTML = '<div class="fantasy-loading">' +
+                    '<div class="fantasy-loading-label">Считаем рейтинг…</div>' +
                     '<span></span><span></span><span></span></div>';
             }
         }
 
+        function _fantasyRenderError(error, fallbackTitle) {
+            var list = document.getElementById('fantasy-ranking-list');
+            if (!list) return;
+            list.removeAttribute('aria-busy');
+            var isUnauthorized = /HTTP 401/.test(String(error || ''));
+            var title = isUnauthorized
+                ? 'Открой фэнтези в Telegram'
+                : (fallbackTitle || 'Не удалось обновить рейтинг');
+            var detail = isUnauthorized
+                ? 'Данные доступны при запуске мини-аппа из чата с ботом.'
+                : 'Проверь соединение и попробуй ещё раз.';
+            list.innerHTML = '<div class="fantasy-error" role="alert">' +
+                '<strong>' + _fantasyEsc(title) + '</strong>' +
+                '<span>' + _fantasyEsc(detail) + '</span>' +
+                '<button type="button" onclick="fantasyRetry()">Повторить</button>' +
+                '</div>';
+        }
+
         async function _fantasyLoadPlayers() {
             _fantasyLoading();
-            var league = _fantasy.league;
+            var leagues = (_fantasy.leagues || []).slice();
+            var leaguesKey = _fantasyLeaguesKey();
             var requestId = ++_fantasy.requestId;
-            var query = league
-                ? '?league_id=' + encodeURIComponent(league) : '';
-            var response = await apiFetch(
-                window.API_BASE_URL + '/fantasy/players' + query
-            );
+            var query = leagues.length
+                ? '?' + leagues.map(function (leagueId) {
+                    return 'league_id=' + encodeURIComponent(leagueId);
+                }).join('&')
+                : '';
+            var response;
+            try {
+                response = await apiFetch(
+                    window.API_BASE_URL + '/fantasy/players' + query
+                );
+            } catch (error) {
+                if (requestId !== _fantasy.requestId) return;
+                throw error;
+            }
+            if (requestId !== _fantasy.requestId) return;
             if (!response.ok) throw new Error('fantasy players HTTP ' + response.status);
             var data = await response.json();
             if (requestId !== _fantasy.requestId) return;
             _fantasy.players = Array.isArray(data.players) ? data.players : [];
-            _fantasy.loadedLeague = league;
+            _fantasy.loadedLeaguesKey = leaguesKey;
             _fantasyRenderRanking();
         }
 
         async function initFantasy() {
             if (_fantasy.loading) return;
-            if (_fantasy.config && _fantasy.loadedLeague === _fantasy.league) {
+            if (_fantasy.config &&
+                _fantasy.loadedLeaguesKey === _fantasyLeaguesKey()) {
                 _fantasyRenderControls();
                 _fantasyRenderBuilder();
                 _fantasyRenderRanking();
@@ -1041,11 +1167,7 @@
                 await _fantasyLoadPlayers();
             } catch (error) {
                 console.warn('[fantasy] load failed:', error);
-                var list = document.getElementById('fantasy-ranking-list');
-                if (list) {
-                    list.innerHTML =
-                        '<div class="fantasy-error">Не удалось загрузить статистику.</div>';
-                }
+                _fantasyRenderError(error, 'Не удалось загрузить статистику');
             } finally {
                 _fantasy.loading = false;
             }
@@ -1061,20 +1183,79 @@
             _fantasyRenderRanking();
         };
 
-        window.fantasySetLeague = function (leagueId) {
-            var valid = !leagueId || (_fantasy.config.tournaments || []).some(function (item) {
+        window.fantasyRoleKeydown = function (event) {
+            if (!event || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                return;
+            }
+            var tabs = Array.from(document.querySelectorAll('.fantasy-role-tab'));
+            var current = tabs.indexOf(event.currentTarget);
+            if (current < 0 || !tabs.length) return;
+            event.preventDefault();
+            var next = current;
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = tabs.length - 1;
+            if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+            if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+            var roleId = tabs[next].getAttribute('data-role');
+            window.fantasySetRole(roleId);
+            var refreshed = Array.from(
+                document.querySelectorAll('.fantasy-role-tab')
+            ).find(function (tab) {
+                return tab.getAttribute('data-role') === roleId;
+            });
+            if (refreshed) refreshed.focus();
+        };
+
+        window.fantasyToggleLeague = function (leagueId, checked) {
+            if (!_fantasy.config) return;
+            var valid = (_fantasy.config.tournaments || []).some(function (item) {
                 return String(item.id) === String(leagueId);
             });
-            if (!valid || String(_fantasy.league) === String(leagueId)) return;
-            _fantasy.league = String(leagueId || '');
-            _fantasyLoadPlayers().catch(function (error) {
-                console.warn('[fantasy] league load failed:', error);
-                var list = document.getElementById('fantasy-ranking-list');
-                if (list) {
-                    list.innerHTML =
-                        '<div class="fantasy-error">Не удалось загрузить турнир.</div>';
-                }
+            if (!valid) return;
+            var selected = new Set((_fantasy.leagues || []).map(String));
+            if (checked) {
+                selected.add(String(leagueId));
+            } else {
+                selected.delete(String(leagueId));
+            }
+            _fantasy.leagues = (_fantasy.config.tournaments || []).map(function (item) {
+                return String(item.id);
+            }).filter(function (itemId) {
+                return selected.has(itemId);
             });
+            _fantasyUpdateTournamentSummary();
+            _fantasyLoadPlayers().catch(function (error) {
+                console.warn('[fantasy] tournaments load failed:', error);
+                _fantasyRenderError(error, 'Не удалось загрузить турниры');
+            });
+        };
+
+        window.fantasySelectAllLeagues = function () {
+            if (!_fantasy.config || !_fantasy.leagues.length) return;
+            _fantasy.leagues = [];
+            document.querySelectorAll(
+                '.fantasy-tournament-option input[type="checkbox"]'
+            ).forEach(function (input) {
+                input.checked = false;
+            });
+            _fantasyUpdateTournamentSummary();
+            _fantasyLoadPlayers().catch(function (error) {
+                console.warn('[fantasy] tournaments load failed:', error);
+                _fantasyRenderError(error, 'Не удалось загрузить турниры');
+            });
+        };
+
+        window.fantasyReset = function () {
+            if (!_fantasy.config) return;
+            delete _fantasy.selections[_fantasy.role];
+            _fantasyRenderBuilder();
+            _fantasyRenderRanking();
+        };
+
+        window.fantasyRetry = function () {
+            if (_fantasy.loading) return;
+            _fantasy.loadedLeaguesKey = null;
+            initFantasy();
         };
 
         window.fantasySetMetric = function (slotIndex, metricId) {
@@ -1094,7 +1275,7 @@
             var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
             var numeric = Number(String(value).replace(',', '.'));
             var minimum = Number(multiplier.min || 0.1);
-            var maximum = Number(multiplier.max || 3);
+            var maximum = Number(multiplier.max || 4);
             if (!Number.isFinite(numeric) || numeric < minimum ||
                 numeric > maximum || !selections[slotIndex]) return;
             selections[slotIndex].multiplier = numeric;
@@ -1106,7 +1287,7 @@
             var multiplier = ((_fantasy.config.mechanics || {}).multiplier || {});
             if (!input || !selections[slotIndex]) return;
             var minimum = Number(multiplier.min || 0.1);
-            var maximum = Number(multiplier.max || 3);
+            var maximum = Number(multiplier.max || 4);
             var numeric = Number(String(input.value).replace(',', '.'));
             if (!Number.isFinite(numeric)) {
                 numeric = Number(selections[slotIndex].multiplier);

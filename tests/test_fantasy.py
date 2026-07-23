@@ -43,6 +43,20 @@ class FantasyConfigTests(unittest.TestCase):
         self.assertLessEqual(multiplier["min"], multiplier["default"])
         self.assertLessEqual(multiplier["default"], multiplier["max"])
         self.assertGreater(multiplier["step"], 0)
+        self.assertEqual(multiplier["max"], 4.0)
+
+        labels = {
+            role["id"]: role["label"]
+            for role in config["roles"]
+        }
+        self.assertEqual(
+            labels,
+            {
+                "core": "Основа",
+                "mid": "Центр",
+                "support": "Поддержка",
+            },
+        )
 
         emblems = mechanics["emblems"]
         self.assertLessEqual(emblems["min"], emblems["default"])

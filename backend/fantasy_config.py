@@ -223,7 +223,7 @@ FANTASY_METRICS: tuple[dict, ...] = (
 FANTASY_ROLES: tuple[dict, ...] = (
     {
         "id": "core",
-        "label": "Коры",
+        "label": "Основа",
         "slots": (
             {"color": "red", "default_metric": "kills"},
             {"color": "green", "default_metric": "creep_score"},
@@ -234,7 +234,7 @@ FANTASY_ROLES: tuple[dict, ...] = (
     },
     {
         "id": "mid",
-        "label": "Мид",
+        "label": "Центр",
         "slots": (
             {"color": "red", "default_metric": "kills"},
             {"color": "blue", "default_metric": "teamfight"},
@@ -245,7 +245,7 @@ FANTASY_ROLES: tuple[dict, ...] = (
     },
     {
         "id": "support",
-        "label": "Саппорты",
+        "label": "Поддержка",
         "slots": (
             {"color": "blue", "default_metric": "obs"},
             {"color": "green", "default_metric": "camps"},
@@ -276,7 +276,7 @@ def get_fantasy_config() -> dict:
             "multiplier": {
                 "enabled": True,
                 "min": 1.0,
-                "max": 3.0,
+                "max": 4.0,
                 "step": 0.1,
                 "default": 1.0,
             },

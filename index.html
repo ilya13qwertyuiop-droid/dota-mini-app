@@ -29,7 +29,7 @@
     />
 
     <!-- Стили -->
-    <link rel="stylesheet" href="styles.css?v=256" />
+    <link rel="stylesheet" href="styles.css?v=258" />
 
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
@@ -1252,39 +1252,48 @@
       <!-- Помощник официального Fantasy -->
       <div id="page-fantasy" class="page">
         <header class="fantasy-header">
-          <div class="fantasy-eyebrow">Compendium</div>
           <h1>Фэнтези</h1>
-          <p>Укажи свои эмблемы и сравни игроков по форме на профессиональной сцене.</p>
+          <p>Настрой эмблемы и получи рейтинг игроков по профессиональным матчам.</p>
         </header>
 
-        <section class="fantasy-controls" aria-label="Настройки фэнтези">
-          <label class="fantasy-tournament">
-            <span>Матчи для расчёта</span>
-            <select id="fantasy-tournament-select"
-                    onchange="fantasySetLeague(this.value)"
-                    aria-label="Турнир"></select>
-          </label>
+        <section class="fantasy-setup" aria-labelledby="fantasy-setup-title">
+          <div class="fantasy-setup-head">
+            <h2 id="fantasy-setup-title">Подбор игрока</h2>
+            <button type="button" class="fantasy-reset"
+                    aria-label="Сбросить эмблемы"
+                    onclick="fantasyReset()" disabled>Сбросить</button>
+          </div>
+
+          <div class="fantasy-tournament">
+            <span>Турниры</span>
+            <details id="fantasy-tournament-picker"
+                     class="fantasy-tournament-picker">
+              <summary id="fantasy-tournament-summary"
+                       aria-label="Турниры: загружаем">Загружаем…</summary>
+              <div id="fantasy-tournament-options"
+                   class="fantasy-tournament-options"
+                   aria-label="Выбор турниров"></div>
+            </details>
+          </div>
           <div id="fantasy-role-tabs" class="fantasy-role-tabs"
                role="tablist" aria-label="Роль игрока"></div>
-        </section>
 
-        <section id="fantasy-builder" class="fantasy-builder" aria-labelledby="fantasy-builder-title">
-          <div class="fantasy-section-head">
-            <div>
-              <div class="fantasy-section-kicker">Расчёт</div>
-              <h2 id="fantasy-builder-title">Эмблемы</h2>
+          <div id="fantasy-builder" class="fantasy-builder"
+               aria-labelledby="fantasy-builder-title">
+            <div class="fantasy-builder-head">
+              <h3 id="fantasy-builder-title">Эмблемы</h3>
+              <span class="fantasy-section-meta" id="fantasy-builder-meta">3 эмблемы</span>
             </div>
-            <span class="fantasy-section-meta" id="fantasy-builder-meta">3 эмблемы</span>
+            <div id="fantasy-slots" class="fantasy-slots"></div>
+            <div id="fantasy-builder-actions" class="fantasy-builder-actions"></div>
           </div>
-          <div id="fantasy-slots" class="fantasy-slots"></div>
-          <div id="fantasy-builder-actions" class="fantasy-builder-actions"></div>
         </section>
 
         <section class="fantasy-ranking" aria-labelledby="fantasy-ranking-title">
           <div class="fantasy-section-head">
             <div>
-              <div class="fantasy-section-kicker">Результат</div>
-              <h2 id="fantasy-ranking-title">Лучшие игроки</h2>
+              <h2 id="fantasy-ranking-title">Рейтинг</h2>
+              <p id="fantasy-result-context" class="fantasy-result-context">—</p>
             </div>
             <span class="fantasy-section-meta" id="fantasy-player-count">—</span>
           </div>
@@ -2039,6 +2048,6 @@
 
     <script defer src="heroes-data.js?v=1"></script>
     <script defer src="hero-images.js?v=2"></script>
-    <script defer src="script.js?v=323"></script>
+    <script defer src="script.js?v=325"></script>
   </body>
 </html>
