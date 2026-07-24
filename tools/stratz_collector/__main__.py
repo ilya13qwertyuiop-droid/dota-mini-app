@@ -44,7 +44,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _collect(args: argparse.Namespace) -> None:
-    token = os.environ.get(args.token_env, "")
+    token = os.environ.get(args.token_env, "").strip()
     if not token:
         raise DataShapeError(f"environment variable {args.token_env} is not set")
     reference = load_legacy_file(args.reference)

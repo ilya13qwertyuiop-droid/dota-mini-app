@@ -84,35 +84,28 @@ def parse_week(rows: Any, hero_ids: Iterable[str], *, description: str) -> Match
 
 
 def aggregate_weeks(weeks: Iterable[Matchups], hero_ids: Iterable[str]) -> Matchups:
-    """Merge weekly data using ``matchCount`` as the weight for synergy."""
-    result: Matchups = {hero_id: {"vs": {}, "with": {}} for hero_id in hero_ids}
+    """Merge weeks with full precision; round only the final output value."""
+    accumulated: dict[str, dict[str, dict[str, list[float | int]]]] = {
+        hero_id: {"vs": {}, "with": {}} for hero_id in hero_ids
+    }
     for week in weeks:
         for hero_id, maps in week.items():
-            target = result.setdefault(hero_id, {"vs": {}, "with": {}})
+            target = accumulated.setdefault(hero_id, {"vs": {}, "with": {}})
             for kind in ("vs", "with"):
                 for other_id, stat in maps.get(kind, {}).items():
-                    previous = target[kind].get(other_id)
-                    if previous is None:
-                        target[kind][other_id] = stat
-                        continue
-                    total_count = previous.match_count + stat.match_count
-                    if total_count == 0:
-                        target[kind][other_id] = PairStat(0.0, 0)
-                    else:
-                        weighted = (
-                            previous.synergy * previous.match_count
-                            + stat.synergy * stat.match_count
-                        ) / total_count
-                        target[kind][other_id] = PairStat(round(weighted, 3), total_count)
+                    pair = target[kind].setdefault(other_id, [0.0, 0])
+                    pair[0] += stat.synergy * stat.match_count
+                    pair[1] += stat.match_count
     return {
         hero_id: {
             kind: {
-                other_id: stat for other_id, stat in maps[kind].items()
-                if stat.match_count > 0
+                other_id: PairStat(round(float(pair[0]) / int(pair[1]), 3), int(pair[1]))
+                for other_id, pair in maps[kind].items()
+                if int(pair[1]) > 0
             }
             for kind in ("vs", "with")
         }
-        for hero_id, maps in result.items()
+        for hero_id, maps in accumulated.items()
     }
 
 

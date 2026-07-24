@@ -27,6 +27,12 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(to_jsonable(result)["1"]["vs"]["2"],
                          {"synergy": 6.5, "matchCount": 400})
 
+    def test_aggregation_rounds_only_after_all_weeks_are_merged(self):
+        result = aggregate_weeks(
+            [_week(1.2344, 1), _week(1.2344, 1), _week(1.2354, 1)], ["1", "2"]
+        )
+        self.assertEqual(result["1"]["vs"]["2"].synergy, 1.235)
+
     def test_duplicate_pair_is_rejected(self):
         with self.assertRaises(DataShapeError):
             parse_week(

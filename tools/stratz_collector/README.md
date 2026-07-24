@@ -30,6 +30,18 @@ $env:STRATZ_API_TOKEN = "..."
 
 Токен не передаётся в аргументах и не должен попадать в шаблон, Git или логи.
 
+### macOS
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r tools/stratz_collector/requirements.txt
+export STRATZ_API_TOKEN="..."
+```
+
+Если STRATZ возвращает `403`, сначала отключи VPN или прокси и повтори запуск:
+сервис может блокировать IP-адрес используемого VPN.
+
 ## Запуск
 
 ```powershell
@@ -41,6 +53,14 @@ python -m tools.stratz_collector `
 Если проверка не проходит, команда завершится с кодом `1`, а исходный и
 выходной рабочий файлы не будут заменены. После ручной проверки можно загрузить
 `hero_matchups.new.json` на staging прежним процессом.
+
+На macOS команда запуска выглядит так:
+
+```bash
+python -m tools.stratz_collector \
+  --reference ./hero_matchups.json \
+  --output ./hero_matchups.new.json
+```
 
 ## Тесты
 
