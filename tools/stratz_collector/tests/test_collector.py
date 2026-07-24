@@ -35,6 +35,15 @@ class AggregationTests(unittest.TestCase):
                 ["1", "2"], description="test",
             )
 
+    def test_rows_outside_reference_are_ignored(self):
+        data = parse_week(
+            [{"heroId": 0, "vs": [], "with": []},
+             {"heroId": 1, "vs": [{"heroId1": 1, "heroId2": 2, "synergy": 1, "matchCount": 1}],
+              "with": [{"heroId1": 1, "heroId2": 2, "synergy": 1, "matchCount": 1}]}],
+            ["1", "2"], description="test",
+        )
+        self.assertEqual(data["1"]["vs"]["2"].synergy, 1)
+
 
 class ValidationTests(unittest.TestCase):
     def test_missing_pair_is_rejected(self):

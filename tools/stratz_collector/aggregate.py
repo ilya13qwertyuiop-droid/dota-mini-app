@@ -46,7 +46,12 @@ def parse_week(rows: Any, hero_ids: Iterable[str], *, description: str) -> Match
     for row in rows:
         if not isinstance(row, Mapping):
             raise DataShapeError(f"matchUp record for {description} must be an object")
-        source_id = _as_id(row.get("heroId"), field="heroId")
+        # STRATZ can include technical aggregate rows (for example heroId=0).
+        # The browser collector ignores every row outside the reference set, so
+        # do that before validating pair details as well.
+        if row.get("heroId") is None:
+            raise DataShapeError(f"matchUp record for {description} has no heroId")
+        source_id = str(row["heroId"])
         if source_id not in allowed:
             continue
         for kind in ("vs", "with"):
