@@ -1,0 +1,123 @@
+"""Normalization and weighted aggregation of weekly STRATZ exports."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from math import isfinite
+from typing import Any
+
+from .models import Matchups, PairStat
+
+
+class DataShapeError(ValueError):
+    """A GraphQL response does not have the configured, expected shape."""
+
+
+def _as_id(value: Any, *, field: str) -> str:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise DataShapeError(f"{field} must be an integer hero id, got {value!r}") from exc
+    if parsed <= 0:
+        raise DataShapeError(f"{field} must be positive, got {parsed}")
+    return str(parsed)
+
+
+def _as_pair_stat(item: Mapping[str, Any], *, synergy_field: str, match_count_field: str) -> PairStat:
+    try:
+        synergy = float(item[synergy_field])
+        match_count = int(item[match_count_field])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DataShapeError("pair entry has invalid synergy or matchCount") from exc
+    if not isfinite(synergy):
+        raise DataShapeError("pair synergy must be finite")
+    if match_count < 0:
+        raise DataShapeError("pair matchCount must not be negative")
+    return PairStat(synergy=synergy, match_count=match_count)
+
+
+def parse_week(rows: Any, hero_ids: Iterable[str], *, description: str) -> Matchups:
+    """Parse one ``heroStats.matchUp`` snapshot into the legacy file shape."""
+    if not isinstance(rows, list) or not rows:
+        raise DataShapeError(f"STRATZ returned an empty matchUp for {description}")
+    allowed = set(hero_ids)
+    result: Matchups = {hero_id: {"vs": {}, "with": {}} for hero_id in allowed}
+
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise DataShapeError(f"matchUp record for {description} must be an object")
+        # STRATZ can include technical aggregate rows (for example heroId=0).
+        # The browser collector ignores every row outside the reference set, so
+        # do that before validating pair details as well.
+        if row.get("heroId") is None:
+            raise DataShapeError(f"matchUp record for {description} has no heroId")
+        source_id = str(row["heroId"])
+        if source_id not in allowed:
+            continue
+        for kind in ("vs", "with"):
+            raw_pairs = row.get(kind)
+            if not isinstance(raw_pairs, list):
+                raise DataShapeError(f"{kind} for hero {source_id} must be a list")
+            for raw_pair in raw_pairs:
+                if not isinstance(raw_pair, Mapping):
+                    raise DataShapeError(f"{kind} contains a non-object pair")
+                left = _as_id(raw_pair.get("heroId1"), field="heroId1")
+                right = _as_id(raw_pair.get("heroId2"), field="heroId2")
+                if left == source_id and right != source_id:
+                    target_id = right
+                elif right == source_id and left != source_id:
+                    target_id = left
+                else:
+                    raise DataShapeError(
+                        f"pair {left}/{right} is not attached to hero {source_id}"
+                    )
+                if target_id not in allowed:
+                    continue
+                if target_id in result[source_id][kind]:
+                    raise DataShapeError(
+                        f"duplicate {kind} pair {source_id}->{target_id} for {description}"
+                    )
+                result[source_id][kind][target_id] = _as_pair_stat(
+                    raw_pair, synergy_field="synergy", match_count_field="matchCount"
+                )
+    return result
+
+
+def aggregate_weeks(weeks: Iterable[Matchups], hero_ids: Iterable[str]) -> Matchups:
+    """Merge weeks with full precision; round only the final output value."""
+    accumulated: dict[str, dict[str, dict[str, list[float | int]]]] = {
+        hero_id: {"vs": {}, "with": {}} for hero_id in hero_ids
+    }
+    for week in weeks:
+        for hero_id, maps in week.items():
+            target = accumulated.setdefault(hero_id, {"vs": {}, "with": {}})
+            for kind in ("vs", "with"):
+                for other_id, stat in maps.get(kind, {}).items():
+                    pair = target[kind].setdefault(other_id, [0.0, 0])
+                    pair[0] += stat.synergy * stat.match_count
+                    pair[1] += stat.match_count
+    return {
+        hero_id: {
+            kind: {
+                other_id: PairStat(round(float(pair[0]) / int(pair[1]), 3), int(pair[1]))
+                for other_id, pair in maps[kind].items()
+                if int(pair[1]) > 0
+            }
+            for kind in ("vs", "with")
+        }
+        for hero_id, maps in accumulated.items()
+    }
+
+
+def to_jsonable(matchups: Matchups) -> dict[str, dict[str, dict[str, dict[str, float | int]]]]:
+    """Produce exactly the legacy ``hero_matchups.json`` object shape."""
+    return {
+        hero_id: {
+            kind: {
+                other_id: {"synergy": stat.synergy, "matchCount": stat.match_count}
+                for other_id, stat in sorted(pairs.items(), key=lambda item: int(item[0]))
+            }
+            for kind, pairs in (("vs", maps["vs"]), ("with", maps["with"]))
+        }
+        for hero_id, maps in sorted(matchups.items(), key=lambda item: int(item[0]))
+    }

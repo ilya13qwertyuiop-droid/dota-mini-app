@@ -1,0 +1,2 @@
+# Kept separate from the application requirements: this local utility needs only httpx.
+httpx>=0.27,<0.29
